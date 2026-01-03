@@ -2,12 +2,20 @@ import { type ActionFunctionArgs } from "react-router";
 import { ChatOpenAI } from "@langchain/openai";
 import { Sandbox } from "@deno/sandbox";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
 import { StateGraph, MessagesAnnotation, END, START } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { db, messages, chats, artifacts } from "../lib/db";
-import { eq, and } from "drizzle-orm";
+import { db, messages, chats } from "../lib/db";
+import { eq } from "drizzle-orm";
+import { loadSkills } from "../agent/skills";
+import {
+  createRunCodeTool,
+  createReadFileTool,
+  createListFilesTool,
+  createWriteFileTool,
+  createShellTool,
+  createExposePreviewTool,
+  createWebAppTool
+} from "../agent/tools";
 
 function sseEvent(type: string, data: Record<string, unknown>): string {
   return `data: ${JSON.stringify({ type, ...data })}\n\n`;
@@ -41,6 +49,9 @@ export async function action({ request }: ActionFunctionArgs) {
     });
   }
 
+  // Load Skills (Optional)
+  const skillsContent = await loadSkills();
+
   // Create a ReadableStream for SSE
   const stream = new ReadableStream({
     async start(controller) {
@@ -52,17 +63,16 @@ export async function action({ request }: ActionFunctionArgs) {
       let sandbox: Sandbox | null = null;
       let previewUrl: string | null = null;
       let sandboxId: string | null = null;
-      
+
       try {
         if (existingSandboxId) {
-          // Try to reconnect to existing sandbox
           send("step_start", { id: "sandbox", title: "Reconnecting to sandbox..." });
           try {
             sandbox = await Sandbox.connect({ id: existingSandboxId });
             sandboxId = existingSandboxId;
             send("step_complete", { id: "sandbox", result: "Reconnected to existing session" });
           } catch (reconnectErr) {
-            // If reconnect fails, create a new one
+
             send("step_update", { id: "sandbox", content: "Session expired, creating new sandbox..." });
             sandbox = await Sandbox.create({ lifetime: "5m" });
             sandboxId = sandbox.id;
@@ -75,244 +85,36 @@ export async function action({ request }: ActionFunctionArgs) {
           sandboxId = sandbox.id;
           send("step_complete", { id: "sandbox" });
         }
-        
-        // Send sandbox ID to frontend for future reconnection
+
         send("sandbox_info", { sandboxId });
-        
+
       } catch (err) {
         send("error", { message: "Failed to create sandbox environment" });
         controller.close();
         return;
       }
 
-      const s = sandbox as any;
-
       try {
-        // TOOL: Run Code (Deno) - Using correct @deno/sandbox API
-        const runCodeTool = tool(
-          async ({ code }: { code: string }) => {
-            try {
-              const scriptPath = "script.ts";
-              
-              // Use sandbox.writeTextFile() - correct API
-              await sandbox.writeTextFile(scriptPath, code);
-              
-              // Use sandbox.spawn() - correct API
-              const child = await sandbox.spawn("deno", {
-                args: ["run", "-A", scriptPath],
-                stdout: "piped",
-                stderr: "piped",
-              });
-              
-              // Read stdout and stderr using getReader()
-              let stdout = "";
-              let stderr = "";
-              
-              if (child.stdout) {
-                const reader = child.stdout.getReader();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  stdout += new TextDecoder().decode(value);
-                }
-              }
-              if (child.stderr) {
-                const reader = child.stderr.getReader();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  stderr += new TextDecoder().decode(value);
-                }
-              }
-              
-              const status = await child.status;
-              
-              return `Exit Code: ${status.code}\nStdout:\n${stdout}\nStderr:\n${stderr}`;
-            } catch (error) {
-              return `Execution Error: ${error instanceof Error ? error.message : String(error)}`;
-            }
-          },
-          {
-            name: "run_code",
-            description: "Run TypeScript/JavaScript code in the sandbox. You can write files (like HTML/CSS) using Deno.writeTextFile inside your script.",
-            schema: z.object({
-              code: z.string().describe("The TypeScript code to execute."),
-            }),
-          }
-        );
+        // Initialize Tools with Sandbox
+        const tools = [
+          createRunCodeTool(sandbox),
+          createReadFileTool(sandbox),
+          createListFilesTool(sandbox),
+          createWriteFileTool(sandbox, chatId),
+          createShellTool(sandbox),
+          createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
+          createWebAppTool(sandbox)
+        ];
 
-        const readFileTool = tool(
-          async ({ path }: { path: string }) => {
-            try {
-              const result = await sandbox.sh`cat ${path}`.text();
-              return result;
-            } catch (error) {
-              return `Error reading file '${path}': ${error instanceof Error ? error.message : String(error)}`;
-            }
-          },
-          {
-            name: "read_file",
-            description: "Read the content of a file from the sandbox. Use this to retrieve built artifacts (like index.html) to show to the user.",
-            schema: z.object({
-              path: z.string().describe("Path to the file (e.g., index.html)"),
-            }),
-          }
-        );
-
-        // TOOL: List Files - Using correct @deno/sandbox API
-        const listFilesTool = tool(
-          async ({ path }: { path: string }) => {
-            try {
-              // Use sandbox.sh template literal for ls
-              const result = await sandbox.sh`ls -la ${path}`.text();
-              return result;
-            } catch (error) {
-              return `Error listing files: ${error instanceof Error ? error.message : String(error)}`;
-            }
-          },
-          {
-            name: "list_files",
-            description: "List files in a directory.",
-            schema: z.object({ path: z.string().default(".").describe("Directory path to list") })
-          }
-        );
-
-        // TOOL: Write File - Direct file writing
-        const writeFileTool = tool(
-          async ({ path, content }: { path: string; content: string }) => {
-            try {
-              // 1. Write to sandbox
-              await sandbox.writeTextFile(path, content);
-
-              // 2. Save to database if we have a chatId
-              if (chatId) {
-                // Delete existing artifact with same path for this chat (simple overwrite)
-                await db.delete(artifacts)
-                  .where(and(
-                    eq(artifacts.chatId, chatId), 
-                    eq(artifacts.filename, path)
-                  ));
-                
-                // Insert new version
-                await db.insert(artifacts).values({
-                  chatId,
-                  filename: path,
-                  content,
-                });
-              }
-
-              return `Successfully wrote ${content.length} bytes to ${path}`;
-            } catch (error) {
-              return `Error writing file '${path}': ${error instanceof Error ? error.message : String(error)}`;
-            }
-          },
-          {
-            name: "write_file",
-            description: "Write content directly to a file in the sandbox. Use this for HTML, CSS, JS files.",
-            schema: z.object({
-              path: z.string().describe("Path to the file (e.g., index.html)"),
-              content: z.string().describe("Content to write to the file"),
-            }),
-          }
-        );
-
-        // TOOL: Shell Command - Run any shell command
-        const shellTool = tool(
-          async ({ command }: { command: string }) => {
-            try {
-              const child = await sandbox.spawn("sh", {
-                args: ["-c", command],
-                stdout: "piped",
-                stderr: "piped",
-              });
-              
-              let stdout = "";
-              let stderr = "";
-              
-              if (child.stdout) {
-                const reader = child.stdout.getReader();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  stdout += new TextDecoder().decode(value);
-                }
-              }
-              if (child.stderr) {
-                const reader = child.stderr.getReader();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  stderr += new TextDecoder().decode(value);
-                }
-              }
-              
-              const status = await child.status;
-              return `Exit: ${status.code}\n${stdout}${stderr ? `\nStderr: ${stderr}` : ""}`;
-            } catch (error) {
-              return `Shell Error: ${error instanceof Error ? error.message : String(error)}`;
-            }
-          },
-          {
-            name: "shell",
-            description: "Run a shell command in the sandbox.",
-            schema: z.object({
-              command: z.string().describe("The shell command to run"),
-            }),
-          }
-        );
-
-        // TOOL: Expose Preview - Create public URL for files
-        const exposePreviewTool = tool(
-          async ({ port, startServer }: { port: number; startServer: boolean }) => {
-            try {
-              if (startServer) {
-                // Start a simple static file server
-                const serverCode = `
-                  import { serveDir } from "jsr:@std/http/file-server";
-                  Deno.serve({ port: ${port} }, (req) => serveDir(req, { fsRoot: "." }));
-                `;
-                await sandbox.writeTextFile("_server.ts", serverCode);
-                
-                // Start the server in background
-                sandbox.spawn("deno", {
-                  args: ["run", "-A", "_server.ts"],
-                  stdout: "null",
-                  stderr: "null",
-                });
-                
-                // Wait briefly for server to start
-                await new Promise(r => setTimeout(r, 1000));
-              }
-              
-              // Expose the port publicly
-              const url = await sandbox.exposeHttp({ port });
-              previewUrl = url;
-              
-              return `Preview URL: ${url}`;
-            } catch (error) {
-              return `Expose Error: ${error instanceof Error ? error.message : String(error)}`;
-            }
-          },
-          {
-            name: "expose_preview",
-            description: "Start a web server and expose files publicly. Returns a URL where users can view the creation. Call this after writing HTML/CSS/JS files.",
-            schema: z.object({
-              port: z.number().default(8000).describe("Port to serve files on (default 8000)"),
-              startServer: z.boolean().default(true).describe("Whether to start a static file server. Set to false if you are running your own server (e.g. 'npm run dev')."),
-            }),
-          }
-        );
-
-        const tools = [runCodeTool, readFileTool, listFilesTool, writeFileTool, shellTool, exposePreviewTool];
         const toolNode = new ToolNode(tools);
 
         const model = new ChatOpenAI({
-          model: "kwaipilot/kat-coder-pro:free", 
+          model: "kwaipilot/kat-coder-pro:free",
           apiKey: apiKey,
           configuration: {
             baseURL: "https://openrouter.ai/api/v1",
           },
-          temperature: 0.2, 
+          temperature: 0.2,
         }).bindTools(tools);
 
         function shouldContinue(state: typeof MessagesAnnotation.State) {
@@ -343,17 +145,31 @@ export async function action({ request }: ActionFunctionArgs) {
             new SystemMessage(`You are an expert full-stack developer agent with access to a persistent Deno Sandbox.
             
 AVAILABLE TOOLS:
-- write_file: Write HTML/CSS/JS files directly
+- create_web_app: Scaffold a new React Router or Vite React app
+- write_file: Write HTML/CSS/JS files directly (for simple pages)
 - read_file: Read file contents
 - list_files: List directory contents
 - run_code: Execute TypeScript/JavaScript code
 - shell: Run shell commands
 - expose_preview: Create a public URL for viewing creations
 
-WORKFLOW:
-1. Use 'write_file' to create HTML/CSS/JS files (e.g., index.html)
-2. Use 'expose_preview' with port 8000 to get a public URL
-3. Include the preview URL in your final response
+WORKFLOW (Simple HTML/JS):
+1. Use 'write_file' to create HTML/CSS/JS files.
+2. Use 'expose_preview' with port 8000 to get a public URL.
+
+WORKFLOW (Full App - Vite/React Router):
+1. Use 'create_web_app' to scaffold the project. (Supports templates: minimal, javascript, node-custom-server)
+2. Run 'shell' command: "cd <project_name> && npm install".
+3. Run 'shell' command: "cd <project_name> && npm run build".
+4. Use 'expose_preview' with port 8000, startServer=true, and root="<project_name>/dist".
+   - CRITICAL: Vite puts the build in '<project_name>/dist'.
+   - React Router puts the build in '<project_name>/dist/client' (usually).
+   - Check where the 'index.html' is before calling expose_preview.
+
+IMPORTANT: 
+- Always run 'npm install' and 'npm run build' after scaffolding.
+- SERVE THE BUILD OUTPUT via 'expose_preview' with the correct 'root' path.
+- Do NOT try to run 'npm run dev' unless you can run it in background. Build & Serve is usually faster for simple previews.
 
 IMPORTANT: Always use 'expose_preview' after creating HTML files so users can view their creation live.
 
@@ -361,6 +177,10 @@ Your final response should include:
 - Brief summary of what was created
 - The preview URL
 - Key features/instructions
+
+USER SKILLS:
+You have access to the following user-defined skills (workflows). If a user request matches a skill, follow the instructions in that skill.
+${skillsContent}
             `),
             new HumanMessage(prompt),
           ],
@@ -370,10 +190,10 @@ Your final response should include:
         let thinkingStepCounter = 0;
         let currentThinkingId = "";
         let thinkingContent = "";
-        
-        const eventStream = await app.streamEvents(inputs, { 
+
+        const eventStream = await app.streamEvents(inputs, {
           version: "v2",
-          recursionLimit: 50 
+          recursionLimit: 50
         });
 
         let finalContent = "";
@@ -386,15 +206,15 @@ Your final response should include:
             currentThinkingId = `thinking-${thinkingStepCounter}`;
             thinkingContent = "";
             send("step_start", { id: currentThinkingId, title: `Reasoning (step ${thinkingStepCounter})` });
-          } 
+          }
           else if (eventType === "on_chat_model_stream") {
             const chunk = data?.chunk;
             if (chunk?.content) {
               const text = typeof chunk.content === "string" ? chunk.content : "";
               if (text) {
                 thinkingContent += text;
-                const displayContent = thinkingContent.length > 300 
-                  ? thinkingContent.slice(0, 300) + "..." 
+                const displayContent = thinkingContent.length > 300
+                  ? thinkingContent.slice(0, 300) + "..."
                   : thinkingContent;
                 send("step_update", { id: currentThinkingId, content: displayContent });
               }
@@ -410,14 +230,15 @@ Your final response should include:
             const toolName = name || "Tool";
             const toolArgs = data?.input || {};
             const stepId = `tool-${stepCounter}`;
-            
+
             let title = toolName;
             if (toolName === "run_code") title = "Executing code";
             else if (toolName === "read_file") title = `Reading ${toolArgs.path || "file"}`;
             else if (toolName === "list_files") title = `Listing ${toolArgs.path || "files"}`;
             else if (toolName === "write_file") title = `Writing ${toolArgs.path || "file"}`;
             else if (toolName === "expose_preview") title = "Creating live preview";
-            
+            else if (toolName === "create_web_app") title = `Scaffolding ${toolArgs.type} app`;
+
             send("step_start", { id: stepId, title, tool: toolName, args: toolArgs });
           }
           else if (eventType === "on_tool_end") {
@@ -468,7 +289,7 @@ Your final response should include:
           if (sandbox) {
             await sandbox.close();
           }
-        } catch(e) { console.error("Error closing sandbox", e); }
+        } catch (e) { console.error("Error closing sandbox", e); }
         controller.close();
       }
     }
