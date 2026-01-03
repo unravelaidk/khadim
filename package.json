@@ -6,7 +6,9 @@
     "build": "react-router build",
     "dev": "cross-env NODE_ENV=development tsx server.ts",
     "start": "tsx server.ts",
-    "typecheck": "react-router typegen && tsc -b"
+    "typecheck": "react-router typegen && tsc -b",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@deno/sandbox": "^0.5.0",
