@@ -3,6 +3,15 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  thinkingSteps?: Array<{
+    id: string;
+    title: string;
+    status: "pending" | "running" | "complete" | "error";
+    content?: string;
+    result?: string;
+  }>;
+  previewUrl?: string;
+  fileContent?: string;
 }
 
 export interface AgentConfig {

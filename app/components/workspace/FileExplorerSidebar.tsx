@@ -1,7 +1,7 @@
 import { ScrollArea } from "../ui/scroll-area";
 import type { Workspace } from "./workspace-types";
 import { countFiles } from "./workspace-types";
-import DexoLogo from "../../assets/Dexo-logo.svg";
+import KhadimLogo from "../../assets/Khadim-logo.svg";
 
 interface FileExplorerSidebarProps {
   workspaces: Workspace[];
@@ -41,9 +41,9 @@ export function FileExplorerSidebar({
         <div className="gb-sidebar-header">
           <div className="gb-brand">
             <div className="w-12 h-12 flex items-center justify-center">
-              <DexoLogo />
+              <KhadimLogo />
             </div>
-            <span className="gb-brand-name">Dexo</span>
+            <span className="gb-brand-name">Khadim</span>
           </div>
           
           <button 
