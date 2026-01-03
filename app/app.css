@@ -6,7 +6,7 @@
 
   --color-gb-primary: #5C5C5C;
   --color-gb-secondary: #A0A0A0;
-  --color-gb-accent: #9B4F96;
+  --color-gb-accent: #8B1D3D;
 
   --color-gb-bg: #FAFAF8;
   --color-gb-bg-subtle: #F5F5F0;
@@ -34,6 +34,16 @@ body {
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
   }
+
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
 }
 
 /* ========================================

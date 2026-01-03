@@ -1,7 +1,7 @@
 import { ScrollArea } from "../ui/scroll-area";
 import type { Workspace } from "./workspace-types";
 import { countFiles } from "./workspace-types";
-import KhadimLogo from "../../assets/khadim-logo.svg";
+import DexoLogo from "../../assets/Dexo-logo.svg";
 
 interface FileExplorerSidebarProps {
   workspaces: Workspace[];
@@ -20,7 +20,6 @@ export function FileExplorerSidebar({
   isOpen = true,
   onClose,
 }: FileExplorerSidebarProps) {
-  // Mobile overlay click handler
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && onClose) {
       onClose();
@@ -29,7 +28,6 @@ export function FileExplorerSidebar({
 
   return (
     <>
-      {/* Mobile Overlay */}
       <div 
         className={`fixed inset-0 bg-black/50 z-40 transition-opacity md:hidden ${
           isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
@@ -40,13 +38,12 @@ export function FileExplorerSidebar({
       <aside className={`gb-sidebar z-50 transition-transform duration-300 ease-in-out md:translate-x-0 fixed md:relative ${
         isOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
-        {/* Logo/Brand & Header Actions */}
         <div className="gb-sidebar-header">
           <div className="gb-brand">
-            <div className="w-8 h-8 flex items-center justify-center">
-              <KhadimLogo className="w-full h-full" />
+            <div className="w-12 h-12 flex items-center justify-center">
+              <DexoLogo />
             </div>
-            <span className="gb-brand-name">Khadim</span>
+            <span className="gb-brand-name">Dexo</span>
           </div>
           
           <button 
@@ -101,7 +98,6 @@ export function FileExplorerSidebar({
           </button>
         </div>
 
-        {/* All Tasks / Chats */}
         <div className="gb-section gb-section-grow">
           <div className="gb-section-header">
             <span>All chats</span>

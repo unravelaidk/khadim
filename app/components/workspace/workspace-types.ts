@@ -15,6 +15,7 @@ export interface Workspace {
   createdAt: Date;
   files: FileNode[];
   messages: Message[];
+  isFavorite?: boolean;
 }
 
 // Sample mock data for demonstration
@@ -24,6 +25,7 @@ export const mockWorkspaces: Workspace[] = [
     name: "Email Assistant Project",
     createdAt: new Date("2025-12-19"),
     messages: [],
+    isFavorite: true,
     files: [
       {
         id: "f1",

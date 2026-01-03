@@ -1,6 +1,6 @@
 # AgentBuilder Component Architecture
 
-> Memory bank documentation for AI agents working on the Khadim project.
+> Memory bank documentation for AI agents working on the Dexo project.
 
 ## Overview
 

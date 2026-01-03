@@ -38,30 +38,32 @@ export function ChatInput({
       style={containerStyle}
     >
       <div className={`mx-auto ${isCompact ? "max-w-xl" : "max-w-3xl"}`}>
-        <div className="relative rounded-2xl overflow-hidden transition-shadow focus-within:shadow-lg bg-gb-bg-card border border-gb-border shadow-gb-sm">
+        <div className="relative group">
           <textarea
             ref={inputRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Describe what you want your agent to do..."
+            placeholder="Type a message..."
             rows={1}
-            className="w-full bg-transparent px-5 py-4 pr-14 resize-none focus:outline-none text-sm text-gb-text placeholder:text-gb-text-muted"
+            className="w-full bg-gb-bg-card border border-gb-border rounded-full px-6 py-4 pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-gb-primary/10 transition-all shadow-gb-sm hover:shadow-gb-md text-sm text-gb-text placeholder:text-gb-text-muted min-h-[56px] flex items-center"
             style={{ maxHeight: "120px" }}
           />
           <button
             onClick={onSend}
             disabled={!value.trim()}
-            className={`absolute right-3 bottom-3 w-9 h-9 rounded-xl flex items-center justify-center transition-all text-gb-text-inverse ${
-              value.trim() ? "bg-gb-primary" : "bg-gb-border opacity-40"
+            className={`absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              value.trim() 
+                ? "bg-gb-text text-gb-text-inverse hover:scale-105 active:scale-95" 
+                : "bg-gb-bg-subtle text-gb-text-muted cursor-not-allowed"
             }`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>
         </div>
-        <p className="text-xs text-center mt-3 text-gb-text-muted">
+        <p className="text-xs text-center mt-3 text-gb-text-muted font-medium opacity-60">
           Press Enter to send
         </p>
       </div>

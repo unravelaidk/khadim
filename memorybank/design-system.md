@@ -1,4 +1,4 @@
-# Khadim Design System
+# Dexo Design System
 
 > Minimalist modern design with Radix UI primitives and Tailwind CSS.
 
