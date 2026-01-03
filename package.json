@@ -1,0 +1,45 @@
+{
+  "name": "khadim",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "cross-env NODE_ENV=development tsx server.ts",
+    "start": "tsx server.ts",
+    "typecheck": "react-router typegen && tsc -b"
+  },
+  "dependencies": {
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@react-router/express": "7.10.1",
+    "@react-router/node": "7.10.1",
+    "compression": "^1.8.1",
+    "express": "^5.1.0",
+    "isbot": "^5.1.31",
+    "morgan": "^1.10.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router": "7.10.1"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.10.1",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/compression": "^1.8.1",
+    "@types/express": "^5.0.3",
+    "@types/express-serve-static-core": "^5.0.7",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^22",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "cross-env": "^10.0.0",
+    "tailwindcss": "^4.1.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "vite-plugin-svgr": "^4.5.0",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}
