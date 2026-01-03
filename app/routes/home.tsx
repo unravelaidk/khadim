@@ -3,8 +3,8 @@ import { AgentBuilder } from "../components/AgentBuilder";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Dexo - AI Agent Builder" },
-    { name: "description", content: "Build your own AI agents with Dexo" },
+    { title: "Khadim - AI Agent Builder" },
+    { name: "description", content: "Build your own AI agents with Khadim" },
   ];
 }
 

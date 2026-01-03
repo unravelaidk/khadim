@@ -13,7 +13,7 @@ import { mockWorkspaces } from "./workspace";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { LibraryView } from "./Library/LibraryView";
 import type { Workspace } from "./workspace";
-import DexoLogo from "../assets/Dexo-logo.svg";
+import KhadimLogo from "../assets/Khadim-logo.svg";
 
 const suggestedPrompts = [
   "I want an agent that helps me write emails",
@@ -38,6 +38,9 @@ export function AgentBuilder() {
   const [showPreview, setShowPreview] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [activeBadges, setActiveBadges] = useState<Array<{ label: string; icon: React.ReactNode; prompt?: string }>>([]);
+  const [sandboxId, setSandboxId] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
   // View state
   const [currentView, setCurrentView] = useState<'chat' | 'library'>('chat');
@@ -45,23 +48,102 @@ export function AgentBuilder() {
   // Sidebar mobile state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Workspace state
+  // Workspace state (legacy - for library view)
   const [workspaces, setWorkspaces] = useState<Workspace[]>(mockWorkspaces);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     mockWorkspaces[0]?.id ?? null
   );
 
-  const handleCreateWorkspace = () => {
-    const newWorkspace: Workspace = {
-      id: `ws-${Date.now()}`,
-      name: `New Workspace ${workspaces.length + 1}`,
-      createdAt: new Date(),
-      files: [],
-      messages: [],
-    };
-    setWorkspaces((prev: Workspace[]) => [newWorkspace, ...prev]);
-    setSelectedWorkspaceId(newWorkspace.id);
+  // Welcome message
+  const welcomeMessage: Message = {
+    id: "welcome",
+    role: "assistant",
+    content: 'Hey! 👋 I\'m here to help you create your own AI agent. Just tell me what you want your agent to do, and I\'ll help you build it step by step.\n\nFor example, you could say:\n• "I want an agent that helps me write better emails"\n• "Create a friendly tutor for learning Spanish"\n• "Build a code reviewer that catches bugs"\n\nWhat kind of agent would you like to create?',
+    timestamp: new Date(),
+  };
+
+  // Handler: Select chat from sidebar
+  const handleSelectChat = async (selectedChatId: string | null) => {
+    if (!selectedChatId) {
+      // New chat / deselect
+      handleNewChat();
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/chats/${selectedChatId}`);
+      if (response.ok) {
+        const { chat } = await response.json();
+        setChatId(chat.id);
+        
+        // Convert db messages to UI messages
+        const loadedMessages: Message[] = chat.messages.map((msg: any) => {
+          // Find artifact for this message if it has a preview
+          let fileContent: string | undefined;
+          if (msg.previewUrl && chat.artifacts) {
+            const indexHtml = chat.artifacts.find((a: any) => a.filename === "index.html");
+            if (indexHtml) {
+              fileContent = indexHtml.content;
+            }
+          }
+
+          return {
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.createdAt),
+            // If a preview URL exists in DB, current session is likely dead.
+            // Set to "loading" to show spinner until we restore it.
+            previewUrl: msg.previewUrl ? "loading" : undefined,
+            fileContent,
+            thinkingSteps: msg.thinkingSteps,
+          };
+        });
+        
+        setMessages([welcomeMessage, ...loadedMessages]);
+        setCurrentView('chat');
+
+        // Activate sandbox (reconnect or create new)
+        const sandboxForm = new FormData();
+        if (chat.sandboxId) {
+          sandboxForm.append("sandboxId", chat.sandboxId);
+        }
+        if (chat.id) {
+          sandboxForm.append("chatId", chat.id);
+        }
+        
+        const sandboxRes = await fetch("/api/sandbox/connect", {
+          method: "POST",
+          body: sandboxForm,
+        });
+        
+        if (sandboxRes.ok) {
+          const { sandboxId: newSandboxId, previewUrl: newPreviewUrl } = await sandboxRes.json();
+          setSandboxId(newSandboxId);
+          
+          if (newPreviewUrl) {
+             setMessages(prev => prev.map(msg => 
+               msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
+             ));
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load chat:", error);
+    }
+  };
+
+  // Handler: New chat
+  const handleNewChat = () => {
+    setChatId(null);
+    setSandboxId(null);
+    setMessages([welcomeMessage]);
+    setActiveBadges([]);
     setCurrentView('chat');
+  };
+
+  const handleCreateWorkspace = () => {
+    handleNewChat();
   };
 
   const handleSelectWorkspace = (id: string) => {
@@ -79,7 +161,28 @@ export function AgentBuilder() {
     }
   }, [messages, currentView]);
 
-  const handleSend = () => {
+  // Cleanup sandbox when component unmounts or page closes
+  useEffect(() => {
+    const killSandbox = () => {
+      if (sandboxId) {
+        // Use sendBeacon for reliable delivery on page unload
+        const formData = new FormData();
+        formData.append("sandboxId", sandboxId);
+        navigator.sendBeacon("/api/sandbox/kill", formData);
+      }
+    };
+
+    // Kill sandbox on page close/refresh
+    window.addEventListener("beforeunload", killSandbox);
+
+    return () => {
+      window.removeEventListener("beforeunload", killSandbox);
+      // Also kill on component unmount
+      killSandbox();
+    };
+  }, [sandboxId]);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
 
     const userMessage: Message = {
@@ -89,26 +192,174 @@ export function AgentBuilder() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    // Create a placeholder assistant message that will be updated with streaming content
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      thinkingSteps: [],
+    };
+
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      const response = generateResponse(userMessage.content, messages.length);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: response.message,
-          timestamp: new Date(),
-        },
-      ]);
-      if (response.config) {
-        setAgentConfig(response.config);
+    try {
+      // Create chat if this is the first user message (after welcome)
+      let currentChatId = chatId;
+      if (!currentChatId) {
+        // Generate a short, contextual title from the prompt
+        const generateTitle = (prompt: string): string => {
+          // Remove common prefixes
+          let title = prompt
+            .replace(/^(build|create|make|write|design|implement|help me|i want|can you)\s+(a|an|the|me)?\s*/i, '')
+            .replace(/^(with|using|that|for)\s+/i, '');
+          
+          // Take first 3-4 meaningful words
+          const words = title.split(/\s+/).slice(0, 4);
+          title = words.join(' ');
+          
+          // Capitalize first letter
+          title = title.charAt(0).toUpperCase() + title.slice(1);
+          
+          // Limit length
+          if (title.length > 30) {
+            title = title.slice(0, 30).trim() + '...';
+          }
+          
+          return title || 'New Chat';
+        };
+
+        const createChatForm = new FormData();
+        createChatForm.append("title", generateTitle(userMessage.content));
+        const chatResponse = await fetch("/api/chats", {
+          method: "POST",
+          body: createChatForm,
+        });
+        if (chatResponse.ok) {
+          const { chat } = await chatResponse.json();
+          currentChatId = chat.id;
+          setChatId(chat.id);
+          setSidebarRefreshKey(prev => prev + 1); // Trigger sidebar refresh
+        }
       }
+
+      // Save user message to database
+      if (currentChatId) {
+        const userMsgForm = new FormData();
+        userMsgForm.append("chatId", currentChatId);
+        userMsgForm.append("role", "user");
+        userMsgForm.append("content", userMessage.content);
+        fetch("/api/messages", { method: "POST", body: userMsgForm });
+      }
+
+      const formData = new FormData();
+      formData.append("prompt", userMessage.content);
+      if (sandboxId) {
+        formData.append("sandboxId", sandboxId);
+      }
+      if (currentChatId) {
+        formData.append("chatId", currentChatId);
+      }
+
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamedText = "";
+      const steps: Message["thinkingSteps"] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              
+              if (event.type === "step_start") {
+                steps.push({
+                  id: event.id,
+                  title: event.title,
+                  status: "running",
+                  content: "",
+                });
+              } else if (event.type === "step_update") {
+                const step = steps.find(s => s.id === event.id);
+                if (step && event.content) {
+                  step.content = event.content;
+                }
+              } else if (event.type === "step_complete") {
+                const step = steps.find(s => s.id === event.id);
+                if (step) {
+                  step.status = "complete";
+                  if (event.result) step.result = event.result;
+                }
+              } else if (event.type === "sandbox_info") {
+                // Store sandbox ID for future reconnection
+                if (event.sandboxId) {
+                  setSandboxId(event.sandboxId as string);
+                }
+              } else if (event.type === "done") {
+                // Only set final content from 'done' event
+                streamedText = event.content || "";
+                // Update with previewUrl if provided
+                const msgPreviewUrl = event.previewUrl as string | undefined;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: streamedText, thinkingSteps: [...steps], previewUrl: msgPreviewUrl }
+                      : msg
+                  )
+                );
+                continue; // Skip the normal update below since we just did it
+              } else if (event.type === "error") {
+                throw new Error(event.message);
+              }
+
+              // Update the assistant message in real-time
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: streamedText, thinkingSteps: [...steps] }
+                    : msg
+                )
+              );
+            } catch (parseError) {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+      
+    } catch (error) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: "Sorry, I encountered an error connecting to the agent. Please check your API key and try again." }
+            : msg
+        )
+      );
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   const generateResponse = (
@@ -199,10 +450,10 @@ export function AgentBuilder() {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
-        workspaces={workspaces}
-        selectedWorkspaceId={selectedWorkspaceId}
-        onSelectWorkspace={handleSelectWorkspace}
-        onCreateWorkspace={handleCreateWorkspace}
+        selectedChatId={chatId}
+        onSelectChat={handleSelectChat}
+        onNewChat={handleNewChat}
+        refreshKey={sidebarRefreshKey}
         onNavigate={setCurrentView}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -222,7 +473,7 @@ export function AgentBuilder() {
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <span className="ml-3 font-semibold text-gb-text">Dexo</span>
+          <span className="ml-3 font-semibold text-gb-text">Khadim</span>
         </div>
 
         {currentView === 'library' ? (
@@ -263,7 +514,7 @@ export function AgentBuilder() {
                   {/* Header - Logo & Subtitle */}
                   <div className="flex items-center gap-4 animate-in fade-in zoom-in duration-1000">
                     <div className="w-32 h-32 text-gb-text animate-float">
-                      <DexoLogo />
+                      <KhadimLogo />
                     </div>
                     <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide">
                       Get started building

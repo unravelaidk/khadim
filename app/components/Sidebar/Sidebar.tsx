@@ -1,27 +1,26 @@
-import type { Workspace } from "../workspace/workspace-types";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarNavigation } from "./SidebarNavigation";
 import { SidebarProjects } from "./SidebarProjects";
 import { SidebarChatList } from "./SidebarChatList";
 
 interface SidebarProps {
-  workspaces: Workspace[];
-  selectedWorkspaceId: string | null;
-  onSelectWorkspace: (id: string) => void;
-  onCreateWorkspace: () => void;
+  selectedChatId: string | null;
+  onSelectChat: (chatId: string | null) => void;
+  onNewChat: () => void;
   onNavigate: (view: 'chat' | 'library') => void;
   isOpen?: boolean;
   onClose?: () => void;
+  refreshKey?: number;
 }
 
 export function Sidebar({
-  workspaces,
-  selectedWorkspaceId,
-  onSelectWorkspace,
-  onCreateWorkspace,
+  selectedChatId,
+  onSelectChat,
+  onNewChat,
   onNavigate,
   isOpen = true,
   onClose,
+  refreshKey = 0,
 }: SidebarProps) {
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && onClose) {
@@ -41,14 +40,15 @@ export function Sidebar({
       <aside className={`gb-sidebar z-50 transition-transform duration-300 ease-in-out md:translate-x-0 fixed md:relative ${
         isOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
-        <SidebarHeader onCreateWorkspace={onCreateWorkspace} />
+        <SidebarHeader onCreateWorkspace={onNewChat} />
         <SidebarNavigation onNavigate={onNavigate} />
         <SidebarProjects />
         <SidebarChatList 
-          workspaces={workspaces} 
-          selectedWorkspaceId={selectedWorkspaceId} 
-          onSelectWorkspace={onSelectWorkspace}
+          selectedChatId={selectedChatId}
+          onSelectChat={onSelectChat}
+          onNewChat={onNewChat}
           onClose={onClose}
+          refreshKey={refreshKey}
         />
       </aside>
     </>
