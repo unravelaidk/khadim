@@ -7,6 +7,7 @@ import {
   SuggestionCards,
   PreviewModal,
   FeatureSelection,
+  AgentQuestion,
 } from "./agent-builder";
 import type { Message, AgentConfig } from "./agent-builder";
 import { mockWorkspaces } from "./workspace";
@@ -44,6 +45,14 @@ export function AgentBuilder() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgent, setActiveAgent] = useState<{ mode: "plan" | "build"; name: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Human-in-the-loop state
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    question: string;
+    options?: string[];
+    context?: string;
+    threadId?: string;
+  } | null>(null);
 
   // View state
   const [currentView, setCurrentView] = useState<'chat' | 'library'>('chat');
@@ -312,6 +321,10 @@ export function AgentBuilder() {
                   title: event.title,
                   status: "running",
                   content: "",
+                  tool: event.tool,
+                  // For write_file tool, capture filename and content
+                  filename: event.args?.path,
+                  fileContent: event.args?.content,
                 });
               } else if (event.type === "step_update") {
                 const step = steps.find(s => s.id === event.id);
@@ -348,6 +361,23 @@ export function AgentBuilder() {
                   )
                 );
                 continue; // Skip the normal update below since we just did it
+              } else if (event.type === "ask_user") {
+                // Agent is asking a question - show the question UI
+                setPendingQuestion({
+                  question: event.question as string,
+                  options: event.options as string[] | undefined,
+                  context: event.context as string | undefined,
+                  threadId: event.threadId as string | undefined,
+                });
+                setIsTyping(false);
+                // Update message to show question was asked
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: `🤔 I have a question for you...`, thinkingSteps: [...steps] }
+                      : msg
+                  )
+                );
               } else if (event.type === "error") {
                 throw new Error(event.message);
               }
@@ -468,6 +498,168 @@ export function AgentBuilder() {
     }
   };
 
+  const handleAnswerQuestion = async (answer: string) => {
+    if (!pendingQuestion) return;
+
+    // Clear the pending question
+    setPendingQuestion(null);
+
+    // Add user's answer as a message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: answer,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Save user message to database
+    if (chatId) {
+      const userMsgForm = new FormData();
+      userMsgForm.append("chatId", chatId);
+      userMsgForm.append("role", "user");
+      userMsgForm.append("content", answer);
+      fetch("/api/messages", { method: "POST", body: userMsgForm });
+    }
+
+    // Continue the conversation by sending the answer back to the agent
+    setInput("");
+    
+    // Re-trigger agent with the answer (the agent will continue from where it left off)
+    const formData = new FormData();
+    formData.append("prompt", answer);
+    if (sandboxId) {
+      formData.append("sandboxId", sandboxId);
+    }
+    if (chatId) {
+      formData.append("chatId", chatId);
+    }
+    if (pendingQuestion.threadId) {
+      formData.append("threadId", pendingQuestion.threadId);
+    }
+
+    setIsTyping(true);
+    setIsProcessing(true);
+
+    // Create a new placeholder for the response
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      thinkingSteps: [],
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamedText = "";
+      const steps: Message["thinkingSteps"] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.type === "step_start") {
+                steps.push({
+                  id: event.id,
+                  title: event.title,
+                  status: "running",
+                  content: "",
+                });
+              } else if (event.type === "step_update") {
+                const step = steps.find(s => s.id === event.id);
+                if (step && event.content) {
+                  step.content = event.content;
+                }
+              } else if (event.type === "step_complete") {
+                const step = steps.find(s => s.id === event.id);
+                if (step) {
+                  step.status = "complete";
+                  if (event.result) step.result = event.result;
+                }
+              } else if (event.type === "done") {
+                streamedText = event.content || "";
+                setActiveAgent(null);
+                const msgPreviewUrl = event.previewUrl as string | undefined;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: streamedText, thinkingSteps: [...steps], previewUrl: msgPreviewUrl }
+                      : msg
+                  )
+                );
+              } else if (event.type === "ask_user") {
+                // Another question!
+                setPendingQuestion({
+                  question: event.question as string,
+                  options: event.options as string[] | undefined,
+                  context: event.context as string | undefined,
+                  threadId: event.threadId as string | undefined,
+                });
+                setIsTyping(false);
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: `🤔 I have another question...`, thinkingSteps: [...steps] }
+                      : msg
+                  )
+                );
+              }
+
+              // Update message in real-time
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: streamedText, thinkingSteps: [...steps] }
+                    : msg
+                )
+              );
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+    } catch (error) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: "Sorry, there was an error processing your answer." }
+            : msg
+        )
+      );
+    } finally {
+      setIsTyping(false);
+      setIsProcessing(false);
+    }
+  };
+
   const handleSuggestionClick = (feature: { label: string; icon: React.ReactNode; prompt?: string }) => {
     // Add badge (replace existing)
     setActiveBadges([feature]);
@@ -532,6 +724,15 @@ export function AgentBuilder() {
                         <ChatMessage key={message.id} message={message} />
                       ))}
                       {isTyping && <TypingIndicator />}
+                      {pendingQuestion && (
+                        <AgentQuestion
+                          question={pendingQuestion.question}
+                          options={pendingQuestion.options}
+                          context={pendingQuestion.context}
+                          onAnswer={handleAnswerQuestion}
+                          onCancel={() => setPendingQuestion(null)}
+                        />
+                      )}
                       <div ref={messagesEndRef} />
                     </div>
                   </GameBoyScreen>

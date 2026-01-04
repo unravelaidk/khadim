@@ -22,6 +22,7 @@ import {
   createWebAppTool,
   createSaveArtifactTool
 } from "../agent/tools";
+import { createAskUserTool, parseAskUserResponse } from "../agent/tools/ask-user";
 
 function sseEvent(type: string, data: Record<string, unknown>): string {
   return `data: ${JSON.stringify({ type, ...data })}\n\n`;
@@ -42,7 +43,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const badgesJson = formData.get("badges")?.toString();
 
   // Handle Badges
-  let hasSkillBadge = false;
+  let hasPremadeBadge = false;
+  let hasCategoryBadge = false;
   if (badgesJson && prompt) {
     try {
       const badges = JSON.parse(badgesJson);
@@ -50,11 +52,9 @@ export async function action({ request }: ActionFunctionArgs) {
         const badgeLabels = badges.map((b: any) => b.label).join(", ");
         prompt = `[User Context/Selected Features: ${badgeLabels}]\n${prompt}`;
 
-        //Check for skill badges to force build mode
-        const skillKeywords = ["slides", "game", "app", "website", "spreadsheet", "visualization"];
-        hasSkillBadge = badges.some((b: any) =>
-          skillKeywords.some(kw => b.label.toLowerCase().includes(kw))
-        );
+        // Check for premade badges (specific examples like "Pong") vs category badges
+        hasPremadeBadge = badges.some((b: any) => b.isPremade === true);
+        hasCategoryBadge = badges.some((b: any) => b.isPremade === false);
       }
     } catch (e) {
       console.error("Failed to parse badges", e);
@@ -65,12 +65,13 @@ export async function action({ request }: ActionFunctionArgs) {
   const requestedMode = formData.get("agentMode")?.toString() as AgentMode | undefined;
   let agentMode: AgentMode = requestedMode || selectAgent(prompt || "");
 
-  // Force build/plan mode if a skill badge is selected (override 'chat' default)
-  if (agentMode === "chat" && hasSkillBadge) {
-    agentMode = selectAgent(prompt || ""); // Re-run select agent with the new prompt enriched with badges
-    if (agentMode === "chat") {
-      agentMode = "build"; // Fallback to build if it still thinks it's chat but we have a skill badge
-    }
+  // Badge-based mode override (takes precedence over router detection):
+  // - Premade badge (specific example like "Pong") → build mode directly
+  // - Category badge only (like "Create slides") → FORCE plan mode, user needs to provide details
+  if (hasPremadeBadge) {
+    agentMode = "build";  // Specific request with full prompt, go straight to build
+  } else if (hasCategoryBadge) {
+    agentMode = "plan";   // Category selected but no specific prompt, FORCE plan mode to ask questions
   }
 
   if (!prompt) {
@@ -107,7 +108,10 @@ export async function action({ request }: ActionFunctionArgs) {
       let sandboxId: string | null = null;
 
       try {
-        const needsSandbox = agentMode !== "chat" || !!existingSandboxId;
+        // Only initialize sandbox for BUILD mode, not for plan or chat
+        // Plan mode only needs to read, analyze, and ask questions - no sandbox needed
+        // Sandbox will be created when transitioning from plan to build
+        const needsSandbox = agentMode === "build" || !!existingSandboxId;
 
         if (needsSandbox) {
           if (existingSandboxId) {
@@ -152,6 +156,7 @@ export async function action({ request }: ActionFunctionArgs) {
           createPlanTool(),
           createUpdateTodoTool(chatId || "default"),
           createReadTodoTool(chatId || "default"),
+          createAskUserTool(),
         ];
 
         // Sandbox-dependent tools
@@ -370,6 +375,20 @@ Your final response should include:
             const stepId = `tool - ${stepCounter}`;
             const output = data?.output;
             const toolName = name || "";
+
+            if (toolName === "ask_user" && typeof output === "string") {
+              const parsed = parseAskUserResponse(output);
+              if (parsed) {
+                send("ask_user", {
+                  question: parsed.question,
+                  options: parsed.options,
+                  context: parsed.context,
+                  threadId: chatId,
+                });
+                send("step_complete", { id: stepId, result: `❓ Asking: ${parsed.question}` });
+                continue;
+              }
+            }
 
             // Show full plan output for create_plan tool
             if (toolName === "create_plan") {

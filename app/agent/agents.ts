@@ -19,6 +19,7 @@ export const AGENTS: Record<string, AgentConfig> = {
             "read_todo",
             "read_file",
             "list_files",
+            "ask_user",
             // Shell is allowed but only for read-only commands (ls, cat, etc.)
             "shell",
         ],
@@ -27,20 +28,27 @@ export const AGENTS: Record<string, AgentConfig> = {
 === PLAN MODE (READ-ONLY) ===
 You are in PLAN mode. Your job is to:
 1. Analyze the user's request thoroughly
-2. Research the requirements (read files, list directories)
-3. Create a detailed execution plan using create_plan
-4. Identify potential issues BEFORE any changes are made
+2. If the request is unclear, use ask_user to get clarification
+3. Research the requirements (read files, list directories)
+4. Create a detailed execution plan using create_plan
+5. Ask the user for approval before the Build agent executes
+
+USING ask_user:
+- If the request is vague (e.g., "build me something"), ask what specifically they want
+- Offer options when helpful: ask_user({ question: "What type?", options: ["Game", "Website", "App"] })
+- After creating your plan, ALWAYS ask for approval before proceeding
 
 RESTRICTIONS:
 - You CANNOT write files
 - You CANNOT create apps
 - You CANNOT modify anything
-- You CAN ONLY read, analyze, and plan
+- You CAN ONLY read, analyze, plan, and ask questions
 
-When your plan is complete, respond with:
-"📋 Plan complete. Ready to execute with Build agent."
-
-The Build agent will then execute your plan.
+WORKFLOW:
+1. Unclear request? → ask_user for clarification
+2. Clear request → create_plan
+3. Plan created → ask_user for approval ("Does this plan look good?")
+4. User approves → Build agent takes over
 === END PLAN MODE ===
 `,
     },
@@ -48,7 +56,7 @@ The Build agent will then execute your plan.
         name: "Build",
         mode: "build",
         description: "Execute plans and build features",
-        allowedTools: ["*"], // All tools allowed
+        allowedTools: ["*"], 
         temperature: 0.3,
         systemPromptAddition: `
 === BUILD MODE (FULL ACCESS) ===
