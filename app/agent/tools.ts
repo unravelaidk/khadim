@@ -276,7 +276,7 @@ ${stderr || "(empty)"}
     },
     {
         name: "shell",
-        description: "Run a shell command. IMPORTANT: If the command fails, read the FULL error output carefully and fix the specific issue.",
+        description: "Run a shell command. DO NOT use for long-running processes (like servers) as it will block. Use expose_preview for servers. If a command fails, read the FULL error output.",
         schema: z.object({
             command: z.string().describe("The shell command to run"),
         }),
@@ -471,7 +471,7 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
                     args: ["-c", `cat "${path}" | base64`],
                     stdout: "piped"
                 });
-                
+
                 let data = "";
                 if (child.stdout) {
                     const reader = child.stdout.getReader();
@@ -483,9 +483,9 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
                 }
                 const status = await child.status;
                 if (status.code !== 0) {
-                     return `Error reading file: exit code ${status.code}`;
+                    return `Error reading file: exit code ${status.code}`;
                 }
-                
+
                 // Remove newlines/spaces from base64 output
                 content = `base64:${data.replace(/\s/g, '')}`;
             } else {
