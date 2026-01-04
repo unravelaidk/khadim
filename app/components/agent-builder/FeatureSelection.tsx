@@ -20,7 +20,7 @@ import {
 } from "react-icons/lu";
 
 interface FeatureSelectionProps {
-  onSelect: (feature: { label: string; icon: React.ReactNode; prompt?: string }) => void;
+  onSelect: (feature: { label: string; icon: React.ReactNode; prompt?: string; isPremade?: boolean }) => void;
 }
 
 export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
@@ -85,10 +85,12 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
             onClick={() => {
               const categoryFeature = features.find(f => f.id === selectedCategory);
               if (categoryFeature) {
+                // This is a PREMADE prompt - should go directly to build
                 onSelect({ 
-                  label: categoryFeature.label, 
+                  label: `${categoryFeature.label}: ${example.label}`, 
                   icon: categoryFeature.icon, 
-                  prompt: example.prompt 
+                  prompt: example.prompt,
+                  isPremade: true  // Indicates this is a specific, ready-to-build request
                 });
               }
             }}
@@ -160,7 +162,8 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
               if (categoryExamples[feature.id]) {
                 setSelectedCategory(feature.id);
               } else {
-                onSelect({ label: feature.label, icon: feature.icon });
+                // This is just a CATEGORY - should go to plan mode for questions
+                onSelect({ label: feature.label, icon: feature.icon, isPremade: false });
               }
             }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group"

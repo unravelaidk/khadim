@@ -9,6 +9,10 @@ export interface Message {
     status: "pending" | "running" | "complete" | "error";
     content?: string;
     result?: string;
+    // File editor support
+    tool?: string;
+    filename?: string;
+    fileContent?: string;
   }>;
   previewUrl?: string;
   fileContent?: string;

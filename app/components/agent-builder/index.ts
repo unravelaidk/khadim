@@ -8,6 +8,8 @@ export { PreviewModal } from "./PreviewModal";
 export { FeatureSelection } from "./FeatureSelection";
 export { ThinkingSteps } from "./ThinkingStep";
 export { FileArtifact } from "./FileArtifact";
+export { AgentQuestion } from "./AgentQuestion";
+export { FileEditorModal } from "./FileEditorModal";
 export type { ThinkingStepData } from "./ThinkingStep";
 
 export type { Message, AgentConfig } from "./types";
