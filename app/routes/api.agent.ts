@@ -36,12 +36,42 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  const prompt = formData.get("prompt")?.toString();
+  let prompt = formData.get("prompt")?.toString();
   const existingSandboxId = formData.get("sandboxId")?.toString();
   const chatId = formData.get("chatId")?.toString();
+  const badgesJson = formData.get("badges")?.toString();
+
+  // Handle Badges
+  let hasSkillBadge = false;
+  if (badgesJson && prompt) {
+    try {
+        const badges = JSON.parse(badgesJson);
+        if (Array.isArray(badges) && badges.length > 0) {
+            const badgeLabels = badges.map((b: any) => b.label).join(", ");
+            prompt = `[User Context/Selected Features: ${badgeLabels}]\n${prompt}`;
+            
+            //Check for skill badges to force build mode
+            const skillKeywords = ["slides", "game", "app", "website", "spreadsheet", "visualization"];
+            hasSkillBadge = badges.some((b: any) => 
+                skillKeywords.some(kw => b.label.toLowerCase().includes(kw))
+            );
+        }
+    } catch (e) {
+        console.error("Failed to parse badges", e);
+    }
+  }
+
   // Agent mode: "plan", "build", or auto-select based on request
   const requestedMode = formData.get("agentMode")?.toString() as AgentMode | undefined;
-  const agentMode: AgentMode = requestedMode || selectAgent(prompt || "");
+  let agentMode: AgentMode = requestedMode || selectAgent(prompt || "");
+
+  // Force build/plan mode if a skill badge is selected (override 'chat' default)
+  if (agentMode === "chat" && hasSkillBadge) {
+     agentMode = selectAgent(prompt || ""); // Re-run select agent with the new prompt enriched with badges
+     if (agentMode === "chat") {
+         agentMode = "build"; // Fallback to build if it still thinks it's chat but we have a skill badge
+     }
+  }
 
   if (!prompt) {
     return new Response(JSON.stringify({ error: "Prompt is required" }), {
