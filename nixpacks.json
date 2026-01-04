@@ -3,6 +3,9 @@
   "phases": {
     "setup": {
       "nixPkgs": ["nodejs_22"]
+    },
+    "deno:build": {
+      "cmds": []
     }
   }
 }
