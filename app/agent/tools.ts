@@ -1,8 +1,104 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
+import * as pathMod from "node:path";
 import { Sandbox } from "@deno/sandbox";
 import { db, artifacts } from "../lib/db";
 import { eq, and } from "drizzle-orm";
+
+// In-memory todo storage per chat session
+const todoStorage = new Map<string, Array<{ task: string; status: "pending" | "in_progress" | "done" }>>();
+
+// Planning tool - no sandbox needed, just returns the plan for visibility
+export const createPlanTool = () => tool(
+    async ({ goal, steps, estimatedToolCalls }: { goal: string; steps: string[]; estimatedToolCalls: number }) => {
+        const planOutput = `
+📋 EXECUTION PLAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 Goal: ${goal}
+
+📝 Steps:
+${steps.map((step, i) => `   ${i + 1}. ${step}`).join('\n')}
+
+⏱️ Estimated tool calls: ${estimatedToolCalls}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+        return planOutput;
+    },
+    {
+        name: "create_plan",
+        description: "REQUIRED FIRST STEP: Create an execution plan before doing any work. This shows the user what you're about to do.",
+        schema: z.object({
+            goal: z.string().describe("Brief description of what you're building"),
+            steps: z.array(z.string()).describe("List of steps you'll take to complete the task"),
+            estimatedToolCalls: z.number().describe("Estimated number of tool calls to complete the task (target: under 10)"),
+        }),
+    }
+);
+
+// Todo tracking tools - help agent track progress on multi-step tasks
+export const createUpdateTodoTool = (chatId: string) => tool(
+    async ({ tasks }: { tasks: Array<{ task: string; status: "pending" | "in_progress" | "done" }> }) => {
+        todoStorage.set(chatId, tasks);
+
+        const pending = tasks.filter(t => t.status === "pending").length;
+        const inProgress = tasks.filter(t => t.status === "in_progress").length;
+        const done = tasks.filter(t => t.status === "done").length;
+
+        let output = `📋 TODO LIST UPDATED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+        tasks.forEach((t, i) => {
+            const icon = t.status === "done" ? "✅" : t.status === "in_progress" ? "🔄" : "⬜";
+            output += `${icon} ${i + 1}. ${t.task}\n`;
+        });
+        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Progress: ${done}/${tasks.length} done | ${inProgress} in progress | ${pending} pending`;
+
+        return output;
+    },
+    {
+        name: "update_todo",
+        description: "Update the todo list to track your progress. Use this after completing steps to stay on track.",
+        schema: z.object({
+            tasks: z.array(z.object({
+                task: z.string().describe("Brief description of the task"),
+                status: z.enum(["pending", "in_progress", "done"]).describe("Current status"),
+            })).describe("Full list of tasks with their current status"),
+        }),
+    }
+);
+
+export const createReadTodoTool = (chatId: string) => tool(
+    async () => {
+        const tasks = todoStorage.get(chatId) || [];
+
+        if (tasks.length === 0) {
+            return "📋 No todo list exists yet. Use update_todo to create one.";
+        }
+
+        let output = `📋 CURRENT TODO LIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+        tasks.forEach((t, i) => {
+            const icon = t.status === "done" ? "✅" : t.status === "in_progress" ? "🔄" : "⬜";
+            output += `${icon} ${i + 1}. ${t.task}\n`;
+        });
+
+        const pending = tasks.filter(t => t.status === "pending").length;
+        const inProgress = tasks.filter(t => t.status === "in_progress").length;
+        const done = tasks.filter(t => t.status === "done").length;
+
+        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Progress: ${done}/${tasks.length} done | ${inProgress} in progress | ${pending} pending`;
+
+        return output;
+    },
+    {
+        name: "read_todo",
+        description: "Read the current todo list to see your progress and what steps remain.",
+        schema: z.object({}),
+    }
+);
 
 export const createRunCodeTool = (sandbox: Sandbox) => tool(
     async ({ code }: { code: string }) => {
@@ -88,6 +184,11 @@ export const createListFilesTool = (sandbox: Sandbox) => tool(
 export const createWriteFileTool = (sandbox: Sandbox, chatId?: string) => tool(
     async ({ path, content }: { path: string; content: string }) => {
         try {
+
+            const dir = pathMod.dirname(path);
+            if (dir !== "." && dir !== "/") {
+                await sandbox.spawn("mkdir", { args: ["-p", dir] });
+            }
             await sandbox.writeTextFile(path, content);
 
             if (chatId) {
@@ -149,14 +250,33 @@ export const createShellTool = (sandbox: Sandbox) => tool(
             }
 
             const status = await child.status;
-            return `Exit: ${status.code}\n${stdout}${stderr ? `\nStderr: ${stderr}` : ""}`;
+
+            // Return full output with clear formatting for error analysis
+            if (status.code !== 0) {
+                // Command failed - return detailed error info
+                return `❌ COMMAND FAILED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Command: ${command}
+Exit Code: ${status.code}
+
+STDOUT:
+${stdout || "(empty)"}
+
+STDERR:
+${stderr || "(empty)"}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ ANALYZE THE ERROR ABOVE and fix the specific issue. Do NOT retry with the same command.`;
+            }
+
+            // Command succeeded
+            return `✅ Exit: ${status.code}\n${stdout}${stderr ? `\nStderr: ${stderr}` : ""}`;
         } catch (error) {
-            return `Shell Error: ${error instanceof Error ? error.message : String(error)}`;
+            return `❌ Shell Error: ${error instanceof Error ? error.message : String(error)}`;
         }
     },
     {
         name: "shell",
-        description: "Run a shell command in the sandbox.",
+        description: "Run a shell command. IMPORTANT: If the command fails, read the FULL error output carefully and fix the specific issue.",
         schema: z.object({
             command: z.string().describe("The shell command to run"),
         }),
@@ -201,8 +321,20 @@ export const createExposePreviewTool = (sandbox: Sandbox, setPreviewUrl: (url: s
     }
 );
 
-export const createWebAppTool = (sandbox: Sandbox) => tool(
-    async ({ type, name, template }: { type: "vite" | "react-router"; name: string, template?: string }) => {
+export const createWebAppTool = (sandbox: Sandbox, chatId?: string) => tool(
+    async ({ type, name, template }: { type: "vite" | "react-router" | "astro"; name: string, template?: string }) => {
+        // Validate type parameter - this is REQUIRED
+        if (!type || !["vite", "react-router", "astro"].includes(type)) {
+            return `❌ ERROR: 'type' parameter is REQUIRED and must be one of: "vite", "react-router", or "astro".
+
+You called: create_web_app({ type: ${JSON.stringify(type)}, name: "${name}" })
+
+Correct usage:
+✅ create_web_app({ type: "astro", name: "${name}" })
+✅ create_web_app({ type: "vite", name: "${name}" })
+✅ create_web_app({ type: "react-router", name: "${name}" })`;
+        }
+
         try {
             let cmd = "npm";
             let args: string[] = [];
@@ -216,6 +348,11 @@ export const createWebAppTool = (sandbox: Sandbox) => tool(
                     args.push("--template", template);
                 }
                 args.push("-y");
+            } else if (type === "astro") {
+                // Astro: npm create astro@latest <name> -- --template <template> --yes
+                args = ["create", "astro@latest", name, "--"];
+                args.push("--template", template || "basics"); // 'basics' is more feature-complete than 'minimal'
+                args.push("--yes"); // Skip interactive prompts
             }
 
             const child = await sandbox.spawn(cmd, {
@@ -248,18 +385,73 @@ export const createWebAppTool = (sandbox: Sandbox) => tool(
                 return `Failed to create app.\nExit Code: ${status.code}\nOutput:\n${output}`;
             }
 
-            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps for you:\n1. run 'cd ${name}'\n2. run 'npm install'\n3. run 'npm run build'\n4. expose_preview with root='${name}/dist' or '${name}/dist/client'`;
+            // Sync artifacts if chatId provided
+            if (chatId) {
+                try {
+                    // Find all files in the new directory, excluding node_modules and .git
+                    const findCmd = await sandbox.spawn("find", {
+                        args: [name, "-type", "f", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"],
+                        stdout: "piped"
+                    });
+
+                    let fileListOutput = "";
+                    if (findCmd.stdout) {
+                        const reader = findCmd.stdout.getReader();
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            fileListOutput += new TextDecoder().decode(value);
+                        }
+                    }
+                    await findCmd.status;
+
+                    const files = fileListOutput.split("\n").filter(f => f.trim());
+
+                    for (const file of files) {
+                        try {
+                            const content = await sandbox.sh`cat ${file}`.text();
+
+                            // Delete existing artifact for this file to avoid duplicates/stale data
+                            await db.delete(artifacts)
+                                .where(and(
+                                    eq(artifacts.chatId, chatId),
+                                    eq(artifacts.filename, file)
+                                ));
+
+                            await db.insert(artifacts).values({
+                                chatId,
+                                filename: file,
+                                content,
+                            });
+                        } catch (err) {
+                            console.warn(`Failed to sync file ${file} to artifacts:`, err);
+                        }
+                    }
+                } catch (syncErr) {
+                    console.error("Failed to sync artifacts after app creation:", syncErr);
+                    // Don't fail the tool call if sync fails, but log it
+                }
+            }
+
+            // Provide correct output path based on type
+            let outputPath = `${name}/dist`;
+            if (type === "react-router") {
+                outputPath = `${name}/build/client`;
+            }
+
+            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps for you:\n1. run 'cd ${name}'\n2. run 'npm install'\n3. run 'npm run build'\n4. expose_preview with root='${outputPath}'`;
         } catch (error) {
             return `Error creating app: ${error instanceof Error ? error.message : String(error)}`;
         }
     },
     {
         name: "create_web_app",
-        description: "Scaffold a new web application (Vite React or React Router).",
+        description: "Scaffold a new web application. Use 'vite' for React games/interactive apps, 'react-router' for full web apps, or 'astro' for simple static sites.",
         schema: z.object({
-            type: z.enum(["vite", "react-router"]).describe("The type of application to create"),
+            type: z.enum(["vite", "react-router", "astro"]).describe("The type of application: 'vite' for games/interactive, 'react-router' for web apps, 'astro' for simple static sites"),
             name: z.string().describe("The name of the project directory"),
-            template: z.string().optional().describe("React Router template (e.g., 'minimal', 'remix-run/react-router-templates/minimal', 'remix-run/react-router-templates/javascript', 'remix-run/react-router-templates/node-custom-server')"),
+            template: z.string().optional().describe("Template to use. For astro: 'basics', 'blog', 'starlight' (docs), 'starlog', 'portfolio', 'minimal'. For react-router: 'minimal', 'javascript', etc."),
         }),
     }
 );
+

@@ -7,7 +7,12 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { db, messages, chats } from "../lib/db";
 import { eq } from "drizzle-orm";
 import { loadSkills } from "../agent/skills";
+import { getAgentConfig, filterToolsForAgent } from "../agent/agents";
+import { selectAgent, type AgentMode } from "../agent/router";
 import {
+  createPlanTool,
+  createUpdateTodoTool,
+  createReadTodoTool,
   createRunCodeTool,
   createReadFileTool,
   createListFilesTool,
@@ -33,6 +38,9 @@ export async function action({ request }: ActionFunctionArgs) {
   const prompt = formData.get("prompt")?.toString();
   const existingSandboxId = formData.get("sandboxId")?.toString();
   const chatId = formData.get("chatId")?.toString();
+  // Agent mode: "plan", "build", or auto-select based on request
+  const requestedMode = formData.get("agentMode")?.toString() as AgentMode | undefined;
+  const agentMode: AgentMode = requestedMode || selectAgent(prompt || "");
 
   if (!prompt) {
     return new Response(JSON.stringify({ error: "Prompt is required" }), {
@@ -48,6 +56,9 @@ export async function action({ request }: ActionFunctionArgs) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  // Get agent configuration
+  const agentConfig = getAgentConfig(agentMode);
 
   // Load Skills (Optional)
   const skillsContent = await loadSkills();
@@ -70,18 +81,21 @@ export async function action({ request }: ActionFunctionArgs) {
           try {
             sandbox = await Sandbox.connect({ id: existingSandboxId });
             sandboxId = existingSandboxId;
+
+            // @ts-ignore - method exists at runtime
+            await sandbox.extendLifetime("5m");
+
             send("step_complete", { id: "sandbox", result: "Reconnected to existing session" });
           } catch (reconnectErr) {
 
             send("step_update", { id: "sandbox", content: "Session expired, creating new sandbox..." });
-            sandbox = await Sandbox.create({ lifetime: "5m" });
+            sandbox = await Sandbox.create({ lifetime: "15m" });
             sandboxId = sandbox.id;
             send("step_complete", { id: "sandbox", result: "Created new session" });
           }
         } else {
-          // Create new sandbox
           send("step_start", { id: "sandbox", title: "Initializing sandbox environment" });
-          sandbox = await Sandbox.create({ lifetime: "5m" });
+          sandbox = await Sandbox.create({ lifetime: "15m" });
           sandboxId = sandbox.id;
           send("step_complete", { id: "sandbox" });
         }
@@ -95,16 +109,25 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       try {
-        // Initialize Tools with Sandbox
-        const tools = [
+        // Send agent mode info to client
+        send("agent_mode", { mode: agentMode, name: agentConfig.name });
+
+        // Create all tools
+        const allTools = [
+          createPlanTool(),
+          createUpdateTodoTool(chatId || "default"),
+          createReadTodoTool(chatId || "default"),
           createRunCodeTool(sandbox),
           createReadFileTool(sandbox),
           createListFilesTool(sandbox),
           createWriteFileTool(sandbox, chatId),
           createShellTool(sandbox),
           createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
-          createWebAppTool(sandbox)
+          createWebAppTool(sandbox, chatId)
         ];
+
+        // Filter tools based on agent mode
+        const tools = filterToolsForAgent(allTools, agentMode);
 
         const toolNode = new ToolNode(tools);
 
@@ -143,9 +166,26 @@ export async function action({ request }: ActionFunctionArgs) {
         const inputs = {
           messages: [
             new SystemMessage(`You are an expert full-stack developer agent with access to a persistent Deno Sandbox.
+
+${agentConfig.systemPromptAddition}
+
+=== USER-DEFINED SKILLS (HIGHEST PRIORITY) ===
+CRITICAL: If a user request matches ANY skill below, you MUST follow that skill's instructions EXACTLY. 
+Skills override ALL default workflows below. Check skills FIRST before using default workflows.
+${skillsContent}
+=== END USER-DEFINED SKILLS ===
+
+=== MANDATORY FIRST STEP ===
+You MUST call 'create_plan' as your VERY FIRST tool call for every request.
+This shows the user your execution plan before you start working.
+Never skip the planning step.
+=== END MANDATORY FIRST STEP ===
             
 AVAILABLE TOOLS:
-- create_web_app: Scaffold a new React Router or Vite React app
+- create_plan: REQUIRED FIRST - Create an execution plan showing what you'll build
+- update_todo: Track progress on multi-step tasks (mark items as pending/in_progress/done)
+- read_todo: Check your current progress and remaining tasks
+- create_web_app: Scaffold a new web app (vite, react-router, or astro)
 - write_file: Write HTML/CSS/JS files directly (for simple pages)
 - read_file: Read file contents
 - list_files: List directory contents
@@ -153,34 +193,74 @@ AVAILABLE TOOLS:
 - shell: Run shell commands
 - expose_preview: Create a public URL for viewing creations
 
-WORKFLOW (Simple HTML/JS):
+FRAMEWORK SELECTION GUIDE:
+- **Games/Interactive apps**: Use type="vite" (outputs to dist/)
+- **Full web apps with routing**: Use type="react-router" (outputs to build/client/)
+- **Simple static sites/landing pages**: Use type="astro" (outputs to dist/)
+
+DEFAULT WORKFLOW (Simple HTML/JS) - Use only if no skill matches:
 1. Use 'write_file' to create HTML/CSS/JS files.
 2. Use 'expose_preview' with port 8000 to get a public URL.
 
-WORKFLOW (Full App - Vite/React Router):
-1. Use 'create_web_app' to scaffold the project. (Supports templates: minimal, javascript, node-custom-server)
+DEFAULT WORKFLOW (Full App - Vite/React Router/Astro) - Use only if no skill matches:
+1. Use 'create_web_app' to scaffold the project with the correct type.
 2. Run 'shell' command: "cd <project_name> && npm install".
 3. Run 'shell' command: "cd <project_name> && npm run build".
 4. Use 'expose_preview' with port 8000, startServer=true, and root="<project_name>/dist".
-   - CRITICAL: Vite puts the build in '<project_name>/dist'.
-   - React Router puts the build in '<project_name>/dist/client' (usually).
+   - CRITICAL: Vite and Astro put the build in '<project_name>/dist'.
+   - React Router puts the build in '<project_name>/build/client' (for SPA mode).
    - Check where the 'index.html' is before calling expose_preview.
 
 IMPORTANT: 
-- Always run 'npm install' and 'npm run build' after scaffolding.
+- Use npm for installing and building (npm install, npm run build).
 - SERVE THE BUILD OUTPUT via 'expose_preview' with the correct 'root' path.
 - Do NOT try to run 'npm run dev' unless you can run it in background. Build & Serve is usually faster for simple previews.
+- **STYLING**: Prefer using **Tailwind CSS** for styling to create modern, responsive designs.
+- Always use 'expose_preview' after creating HTML files so users can view their creation live.
 
-IMPORTANT: Always use 'expose_preview' after creating HTML files so users can view their creation live.
+=== CRITICAL TOOL USAGE RULES ===
+The 'create_web_app' tool REQUIRES the 'type' parameter. NEVER omit it:
+
+CORRECT EXAMPLES:
+✅ create_web_app({ type: "astro", name: "my-portfolio" })
+✅ create_web_app({ type: "vite", name: "flappy-bird" })
+✅ create_web_app({ type: "react-router", name: "my-app" })
+
+WRONG (will fail):
+❌ create_web_app({ name: "my-portfolio" })  // MISSING TYPE!
+❌ create_web_app({ type: undefined, name: "my-site" })
+
+=== ERROR RECOVERY (CRITICAL) ===
+When a command FAILS, you MUST:
+1. READ the full error output carefully
+2. IDENTIFY the specific error (syntax error, missing file, wrong config, etc.)
+3. FIX only that specific issue
+4. Do NOT start over or try a completely different approach
+5. Do NOT give up and fall back to simpler solutions
+
+Common errors and fixes:
+- "Module not found" → Check import paths, run npm install
+- "Syntax error" → Fix the syntax in the specific file mentioned
+- "Cannot find package" → Run npm install <package>
+- CSS errors → Check for missing semicolons, brackets in CSS file
+
+=== EFFICIENCY GUIDELINES (CRITICAL) ===
+Be FAST and EFFICIENT. Minimize tool calls:
+1. **Plan first**: Know exactly what you'll build before calling any tools.
+2. **Batch operations**: Write multiple files in sequence without reading them back.
+3. **No redundant reads**: Don't read files you just wrote or files you don't need.
+4. **No exploration**: Don't list directories unless absolutely necessary.
+5. **Use create_web_app correctly**: ALWAYS specify type ("vite", "react-router", or "astro").
+6. **One build attempt**: If build fails, fix the specific error - don't restart from scratch.
+7. **Direct path**: Scaffold → Install → Build → Preview. No detours.
+
+Target: Complete most tasks in under 10 tool calls.
+=== END GUIDELINES ===
 
 Your final response should include:
 - Brief summary of what was created
 - The preview URL
 - Key features/instructions
-
-USER SKILLS:
-You have access to the following user-defined skills (workflows). If a user request matches a skill, follow the instructions in that skill.
-${skillsContent}
             `),
             new HumanMessage(prompt),
           ],
@@ -193,7 +273,7 @@ ${skillsContent}
 
         const eventStream = await app.streamEvents(inputs, {
           version: "v2",
-          recursionLimit: 50
+          recursionLimit: 100
         });
 
         let finalContent = "";
@@ -203,9 +283,9 @@ ${skillsContent}
 
           if (eventType === "on_chat_model_start") {
             thinkingStepCounter++;
-            currentThinkingId = `thinking-${thinkingStepCounter}`;
+            currentThinkingId = `thinking - ${thinkingStepCounter}`;
             thinkingContent = "";
-            send("step_start", { id: currentThinkingId, title: `Reasoning (step ${thinkingStepCounter})` });
+            send("step_start", { id: currentThinkingId, title: `Reasoning(step ${thinkingStepCounter})` });
           }
           else if (eventType === "on_chat_model_stream") {
             const chunk = data?.chunk;
@@ -229,10 +309,11 @@ ${skillsContent}
             stepCounter++;
             const toolName = name || "Tool";
             const toolArgs = data?.input || {};
-            const stepId = `tool-${stepCounter}`;
+            const stepId = `tool - ${stepCounter}`;
 
             let title = toolName;
-            if (toolName === "run_code") title = "Executing code";
+            if (toolName === "create_plan") title = "📋 Creating execution plan";
+            else if (toolName === "run_code") title = "Executing code";
             else if (toolName === "read_file") title = `Reading ${toolArgs.path || "file"}`;
             else if (toolName === "list_files") title = `Listing ${toolArgs.path || "files"}`;
             else if (toolName === "write_file") title = `Writing ${toolArgs.path || "file"}`;
@@ -242,9 +323,16 @@ ${skillsContent}
             send("step_start", { id: stepId, title, tool: toolName, args: toolArgs });
           }
           else if (eventType === "on_tool_end") {
-            const stepId = `tool-${stepCounter}`;
+            const stepId = `tool - ${stepCounter}`;
             const output = data?.output;
-            send("step_complete", { id: stepId, result: typeof output === "string" ? output.slice(0, 200) : "Done" });
+            const toolName = name || "";
+
+            // Show full plan output for create_plan tool
+            if (toolName === "create_plan") {
+              send("step_complete", { id: stepId, result: typeof output === "string" ? output : "Plan created" });
+            } else {
+              send("step_complete", { id: stepId, result: typeof output === "string" ? output.slice(0, 200) : "Done" });
+            }
           }
           else if (eventType === "on_chain_end" && name === "LangGraph") {
             const messages = data?.output?.messages;
@@ -285,11 +373,9 @@ ${skillsContent}
         console.error("LangGraph Agent Error:", error);
         send("error", { message: error instanceof Error ? error.message : String(error) });
       } finally {
-        try {
-          if (sandbox) {
-            await sandbox.close();
-          }
-        } catch (e) { console.error("Error closing sandbox", e); }
+        // NOTE: Do NOT close the sandbox here - it should persist between requests
+        // The sandbox will auto-expire based on its lifetime setting (15m)
+        // Users can reconnect to it via the sandboxId passed back to the client
         controller.close();
       }
     }
