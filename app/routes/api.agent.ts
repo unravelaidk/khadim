@@ -45,19 +45,19 @@ export async function action({ request }: ActionFunctionArgs) {
   let hasSkillBadge = false;
   if (badgesJson && prompt) {
     try {
-        const badges = JSON.parse(badgesJson);
-        if (Array.isArray(badges) && badges.length > 0) {
-            const badgeLabels = badges.map((b: any) => b.label).join(", ");
-            prompt = `[User Context/Selected Features: ${badgeLabels}]\n${prompt}`;
-            
-            //Check for skill badges to force build mode
-            const skillKeywords = ["slides", "game", "app", "website", "spreadsheet", "visualization"];
-            hasSkillBadge = badges.some((b: any) => 
-                skillKeywords.some(kw => b.label.toLowerCase().includes(kw))
-            );
-        }
+      const badges = JSON.parse(badgesJson);
+      if (Array.isArray(badges) && badges.length > 0) {
+        const badgeLabels = badges.map((b: any) => b.label).join(", ");
+        prompt = `[User Context/Selected Features: ${badgeLabels}]\n${prompt}`;
+
+        //Check for skill badges to force build mode
+        const skillKeywords = ["slides", "game", "app", "website", "spreadsheet", "visualization"];
+        hasSkillBadge = badges.some((b: any) =>
+          skillKeywords.some(kw => b.label.toLowerCase().includes(kw))
+        );
+      }
     } catch (e) {
-        console.error("Failed to parse badges", e);
+      console.error("Failed to parse badges", e);
     }
   }
 
@@ -67,10 +67,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
   // Force build/plan mode if a skill badge is selected (override 'chat' default)
   if (agentMode === "chat" && hasSkillBadge) {
-     agentMode = selectAgent(prompt || ""); // Re-run select agent with the new prompt enriched with badges
-     if (agentMode === "chat") {
-         agentMode = "build"; // Fallback to build if it still thinks it's chat but we have a skill badge
-     }
+    agentMode = selectAgent(prompt || ""); // Re-run select agent with the new prompt enriched with badges
+    if (agentMode === "chat") {
+      agentMode = "build"; // Fallback to build if it still thinks it's chat but we have a skill badge
+    }
   }
 
   if (!prompt) {
@@ -110,31 +110,31 @@ export async function action({ request }: ActionFunctionArgs) {
         const needsSandbox = agentMode !== "chat" || !!existingSandboxId;
 
         if (needsSandbox) {
-            if (existingSandboxId) {
+          if (existingSandboxId) {
             send("step_start", { id: "sandbox", title: "Reconnecting to sandbox..." });
             try {
-                sandbox = await Sandbox.connect({ id: existingSandboxId });
-                sandboxId = existingSandboxId;
+              sandbox = await Sandbox.connect({ id: existingSandboxId });
+              sandboxId = existingSandboxId;
 
-                // @ts-ignore - method exists at runtime
-                await sandbox.extendLifetime("5m");
+              // @ts-ignore - method exists at runtime
+              await sandbox.extendLifetime("5m");
 
-                send("step_complete", { id: "sandbox", result: "Reconnected to existing session" });
+              send("step_complete", { id: "sandbox", result: "Reconnected to existing session" });
             } catch (reconnectErr) {
 
-                send("step_update", { id: "sandbox", content: "Session expired, creating new sandbox..." });
-                sandbox = await Sandbox.create({ lifetime: "15m" });
-                sandboxId = sandbox.id;
-                send("step_complete", { id: "sandbox", result: "Created new session" });
+              send("step_update", { id: "sandbox", content: "Session expired, creating new sandbox..." });
+              sandbox = await Sandbox.create({ lifetime: "15m" });
+              sandboxId = sandbox.id;
+              send("step_complete", { id: "sandbox", result: "Created new session" });
             }
-            } else {
+          } else {
             send("step_start", { id: "sandbox", title: "Initializing sandbox environment" });
             sandbox = await Sandbox.create({ lifetime: "15m" });
             sandboxId = sandbox.id;
             send("step_complete", { id: "sandbox" });
-            }
+          }
 
-            send("sandbox_info", { sandboxId });
+          send("sandbox_info", { sandboxId });
         }
       } catch (err) {
         send("error", { message: "Failed to create sandbox environment" });
@@ -156,16 +156,16 @@ export async function action({ request }: ActionFunctionArgs) {
 
         // Sandbox-dependent tools
         if (sandbox) {
-            allTools.push(
-                createRunCodeTool(sandbox),
-                createReadFileTool(sandbox),
-                createListFilesTool(sandbox),
-                createWriteFileTool(sandbox, chatId),
-                createShellTool(sandbox),
-                createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
-                createWebAppTool(sandbox, chatId),
-                createSaveArtifactTool(sandbox, chatId || "default")
-            );
+          allTools.push(
+            createRunCodeTool(sandbox),
+            createReadFileTool(sandbox),
+            createListFilesTool(sandbox),
+            createWriteFileTool(sandbox, chatId),
+            createShellTool(sandbox),
+            createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
+            createWebAppTool(sandbox, chatId),
+            createSaveArtifactTool(sandbox, chatId || "default")
+          );
         }
 
         // Filter tools based on agent mode
@@ -233,7 +233,7 @@ AVAILABLE TOOLS:
 - list_files: List directory contents
 - run_code: Execute TypeScript/JavaScript code
 - shell: Run shell commands
-- expose_preview: Create a public URL for viewing creations
+- expose_preview: Start a non-blocking web server and get a public URL (REQUIRED for viewing apps)
 
 FRAMEWORK SELECTION GUIDE:
 - **Games/Interactive apps**: Use type="vite" (outputs to dist/)
@@ -253,11 +253,11 @@ DEFAULT WORKFLOW (Full App - Vite/React Router/Astro) - Use only if no skill mat
    - React Router puts the build in '<project_name>/build/client' (for SPA mode).
    - Check where the 'index.html' is before calling expose_preview.
 
-IMPORTANT: 
-- Use npm for installing and building (npm install, npm run build).
-- SERVE THE BUILD OUTPUT via 'expose_preview' with the correct 'root' path.
-- Do NOT try to run 'npm run dev' unless you can run it in background. Build & Serve is usually faster for simple previews.
-- **STYLING**: Prefer using **Tailwind CSS** for styling to create modern, responsive designs.
+IMPORTANT - SERVING APPS:
+- NEVER use the 'shell' tool to run a server (e.g. "python3 -m http.server", "npm run dev", "npm run preview"). The 'shell' tool hangs until the command finishes.
+- ALWAYS use the 'expose_preview' tool to serve your app. It properly backgrounds the server for you.
+- For Vite/Astro/React Router: Build first (npm run build), then use expose_preview with startServer=true and correct root.
+- STYLING: Prefer using **Tailwind CSS** for styling to create modern, responsive designs.
 - Always use 'expose_preview' after creating HTML files so users can view their creation live.
 
 === CRITICAL TOOL USAGE RULES ===
