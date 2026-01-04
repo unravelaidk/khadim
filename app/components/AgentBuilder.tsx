@@ -548,11 +548,11 @@ export function AgentBuilder() {
                   </div>
 
                   {/* Header - Logo & Subtitle */}
-                  <div className="flex items-center gap-4 animate-in fade-in zoom-in duration-1000">
-                    <div className="w-32 h-32 text-gb-text animate-float">
+                  <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8 animate-in fade-in zoom-in duration-1000 text-center md:text-left mb-2 md:mb-0">
+                    <div className="w-24 h-24 md:w-32 md:h-32 text-gb-text animate-float">
                       <KhadimLogo />
                     </div>
-                    <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide">
+                    <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide max-w-[200px] md:max-w-none">
                       Get started building
                     </p>
                   </div>
@@ -588,7 +588,7 @@ export function AgentBuilder() {
                         }
                       }}
                       placeholder={activeBadges.length > 0 ? "Describe what you want..." : "Awaiting instructions..."}
-                      className={`w-full bg-transparent px-6 text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${activeBadges.length > 0 ? 'h-32 pt-2' : 'h-40 pt-6'}`}
+                      className={`w-full bg-transparent px-6 md:px-8 text-base md:text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${activeBadges.length > 0 ? 'h-24 md:h-32 pt-4' : 'h-32 md:h-40 pt-6 md:pt-8'}`}
                     />
 
                     {/* Input Footer */}
