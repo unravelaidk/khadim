@@ -19,7 +19,8 @@ import {
   createWriteFileTool,
   createShellTool,
   createExposePreviewTool,
-  createWebAppTool
+  createWebAppTool,
+  createSaveArtifactTool
 } from "../agent/tools";
 
 function sseEvent(type: string, data: Record<string, unknown>): string {
@@ -76,32 +77,35 @@ export async function action({ request }: ActionFunctionArgs) {
       let sandboxId: string | null = null;
 
       try {
-        if (existingSandboxId) {
-          send("step_start", { id: "sandbox", title: "Reconnecting to sandbox..." });
-          try {
-            sandbox = await Sandbox.connect({ id: existingSandboxId });
-            sandboxId = existingSandboxId;
+        const needsSandbox = agentMode !== "chat" || !!existingSandboxId;
 
-            // @ts-ignore - method exists at runtime
-            await sandbox.extendLifetime("5m");
+        if (needsSandbox) {
+            if (existingSandboxId) {
+            send("step_start", { id: "sandbox", title: "Reconnecting to sandbox..." });
+            try {
+                sandbox = await Sandbox.connect({ id: existingSandboxId });
+                sandboxId = existingSandboxId;
 
-            send("step_complete", { id: "sandbox", result: "Reconnected to existing session" });
-          } catch (reconnectErr) {
+                // @ts-ignore - method exists at runtime
+                await sandbox.extendLifetime("5m");
 
-            send("step_update", { id: "sandbox", content: "Session expired, creating new sandbox..." });
+                send("step_complete", { id: "sandbox", result: "Reconnected to existing session" });
+            } catch (reconnectErr) {
+
+                send("step_update", { id: "sandbox", content: "Session expired, creating new sandbox..." });
+                sandbox = await Sandbox.create({ lifetime: "15m" });
+                sandboxId = sandbox.id;
+                send("step_complete", { id: "sandbox", result: "Created new session" });
+            }
+            } else {
+            send("step_start", { id: "sandbox", title: "Initializing sandbox environment" });
             sandbox = await Sandbox.create({ lifetime: "15m" });
             sandboxId = sandbox.id;
-            send("step_complete", { id: "sandbox", result: "Created new session" });
-          }
-        } else {
-          send("step_start", { id: "sandbox", title: "Initializing sandbox environment" });
-          sandbox = await Sandbox.create({ lifetime: "15m" });
-          sandboxId = sandbox.id;
-          send("step_complete", { id: "sandbox" });
+            send("step_complete", { id: "sandbox" });
+            }
+
+            send("sandbox_info", { sandboxId });
         }
-
-        send("sandbox_info", { sandboxId });
-
       } catch (err) {
         send("error", { message: "Failed to create sandbox environment" });
         controller.close();
@@ -112,19 +116,27 @@ export async function action({ request }: ActionFunctionArgs) {
         // Send agent mode info to client
         send("agent_mode", { mode: agentMode, name: agentConfig.name });
 
-        // Create all tools
-        const allTools = [
+        // Create tools
+        // Always allowed tools
+        const allTools: any[] = [
           createPlanTool(),
           createUpdateTodoTool(chatId || "default"),
           createReadTodoTool(chatId || "default"),
-          createRunCodeTool(sandbox),
-          createReadFileTool(sandbox),
-          createListFilesTool(sandbox),
-          createWriteFileTool(sandbox, chatId),
-          createShellTool(sandbox),
-          createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
-          createWebAppTool(sandbox, chatId)
         ];
+
+        // Sandbox-dependent tools
+        if (sandbox) {
+            allTools.push(
+                createRunCodeTool(sandbox),
+                createReadFileTool(sandbox),
+                createListFilesTool(sandbox),
+                createWriteFileTool(sandbox, chatId),
+                createShellTool(sandbox),
+                createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
+                createWebAppTool(sandbox, chatId),
+                createSaveArtifactTool(sandbox, chatId || "default")
+            );
+        }
 
         // Filter tools based on agent mode
         const tools = filterToolsForAgent(allTools, agentMode);

@@ -455,3 +455,69 @@ Correct usage:
     }
 );
 
+export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool(
+    async ({ path }: { path: string }) => {
+        try {
+            // Check extension
+            const ext = pathMod.extname(path).toLowerCase();
+            const binaryExts = ['.pptx', '.png', '.jpg', '.jpeg', '.zip', '.pdf', '.xlsx', '.docx'];
+            const isBinary = binaryExts.includes(ext);
+
+            let content = "";
+            if (isBinary) {
+                // Read as base64
+                // We use sh -c to pipe cat to base64
+                const child = await sandbox.spawn("sh", {
+                    args: ["-c", `cat "${path}" | base64`],
+                    stdout: "piped"
+                });
+                
+                let data = "";
+                if (child.stdout) {
+                    const reader = child.stdout.getReader();
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        data += new TextDecoder().decode(value);
+                    }
+                }
+                const status = await child.status;
+                if (status.code !== 0) {
+                     return `Error reading file: exit code ${status.code}`;
+                }
+                
+                // Remove newlines/spaces from base64 output
+                content = `base64:${data.replace(/\s/g, '')}`;
+            } else {
+                content = await sandbox.sh`cat ${path}`.text();
+            }
+
+            // Save to DB
+            await db.delete(artifacts)
+                .where(and(
+                    eq(artifacts.chatId, chatId),
+                    eq(artifacts.filename, path)
+                ));
+
+            const [artifact] = await db.insert(artifacts).values({
+                chatId,
+                filename: path,
+                content,
+            }).returning();
+
+            return `Saved artifact '${path}' (ID: ${artifact.id}). View/Download at: /api/artifacts/${artifact.id}`;
+
+        } catch (error) {
+            return `Error saving artifact: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "save_artifact",
+        description: "Save a file from the sandbox to the persistent database. REQUIRED for persistent storage and for non-text files (PPTX, images, PDFs, etc.) to be downloadable.",
+        schema: z.object({
+            path: z.string().describe("Path to the file in the sandbox")
+        })
+    }
+);
+
+
