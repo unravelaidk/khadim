@@ -271,6 +271,9 @@ export function AgentBuilder() {
       if (currentChatId) {
         formData.append("chatId", currentChatId);
       }
+      if (activeBadges.length > 0) {
+        formData.append("badges", JSON.stringify(activeBadges));
+      }
 
       const response = await fetch("/api/agent", {
         method: "POST",
