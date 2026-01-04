@@ -22,16 +22,15 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const sandbox = await Sandbox.connect({ id: sandboxId });
     await sandbox.kill();
-    
+
     return new Response(JSON.stringify({ success: true, message: "Sandbox terminated" }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    // Sandbox may already be terminated or not found
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: "Sandbox already terminated or not found" 
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Sandbox already terminated or not found"
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" },

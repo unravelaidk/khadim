@@ -41,6 +41,9 @@ export function AgentBuilder() {
   const [sandboxId, setSandboxId] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [activeAgent, setActiveAgent] = useState<{ mode: "plan" | "build"; name: string } | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // View state
   const [currentView, setCurrentView] = useState<'chat' | 'library'>('chat');
@@ -75,7 +78,7 @@ export function AgentBuilder() {
       if (response.ok) {
         const { chat } = await response.json();
         setChatId(chat.id);
-        
+
         // Convert db messages to UI messages
         const loadedMessages: Message[] = chat.messages.map((msg: any) => {
           // Find artifact for this message if it has a preview
@@ -99,7 +102,7 @@ export function AgentBuilder() {
             thinkingSteps: msg.thinkingSteps,
           };
         });
-        
+
         setMessages([welcomeMessage, ...loadedMessages]);
         setCurrentView('chat');
 
@@ -111,20 +114,20 @@ export function AgentBuilder() {
         if (chat.id) {
           sandboxForm.append("chatId", chat.id);
         }
-        
+
         const sandboxRes = await fetch("/api/sandbox/connect", {
           method: "POST",
           body: sandboxForm,
         });
-        
+
         if (sandboxRes.ok) {
           const { sandboxId: newSandboxId, previewUrl: newPreviewUrl } = await sandboxRes.json();
           setSandboxId(newSandboxId);
-          
+
           if (newPreviewUrl) {
-             setMessages(prev => prev.map(msg => 
-               msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
-             ));
+            setMessages(prev => prev.map(msg =>
+              msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
+            ));
           }
         }
       }
@@ -205,6 +208,11 @@ export function AgentBuilder() {
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput("");
     setIsTyping(true);
+    setIsProcessing(true);
+
+    // Create abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       // Create chat if this is the first user message (after welcome)
@@ -216,19 +224,19 @@ export function AgentBuilder() {
           let title = prompt
             .replace(/^(build|create|make|write|design|implement|help me|i want|can you)\s+(a|an|the|me)?\s*/i, '')
             .replace(/^(with|using|that|for)\s+/i, '');
-          
+
           // Take first 3-4 meaningful words
           const words = title.split(/\s+/).slice(0, 4);
           title = words.join(' ');
-          
+
           // Capitalize first letter
           title = title.charAt(0).toUpperCase() + title.slice(1);
-          
+
           // Limit length
           if (title.length > 30) {
             title = title.slice(0, 30).trim() + '...';
           }
-          
+
           return title || 'New Chat';
         };
 
@@ -267,6 +275,7 @@ export function AgentBuilder() {
       const response = await fetch("/api/agent", {
         method: "POST",
         body: formData,
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -293,7 +302,7 @@ export function AgentBuilder() {
           if (line.startsWith("data: ")) {
             try {
               const event = JSON.parse(line.slice(6));
-              
+
               if (event.type === "step_start") {
                 steps.push({
                   id: event.id,
@@ -317,8 +326,14 @@ export function AgentBuilder() {
                 if (event.sandboxId) {
                   setSandboxId(event.sandboxId as string);
                 }
+              } else if (event.type === "agent_mode") {
+                // Update active agent indicator
+                setActiveAgent(event as { mode: "plan" | "build"; name: string });
               } else if (event.type === "done") {
                 // Only set final content from 'done' event
+                streamedText = event.content || "";
+                // Reset active agent when done
+                setActiveAgent(null);
                 streamedText = event.content || "";
                 // Update with previewUrl if provided
                 const msgPreviewUrl = event.previewUrl as string | undefined;
@@ -348,17 +363,30 @@ export function AgentBuilder() {
           }
         }
       }
-      
+
     } catch (error) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: "Sorry, I encountered an error connecting to the agent. Please check your API key and try again." }
-            : msg
-        )
-      );
+      // Don't show error message if request was aborted
+      if (error instanceof Error && error.name === 'AbortError') {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: "⏹️ Request stopped by user." }
+              : msg
+          )
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: "Sorry, I encountered an error connecting to the agent. Please check your API key and try again." }
+              : msg
+          )
+        );
+      }
     } finally {
       setIsTyping(false);
+      setIsProcessing(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -431,6 +459,12 @@ export function AgentBuilder() {
     };
   };
 
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  };
+
   const handleSuggestionClick = (feature: { label: string; icon: React.ReactNode; prompt?: string }) => {
     // Add badge (replace existing)
     setActiveBadges([feature]);
@@ -463,7 +497,7 @@ export function AgentBuilder() {
       <div className="flex-1 flex flex-col bg-gb-bg overflow-hidden relative">
         {/* Mobile Header */}
         <div className="md:hidden flex items-center p-4 border-b border-gb-border bg-gb-bg sticky top-0 z-10">
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(true)}
             className="p-2 -ml-2 rounded-lg text-gb-text-secondary hover:bg-gb-bg-subtle"
           >
@@ -477,16 +511,15 @@ export function AgentBuilder() {
         </div>
 
         {currentView === 'library' ? (
-          <LibraryView 
-            workspaces={workspaces} 
-            onSelectWorkspace={handleSelectWorkspace} 
+          <LibraryView
+            workspaces={workspaces}
+            onSelectWorkspace={handleSelectWorkspace}
           />
         ) : (
           <>
             <main
-              className={`flex-1 overflow-y-auto ${
-                isInitialState ? "flex items-center justify-center py-8" : "pt-8 pb-36 px-4"
-              }`}
+              className={`flex-1 overflow-y-auto ${isInitialState ? "flex items-center justify-center py-8" : "pt-8 pb-36 px-4"
+                }`}
             >
               {!isInitialState && (
                 <div className="w-full max-w-3xl mx-auto space-y-4 animate-in fade-in duration-500">
@@ -504,7 +537,7 @@ export function AgentBuilder() {
 
               {isInitialState && (
                 <div className="flex flex-col items-center justify-center min-h-[60vh] w-full max-w-3xl mx-auto space-y-6 animate-in fade-in duration-700">
-                  
+
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider">
                     <span className="text-gb-text-muted">TURN 1</span>
                     <span className="w-px h-3 bg-gb-border"></span>
@@ -523,7 +556,7 @@ export function AgentBuilder() {
 
                   {/* Large Input Card */}
                   <div className="w-full bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col">
-                    
+
                     {/* Active Badges */}
                     {activeBadges.length > 0 && (
                       <div className="flex flex-wrap items-center gap-2 px-6 pt-6 pb-2 animate-in fade-in slide-in-from-bottom-2">
@@ -531,11 +564,11 @@ export function AgentBuilder() {
                           <div key={badge.label} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-md bg-blue-500/10 text-blue-600 border border-blue-500/20 text-sm font-medium">
                             <span className="text-base">{badge.icon}</span>
                             <span>{badge.label}</span>
-                            <button 
+                            <button
                               onClick={() => removeBadge(badge.label)}
                               className="ml-1 p-0.5 rounded-sm hover:bg-blue-500/20 text-blue-600/60 hover:text-blue-600 transition-colors"
                             >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
                             </button>
                           </div>
                         ))}
@@ -554,38 +587,37 @@ export function AgentBuilder() {
                       placeholder={activeBadges.length > 0 ? "Describe what you want..." : "Awaiting instructions..."}
                       className={`w-full bg-transparent px-6 text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${activeBadges.length > 0 ? 'h-32 pt-2' : 'h-40 pt-6'}`}
                     />
-                    
+
                     {/* Input Footer */}
                     <div className="flex items-center justify-between px-4 py-3 bg-gb-bg-subtle/50 border-t border-gb-border/50">
-                       <div className="flex items-center gap-2">
-                          <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-                          </button>
-                          <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
-                          </button>
-                       </div>
-                       
-                       <div className="flex items-center gap-2">
-                         <span className="text-xs text-gb-text-muted mr-2 font-mono uppercase tracking-wide">LINK CABLE: READY</span>
-                         <button 
-                           onClick={handleSend}
-                           disabled={!input.trim()}
-                           className={`p-2 rounded-full transition-all ${
-                             input.trim() 
-                               ? "bg-gb-text text-gb-text-inverse hover:opacity-90" 
-                               : "bg-gb-border text-gb-text-muted cursor-not-allowed"
-                           }`}
-                         >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                         </button>
-                       </div>
+                      <div className="flex items-center gap-2">
+                        <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+                        </button>
+                        <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gb-text-muted mr-2 font-mono uppercase tracking-wide">LINK CABLE: READY</span>
+                        <button
+                          onClick={handleSend}
+                          disabled={!input.trim()}
+                          className={`p-2 rounded-full transition-all ${input.trim()
+                            ? "bg-gb-text text-gb-text-inverse hover:opacity-90"
+                            : "bg-gb-border text-gb-text-muted cursor-not-allowed"
+                            }`}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   {/* Feature Selection Chips */}
                   <FeatureSelection onSelect={handleSuggestionClick} />
-                  
+
                 </div>
               )}
             </main>
@@ -595,11 +627,14 @@ export function AgentBuilder() {
                 value={input}
                 onChange={setInput}
                 onSend={handleSend}
+                onStop={handleStop}
+                isProcessing={isProcessing}
+                activeAgent={activeAgent}
                 isCompact={false}
                 position="fixed"
               />
             )}
-            
+
             {agentConfig && (
               <PreviewModal
                 agentConfig={agentConfig}
