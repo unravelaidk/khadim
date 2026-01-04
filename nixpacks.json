@@ -1,0 +1,8 @@
+{
+  "providers": ["node", "deno"],
+  "phases": {
+    "setup": {
+      "nixPkgs": ["nodejs_22", "deno"]
+    }
+  }
+}
