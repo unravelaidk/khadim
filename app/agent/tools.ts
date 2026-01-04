@@ -222,6 +222,29 @@ export const createWriteFileTool = (sandbox: Sandbox, chatId?: string) => tool(
 
 export const createShellTool = (sandbox: Sandbox) => tool(
     async ({ command }: { command: string }) => {
+        // Block server commands that would hang forever
+        const serverPatterns = [
+            /python3?\s+-m\s+http\.server/i,
+            /npm\s+run\s+(dev|start|preview|serve)/i,
+            /npx\s+(serve|vite|http-server)/i,
+            /deno\s+.*serve/i,
+            /node\s+.*server/i,
+        ];
+
+        const isServerCommand = serverPatterns.some(pattern => pattern.test(command));
+        if (isServerCommand) {
+            return `⛔ BLOCKED: The shell tool cannot run servers (they hang forever).
+
+You tried: ${command}
+
+✅ SOLUTION: Call the 'expose_preview' TOOL instead (not a shell command!):
+
+Tool call: expose_preview
+Arguments: { "port": 8000, "startServer": true, "root": "<your-project>/dist" }
+
+This tool starts a Deno file server in the background and returns a public URL.`;
+        }
+
         try {
             const child = await sandbox.spawn("sh", {
                 args: ["-c", command],

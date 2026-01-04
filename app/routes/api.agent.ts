@@ -240,25 +240,27 @@ FRAMEWORK SELECTION GUIDE:
 - **Full web apps with routing**: Use type="react-router" (outputs to build/client/)
 - **Simple static sites/landing pages**: Use type="astro" (outputs to dist/)
 
-DEFAULT WORKFLOW (Simple HTML/JS) - Use only if no skill matches:
-1. Use 'write_file' to create HTML/CSS/JS files.
-2. Use 'expose_preview' with port 8000 to get a public URL.
+=== 🚨 MANDATORY BUILD SEQUENCE - FOLLOW EXACTLY 🚨 ===
+After running "npm run build", your VERY NEXT tool call MUST be 'expose_preview'. No exceptions!
 
-DEFAULT WORKFLOW (Full App - Vite/React Router/Astro) - Use only if no skill matches:
-1. Use 'create_web_app' to scaffold the project with the correct type.
-2. Run 'shell' command: "cd <project_name> && npm install".
-3. Run 'shell' command: "cd <project_name> && npm run build".
-4. Use 'expose_preview' with port 8000, startServer=true, and root="<project_name>/dist".
-   - CRITICAL: Vite and Astro put the build in '<project_name>/dist'.
-   - React Router puts the build in '<project_name>/build/client' (for SPA mode).
-   - Check where the 'index.html' is before calling expose_preview.
+STEP 1: create_web_app → scaffold project
+STEP 2: shell → "cd <project> && npm install"  
+STEP 3: shell → "cd <project> && npm run build"
+STEP 4: expose_preview → IMMEDIATELY after build succeeds!
 
-IMPORTANT - SERVING APPS:
-- NEVER use the 'shell' tool to run a server (e.g. "python3 -m http.server", "npm run dev", "npm run preview"). The 'shell' tool hangs until the command finishes.
-- ALWAYS use the 'expose_preview' tool to serve your app. It properly backgrounds the server for you.
-- For Vite/Astro/React Router: Build first (npm run build), then use expose_preview with startServer=true and correct root.
-- STYLING: Prefer using **Tailwind CSS** for styling to create modern, responsive designs.
-- Always use 'expose_preview' after creating HTML files so users can view their creation live.
+Example for Step 4 (call this tool right after build):
+  Tool: expose_preview
+  Arguments: { "port": 8000, "startServer": true, "root": "<project>/dist" }
+
+⚠️ DO NOT:
+- Use shell to start a server (python3 -m http.server, npm run dev, etc.) - THIS WILL HANG!
+- Read files, list directories, or do anything else between build and expose_preview
+- Give up if something fails - fix it and continue
+
+The expose_preview tool starts a Deno file server in the background and returns a public URL.
+=== END MANDATORY SEQUENCE ===
+
+STYLING: Prefer using **Tailwind CSS** for styling to create modern, responsive designs.
 
 === CRITICAL TOOL USAGE RULES ===
 The 'create_web_app' tool REQUIRES the 'type' parameter. NEVER omit it:

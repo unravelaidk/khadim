@@ -23,9 +23,33 @@ If the user asks to create a **game**, **interactive app**, **canvas game**, **F
 5. **Build the App**:
    - Run: `cd <game-name> && npm run build`
 
-6. **Serve the Preview**:
-   - **CRITICAL**: Vite outputs to `<game-name>/dist`
-   - Use: `expose_preview({ port: 8000, startServer: true, root: "<game-name>/dist" })`
+6. **🚨 IMMEDIATELY Serve the Preview** (right after build succeeds!):
+   - Your VERY NEXT tool call after "npm run build" succeeds MUST be expose_preview
+   - **DO NOT** read files, list directories, or do anything else first!
+   - Vite outputs to `<game-name>/dist`
+   - Call the expose_preview TOOL (not a shell command):
+     ```
+     Tool: expose_preview
+     Arguments: { "port": 8000, "startServer": true, "root": "<game-name>/dist" }
+     ```
+
+## ⚠️ CRITICAL - DO NOT USE SHELL TO START SERVERS ⚠️
+
+**NEVER** use the `shell` tool to run servers. The shell tool BLOCKS until the command finishes, causing the agent to hang forever!
+
+❌ **FORBIDDEN** (will hang forever):
+- `shell({ command: "python3 -m http.server 8000" })`
+- `shell({ command: "npm run dev" })`
+- `shell({ command: "npm run preview" })`
+- `shell({ command: "npx serve dist" })`
+
+✅ **CORRECT** - Call the 'expose_preview' TOOL (not a shell command!):
+```
+Tool: expose_preview  
+Arguments: { "port": 8000, "startServer": true, "root": "<game-name>/dist" }
+```
+
+The `expose_preview` tool handles backgrounding the server correctly.
 
 ## Game Development Tips:
 - Use `useRef` for Canvas element reference
