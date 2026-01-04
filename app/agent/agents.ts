@@ -2,7 +2,7 @@
 
 export interface AgentConfig {
     name: string;
-    mode: "plan" | "build";
+    mode: "plan" | "build" | "chat";
     description: string;
     allowedTools: string[];
     systemPromptAddition: string;
@@ -60,17 +60,33 @@ If no plan exists, create one first using create_plan.
 === END BUILD MODE ===
 `,
     },
+    chat: {
+        name: "Chat",
+        mode: "chat",
+        description: "General assistant for non-coding tasks",
+        allowedTools: [], // No tools allowed
+        temperature: 0.7,
+        systemPromptAddition: `
+=== CHAT MODE ===
+You are in CHAT mode.
+- You are a helpful AI assistant.
+- You DO NOT have access to a coding sandbox or file system in this mode.
+- If the user asks for code, explain that you are in chat mode and they should ask to "write code" or "create an app" to trigger the coding tools.
+- Answer questions directly and concisely.
+=== END CHAT MODE ===
+`,
+    },
 };
 
 // Get agent config by mode
-export function getAgentConfig(mode: "plan" | "build"): AgentConfig {
+export function getAgentConfig(mode: "plan" | "build" | "chat"): AgentConfig {
     return AGENTS[mode];
 }
 
 // Filter tools based on agent mode
 export function filterToolsForAgent(
     tools: any[],
-    mode: "plan" | "build"
+    mode: "plan" | "build" | "chat"
 ): any[] {
     const config = AGENTS[mode];
 
