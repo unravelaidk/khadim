@@ -3,6 +3,7 @@ import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { parseAskUserResponse, type AskUserPayload } from "./tools/ask-user";
+import { parseDelegateResponse } from "./tools/delegate-build";
 
 /**
  * Orchestrator State
@@ -66,7 +67,6 @@ export function createOrchestrator(config: OrchestratorConfig) {
      */
     async function routerNode(state: OrchestratorStateType) {
         const messages = state.messages;
-        const lastMessage = messages[messages.length - 1];
 
         // If we have a pending human response, inject it and continue
         if (state.humanResponse && state.pendingQuestion) {
@@ -78,11 +78,32 @@ export function createOrchestrator(config: OrchestratorConfig) {
             };
         }
 
+        // If an agent is already selected (via inputs), respect it
+        if (state.currentAgent && state.currentAgent !== "router") {
+            return {
+                iterationCount: state.iterationCount + 1,
+            };
+        }
+
         // Default to plan agent on first iteration
         return {
             currentAgent: "plan" as const,
             iterationCount: state.iterationCount + 1,
         };
+    }
+
+    /**
+     * Chat Agent Node: Simple conversational agent
+     * For non-coding tasks
+     */
+    async function chatAgentNode(state: OrchestratorStateType) {
+        const chatMessages = [
+            new SystemMessage(systemPrompt),
+            ...state.messages,
+        ];
+
+        const response = await modelWithTools.invoke(chatMessages);
+        return { messages: [response], currentAgent: "chat" };
     }
 
     /**
@@ -164,15 +185,31 @@ The planning phase is complete - now implement what was planned.`),
                     pendingQuestion: parsed,
                 };
             }
+
+            // Check for delegation
+            const delegation = parseDelegateResponse(content);
+            if (delegation) {
+                return {
+                    messages: toolMessages,
+                    planApproved: true,
+                    currentAgent: "build",
+                };
+            }
         }
 
         return { messages: toolMessages };
     }
 
+    function routeAfterRouter(state: OrchestratorStateType): "plan" | "build" | "chat" {
+        if (state.currentAgent === "chat") return "chat";
+        if (state.currentAgent === "build") return "build";
+        return "plan";
+    }
+
     /**
      * Routing logic: determine next node based on state
      */
-    function shouldContinue(state: OrchestratorStateType): "tools" | "plan" | "build" | "interrupt" | typeof END {
+    function shouldContinue(state: OrchestratorStateType): "tools" | "plan" | "build" | "chat" | "interrupt" | typeof END {
         const messages = state.messages;
         const lastMessage = messages[messages.length - 1];
 
@@ -205,10 +242,15 @@ The planning phase is complete - now implement what was planned.`),
             return "build";
         }
 
+        if (state.currentAgent === "chat") {
+            // Chat agent just replies and ends (or waits for user, effectively END for this turn)
+            return END;
+        }
+
         return END;
     }
 
-    function afterTools(state: OrchestratorStateType): "plan" | "build" | "interrupt" | typeof END {
+    function afterTools(state: OrchestratorStateType): "plan" | "build" | "chat" | "interrupt" | typeof END {
         // Check for interrupt
         if (state.pendingQuestion) {
             return "interrupt";
@@ -220,6 +262,9 @@ The planning phase is complete - now implement what was planned.`),
         }
         if (state.currentAgent === "build") {
             return "build";
+        }
+        if (state.currentAgent === "chat") {
+             return "chat";
         }
 
         return END;
@@ -271,13 +316,15 @@ The planning phase is complete - now implement what was planned.`),
         .addNode("router", routerNode)
         .addNode("plan", planAgentNode)
         .addNode("build", buildAgentNode)
+        .addNode("chat", chatAgentNode)
         .addNode("tools", processTools)
         .addNode("interrupt", interruptNode)
         .addEdge(START, "router")
-        .addEdge("router", "plan")
+        .addConditionalEdges("router", routeAfterRouter, ["plan", "build", "chat"])
         .addConditionalEdges("plan", afterPlan, ["tools", "build", "interrupt", END])
         .addConditionalEdges("build", afterBuild, ["tools", END])
-        .addConditionalEdges("tools", afterTools, ["plan", "build", "interrupt", END])
+        .addConditionalEdges("chat", shouldContinue, ["tools", "plan", "build", "chat", "interrupt", END])
+        .addConditionalEdges("tools", afterTools, ["plan", "build", "chat", "interrupt", END])
         .addEdge("interrupt", END); // Interrupt exits the graph
 
     return workflow.compile({

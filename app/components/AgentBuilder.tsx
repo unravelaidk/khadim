@@ -1,20 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  GameBoyScreen,
-  ChatMessage,
   ChatInput,
-  TypingIndicator,
-  SuggestionCards,
   PreviewModal,
-  FeatureSelection,
-  AgentQuestion,
+  WelcomeScreen,
+  ChatInterface,
+  ChatHeader,
 } from "./agent-builder";
 import type { Message, AgentConfig } from "./agent-builder";
 import { mockWorkspaces } from "./workspace";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { LibraryView } from "./Library/LibraryView";
 import type { Workspace } from "./workspace";
-import KhadimLogo from "../assets/Khadim-logo.svg";
+import { useAgentStream } from "../hooks/useAgentStream";
 
 const suggestedPrompts = [
   "I want an agent that helps me write emails",
@@ -73,6 +70,21 @@ export function AgentBuilder() {
     content: 'Hey! 👋 I\'m here to help you create your own AI agent. Just tell me what you want your agent to do, and I\'ll help you build it step by step.\n\nFor example, you could say:\n• "I want an agent that helps me write better emails"\n• "Create a friendly tutor for learning Spanish"\n• "Build a code reviewer that catches bugs"\n\nWhat kind of agent would you like to create?',
     timestamp: new Date(),
   };
+
+  // Stream handler
+  const { processStream } = useAgentStream({
+    setMessages,
+    setSandboxId,
+    setActiveAgent,
+    setPendingQuestion,
+    setPendingBuildDelegation: (prompt) => {
+      // Auto-accept simple build delegations for now
+       if (prompt) setInput(prompt);
+    },
+    setIsTyping,
+    setIsProcessing,
+    chatId
+  });
 
   // Handler: Select chat from sidebar
   const handleSelectChat = async (selectedChatId: string | null) => {
@@ -138,6 +150,47 @@ export function AgentBuilder() {
               msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
             ));
           }
+        }
+
+        // RECONNECTION LOGIC: Check for active job and stream
+        try {
+          const jobResponse = await fetch(`/api/agent?chatId=${chat.id}`);
+          if (jobResponse.ok) {
+            setIsProcessing(true);
+            setIsTyping(true);
+
+            // Determine if we should attach to the last message or create a new one
+            // Ideally, we find the last assistant message.
+            const lastMsg = loadedMessages[loadedMessages.length - 1];
+            let targetMessageId: string;
+            let existingSteps: any[] = [];
+
+            if (lastMsg && lastMsg.role === "assistant") {
+              targetMessageId = lastMsg.id;
+              existingSteps = lastMsg.thinkingSteps || [];
+            } else {
+              // Create a new placeholder if last was user, or if explicit resume needed
+              targetMessageId = (Date.now() + 1).toString();
+              const assistantMessage: Message = {
+                id: targetMessageId,
+                role: "assistant",
+                content: "",
+                timestamp: new Date(),
+                thinkingSteps: [],
+              };
+              setMessages(prev => [...prev, assistantMessage]);
+              // Update local var for processStream to use if needed (though we pass ID)
+            }
+
+            // Start streaming (blindly, trusting useAgentStream to dedupe)
+            processStream(jobResponse, targetMessageId, existingSteps).catch(e => {
+              console.error("Error resuming stream:", e);
+              setIsProcessing(false);
+              setIsTyping(false);
+            });
+          }
+        } catch (e) {
+          console.log("No active job to resume or error checking:", e);
         }
       }
     } catch (error) {
@@ -294,108 +347,7 @@ export function AgentBuilder() {
         throw new Error("Failed to get response");
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamedText = "";
-      const steps: Message["thinkingSteps"] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const event = JSON.parse(line.slice(6));
-
-              if (event.type === "step_start") {
-                steps.push({
-                  id: event.id,
-                  title: event.title,
-                  status: "running",
-                  content: "",
-                  tool: event.tool,
-                  // For write_file tool, capture filename and content
-                  filename: event.args?.path,
-                  fileContent: event.args?.content,
-                });
-              } else if (event.type === "step_update") {
-                const step = steps.find(s => s.id === event.id);
-                if (step && event.content) {
-                  step.content = event.content;
-                }
-              } else if (event.type === "step_complete") {
-                const step = steps.find(s => s.id === event.id);
-                if (step) {
-                  step.status = "complete";
-                  if (event.result) step.result = event.result;
-                }
-              } else if (event.type === "sandbox_info") {
-                // Store sandbox ID for future reconnection
-                if (event.sandboxId) {
-                  setSandboxId(event.sandboxId as string);
-                }
-              } else if (event.type === "agent_mode") {
-                // Update active agent indicator
-                setActiveAgent(event as { mode: "plan" | "build"; name: string });
-              } else if (event.type === "done") {
-                // Only set final content from 'done' event
-                streamedText = event.content || "";
-                // Reset active agent when done
-                setActiveAgent(null);
-                streamedText = event.content || "";
-                // Update with previewUrl if provided
-                const msgPreviewUrl = event.previewUrl as string | undefined;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: streamedText, thinkingSteps: [...steps], previewUrl: msgPreviewUrl }
-                      : msg
-                  )
-                );
-                continue; // Skip the normal update below since we just did it
-              } else if (event.type === "ask_user") {
-                // Agent is asking a question - show the question UI
-                setPendingQuestion({
-                  question: event.question as string,
-                  options: event.options as string[] | undefined,
-                  context: event.context as string | undefined,
-                  threadId: event.threadId as string | undefined,
-                });
-                setIsTyping(false);
-                // Update message to show question was asked
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: `🤔 I have a question for you...`, thinkingSteps: [...steps] }
-                      : msg
-                  )
-                );
-              } else if (event.type === "error") {
-                throw new Error(event.message);
-              }
-
-              // Update the assistant message in real-time
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: streamedText, thinkingSteps: [...steps] }
-                    : msg
-                )
-              );
-            } catch (parseError) {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
+      await processStream(response, assistantMessageId);
 
     } catch (error) {
       // Don't show error message if request was aborted
@@ -564,88 +516,7 @@ export function AgentBuilder() {
         throw new Error("Failed to get response");
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamedText = "";
-      const steps: Message["thinkingSteps"] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const event = JSON.parse(line.slice(6));
-
-              if (event.type === "step_start") {
-                steps.push({
-                  id: event.id,
-                  title: event.title,
-                  status: "running",
-                  content: "",
-                });
-              } else if (event.type === "step_update") {
-                const step = steps.find(s => s.id === event.id);
-                if (step && event.content) {
-                  step.content = event.content;
-                }
-              } else if (event.type === "step_complete") {
-                const step = steps.find(s => s.id === event.id);
-                if (step) {
-                  step.status = "complete";
-                  if (event.result) step.result = event.result;
-                }
-              } else if (event.type === "done") {
-                streamedText = event.content || "";
-                setActiveAgent(null);
-                const msgPreviewUrl = event.previewUrl as string | undefined;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: streamedText, thinkingSteps: [...steps], previewUrl: msgPreviewUrl }
-                      : msg
-                  )
-                );
-              } else if (event.type === "ask_user") {
-                // Another question!
-                setPendingQuestion({
-                  question: event.question as string,
-                  options: event.options as string[] | undefined,
-                  context: event.context as string | undefined,
-                  threadId: event.threadId as string | undefined,
-                });
-                setIsTyping(false);
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: `🤔 I have another question...`, thinkingSteps: [...steps] }
-                      : msg
-                  )
-                );
-              }
-
-              // Update message in real-time
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: streamedText, thinkingSteps: [...steps] }
-                    : msg
-                )
-              );
-            } catch {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
+      await processStream(response, assistantMessageId);
     } catch (error) {
       setMessages((prev) =>
         prev.map((msg) =>
@@ -690,20 +561,7 @@ export function AgentBuilder() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col bg-gb-bg overflow-hidden relative">
-        {/* Mobile Header */}
-        <div className="md:hidden flex items-center p-4 border-b border-gb-border bg-gb-bg sticky top-0 z-10">
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 -ml-2 rounded-lg text-gb-text-secondary hover:bg-gb-bg-subtle"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-          <span className="ml-3 font-semibold text-gb-text">Khadim</span>
-        </div>
+        <ChatHeader onOpenSidebar={() => setIsSidebarOpen(true)} />
 
         {currentView === 'library' ? (
           <LibraryView
@@ -717,112 +575,25 @@ export function AgentBuilder() {
                 }`}
             >
               {!isInitialState && (
-                <div className="w-full max-w-3xl mx-auto space-y-4 animate-in fade-in duration-500">
-                  <GameBoyScreen>
-                    <div className="space-y-4">
-                      {messages.filter(m => !(isInitialState && m.id === 'welcome')).map((message) => (
-                        <ChatMessage key={message.id} message={message} />
-                      ))}
-                      {isTyping && <TypingIndicator />}
-                      {pendingQuestion && (
-                        <AgentQuestion
-                          question={pendingQuestion.question}
-                          options={pendingQuestion.options}
-                          context={pendingQuestion.context}
-                          onAnswer={handleAnswerQuestion}
-                          onCancel={() => setPendingQuestion(null)}
-                        />
-                      )}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  </GameBoyScreen>
-                </div>
+                <ChatInterface
+                  messages={messages}
+                  isTyping={isTyping}
+                  pendingQuestion={pendingQuestion}
+                  onAnswerQuestion={handleAnswerQuestion}
+                  onCancelQuestion={() => setPendingQuestion(null)}
+                  messagesEndRef={messagesEndRef}
+                />
               )}
 
               {isInitialState && (
-                <div className="flex flex-col items-center justify-center min-h-[60vh] w-full max-w-3xl mx-auto space-y-6 animate-in fade-in duration-700">
-
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider">
-                    <span className="text-gb-text-muted">TURN 1</span>
-                    <span className="w-px h-3 bg-gb-border"></span>
-                    <span className="text-gb-accent hover:underline cursor-pointer animate-pulse">ROLL DICE</span>
-                  </div>
-
-                  {/* Header - Logo & Subtitle */}
-                  <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8 animate-in fade-in zoom-in duration-1000 text-center md:text-left mb-2 md:mb-0">
-                    <div className="w-24 h-24 md:w-32 md:h-32 text-gb-text animate-float">
-                      <KhadimLogo />
-                    </div>
-                    <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide max-w-[200px] md:max-w-none">
-                      Get started building
-                    </p>
-                  </div>
-
-                  {/* Large Input Card */}
-                  <div className="w-full bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col">
-
-                    {/* Active Badges */}
-                    {activeBadges.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 px-6 pt-6 pb-2 animate-in fade-in slide-in-from-bottom-2">
-                        {activeBadges.map((badge) => (
-                          <div key={badge.label} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-md bg-blue-500/10 text-blue-600 border border-blue-500/20 text-sm font-medium">
-                            <span className="text-base">{badge.icon}</span>
-                            <span>{badge.label}</span>
-                            <button
-                              onClick={() => removeBadge(badge.label)}
-                              className="ml-1 p-0.5 rounded-sm hover:bg-blue-500/20 text-blue-600/60 hover:text-blue-600 transition-colors"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <textarea
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      placeholder={activeBadges.length > 0 ? "Describe what you want..." : "Awaiting instructions..."}
-                      className={`w-full bg-transparent px-6 md:px-8 text-base md:text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${activeBadges.length > 0 ? 'h-24 md:h-32 pt-4' : 'h-32 md:h-40 pt-6 md:pt-8'}`}
-                    />
-
-                    {/* Input Footer */}
-                    <div className="flex items-center justify-between px-4 py-3 bg-gb-bg-subtle/50 border-t border-gb-border/50">
-                      <div className="flex items-center gap-2">
-                        <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-                        </button>
-                        <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gb-text-muted mr-2 font-mono uppercase tracking-wide">LINK CABLE: READY</span>
-                        <button
-                          onClick={handleSend}
-                          disabled={!input.trim()}
-                          className={`p-2 rounded-full transition-all ${input.trim()
-                            ? "bg-gb-text text-gb-text-inverse hover:opacity-90"
-                            : "bg-gb-border text-gb-text-muted cursor-not-allowed"
-                            }`}
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Feature Selection Chips */}
-                  <FeatureSelection onSelect={handleSuggestionClick} />
-
-                </div>
+                <WelcomeScreen
+                  input={input}
+                  setInput={setInput}
+                  handleSend={handleSend}
+                  activeBadges={activeBadges}
+                  removeBadge={removeBadge}
+                  onSuggestionClick={handleSuggestionClick}
+                />
               )}
             </main>
 

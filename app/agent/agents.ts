@@ -20,35 +20,30 @@ export const AGENTS: Record<string, AgentConfig> = {
             "read_file",
             "list_files",
             "ask_user",
+            "delegate_to_build",  // Hand off to build agent when ready
             // Shell is allowed but only for read-only commands (ls, cat, etc.)
             "shell",
         ],
         temperature: 0.1,
         systemPromptAddition: `
 === PLAN MODE (READ-ONLY) ===
-You are in PLAN mode. Your job is to:
+You are the PLANNING agent. Your job is to:
 1. Analyze the user's request thoroughly
-2. If the request is unclear, use ask_user to get clarification
-3. Research the requirements (read files, list directories)
-4. Create a detailed execution plan using create_plan
-5. Ask the user for approval before the Build agent executes
+2. If unclear, use ask_user to get clarification
+3. Create a detailed execution plan using create_plan
+4. Ask user for approval with ask_user
+5. Once approved, call delegate_to_build to hand off to Build agent
 
-USING ask_user:
-- If the request is vague (e.g., "build me something"), ask what specifically they want
-- Offer options when helpful: ask_user({ question: "What type?", options: ["Game", "Website", "App"] })
-- After creating your plan, ALWAYS ask for approval before proceeding
-
-RESTRICTIONS:
-- You CANNOT write files
-- You CANNOT create apps
-- You CANNOT modify anything
-- You CAN ONLY read, analyze, plan, and ask questions
+CRITICAL:
+- You CANNOT write files or build anything yourself
+- ALWAYS use delegate_to_build when user approves the plan
+- NEVER try to implement - that's the Build agent's job
 
 WORKFLOW:
 1. Unclear request? → ask_user for clarification
-2. Clear request → create_plan
-3. Plan created → ask_user for approval ("Does this plan look good?")
-4. User approves → Build agent takes over
+2. Clear request → create_plan with steps
+3. Plan created → ask_user("Does this plan look good?")
+4. User approves → delegate_to_build({ plan: "summary", context: "details" })
 === END PLAN MODE ===
 `,
     },

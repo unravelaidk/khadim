@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { LuDownload, LuExternalLink, LuCode, LuChevronDown, LuChevronRight, LuMaximize2, LuMinimize2, LuLoader } from "react-icons/lu";
+import { useState, useEffect, useMemo } from "react";
+import { LuDownload, LuExternalLink, LuCode, LuChevronDown, LuChevronRight, LuMaximize2, LuMinimize2, LuLoader, LuPresentation } from "react-icons/lu";
+import { SlidesPreview, type SlideData } from "./SlidesPreview";
 
 interface FileArtifactProps {
   filename?: string;
@@ -7,10 +8,39 @@ interface FileArtifactProps {
   previewUrl?: string;
 }
 
+// Parse slide data from HTML content
+function parseSlideData(htmlContent: string): SlideData[] | null {
+  try {
+    // Look for the slide-data script tag
+    const match = htmlContent.match(/<script id="slide-data"[^>]*>([\s\S]*?)<\/script>/);
+    if (match && match[1]) {
+      const jsonStr = match[1].trim();
+      const slides = JSON.parse(jsonStr);
+      if (Array.isArray(slides) && slides.length > 0 && slides[0].type) {
+        return slides;
+      }
+    }
+  } catch {
+    // Not valid slide data
+  }
+  return null;
+}
+
+// Extract presentation title from HTML
+function extractPresentationTitle(htmlContent: string): string {
+  const match = htmlContent.match(/<title>([^<]*)<\/title>/);
+  return match?.[1] || "Presentation";
+}
+
 export function FileArtifact({ filename = "index.html", content, previewUrl }: FileArtifactProps) {
   const [showCode, setShowCode] = useState(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Detect if content contains slide data
+  const slideData = useMemo(() => parseSlideData(content), [content]);
+  const isSlidePresentation = slideData !== null;
+  const presentationTitle = useMemo(() => extractPresentationTitle(content), [content]);
 
   // Reset loading when URL changes
   useEffect(() => {
@@ -38,6 +68,19 @@ export function FileArtifact({ filename = "index.html", content, previewUrl }: F
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // Render native SlidesPreview for slide presentations
+  if (isSlidePresentation && slideData) {
+    return (
+      <div className="my-3">
+        <SlidesPreview
+          slides={slideData}
+          title={presentationTitle}
+          htmlContent={content}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="my-3 border border-gb-border rounded-lg overflow-hidden bg-gb-bg">
