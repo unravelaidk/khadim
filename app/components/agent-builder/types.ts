@@ -1,19 +1,21 @@
+export interface ThinkingStepData {
+  id: string;
+  title: string;
+  status: "pending" | "running" | "complete" | "error";
+  content?: string;
+  result?: string;
+  // File editor support
+  tool?: string;
+  filename?: string;
+  fileContent?: string;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  thinkingSteps?: Array<{
-    id: string;
-    title: string;
-    status: "pending" | "running" | "complete" | "error";
-    content?: string;
-    result?: string;
-    // File editor support
-    tool?: string;
-    filename?: string;
-    fileContent?: string;
-  }>;
+  thinkingSteps?: ThinkingStepData[];
   previewUrl?: string;
   fileContent?: string;
 }
@@ -23,4 +25,11 @@ export interface AgentConfig {
   description: string;
   capabilities: string[];
   personality: string;
+}
+
+export interface PendingQuestion {
+  question: string;
+  options?: string[];
+  context?: string;
+  threadId?: string;
 }

@@ -23,6 +23,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const hasContent = message.content.trim().length > 0;
   const hasPreviewUrl = !!message.previewUrl;
   
+  // Debug logging
+  if (!isUser) {
+    console.log("[ChatMessage] Render - Steps:", steps.length, "hasSteps:", hasSteps, "hasContent:", hasContent);
+    if (steps.length > 0) {
+      console.log("[ChatMessage] Step details:", steps.map(s => `${s.id}(${s.status}): ${(s.content || '').slice(0, 30)}`));
+    }
+  }
+  
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
