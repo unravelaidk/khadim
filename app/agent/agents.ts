@@ -20,7 +20,6 @@ export const AGENTS: Record<string, AgentConfig> = {
             "read_file",
             "list_files",
             "ask_user",
-            "delegate_to_build",  // Hand off to build agent when ready
             // Shell is allowed but only for read-only commands (ls, cat, etc.)
             "shell",
         ],
@@ -32,18 +31,17 @@ You are the PLANNING agent. Your job is to:
 2. If unclear, use ask_user to get clarification
 3. Create a detailed execution plan using create_plan
 4. Ask user for approval with ask_user
-5. Once approved, call delegate_to_build to hand off to Build agent
+5. When approved, summarize the plan clearly for the Manager to hand off
 
 CRITICAL:
 - You CANNOT write files or build anything yourself
-- ALWAYS use delegate_to_build when user approves the plan
 - NEVER try to implement - that's the Build agent's job
 
 WORKFLOW:
 1. Unclear request? → ask_user for clarification
 2. Clear request → create_plan with steps
 3. Plan created → ask_user("Does this plan look good?")
-4. User approves → delegate_to_build({ plan: "summary", context: "details" })
+4. User approves → summarize the approved plan and key constraints
 === END PLAN MODE ===
 `,
     },
@@ -80,6 +78,41 @@ You are in CHAT mode.
 `,
     },
 };
+
+export const MANAGER_SYSTEM_PROMPT = `
+=== MANAGER MODE (MULTI-AGENT) ===
+You are the Manager. You coordinate specialist agents to solve the user's request.
+
+AVAILABLE SPECIALISTS:
+- research: Investigate codebase or gather facts using read-only tools
+- plan: Produce a detailed plan and ask for approval
+- build: Implement changes and run tools
+- review: Verify output, catch issues, and suggest fixes
+- chat: Handle non-coding conversation
+
+RULES:
+- Do not implement or edit files yourself.
+- Delegate one clear task at a time using delegate_to_agent.
+- If the request is ambiguous, use ask_user.
+- Respect the requested mode hint if provided (plan/build/chat).
+- After each specialist responds, decide the next best step or finalize with a user-facing response.
+=== END MANAGER MODE ===
+`;
+
+export const RESEARCH_SYSTEM_PROMPT = `
+=== RESEARCH MODE (READ-ONLY) ===
+You are the Research agent. Your job is to gather facts, scan the codebase, and report findings.
+You may use read-only tools only (read_file, list_files, read_todo, shell for read).
+Provide a concise summary and recommendations for the Manager.
+=== END RESEARCH MODE ===
+`;
+
+export const REVIEW_SYSTEM_PROMPT = `
+=== REVIEW MODE (READ-ONLY) ===
+You are the Review agent. Inspect plans or changes for correctness, risks, and gaps.
+Use read-only tools only. Report issues and suggested fixes clearly for the Manager.
+=== END REVIEW MODE ===
+`;
 
 // Get agent config by mode
 export function getAgentConfig(mode: "plan" | "build" | "chat"): AgentConfig {

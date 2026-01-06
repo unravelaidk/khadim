@@ -4,6 +4,7 @@ import type { Message, ThinkingStepData, AgentConfig, PendingQuestion } from "..
 interface UseAgentStreamProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setSandboxId: (id: string) => void;
+  setJobId: (id: string | null) => void;
   setActiveAgent: (agent: { mode: "plan" | "build"; name: string } | null) => void;
   setPendingQuestion: (question: PendingQuestion | null) => void;
   setPendingBuildDelegation: (prompt: string | null) => void;
@@ -15,6 +16,7 @@ interface UseAgentStreamProps {
 export function useAgentStream({
   setMessages,
   setSandboxId,
+  setJobId,
   setActiveAgent,
   setPendingQuestion,
   setPendingBuildDelegation,
@@ -89,11 +91,14 @@ export function useAgentStream({
                 streamedText += event.content;
               } else if (event.type === "sandbox_info") {
                 if (event.sandboxId) setSandboxId(event.sandboxId);
+              } else if (event.type === "job_created") {
+                if (event.jobId) setJobId(event.jobId as string);
               } else if (event.type === "agent_mode") {
                 setActiveAgent(event as { mode: "plan" | "build"; name: string });
               } else if (event.type === "done") {
                 streamedText = event.content || "";
                 setActiveAgent(null);
+                setJobId(null);
                 
                 // Final update with all data
                 const msgPreviewUrl = event.previewUrl as string | undefined;
@@ -142,6 +147,7 @@ export function useAgentStream({
                 const buildPrompt = `Execute this approved plan:\n\n${planInfo.plan}${planInfo.context ? `\n\nContext: ${planInfo.context}` : ""}`;
                 setPendingBuildDelegation(buildPrompt);
               } else if (event.type === "error") {
+                setJobId(null);
                 throw new Error(event.message);
               }
 
@@ -163,6 +169,10 @@ export function useAgentStream({
         }
       }
     } catch (error) {
+      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("lock"))) {
+        // Stream aborted, exit cleanly
+        return;
+      }
       console.error("Stream processing error:", error);
       throw error;
     } finally {

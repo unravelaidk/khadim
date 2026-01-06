@@ -33,7 +33,7 @@ export interface AgentJobStep {
 export interface AgentJob {
   id: string;
   chatId: string;
-  status: "running" | "completed" | "error";
+  status: "running" | "completed" | "error" | "cancelled";
   steps: AgentJobStep[];
   finalContent: string;
   previewUrl: string | null;
@@ -151,6 +151,19 @@ export async function failJob(id: string, error: string): Promise<void> {
     
     broadcast(id, { type: "error", data: { message: error } });
     console.log(`[JobManager] Job ${id} failed: ${error}`);
+  }
+}
+
+export async function cancelJob(id: string): Promise<void> {
+  const job = await getJob(id);
+  if (job) {
+    job.status = "cancelled";
+    job.updatedAt = new Date().toISOString();
+    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    
+    // Broadcast cancellation (as error type 'cancelled' for now to fit existing frontend)
+    broadcast(id, { type: "error", data: { message: "Cancelled by user" } });
+    console.log(`[JobManager] Job ${id} cancelled`);
   }
 }
 

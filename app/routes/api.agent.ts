@@ -5,7 +5,7 @@ import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages
 import { db, messages, chats } from "../lib/db";
 import { eq } from "drizzle-orm";
 import { loadSkills } from "../agent/skills";
-import { getAgentConfig, filterToolsForAgent } from "../agent/agents";
+import { getAgentConfig, MANAGER_SYSTEM_PROMPT, RESEARCH_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT } from "../agent/agents";
 import { selectAgent, type AgentMode } from "../agent/router";
 import { createOrchestrator } from "../agent/orchestrator";
 import {
@@ -19,10 +19,12 @@ import {
   createShellTool,
   createExposePreviewTool,
   createWebAppTool,
-  createSaveArtifactTool
+  createSaveArtifactTool,
+  createManageSandboxTool
 } from "../agent/tools";
 import { createAskUserTool, parseAskUserResponse } from "../agent/tools/ask-user";
 import { createDelegateToBuildTool, parseDelegateResponse } from "../agent/tools/delegate-build";
+import { createDelegateToAgentTool } from "../agent/tools/delegate-agent";
 import {
   createJob,
   getJob,
@@ -31,15 +33,37 @@ import {
   updateStep,
   completeJob,
   failJob,
+  cancelJob,
   subscribe,
   broadcast,
   type AgentJob,
   type AgentJobStep,
 } from "../lib/job-manager";
+import { registerJobAbortController, unregisterJobAbortController } from "../lib/job-cancel";
 import { createId } from "@paralleldrive/cuid2";
 
 function sseEvent(type: string, data: Record<string, unknown>): string {
   return `data: ${JSON.stringify({ type, ...data })}\n\n`;
+}
+
+const SANDBOX_GRACE_MS = 5 * 60 * 1000;
+
+function scheduleSandboxCleanup(chatId: string, sandboxId: string): void {
+  setTimeout(() => {
+    void (async () => {
+      try {
+        const activeJob = await getJobByChatId(chatId);
+        if (activeJob && activeJob.status === "running") {
+          return;
+        }
+        const sandbox = await Sandbox.connect({ id: sandboxId });
+        await sandbox.kill();
+        console.log(`[Sandbox] Killed sandbox ${sandboxId} after grace period.`);
+      } catch (error) {
+        console.error(`[Sandbox] Failed to cleanup sandbox ${sandboxId}:`, error);
+      }
+    })();
+  }, SANDBOX_GRACE_MS);
 }
 
 // GET /api/agent?jobId=xxx - Subscribe to existing job updates
@@ -226,6 +250,12 @@ export async function action({ request }: ActionFunctionArgs) {
       });
 
       // NOW start the background job (after subscription is active)
+      const jobAbortController = new AbortController();
+      registerJobAbortController(jobId, jobAbortController);
+
+      const abortListener = () => jobAbortController.abort();
+      request.signal.addEventListener("abort", abortListener);
+
       runAgentInBackground(
         jobId,
         chatId || "default",
@@ -235,10 +265,14 @@ export async function action({ request }: ActionFunctionArgs) {
         skillsContent,
         history,
         existingSandboxId,
-        apiKey
+        apiKey,
+        jobAbortController.signal
       ).catch((error) => {
         console.error("Background agent error:", error);
         failJob(jobId, error instanceof Error ? error.message : String(error));
+      }).finally(() => {
+        unregisterJobAbortController(jobId);
+        request.signal.removeEventListener("abort", abortListener);
       });
 
       // Handle client disconnect - agent continues running!
@@ -274,7 +308,8 @@ async function runAgentInBackground(
   skillsContent: string,
   history: (HumanMessage | AIMessage)[],
   existingSandboxId: string | undefined,
-  apiKey: string
+  apiKey: string,
+  abortSignal?: AbortSignal
 ): Promise<void> {
   let sandbox: Sandbox | null = null;
   let previewUrl: string | null = null;
@@ -282,7 +317,7 @@ async function runAgentInBackground(
 
   try {
     // Initialize sandbox if needed
-    const needsSandbox = agentMode === "build" || !!existingSandboxId;
+    const needsSandbox = agentMode !== "chat" || !!existingSandboxId;
 
     if (needsSandbox) {
       const sandboxStepId = "sandbox";
@@ -318,6 +353,7 @@ async function runAgentInBackground(
       createUpdateTodoTool(chatId),
       createReadTodoTool(chatId),
       createAskUserTool(),
+      createDelegateToAgentTool(),
       createDelegateToBuildTool(),
     ];
 
@@ -330,11 +366,12 @@ async function runAgentInBackground(
         createShellTool(sandbox),
         createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
         createWebAppTool(sandbox, chatId),
-        createSaveArtifactTool(sandbox, chatId)
+        createSaveArtifactTool(sandbox, chatId),
+        createManageSandboxTool(sandbox)
       );
     }
 
-    const tools = filterToolsForAgent(allTools, agentMode);
+    const tools = allTools;
 
     // Setup Orchestrator
     const orchestratorConfig = {
@@ -381,9 +418,17 @@ FRAMEWORK SELECTION:
 
 CRITICAL: The 'create_web_app' tool REQUIRES the 'type' parameter.
 
+=== SANDBOX LIFECYCLE ===
+The sandbox will timeout automatically.
+- For long-running tasks, periodically call 'manage_sandbox({ action: "keep_alive" })'
+- If the user asks to STOP or when you are fully done, call 'manage_sandbox({ action: "stop" })'
+
 Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
+      managerSystemPrompt: MANAGER_SYSTEM_PROMPT,
+      researchSystemPrompt: RESEARCH_SYSTEM_PROMPT,
       planSystemPrompt: getAgentConfig("plan").systemPromptAddition,
       buildSystemPrompt: getAgentConfig("build").systemPromptAddition,
+      reviewSystemPrompt: REVIEW_SYSTEM_PROMPT,
     };
 
     const app = createOrchestrator(orchestratorConfig);
@@ -394,7 +439,8 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         ...history,
         new HumanMessage(prompt),
       ],
-      currentAgent: agentMode,
+      currentAgent: agentMode === "chat" ? "chat" : "manager",
+      requestedMode: agentMode,
     };
 
     let stepCounter = 0;
@@ -409,9 +455,16 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     const eventStream = await app.streamEvents(inputs, {
       version: "v2",
       recursionLimit: 100,
+      signal: abortSignal,
     });
 
     for await (const event of eventStream) {
+      // Manual check as backup, though signal should trigger throw
+      if (abortSignal?.aborted) {
+        throw new Error("AbortError");
+      }
+
+
       const { event: eventType, name, data } = event;
 
       if (eventType === "on_chat_model_start") {
@@ -466,6 +519,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         else if (toolName === "write_file") title = `Writing ${toolArgs.path || "file"}`;
         else if (toolName === "expose_preview") title = "Creating live preview";
         else if (toolName === "create_web_app") title = `Scaffolding ${toolArgs.type} app`;
+        else if (toolName === "delegate_to_agent") title = `Delegating to ${toolArgs.agent || "agent"}`;
 
         const step: AgentJobStep = { id: stepId, title, status: "running", tool: toolName };
         collectedSteps.push(step);
@@ -564,9 +618,18 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
       }
     }
 
+    if (sandboxId) {
+      scheduleSandboxCleanup(chatId, sandboxId);
+    }
+
   } catch (error) {
-    console.error("Agent error:", error);
-    await failJob(jobId, error instanceof Error ? error.message : String(error));
-    throw error;
+    if (error instanceof Error && (error.message === "AbortError" || error.name === "AbortError")) {
+      console.log("Agent job aborted by client");
+      await cancelJob(jobId);
+    } else {
+      console.error("Agent error:", error);
+      await failJob(jobId, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
   }
 }
