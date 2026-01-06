@@ -78,7 +78,7 @@ export function createOrchestrator(config: OrchestratorConfig) {
 
     const managerTools = filterToolsByName(["delegate_to_agent", "ask_user"]);
     const researchTools = filterToolsByName(["read_todo", "read_file", "list_files", "shell"]);
-    const planTools = filterToolsByName(["create_plan", "read_todo", "read_file", "list_files", "ask_user", "shell"]);
+    const planTools = filterToolsByName(["create_plan", "read_todo", "read_file", "list_files", "ask_user", "shell", "delegate_to_build"]);
     const reviewTools = filterToolsByName(["read_todo", "read_file", "list_files", "shell"]);
 
     const chatModel = model;
@@ -149,6 +149,9 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
     async function planAgentNode(state: OrchestratorStateType) {
         const planMessages = [
             new SystemMessage(`${systemPrompt}\n\n${planSystemPrompt}
+
+IMPORTANT: After the user approves your plan, you MUST call delegate_to_build with the approved plan.
+Do NOT just respond with text - always use the delegate_to_build tool to hand off to the build agent.
 
 Assigned task: ${state.activeTask || "No specific task assigned."}`),
             ...state.messages,
@@ -236,8 +239,12 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
                 const taskContext = agentDelegation.context
                     ? `${agentDelegation.task}\nContext: ${agentDelegation.context}`
                     : agentDelegation.task;
+                // Add a HumanMessage so the delegated agent has context to act on
+                const delegationMessage = new HumanMessage(
+                    `[Manager delegated to you]\nTask: ${agentDelegation.task}${agentDelegation.context ? `\nContext: ${agentDelegation.context}` : ''}`
+                );
                 return {
-                    messages: toolMessages,
+                    messages: [...toolMessages, delegationMessage],
                     currentAgent: agentDelegation.agent,
                     activeTask: taskContext,
                 };
@@ -249,8 +256,12 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
                 const taskContext = delegation.context
                     ? `${delegation.plan}\nContext: ${delegation.context}`
                     : delegation.plan;
+                // Add a HumanMessage so the build agent has context to act on
+                const delegationMessage = new HumanMessage(
+                    `[Plan agent delegated to you]\nApproved Plan: ${delegation.plan}${delegation.context ? `\nContext: ${delegation.context}` : ''}`
+                );
                 return {
-                    messages: toolMessages,
+                    messages: [...toolMessages, delegationMessage],
                     planApproved: true,
                     currentAgent: "build",
                     activeTask: taskContext,
