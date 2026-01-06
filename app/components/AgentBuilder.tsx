@@ -25,8 +25,7 @@ export function AgentBuilder() {
     {
       id: "welcome",
       role: "assistant",
-      content:
-        'Hey! 👋 I\'m here to help you create your own AI agent. Just tell me what you want your agent to do, and I\'ll help you build it step by step.\n\nFor example, you could say:\n• "I want an agent that helps me write better emails"\n• "Create a friendly tutor for learning Spanish"\n• "Build a code reviewer that catches bugs"\n\nWhat kind of agent would you like to create?',
+      content: "",
       timestamp: new Date(),
     },
   ]);
@@ -38,12 +37,12 @@ export function AgentBuilder() {
   const [activeBadges, setActiveBadges] = useState<Array<{ label: string; icon: React.ReactNode; prompt?: string }>>([]);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgent, setActiveAgent] = useState<{ mode: "plan" | "build"; name: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Human-in-the-loop state
   const [pendingQuestion, setPendingQuestion] = useState<{
     question: string;
     options?: string[];
@@ -51,34 +50,29 @@ export function AgentBuilder() {
     threadId?: string;
   } | null>(null);
 
-  // View state
   const [currentView, setCurrentView] = useState<'chat' | 'library'>('chat');
 
-  // Sidebar mobile state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Workspace state (legacy - for library view)
   const [workspaces, setWorkspaces] = useState<Workspace[]>(mockWorkspaces);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     mockWorkspaces[0]?.id ?? null
   );
 
-  // Welcome message
   const welcomeMessage: Message = {
     id: "welcome",
     role: "assistant",
-    content: 'Hey! 👋 I\'m here to help you create your own AI agent. Just tell me what you want your agent to do, and I\'ll help you build it step by step.\n\nFor example, you could say:\n• "I want an agent that helps me write better emails"\n• "Create a friendly tutor for learning Spanish"\n• "Build a code reviewer that catches bugs"\n\nWhat kind of agent would you like to create?',
+    content: "",
     timestamp: new Date(),
   };
 
-  // Stream handler
   const { processStream } = useAgentStream({
     setMessages,
     setSandboxId,
+    setJobId,
     setActiveAgent,
     setPendingQuestion,
     setPendingBuildDelegation: (prompt) => {
-      // Auto-accept simple build delegations for now
        if (prompt) setInput(prompt);
     },
     setIsTyping,
@@ -86,10 +80,8 @@ export function AgentBuilder() {
     chatId
   });
 
-  // Handler: Select chat from sidebar
   const handleSelectChat = async (selectedChatId: string | null) => {
     if (!selectedChatId) {
-      // New chat / deselect
       handleNewChat();
       return;
     }
@@ -100,9 +92,7 @@ export function AgentBuilder() {
         const { chat } = await response.json();
         setChatId(chat.id);
 
-        // Convert db messages to UI messages
         const loadedMessages: Message[] = chat.messages.map((msg: any) => {
-          // Find artifact for this message if it has a preview
           let fileContent: string | undefined;
           if (msg.previewUrl && chat.artifacts) {
             const indexHtml = chat.artifacts.find((a: any) => a.filename === "index.html");
@@ -116,8 +106,6 @@ export function AgentBuilder() {
             role: msg.role,
             content: msg.content,
             timestamp: new Date(msg.createdAt),
-            // If a preview URL exists in DB, current session is likely dead.
-            // Set to "loading" to show spinner until we restore it.
             previewUrl: msg.previewUrl ? "loading" : undefined,
             fileContent,
             thinkingSteps: msg.thinkingSteps,
@@ -127,7 +115,6 @@ export function AgentBuilder() {
         setMessages([welcomeMessage, ...loadedMessages]);
         setCurrentView('chat');
 
-        // Activate sandbox (reconnect or create new)
         const sandboxForm = new FormData();
         if (chat.sandboxId) {
           sandboxForm.append("sandboxId", chat.sandboxId);
@@ -152,15 +139,12 @@ export function AgentBuilder() {
           }
         }
 
-        // RECONNECTION LOGIC: Check for active job and stream
         try {
           const jobResponse = await fetch(`/api/agent?chatId=${chat.id}`);
           if (jobResponse.ok) {
             setIsProcessing(true);
             setIsTyping(true);
 
-            // Determine if we should attach to the last message or create a new one
-            // Ideally, we find the last assistant message.
             const lastMsg = loadedMessages[loadedMessages.length - 1];
             let targetMessageId: string;
             let existingSteps: any[] = [];
@@ -169,7 +153,6 @@ export function AgentBuilder() {
               targetMessageId = lastMsg.id;
               existingSteps = lastMsg.thinkingSteps || [];
             } else {
-              // Create a new placeholder if last was user, or if explicit resume needed
               targetMessageId = (Date.now() + 1).toString();
               const assistantMessage: Message = {
                 id: targetMessageId,
@@ -179,10 +162,8 @@ export function AgentBuilder() {
                 thinkingSteps: [],
               };
               setMessages(prev => [...prev, assistantMessage]);
-              // Update local var for processStream to use if needed (though we pass ID)
             }
 
-            // Start streaming (blindly, trusting useAgentStream to dedupe)
             processStream(jobResponse, targetMessageId, existingSteps).catch(e => {
               console.error("Error resuming stream:", e);
               setIsProcessing(false);
@@ -198,10 +179,10 @@ export function AgentBuilder() {
     }
   };
 
-  // Handler: New chat
   const handleNewChat = () => {
     setChatId(null);
     setSandboxId(null);
+    setJobId(null);
     setMessages([welcomeMessage]);
     setActiveBadges([]);
     setCurrentView('chat');
@@ -226,27 +207,6 @@ export function AgentBuilder() {
     }
   }, [messages, currentView]);
 
-  // Cleanup sandbox when component unmounts or page closes
-  useEffect(() => {
-    const killSandbox = () => {
-      if (sandboxId) {
-        // Use sendBeacon for reliable delivery on page unload
-        const formData = new FormData();
-        formData.append("sandboxId", sandboxId);
-        navigator.sendBeacon("/api/sandbox/kill", formData);
-      }
-    };
-
-    // Kill sandbox on page close/refresh
-    window.addEventListener("beforeunload", killSandbox);
-
-    return () => {
-      window.removeEventListener("beforeunload", killSandbox);
-      // Also kill on component unmount
-      killSandbox();
-    };
-  }, [sandboxId]);
-
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -257,7 +217,6 @@ export function AgentBuilder() {
       timestamp: new Date(),
     };
 
-    // Create a placeholder assistant message that will be updated with streaming content
     const assistantMessageId = (Date.now() + 1).toString();
     const assistantMessage: Message = {
       id: assistantMessageId,
@@ -272,29 +231,22 @@ export function AgentBuilder() {
     setIsTyping(true);
     setIsProcessing(true);
 
-    // Create abort controller for this request
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     try {
-      // Create chat if this is the first user message (after welcome)
       let currentChatId = chatId;
       if (!currentChatId) {
-        // Generate a short, contextual title from the prompt
         const generateTitle = (prompt: string): string => {
-          // Remove common prefixes
           let title = prompt
             .replace(/^(build|create|make|write|design|implement|help me|i want|can you)\s+(a|an|the|me)?\s*/i, '')
             .replace(/^(with|using|that|for)\s+/i, '');
 
-          // Take first 3-4 meaningful words
           const words = title.split(/\s+/).slice(0, 4);
           title = words.join(' ');
 
-          // Capitalize first letter
           title = title.charAt(0).toUpperCase() + title.slice(1);
 
-          // Limit length
           if (title.length > 30) {
             title = title.slice(0, 30).trim() + '...';
           }
@@ -316,7 +268,6 @@ export function AgentBuilder() {
         }
       }
 
-      // Save user message to database
       if (currentChatId) {
         const userMsgForm = new FormData();
         userMsgForm.append("chatId", currentChatId);
@@ -351,7 +302,7 @@ export function AgentBuilder() {
 
     } catch (error) {
       // Don't show error message if request was aborted
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes("Cancelled by user"))) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
@@ -448,6 +399,15 @@ export function AgentBuilder() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    setIsTyping(false);
+    setIsProcessing(false);
+    if (jobId || chatId) {
+      const stopForm = new FormData();
+      if (jobId) stopForm.append("jobId", jobId);
+      if (chatId) stopForm.append("chatId", chatId);
+      fetch("/api/agent/stop", { method: "POST", body: stopForm });
+    }
+    abortControllerRef.current = null;
   };
 
   const handleAnswerQuestion = async (answer: string) => {
@@ -475,12 +435,12 @@ export function AgentBuilder() {
       fetch("/api/messages", { method: "POST", body: userMsgForm });
     }
 
-    // Continue the conversation by sending the answer back to the agent
     setInput("");
     
-    // Re-trigger agent with the answer (the agent will continue from where it left off)
     const formData = new FormData();
-    formData.append("prompt", answer);
+    const contextualPrompt = `User answered the question: "${pendingQuestion.question}"\n\nAnswer: ${answer}${pendingQuestion.context ? `\n\nOriginal context: ${pendingQuestion.context}` : ''}`;
+    formData.append("prompt", contextualPrompt);
+    formData.append("agentMode", "build"); 
     if (sandboxId) {
       formData.append("sandboxId", sandboxId);
     }
@@ -494,7 +454,6 @@ export function AgentBuilder() {
     setIsTyping(true);
     setIsProcessing(true);
 
-    // Create a new placeholder for the response
     const assistantMessageId = (Date.now() + 1).toString();
     const assistantMessage: Message = {
       id: assistantMessageId,
@@ -532,10 +491,8 @@ export function AgentBuilder() {
   };
 
   const handleSuggestionClick = (feature: { label: string; icon: React.ReactNode; prompt?: string }) => {
-    // Add badge (replace existing)
     setActiveBadges([feature]);
 
-    // Optionally set input if provided
     if (feature.prompt) {
       setInput(feature.prompt);
     }
@@ -559,7 +516,6 @@ export function AgentBuilder() {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col bg-gb-bg overflow-hidden relative">
         <ChatHeader onOpenSidebar={() => setIsSidebarOpen(true)} />
 

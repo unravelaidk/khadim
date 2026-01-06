@@ -1,4 +1,6 @@
 import React from "react";
+import KhadimLogo from "../../assets/Khadim-logo.svg";
+import { LuMenu } from "react-icons/lu";
 
 interface ChatHeaderProps {
   onOpenSidebar: () => void;
@@ -6,25 +8,26 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
   return (
-    <div className="md:hidden flex items-center p-4 border-b border-gb-border bg-gb-bg sticky top-0 z-10">
+    <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-gb-border bg-gb-bg/80 backdrop-blur-md sticky top-0 z-20 transition-all duration-200">
       <button
         onClick={onOpenSidebar}
-        className="p-2 -ml-2 rounded-lg text-gb-text-secondary hover:bg-gb-bg-subtle"
+        className="p-2 -ml-2 rounded-lg text-gb-text-secondary hover:bg-gb-bg-subtle hover:text-gb-text transition-colors active:scale-95 duration-100"
+        aria-label="Open Menu"
       >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
+        <LuMenu className="w-6 h-6" />
       </button>
-      <span className="ml-3 font-semibold text-gb-text">Khadim</span>
+
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="flex items-center gap-2.5 pointer-events-auto">
+          <div className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full">
+            <KhadimLogo />
+          </div>
+          <span className="font-semibold text-gb-text text-lg tracking-tight">Khadim</span>
+        </div>
+      </div>
+      
+      {/* Spacer for potential future right-side action button, also helps balance layout if we drop absolute positioning */}
+      <div className="w-10" />
     </div>
   );
 }

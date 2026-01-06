@@ -1,9 +1,10 @@
 import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
-import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { parseAskUserResponse, type AskUserPayload } from "./tools/ask-user";
 import { parseDelegateResponse } from "./tools/delegate-build";
+import { parseDelegateAgentResponse } from "./tools/delegate-agent";
 
 /**
  * Orchestrator State
@@ -14,15 +15,27 @@ export const OrchestratorState = Annotation.Root({
         reducer: (curr, update) => [...curr, ...update],
         default: () => [],
     }),
-    currentAgent: Annotation<"router" | "plan" | "build" | "chat">({
+    currentAgent: Annotation<"manager" | "research" | "plan" | "build" | "review" | "chat">({
         reducer: (_, update) => update,
-        default: () => "router",
+        default: () => "manager",
+    }),
+    requestedMode: Annotation<"plan" | "build" | "chat" | null>({
+        reducer: (_, update) => update,
+        default: () => null,
+    }),
+    activeTask: Annotation<string | null>({
+        reducer: (_, update) => update,
+        default: () => null,
     }),
     pendingQuestion: Annotation<AskUserPayload | null>({
         reducer: (_, update) => update,
         default: () => null,
     }),
     humanResponse: Annotation<string | null>({
+        reducer: (_, update) => update,
+        default: () => null,
+    }),
+    resumeAgent: Annotation<"manager" | "research" | "plan" | "build" | "review" | "chat" | null>({
         reducer: (_, update) => update,
         default: () => null,
     }),
@@ -42,54 +55,138 @@ export interface OrchestratorConfig {
     model: ChatOpenAI;
     tools: any[];
     systemPrompt: string;
+    managerSystemPrompt: string;
+    researchSystemPrompt: string;
     planSystemPrompt: string;
     buildSystemPrompt: string;
+    reviewSystemPrompt: string;
     onStepStart?: (step: { id: string; title: string }) => void;
     onStepComplete?: (step: { id: string; result?: string }) => void;
 }
 
 /**
  * Create the multi-agent orchestrator graph
- * Flow: router → plan → (ask human if needed) → build → END
+ * Flow: router → manager → (specialists) → manager → END
  */
 export function createOrchestrator(config: OrchestratorConfig) {
-    const { model, tools, systemPrompt, planSystemPrompt, buildSystemPrompt } = config;
+    const { model, tools, systemPrompt, managerSystemPrompt, researchSystemPrompt, planSystemPrompt, buildSystemPrompt, reviewSystemPrompt } = config;
 
     // Create tool node
     const toolNode = new ToolNode(tools);
 
-    // Bind tools to model
-    const modelWithTools = model.bindTools(tools);
+    const filterToolsByName = (allowed: string[]) => tools.filter((tool) => allowed.includes(tool.name));
+
+    const managerTools = filterToolsByName(["delegate_to_agent", "ask_user"]);
+    const researchTools = filterToolsByName(["read_todo", "read_file", "list_files", "shell"]);
+    const planTools = filterToolsByName(["create_plan", "read_todo", "read_file", "list_files", "ask_user", "shell"]);
+    const reviewTools = filterToolsByName(["read_todo", "read_file", "list_files", "shell"]);
+
+    const chatModel = model;
+
+    // Bind tools to models per agent
+    const managerModel = model.bindTools(managerTools);
+    const researchModel = model.bindTools(researchTools);
+    const planModel = model.bindTools(planTools);
+    const buildModel = model.bindTools(tools);
+    const reviewModel = model.bindTools(reviewTools);
 
     /**
      * Router Node: Determines which agent should handle the request
-     * Based on current state and message content
+     * Handles resume from human-in-the-loop interruptions.
      */
     async function routerNode(state: OrchestratorStateType) {
-        const messages = state.messages;
-
-        // If we have a pending human response, inject it and continue
-        if (state.humanResponse && state.pendingQuestion) {
+        if (state.humanResponse && state.resumeAgent) {
             return {
                 messages: [new HumanMessage(`User response: ${state.humanResponse}`)],
-                pendingQuestion: null,
                 humanResponse: null,
-                currentAgent: state.planApproved ? "build" : "plan",
-            };
-        }
-
-        // If an agent is already selected (via inputs), respect it
-        if (state.currentAgent && state.currentAgent !== "router") {
-            return {
+                pendingQuestion: null,
+                currentAgent: state.resumeAgent,
+                resumeAgent: null,
                 iterationCount: state.iterationCount + 1,
             };
         }
 
-        // Default to plan agent on first iteration
         return {
-            currentAgent: "plan" as const,
             iterationCount: state.iterationCount + 1,
         };
+    }
+
+    /**
+     * Manager Node: Coordinates specialist agents
+     */
+    async function managerNode(state: OrchestratorStateType) {
+        const managerMessages = [
+            new SystemMessage(`${systemPrompt}\n\n${managerSystemPrompt}
+
+Requested mode hint: ${state.requestedMode ?? "auto"}
+${state.activeTask ? `Active task context: ${state.activeTask}` : ""}`),
+            ...state.messages,
+        ];
+
+        const response = await managerModel.invoke(managerMessages);
+        return { messages: [response], currentAgent: "manager", iterationCount: state.iterationCount + 1 };
+    }
+
+    /**
+     * Research Agent Node: Read-only codebase investigation
+     */
+    async function researchAgentNode(state: OrchestratorStateType) {
+        const researchMessages = [
+            new SystemMessage(`${systemPrompt}\n\n${researchSystemPrompt}
+
+Assigned task: ${state.activeTask || "No specific task assigned."}`),
+            ...state.messages,
+        ];
+
+        const response = await researchModel.invoke(researchMessages);
+        return { messages: [response], currentAgent: "research" };
+    }
+
+    /**
+     * Plan Agent Node: Analyzes request and creates execution plan
+     * Can ask clarifying questions via ask_user tool
+     */
+    async function planAgentNode(state: OrchestratorStateType) {
+        const planMessages = [
+            new SystemMessage(`${systemPrompt}\n\n${planSystemPrompt}
+
+Assigned task: ${state.activeTask || "No specific task assigned."}`),
+            ...state.messages,
+        ];
+
+        const response = await planModel.invoke(planMessages);
+        return { messages: [response], currentAgent: "plan" };
+    }
+
+    /**
+     * Build Agent Node: Executes the approved plan
+     * Has access to all building tools
+     */
+    async function buildAgentNode(state: OrchestratorStateType) {
+        const buildMessages = [
+            new SystemMessage(`${systemPrompt}\n\n${buildSystemPrompt}
+
+Assigned task: ${state.activeTask || "No specific task assigned."}`),
+            ...state.messages,
+        ];
+
+        const response = await buildModel.invoke(buildMessages);
+        return { messages: [response], currentAgent: "build" };
+    }
+
+    /**
+     * Review Agent Node: Validate output and identify issues
+     */
+    async function reviewAgentNode(state: OrchestratorStateType) {
+        const reviewMessages = [
+            new SystemMessage(`${systemPrompt}\n\n${reviewSystemPrompt}
+
+Assigned task: ${state.activeTask || "No specific task assigned."}`),
+            ...state.messages,
+        ];
+
+        const response = await reviewModel.invoke(reviewMessages);
+        return { messages: [response], currentAgent: "review" };
     }
 
     /**
@@ -102,61 +199,8 @@ export function createOrchestrator(config: OrchestratorConfig) {
             ...state.messages,
         ];
 
-        const response = await modelWithTools.invoke(chatMessages);
+        const response = await chatModel.invoke(chatMessages);
         return { messages: [response], currentAgent: "chat" };
-    }
-
-    /**
-     * Plan Agent Node: Analyzes request and creates execution plan
-     * Can ask clarifying questions via ask_user tool
-     */
-    async function planAgentNode(state: OrchestratorStateType) {
-        const planMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${planSystemPrompt}
-            
-IMPORTANT: You are in PLANNING mode.
-- Analyze the user's request carefully
-- If the request is unclear or needs more details, use the ask_user tool
-- Create a detailed plan using create_plan tool
-- After creating the plan, ask the user for approval using ask_user
-
-Example flow:
-1. User: "Build me a website"
-2. You: ask_user("What type of website? I can help with portfolios, landing pages, or e-commerce sites.")
-3. User responds: "A portfolio"
-4. You: create_plan with steps for portfolio
-5. You: ask_user("Does this plan look good? Should I proceed?")
-6. User: "Yes, go ahead"
-7. Plan is approved, build agent takes over`),
-            ...state.messages,
-        ];
-
-        const response = await modelWithTools.invoke(planMessages);
-
-        // Check if the response contains a tool call for ask_user
-        if ("tool_calls" in response && Array.isArray(response.tool_calls)) {
-            // Return the response - tool node will process it
-            return { messages: [response], currentAgent: "plan" };
-        }
-
-        return { messages: [response], currentAgent: "plan" };
-    }
-
-    /**
-     * Build Agent Node: Executes the approved plan
-     * Has access to all building tools
-     */
-    async function buildAgentNode(state: OrchestratorStateType) {
-        const buildMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${buildSystemPrompt}
-            
-You are in BUILD mode. Execute the approved plan efficiently.
-The planning phase is complete - now implement what was planned.`),
-            ...state.messages,
-        ];
-
-        const response = await modelWithTools.invoke(buildMessages);
-        return { messages: [response], currentAgent: "build" };
     }
 
     /**
@@ -174,25 +218,42 @@ The planning phase is complete - now implement what was planned.`),
         const toolResponse = await toolNode.invoke(state);
         const toolMessages = toolResponse.messages || [];
 
-        // Check for interrupt in tool responses
+        // Check for interrupts and delegation in tool responses
         for (const msg of toolMessages) {
             const content = typeof msg.content === "string" ? msg.content : "";
             const parsed = parseAskUserResponse(content);
-            
+
             if (parsed) {
                 return {
                     messages: toolMessages,
                     pendingQuestion: parsed,
+                    resumeAgent: state.currentAgent,
                 };
             }
 
-            // Check for delegation
+            const agentDelegation = parseDelegateAgentResponse(content);
+            if (agentDelegation) {
+                const taskContext = agentDelegation.context
+                    ? `${agentDelegation.task}\nContext: ${agentDelegation.context}`
+                    : agentDelegation.task;
+                return {
+                    messages: toolMessages,
+                    currentAgent: agentDelegation.agent,
+                    activeTask: taskContext,
+                };
+            }
+
+            // Legacy plan -> build delegation
             const delegation = parseDelegateResponse(content);
             if (delegation) {
+                const taskContext = delegation.context
+                    ? `${delegation.plan}\nContext: ${delegation.context}`
+                    : delegation.plan;
                 return {
                     messages: toolMessages,
                     planApproved: true,
                     currentAgent: "build",
+                    activeTask: taskContext,
                 };
             }
         }
@@ -200,106 +261,83 @@ The planning phase is complete - now implement what was planned.`),
         return { messages: toolMessages };
     }
 
-    function routeAfterRouter(state: OrchestratorStateType): "plan" | "build" | "chat" {
-        if (state.currentAgent === "chat") return "chat";
+    function routeAfterRouter(
+        state: OrchestratorStateType
+    ): "manager" | "research" | "plan" | "build" | "review" | "chat" {
+        if (state.currentAgent === "research") return "research";
+        if (state.currentAgent === "plan") return "plan";
         if (state.currentAgent === "build") return "build";
-        return "plan";
+        if (state.currentAgent === "review") return "review";
+        if (state.currentAgent === "chat") return "chat";
+        return "manager";
     }
 
-    /**
-     * Routing logic: determine next node based on state
-     */
-    function shouldContinue(state: OrchestratorStateType): "tools" | "plan" | "build" | "chat" | "interrupt" | typeof END {
+    function afterManager(state: OrchestratorStateType): "tools" | "interrupt" | typeof END {
         const messages = state.messages;
         const lastMessage = messages[messages.length - 1];
 
-        // If there's a pending question, interrupt
         if (state.pendingQuestion) {
             return "interrupt";
         }
 
-        // If the last message has tool calls, process them
         if (lastMessage && "tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
             return "tools";
         }
 
-        // If plan is approved, go to build
-        if (state.planApproved && state.currentAgent === "plan") {
-            return "build";
-        }
-
-        // Check iteration limit
-        if (state.iterationCount > 20) {
-            return END;
-        }
-
-        // If we just finished tools, continue with current agent
-        if (state.currentAgent === "plan") {
-            return "plan";
-        }
-
-        if (state.currentAgent === "build") {
-            return "build";
-        }
-
-        if (state.currentAgent === "chat") {
-            // Chat agent just replies and ends (or waits for user, effectively END for this turn)
+        if (state.iterationCount > 30) {
             return END;
         }
 
         return END;
     }
 
-    function afterTools(state: OrchestratorStateType): "plan" | "build" | "chat" | "interrupt" | typeof END {
-        // Check for interrupt
+    function afterWorker(state: OrchestratorStateType): "tools" | "manager" | "interrupt" | typeof END {
+        const messages = state.messages;
+        const lastMessage = messages[messages.length - 1];
+
         if (state.pendingQuestion) {
             return "interrupt";
         }
 
-        // Continue with current agent
-        if (state.currentAgent === "plan") {
-            return "plan";
+        if (lastMessage && "tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
+            return "tools";
         }
-        if (state.currentAgent === "build") {
-            return "build";
+
+        if (state.iterationCount > 30) {
+            return END;
         }
-        if (state.currentAgent === "chat") {
-             return "chat";
+
+        return "manager";
+    }
+
+    function afterChat(state: OrchestratorStateType): "tools" | "interrupt" | typeof END {
+        const messages = state.messages;
+        const lastMessage = messages[messages.length - 1];
+
+        if (state.pendingQuestion) {
+            return "interrupt";
+        }
+
+        if (lastMessage && "tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
+            return "tools";
         }
 
         return END;
     }
 
-    function afterPlan(state: OrchestratorStateType): "tools" | "build" | "interrupt" | typeof END {
-        const messages = state.messages;
-        const lastMessage = messages[messages.length - 1];
-
-        // If there's a pending question, interrupt
+    function afterTools(
+        state: OrchestratorStateType
+    ): "manager" | "research" | "plan" | "build" | "review" | "chat" | "interrupt" | typeof END {
         if (state.pendingQuestion) {
             return "interrupt";
         }
 
-        // If the last message has tool calls, process them
-        if (lastMessage && "tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
-            return "tools";
-        }
-
-        // If plan is approved, go to build
-        if (state.planApproved) {
-            return "build";
-        }
-
-        return END;
-    }
-
-    function afterBuild(state: OrchestratorStateType): "tools" | typeof END {
-        const messages = state.messages;
-        const lastMessage = messages[messages.length - 1];
-
-        // If the last message has tool calls, process them
-        if (lastMessage && "tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
-            return "tools";
-        }
+        if (state.currentAgent === "manager") return "manager";
+        if (state.currentAgent === "research") return "research";
+        if (state.currentAgent === "plan") return "plan";
+        if (state.currentAgent === "build") return "build";
+        if (state.currentAgent === "review") return "review";
+        if (state.currentAgent === "chat") return "chat";
 
         return END;
     }
@@ -314,17 +352,23 @@ The planning phase is complete - now implement what was planned.`),
     // Build the graph
     const workflow = new StateGraph(OrchestratorState)
         .addNode("router", routerNode)
+        .addNode("manager", managerNode)
+        .addNode("research", researchAgentNode)
         .addNode("plan", planAgentNode)
         .addNode("build", buildAgentNode)
+        .addNode("review", reviewAgentNode)
         .addNode("chat", chatAgentNode)
         .addNode("tools", processTools)
         .addNode("interrupt", interruptNode)
         .addEdge(START, "router")
-        .addConditionalEdges("router", routeAfterRouter, ["plan", "build", "chat"])
-        .addConditionalEdges("plan", afterPlan, ["tools", "build", "interrupt", END])
-        .addConditionalEdges("build", afterBuild, ["tools", END])
-        .addConditionalEdges("chat", shouldContinue, ["tools", "plan", "build", "chat", "interrupt", END])
-        .addConditionalEdges("tools", afterTools, ["plan", "build", "chat", "interrupt", END])
+        .addConditionalEdges("router", routeAfterRouter, ["manager", "research", "plan", "build", "review", "chat"])
+        .addConditionalEdges("manager", afterManager, ["tools", "interrupt", END])
+        .addConditionalEdges("research", afterWorker, ["tools", "manager", "interrupt", END])
+        .addConditionalEdges("plan", afterWorker, ["tools", "manager", "interrupt", END])
+        .addConditionalEdges("build", afterWorker, ["tools", "manager", "interrupt", END])
+        .addConditionalEdges("review", afterWorker, ["tools", "manager", "interrupt", END])
+        .addConditionalEdges("chat", afterChat, ["tools", "interrupt", END])
+        .addConditionalEdges("tools", afterTools, ["manager", "research", "plan", "build", "review", "chat", "interrupt", END])
         .addEdge("interrupt", END); // Interrupt exits the graph
 
     return workflow.compile({
@@ -345,5 +389,7 @@ export function createResumeState(
         humanResponse,
         pendingQuestion: null,
         planApproved: approved || previousState.planApproved,
+        currentAgent: previousState.resumeAgent || previousState.currentAgent,
+        resumeAgent: null,
     };
 }

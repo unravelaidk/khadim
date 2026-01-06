@@ -543,4 +543,48 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
     }
 );
 
+export const createManageSandboxTool = (sandbox: Sandbox) => tool(
+    async ({ action }: { action: "keep_alive" | "stop" }) => {
+        try {
+            if (action === "keep_alive") {
+                // @ts-ignore - 'extendLifetime' exists in newer versions or passed through
+                if (typeof sandbox.extendLifetime === 'function') {
+                    // @ts-ignore
+                    await sandbox.extendLifetime("30m");
+                    return "✅ Sandbox lifetime extended by 30 minutes.";
+                } else {
+                    return "⚠️ Warning: This sandbox environment does not support extending lifetime directly.";
+                }
+            } else if (action === "stop") {
+                 // @ts-ignore
+                if (typeof sandbox.shutdown === 'function') {
+                    // @ts-ignore
+                    await sandbox.shutdown();
+                    return "🛑 Sandbox shutdown initiated.";
+                } else {
+                     // Fallback: set short lifetime if specific shutdown isn't available
+                     // @ts-ignore
+                     if (typeof sandbox.setLifetime === 'function') {
+                        // @ts-ignore
+                        await sandbox.setLifetime(1000); // 1 second
+                        return "🛑 Sandbox lifetime set to expire immediately.";
+                     }
+                     return "⚠️ Warning: Could not explicitly stop sandbox (shutdown/setLifetime not found).";
+                }
+            }
+            return "❌ Invalid action.";
+        } catch (error) {
+            return `Error managing sandbox: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "manage_sandbox",
+        description: "Control the sandbox lifecycle. Use 'keep_alive' for long tasks to prevent timeout. Use 'stop' when the user cancellation is requested or the task is permanently done.",
+        schema: z.object({
+            action: z.enum(["keep_alive", "stop"]).describe("Action to perform: 'keep_alive' (extends 30m) or 'stop' (shuts down)."),
+        }),
+    }
+);
+
+
 

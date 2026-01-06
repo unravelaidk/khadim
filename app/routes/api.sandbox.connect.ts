@@ -44,67 +44,75 @@ export async function action({ request }: ActionFunctionArgs) {
       if (chatArtifacts.length > 0) {
         let hasIndexHtml = false;
 
-
+        // Restore artifacts if new session
         if (isNewSession) {
           console.log(`Restoring ${chatArtifacts.length} artifacts for chat ${chatId} to sandbox ${newSandboxId}`);
           for (const artifact of chatArtifacts) {
             await sandbox.writeTextFile(artifact.filename, artifact.content);
             if (artifact.filename === "index.html") hasIndexHtml = true;
           }
+        } else {
+             // For existing sessions, check if we expect an index.html
+             hasIndexHtml = chatArtifacts.some(a => a.filename === "index.html");
+        }
 
-
-          if (hasIndexHtml) {
+        // ALWAYS attempt to ensure server is running if we have index.html
+        if (hasIndexHtml) {
             try {
               const port = 8000;
               const serverCode = `
                   import { serveDir } from "jsr:@std/http/file-server";
                   Deno.serve({ port: ${port} }, (req) => serveDir(req, { fsRoot: "." }));
                 `;
-              await sandbox.writeTextFile("_server.ts", serverCode);
+              
+              // Only write server file if new session to avoid overwriting running server (though benign)
+              if (isNewSession) {
+                  await sandbox.writeTextFile("_server.ts", serverCode);
+              }
+
+              // Try to start server. If already running, this spawns a process that will fail fast.
+              // Note: sandbox.spawn doesn't throw on non-zero exit, we check status.
+              // We just fire and forget here essentially, but we can verify via exposeHttp.
               sandbox.spawn("deno", {
                 args: ["run", "-A", "_server.ts"],
                 stdout: "null",
                 stderr: "null",
               });
             } catch (e) {
-              console.error("Failed to start server", e);
+              console.error("Failed to start server (might be already running)", e);
             }
-          }
-        } else {
 
-          //TODO 
-          // We trust DB.
-          hasIndexHtml = chatArtifacts.some(a => a.filename === "index.html");
-        }
+            try {
+                // Give it a tiny bit to start if it was just spawned
+                if (isNewSession) await new Promise(r => setTimeout(r, 500));
 
-        if (hasIndexHtml) {
-          try {
-            await new Promise(r => setTimeout(r, 1000));
-            previewUrl = await sandbox.exposeHttp({ port: 8000 });
+                previewUrl = await sandbox.exposeHttp({ port: 8000 });
 
-            let retries = 20;
-            while (retries > 0) {
-              try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1000);
-                const res = await fetch(previewUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                // Check responsiveness
+                let retries = isNewSession ? 20 : 5; // Fewer retries for existing session
+                while (retries > 0) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 1000); // 1s timeout
+                    const res = await fetch(previewUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
 
-                if (res.ok) {
-                  console.log(`Preview ready: ${previewUrl}`);
-                  break;
+                    if (res.ok) {
+                    console.log(`Preview ready: ${previewUrl}`);
+                    break;
+                    }
+                } catch {
+                    // Ignore error
                 }
-              } catch {
-
-              }
-              await new Promise(r => setTimeout(r, 250));
-              retries--;
+                
+                // If it's an existing session and it fails immediately, it might just be loading. 
+                // But we don't want to block too long.
+                await new Promise(r => setTimeout(r, 200));
+                retries--;
+                }
+            } catch (e) {
+                console.error("Failed to expose preview", e);
             }
-
-            console.log(`Restored/Verified preview for chat ${chatId}: ${previewUrl}`);
-          } catch (e) {
-            console.error("Failed to expose preview", e);
-          }
         }
       }
     }
