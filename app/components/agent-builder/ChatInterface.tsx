@@ -1,4 +1,3 @@
-import React from "react";
 import { GameBoyScreen } from "./GameBoyScreen";
 import { ChatMessage } from "./ChatMessage";
 import { TypingIndicator } from "./TypingIndicator";

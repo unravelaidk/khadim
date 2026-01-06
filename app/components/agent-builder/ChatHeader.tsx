@@ -1,4 +1,3 @@
-import React from "react";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 import { LuMenu } from "react-icons/lu";
 

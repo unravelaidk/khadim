@@ -95,6 +95,18 @@ export function useAgentStream({
                 if (event.jobId) setJobId(event.jobId as string);
               } else if (event.type === "agent_mode") {
                 setActiveAgent(event as { mode: "plan" | "build"; name: string });
+              } else if (event.type === "slide_content") {
+                // Capture slide file content for real-time preview
+                const slideContent = event.fileContent as string | undefined;
+                if (slideContent) {
+                  setMessages(prev =>
+                    prev.map(msg =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, fileContent: slideContent }
+                        : msg
+                    )
+                  );
+                }
               } else if (event.type === "done") {
                 streamedText = event.content || "";
                 setActiveAgent(null);
