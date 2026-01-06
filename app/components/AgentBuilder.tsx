@@ -439,8 +439,27 @@ export function AgentBuilder() {
     
     const formData = new FormData();
     const contextualPrompt = `User answered the question: "${pendingQuestion.question}"\n\nAnswer: ${answer}${pendingQuestion.context ? `\n\nOriginal context: ${pendingQuestion.context}` : ''}`;
-    formData.append("prompt", contextualPrompt);
-    formData.append("agentMode", "build"); 
+    const planPrefix = "Plan:\n";
+    const planFromContext = pendingQuestion.context?.startsWith(planPrefix)
+      ? pendingQuestion.context.slice(planPrefix.length)
+      : null;
+    const normalizedAnswer = answer.trim().toLowerCase();
+    const isApproval = normalizedAnswer === "yes" || normalizedAnswer.startsWith("yes,") || normalizedAnswer === "y" || normalizedAnswer === "ok" || normalizedAnswer === "okay" || normalizedAnswer === "sure";
+    let nextPrompt = contextualPrompt;
+    let nextMode: "plan" | "build" = activeAgent?.mode ?? "build";
+
+    if (planFromContext) {
+      if (isApproval) {
+        nextPrompt = `Execute this approved plan:\n\n${planFromContext}`;
+        nextMode = "build";
+      } else {
+        nextPrompt = `Update the plan based on this feedback:\n\n${answer}\n\nExisting plan:\n${planFromContext}`;
+        nextMode = "plan";
+      }
+    }
+
+    formData.append("prompt", nextPrompt);
+    formData.append("agentMode", nextMode);
     if (sandboxId) {
       formData.append("sandboxId", sandboxId);
     }

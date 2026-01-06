@@ -101,8 +101,8 @@ export function selectAgent(request: string): AgentMode {
         }
     }
 
-    // Default to PLAN for ambiguous inputs (likely requirements or answers to questions)
-    return "plan";
+    // Default to BUILD - it can plan internally if needed
+    return "build";
 }
 
 

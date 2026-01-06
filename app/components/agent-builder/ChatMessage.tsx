@@ -2,7 +2,7 @@ import type { Message } from "./types";
 import { ThinkingSteps } from "./ThinkingStep";
 import type { ThinkingStepData } from "./ThinkingStep";
 import { FileArtifact } from "./FileArtifact";
-import Markdown from "react-markdown";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ChatMessageProps {
   message: Message;
@@ -47,8 +47,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
         )}
 
         {hasContent && (
-          <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-headings:text-inherit prose-p:text-inherit prose-strong:text-inherit prose-code:text-gb-accent prose-code:bg-gb-bg prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-a:text-gb-accent">
-            <Markdown>{message.content}</Markdown>
+          <div className="text-sm leading-relaxed">
+            <MarkdownRenderer content={message.content} />
           </div>
         )}
 
