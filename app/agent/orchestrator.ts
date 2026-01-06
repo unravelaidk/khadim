@@ -1,10 +1,18 @@
 import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
-import { BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { BaseMessage, HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { parseAskUserResponse, type AskUserPayload } from "./tools/ask-user";
 import { parseDelegateResponse } from "./tools/delegate-build";
 import { parseDelegateAgentResponse } from "./tools/delegate-agent";
+import {
+    getAgentConfig,
+    filterToolsForAgent,
+    isSubagent,
+    type AgentId,
+    PRIMARY_AGENT_IDS,
+    SUBAGENT_IDS,
+} from "./agents";
 
 /**
  * Orchestrator State
@@ -15,9 +23,9 @@ export const OrchestratorState = Annotation.Root({
         reducer: (curr, update) => [...curr, ...update],
         default: () => [],
     }),
-    currentAgent: Annotation<"manager" | "research" | "plan" | "build" | "review" | "chat">({
+    currentAgent: Annotation<AgentId>({
         reducer: (_, update) => update,
-        default: () => "manager",
+        default: () => "build",
     }),
     requestedMode: Annotation<"plan" | "build" | "chat" | null>({
         reducer: (_, update) => update,
@@ -35,7 +43,7 @@ export const OrchestratorState = Annotation.Root({
         reducer: (_, update) => update,
         default: () => null,
     }),
-    resumeAgent: Annotation<"manager" | "research" | "plan" | "build" | "review" | "chat" | null>({
+    resumeAgent: Annotation<AgentId | null>({
         reducer: (_, update) => update,
         default: () => null,
     }),
@@ -43,9 +51,36 @@ export const OrchestratorState = Annotation.Root({
         reducer: (_, update) => update,
         default: () => false,
     }),
+    toolLoopSignature: Annotation<string | null>({
+        reducer: (_, update) => update,
+        default: () => null,
+    }),
+    toolLoopCount: Annotation<number>({
+        reducer: (_, update) => update,
+        default: () => 0,
+    }),
+    loopDetected: Annotation<boolean>({
+        reducer: (_, update) => update,
+        default: () => false,
+    }),
+    returnAgent: Annotation<AgentId | null>({
+        reducer: (_, update) => update,
+        default: () => null,
+    }),
     iterationCount: Annotation<number>({
         reducer: (_, update) => update,
         default: () => 0,
+    }),
+    hasResponded: Annotation<boolean>({
+        reducer: (_, update) => update,
+        default: () => false,
+    }),
+    toolHistory: Annotation<string[]>({
+        reducer: (curr, update) => {
+            const combined = [...curr, ...update];
+            return combined.slice(-20);
+        },
+        default: () => [],
     }),
 });
 
@@ -55,40 +90,26 @@ export interface OrchestratorConfig {
     model: ChatOpenAI;
     tools: any[];
     systemPrompt: string;
-    managerSystemPrompt: string;
-    researchSystemPrompt: string;
-    planSystemPrompt: string;
-    buildSystemPrompt: string;
-    reviewSystemPrompt: string;
     onStepStart?: (step: { id: string; title: string }) => void;
     onStepComplete?: (step: { id: string; result?: string }) => void;
 }
 
 /**
  * Create the multi-agent orchestrator graph
- * Flow: router → manager → (specialists) → manager → END
+ * Flow: router → primary agent → (subagents/tools) → primary agent → END
  */
 export function createOrchestrator(config: OrchestratorConfig) {
-    const { model, tools, systemPrompt, managerSystemPrompt, researchSystemPrompt, planSystemPrompt, buildSystemPrompt, reviewSystemPrompt } = config;
+    const { model, tools, systemPrompt } = config;
 
     // Create tool node
     const toolNode = new ToolNode(tools);
 
-    const filterToolsByName = (allowed: string[]) => tools.filter((tool) => allowed.includes(tool.name));
-
-    const managerTools = filterToolsByName(["delegate_to_agent", "ask_user"]);
-    const researchTools = filterToolsByName(["read_todo", "read_file", "list_files", "shell"]);
-    const planTools = filterToolsByName(["create_plan", "read_todo", "read_file", "list_files", "ask_user", "shell", "delegate_to_build"]);
-    const reviewTools = filterToolsByName(["read_todo", "read_file", "list_files", "shell"]);
-
-    const chatModel = model;
-
-    // Bind tools to models per agent
-    const managerModel = model.bindTools(managerTools);
-    const researchModel = model.bindTools(researchTools);
-    const planModel = model.bindTools(planTools);
-    const buildModel = model.bindTools(tools);
-    const reviewModel = model.bindTools(reviewTools);
+    const agentModels = new Map<AgentId, ChatOpenAI>();
+    const allAgentIds = [...PRIMARY_AGENT_IDS, ...SUBAGENT_IDS];
+    for (const agentId of allAgentIds) {
+        const filtered = filterToolsForAgent(tools, agentId);
+        agentModels.set(agentId, model.bindTools(filtered));
+    }
 
     /**
      * Router Node: Determines which agent should handle the request
@@ -100,8 +121,15 @@ export function createOrchestrator(config: OrchestratorConfig) {
                 messages: [new HumanMessage(`User response: ${state.humanResponse}`)],
                 humanResponse: null,
                 pendingQuestion: null,
-                currentAgent: state.resumeAgent,
+                currentAgent: state.resumeAgent as AgentId,
                 resumeAgent: null,
+                iterationCount: state.iterationCount + 1,
+            };
+        }
+
+        if (state.requestedMode && state.currentAgent !== state.requestedMode) {
+            return {
+                currentAgent: state.requestedMode as AgentId,
                 iterationCount: state.iterationCount + 1,
             };
         }
@@ -112,98 +140,37 @@ export function createOrchestrator(config: OrchestratorConfig) {
     }
 
     /**
-     * Manager Node: Coordinates specialist agents
+     * Agent Node: Runs a primary or subagent with scoped tools.
      */
-    async function managerNode(state: OrchestratorStateType) {
-        const managerMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${managerSystemPrompt}
-
-Requested mode hint: ${state.requestedMode ?? "auto"}
-${state.activeTask ? `Active task context: ${state.activeTask}` : ""}`),
-            ...state.messages,
-        ];
-
-        const response = await managerModel.invoke(managerMessages);
-        return { messages: [response], currentAgent: "manager", iterationCount: state.iterationCount + 1 };
-    }
-
-    /**
-     * Research Agent Node: Read-only codebase investigation
-     */
-    async function researchAgentNode(state: OrchestratorStateType) {
-        const researchMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${researchSystemPrompt}
+    async function agentNode(state: OrchestratorStateType, agentId: AgentId) {
+        const agentConfig = getAgentConfig(agentId);
+        const agentMessages = [
+            new SystemMessage(`${systemPrompt}\n\n${agentConfig.systemPromptAddition}
 
 Assigned task: ${state.activeTask || "No specific task assigned."}`),
             ...state.messages,
         ];
 
-        const response = await researchModel.invoke(researchMessages);
-        return { messages: [response], currentAgent: "research" };
-    }
+        const agentModel = agentModels.get(agentId) ?? model;
+        const response = await agentModel.invoke(agentMessages);
+        const hasToolCalls = "tool_calls" in response && Array.isArray(response.tool_calls) && response.tool_calls.length > 0;
+        const hasContent = response.content && 
+            (typeof response.content === 'string' ? response.content.trim().length > 0 : true);
+        
+        const updates: Partial<OrchestratorStateType> = {
+            messages: [response],
+            currentAgent: agentId,
+            iterationCount: state.iterationCount + 1,
+            // Mark as responded if agent gave text without requesting tools
+            hasResponded: !hasToolCalls && !!hasContent,
+        };
 
-    /**
-     * Plan Agent Node: Analyzes request and creates execution plan
-     * Can ask clarifying questions via ask_user tool
-     */
-    async function planAgentNode(state: OrchestratorStateType) {
-        const planMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${planSystemPrompt}
+        if (state.returnAgent && isSubagent(agentId) && !hasToolCalls) {
+            updates.currentAgent = state.returnAgent;
+            updates.returnAgent = null;
+        }
 
-IMPORTANT: After the user approves your plan, you MUST call delegate_to_build with the approved plan.
-Do NOT just respond with text - always use the delegate_to_build tool to hand off to the build agent.
-
-Assigned task: ${state.activeTask || "No specific task assigned."}`),
-            ...state.messages,
-        ];
-
-        const response = await planModel.invoke(planMessages);
-        return { messages: [response], currentAgent: "plan" };
-    }
-
-    /**
-     * Build Agent Node: Executes the approved plan
-     * Has access to all building tools
-     */
-    async function buildAgentNode(state: OrchestratorStateType) {
-        const buildMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${buildSystemPrompt}
-
-Assigned task: ${state.activeTask || "No specific task assigned."}`),
-            ...state.messages,
-        ];
-
-        const response = await buildModel.invoke(buildMessages);
-        return { messages: [response], currentAgent: "build" };
-    }
-
-    /**
-     * Review Agent Node: Validate output and identify issues
-     */
-    async function reviewAgentNode(state: OrchestratorStateType) {
-        const reviewMessages = [
-            new SystemMessage(`${systemPrompt}\n\n${reviewSystemPrompt}
-
-Assigned task: ${state.activeTask || "No specific task assigned."}`),
-            ...state.messages,
-        ];
-
-        const response = await reviewModel.invoke(reviewMessages);
-        return { messages: [response], currentAgent: "review" };
-    }
-
-    /**
-     * Chat Agent Node: Simple conversational agent
-     * For non-coding tasks
-     */
-    async function chatAgentNode(state: OrchestratorStateType) {
-        const chatMessages = [
-            new SystemMessage(systemPrompt),
-            ...state.messages,
-        ];
-
-        const response = await chatModel.invoke(chatMessages);
-        return { messages: [response], currentAgent: "chat" };
+        return updates;
     }
 
     /**
@@ -215,6 +182,47 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
 
         if (!("tool_calls" in lastMessage) || !Array.isArray(lastMessage.tool_calls)) {
             return { messages: [] };
+        }
+
+        const toolCalls = lastMessage.tool_calls as Array<{ name?: string; args?: unknown }>;
+        const signature = JSON.stringify(toolCalls.map((call) => ({ name: call.name, args: call.args })));
+        const loopCount = state.toolLoopSignature === signature ? state.toolLoopCount + 1 : 1;
+        
+        // Exact signature match detection (existing)
+        if (loopCount >= 3) {
+            return {
+                messages: [
+                    new AIMessage(
+                        "I keep repeating the same tool call and will stop to avoid a loop. Please adjust the request or provide more context.",
+                    ),
+                ],
+                loopDetected: true,
+            };
+        }
+
+        // Pattern-based loop detection: detect sequences like write_file→shell→write_file→shell
+        const currentToolNames = toolCalls.map((call) => call.name || "unknown");
+        const recentHistory = [...state.toolHistory, ...currentToolNames];
+        if (recentHistory.length >= 8) {
+            // Check for repeating 2-tool pattern in last 8 tools
+            const last8 = recentHistory.slice(-8);
+            const pattern = last8.slice(0, 2).join(",");
+            const matches = [
+                last8.slice(0, 2).join(","),
+                last8.slice(2, 4).join(","),
+                last8.slice(4, 6).join(","),
+                last8.slice(6, 8).join(","),
+            ];
+            if (matches.every((m) => m === pattern)) {
+                return {
+                    messages: [
+                        new AIMessage(
+                            `I detected a repetitive tool pattern (${pattern.replace(",", " → ")}) and will stop to avoid an endless loop. The task may have encountered an issue that requires a different approach.`,
+                        ),
+                    ],
+                    loopDetected: true,
+                };
+            }
         }
 
         // Execute tools
@@ -241,12 +249,13 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
                     : agentDelegation.task;
                 // Add a HumanMessage so the delegated agent has context to act on
                 const delegationMessage = new HumanMessage(
-                    `[Manager delegated to you]\nTask: ${agentDelegation.task}${agentDelegation.context ? `\nContext: ${agentDelegation.context}` : ''}`
+                    `[Primary agent delegated to you]\nTask: ${agentDelegation.task}${agentDelegation.context ? `\nContext: ${agentDelegation.context}` : ''}`
                 );
                 return {
                     messages: [...toolMessages, delegationMessage],
                     currentAgent: agentDelegation.agent,
                     activeTask: taskContext,
+                    returnAgent: state.currentAgent,
                 };
             }
 
@@ -269,21 +278,20 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
             }
         }
 
-        return { messages: toolMessages };
+        return {
+            messages: toolMessages,
+            toolLoopSignature: signature,
+            toolLoopCount: loopCount,
+            hasResponded: false, // Reset so agent can respond after tool execution
+            toolHistory: currentToolNames, // This will be merged by the reducer
+        };
     }
 
-    function routeAfterRouter(
-        state: OrchestratorStateType
-    ): "manager" | "research" | "plan" | "build" | "review" | "chat" {
-        if (state.currentAgent === "research") return "research";
-        if (state.currentAgent === "plan") return "plan";
-        if (state.currentAgent === "build") return "build";
-        if (state.currentAgent === "review") return "review";
-        if (state.currentAgent === "chat") return "chat";
-        return "manager";
+    function routeAfterRouter(state: OrchestratorStateType): AgentId {
+        return state.currentAgent;
     }
 
-    function afterManager(state: OrchestratorStateType): "tools" | "interrupt" | typeof END {
+    function afterAgent(state: OrchestratorStateType): "tools" | "interrupt" | typeof END | AgentId {
         const messages = state.messages;
         const lastMessage = messages[messages.length - 1];
 
@@ -295,30 +303,25 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
             return "tools";
         }
 
+        // Agent gave a text response without tool calls - we're done
+        if (state.hasResponded) {
+            return END;
+        }
+
         if (state.iterationCount > 30) {
             return END;
         }
 
+        if (state.loopDetected) {
+            return END;
+        }
+
+        if (isSubagent(state.currentAgent) && !state.returnAgent) {
+            return END;
+        }
+
+        // Only loop back if we haven't responded yet (edge case)
         return END;
-    }
-
-    function afterWorker(state: OrchestratorStateType): "tools" | "manager" | "interrupt" | typeof END {
-        const messages = state.messages;
-        const lastMessage = messages[messages.length - 1];
-
-        if (state.pendingQuestion) {
-            return "interrupt";
-        }
-
-        if (lastMessage && "tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
-            return "tools";
-        }
-
-        if (state.iterationCount > 30) {
-            return END;
-        }
-
-        return "manager";
     }
 
     function afterChat(state: OrchestratorStateType): "tools" | "interrupt" | typeof END {
@@ -338,19 +341,20 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
 
     function afterTools(
         state: OrchestratorStateType
-    ): "manager" | "research" | "plan" | "build" | "review" | "chat" | "interrupt" | typeof END {
+    ): AgentId | "interrupt" | typeof END {
         if (state.pendingQuestion) {
             return "interrupt";
         }
 
-        if (state.currentAgent === "manager") return "manager";
-        if (state.currentAgent === "research") return "research";
-        if (state.currentAgent === "plan") return "plan";
-        if (state.currentAgent === "build") return "build";
-        if (state.currentAgent === "review") return "review";
-        if (state.currentAgent === "chat") return "chat";
+        if (state.loopDetected) {
+            return END;
+        }
 
-        return END;
+        if (state.iterationCount > 30) {
+            return END;
+        }
+
+        return state.currentAgent;
     }
 
     // Interrupt node - just marks state as interrupted
@@ -363,23 +367,23 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
     // Build the graph
     const workflow = new StateGraph(OrchestratorState)
         .addNode("router", routerNode)
-        .addNode("manager", managerNode)
-        .addNode("research", researchAgentNode)
-        .addNode("plan", planAgentNode)
-        .addNode("build", buildAgentNode)
-        .addNode("review", reviewAgentNode)
-        .addNode("chat", chatAgentNode)
+        .addNode("build", (state) => agentNode(state, "build"))
+        .addNode("plan", (state) => agentNode(state, "plan"))
+        .addNode("chat", (state) => agentNode(state, "chat"))
+        .addNode("general", (state) => agentNode(state, "general"))
+        .addNode("explore", (state) => agentNode(state, "explore"))
+        .addNode("review", (state) => agentNode(state, "review"))
         .addNode("tools", processTools)
         .addNode("interrupt", interruptNode)
         .addEdge(START, "router")
-        .addConditionalEdges("router", routeAfterRouter, ["manager", "research", "plan", "build", "review", "chat"])
-        .addConditionalEdges("manager", afterManager, ["tools", "interrupt", END])
-        .addConditionalEdges("research", afterWorker, ["tools", "manager", "interrupt", END])
-        .addConditionalEdges("plan", afterWorker, ["tools", "manager", "interrupt", END])
-        .addConditionalEdges("build", afterWorker, ["tools", "manager", "interrupt", END])
-        .addConditionalEdges("review", afterWorker, ["tools", "manager", "interrupt", END])
+        .addConditionalEdges("router", routeAfterRouter, ["build", "plan", "chat", "general", "explore", "review"])
+        .addConditionalEdges("build", afterAgent, ["tools", "interrupt", END, "build", "plan", "chat", "general", "explore", "review"])
+        .addConditionalEdges("plan", afterAgent, ["tools", "interrupt", END, "build", "plan", "chat", "general", "explore", "review"])
+        .addConditionalEdges("general", afterAgent, ["tools", "interrupt", END, "build", "plan", "chat", "general", "explore", "review"])
+        .addConditionalEdges("explore", afterAgent, ["tools", "interrupt", END, "build", "plan", "chat", "general", "explore", "review"])
+        .addConditionalEdges("review", afterAgent, ["tools", "interrupt", END, "build", "plan", "chat", "general", "explore", "review"])
         .addConditionalEdges("chat", afterChat, ["tools", "interrupt", END])
-        .addConditionalEdges("tools", afterTools, ["manager", "research", "plan", "build", "review", "chat", "interrupt", END])
+        .addConditionalEdges("tools", afterTools, ["build", "plan", "chat", "general", "explore", "review", "interrupt", END])
         .addEdge("interrupt", END); // Interrupt exits the graph
 
     return workflow.compile({
@@ -400,7 +404,10 @@ export function createResumeState(
         humanResponse,
         pendingQuestion: null,
         planApproved: approved || previousState.planApproved,
-        currentAgent: previousState.resumeAgent || previousState.currentAgent,
+        toolLoopSignature: null,
+        toolLoopCount: 0,
+        loopDetected: false,
+        currentAgent: (previousState.resumeAgent || previousState.currentAgent) as AgentId,
         resumeAgent: null,
     };
 }

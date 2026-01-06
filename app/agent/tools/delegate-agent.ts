@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export type DelegateAgentPayload = {
     type: "DELEGATE_AGENT";
-    agent: "manager" | "research" | "plan" | "build" | "review" | "chat";
+    agent: "build" | "plan" | "chat" | "general" | "explore" | "review";
     task: string;
     context: string;
 };
@@ -28,11 +28,11 @@ export function createDelegateToAgentTool() {
             description: `Assign a specific task to a specialist agent.
 
 WHEN TO USE:
-- To route work to research, plan, build, review, or chat specialists
+- To route work to general, explore, review, or other primary agents when needed
 
 IMPORTANT: Provide a clear, scoped task the specialist can complete.`,
             schema: z.object({
-                agent: z.enum(["manager", "research", "plan", "build", "review", "chat"]).describe("Which specialist should handle the task"),
+                agent: z.enum(["build", "plan", "chat", "general", "explore", "review"]).describe("Which specialist should handle the task"),
                 task: z.string().describe("Clear, concise task for the specialist"),
                 context: z.string().optional().describe("Optional context or constraints for the task"),
             }),

@@ -26,7 +26,7 @@ ${steps.map((step, i) => `   ${i + 1}. ${step}`).join('\n')}
     },
     {
         name: "create_plan",
-        description: "REQUIRED FIRST STEP: Create an execution plan before doing any work. This shows the user what you're about to do.",
+        description: "Create an execution plan before doing complex work. Use when the task benefits from explicit steps and approval.",
         schema: z.object({
             goal: z.string().describe("Brief description of what you're building"),
             steps: z.array(z.string()).describe("List of steps you'll take to complete the task"),
@@ -585,6 +585,5 @@ export const createManageSandboxTool = (sandbox: Sandbox) => tool(
         }),
     }
 );
-
 
 

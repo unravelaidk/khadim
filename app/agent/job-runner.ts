@@ -30,7 +30,7 @@ import {
   type AgentJobStep,
 } from "../lib/job-manager";
 import { ensureSandbox, scheduleSandboxCleanup } from "./sandbox";
-import { getAgentConfig, MANAGER_SYSTEM_PROMPT, RESEARCH_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT } from "./agents";
+import { getAgentConfig } from "./agents";
 import type { AgentMode } from "./router";
 import { db, messages, chats } from "../lib/db";
 
@@ -116,7 +116,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
 
     const orchestratorConfig = {
       model: new ChatOpenAI({
-        model: "moonshotai/kimi-k2-thinking",
+        model: "kwaipilot/kat-coder-pro:free",
         apiKey: apiKey,
         configuration: { baseURL: "https://openrouter.ai/api/v1" },
         temperature: 0.2,
@@ -129,12 +129,14 @@ ${agentConfig.systemPromptAddition}
 ${skillsContent}
 === END USER-DEFINED SKILLS ===
 
-=== MANDATORY FIRST STEP ===
-You MUST call 'create_plan' as your VERY FIRST tool call for every request.
-=== END MANDATORY FIRST STEP ===
+=== PRIMARY / SUBAGENT MODEL ===
+- Primary agents (build/plan/chat) handle the main conversation.
+- Subagents (general/explore/review) are delegated for focused tasks via delegate_to_agent.
+- When acting as a subagent, return concise findings for the primary agent.
+=== END MODEL ===
 
 AVAILABLE TOOLS:
-- create_plan: REQUIRED FIRST - Create an execution plan
+- create_plan: Create an execution plan when needed
 - update_todo: Track progress on multi-step tasks
 - read_todo: Check your current progress
 - create_web_app: Scaffold a new web app (vite, react-router, or astro)
@@ -164,11 +166,6 @@ The sandbox will timeout automatically.
 - If the user asks to STOP or when you are fully done, call 'manage_sandbox({ action: "stop" })'
 
 Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
-      managerSystemPrompt: MANAGER_SYSTEM_PROMPT,
-      researchSystemPrompt: RESEARCH_SYSTEM_PROMPT,
-      planSystemPrompt: getAgentConfig("plan").systemPromptAddition,
-      buildSystemPrompt: getAgentConfig("build").systemPromptAddition,
-      reviewSystemPrompt: REVIEW_SYSTEM_PROMPT,
     };
 
     const app = createOrchestrator(orchestratorConfig);
@@ -179,7 +176,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         ...history,
         new HumanMessage(prompt),
       ],
-      currentAgent: (agentMode === "chat" ? "chat" : "manager") as "manager" | "research" | "plan" | "build" | "review" | "chat",
+      currentAgent: agentMode,
       requestedMode: agentMode,
     };
 
@@ -188,6 +185,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     let currentThinkingId = "";
     let thinkingContent = "";
     let finalContent = "";
+    let lastPlanOutput = "";
 
     const collectedSteps: AgentJobStep[] = [];
 
@@ -271,12 +269,17 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         if (toolName === "ask_user" && typeof output === "string") {
           const parsed = parseAskUserResponse(output);
           if (parsed) {
+            const enrichedContext = parsed.context?.trim()
+              ? parsed.context
+              : lastPlanOutput
+                ? `Plan:\n${lastPlanOutput}`
+                : "";
             await broadcast(jobId, {
               type: "ask_user",
               data: {
                 question: parsed.question,
                 options: parsed.options,
-                context: parsed.context,
+                context: enrichedContext,
                 threadId: chatId,
               },
             });
@@ -307,6 +310,9 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         let stepResult: string;
         if (toolName === "create_plan") {
           stepResult = typeof output === "string" ? output : "Plan created";
+          if (typeof output === "string") {
+            lastPlanOutput = output;
+          }
         } else {
           stepResult = typeof output === "string" ? output.slice(0, 200) : "Done";
         }
