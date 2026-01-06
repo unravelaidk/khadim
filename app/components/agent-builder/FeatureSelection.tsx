@@ -15,7 +15,6 @@ import {
   LuArrowLeft,
   LuX,
   LuPlus,
-  LuEllipsis,
   LuGamepad
 } from "react-icons/lu";
 
