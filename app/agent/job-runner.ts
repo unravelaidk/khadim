@@ -15,7 +15,8 @@ import {
   createExposePreviewTool,
   createWebAppTool,
   createSaveArtifactTool,
-  createManageSandboxTool
+  createManageSandboxTool,
+  createWebSearchTool
 } from "./tools";
 import { createAskUserTool, parseAskUserResponse } from "./tools/ask-user";
 import { createDelegateToBuildTool, parseDelegateResponse } from "./tools/delegate-build";
@@ -32,7 +33,7 @@ import {
 import { ensureSandbox, scheduleSandboxCleanup } from "./sandbox";
 import { getAgentConfig } from "./agents";
 import type { AgentMode } from "./router";
-import { db, messages, chats } from "../lib/db";
+import { db, messages, chats, artifacts } from "../lib/db";
 
 type AgentConfig = ReturnType<typeof getAgentConfig>;
 
@@ -98,6 +99,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createAskUserTool(),
       createDelegateToAgentTool(),
       createDelegateToBuildTool(),
+      createWebSearchTool(),
     ];
 
     if (sandbox) {
@@ -139,6 +141,7 @@ AVAILABLE TOOLS:
 - create_plan: Create an execution plan when needed
 - update_todo: Track progress on multi-step tasks
 - read_todo: Check your current progress
+- web_search: Search the web using DuckDuckGo for research
 - create_web_app: Scaffold a new web app (vite, react-router, or astro)
 - write_file: Write HTML/CSS/JS files
 - read_file: Read file contents
@@ -146,6 +149,11 @@ AVAILABLE TOOLS:
 - run_code: Execute TypeScript/JavaScript code
 - shell: Run shell commands
 - expose_preview: Start a web server and get a public URL
+
+WEB SEARCH:
+Use the web_search tool to research topics before creating content.
+For slide presentations, ALWAYS search first to gather accurate, current information.
+Example: web_search({ query: "AI trends 2024 statistics" })
 
 FRAMEWORK SELECTION:
 - Games/Interactive apps: type="vite"
@@ -159,6 +167,26 @@ FRAMEWORK SELECTION:
 4. expose_preview → IMMEDIATELY after build
 
 CRITICAL: The 'create_web_app' tool REQUIRES the 'type' parameter.
+
+=== SLIDE PRESENTATIONS (IMPORTANT!) ===
+When creating slides or presentations, DO NOT use web frameworks. Instead, create a simple index.html with embedded slide data.
+The HTML MUST contain a <script id="slide-data" type="application/json"> tag with slide data in this exact format:
+
+<script id="slide-data" type="application/json">
+[
+  {"id": 1, "type": "title", "title": "Slide Title", "subtitle": "Optional subtitle"},
+  {"id": 2, "type": "content", "title": "Content Slide", "bullets": ["Point 1", "Point 2"]},
+  {"id": 3, "type": "accent", "title": "Highlighted Slide", "bullets": ["Key point"]}
+]
+</script>
+
+Slide types: "title" (purple gradient), "content" (dark blue), "accent" (pink/coral).
+Each slide object has: id (number), type, title (optional), subtitle (optional), bullets (optional array).
+
+When user asks for slides/presentation/ppt:
+1. write_file index.html with the slide-data script tag
+2. DO NOT call expose_preview (slides are rendered natively, not in iframe!)
+3. The UI will detect the slide-data format and show the native slides preview automatically.
 
 === SANDBOX LIFECYCLE ===
 The sandbox will timeout automatically.
@@ -337,6 +365,25 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           }
         }
       }
+    }
+
+    let slideFileContent: string | undefined;
+    try {
+      const indexHtmlArtifact = await db.query.artifacts.findFirst({
+        where: (a, { eq, and }) => and(eq(a.chatId, chatId), eq(a.filename, "index.html")),
+      });
+      if (indexHtmlArtifact?.content?.includes('<script id="slide-data"')) {
+        slideFileContent = indexHtmlArtifact.content;
+      }
+    } catch (err) {
+      console.warn("Failed to fetch slide content:", err);
+    }
+
+    if (slideFileContent) {
+      await broadcast(jobId, { 
+        type: "slide_content", 
+        data: { fileContent: slideFileContent } 
+      });
     }
 
     await completeJob(jobId, finalContent, previewUrl);

@@ -94,9 +94,16 @@ export function AgentBuilder() {
 
         const loadedMessages: Message[] = chat.messages.map((msg: any) => {
           let fileContent: string | undefined;
-          if (msg.previewUrl && chat.artifacts) {
-            const indexHtml = chat.artifacts.find((a: any) => a.filename === "index.html");
-            if (indexHtml) {
+          
+          // Get index.html artifact if available
+          const indexHtml = chat.artifacts?.find((a: any) => a.filename === "index.html");
+          
+          if (indexHtml) {
+            // Check if it's slide content (has slide-data script tag)
+            const isSlideContent = indexHtml.content?.includes('<script id="slide-data"');
+            
+            // Populate fileContent if there's a previewUrl OR if it's slide content
+            if (msg.previewUrl || isSlideContent) {
               fileContent = indexHtml.content;
             }
           }

@@ -586,4 +586,96 @@ export const createManageSandboxTool = (sandbox: Sandbox) => tool(
     }
 );
 
-
+export const createWebSearchTool = () => tool(
+    async ({ query, numResults = 5 }: { query: string; numResults?: number }) => {
+        try {
+            // Use DuckDuckGo HTML search (more reliable than instant answer API)
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+            
+            const response = await fetch(searchUrl, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+            });
+            
+            if (!response.ok) {
+                return `Search failed with status: ${response.status}`;
+            }
+            
+            const html = await response.text();
+            
+            // Parse results from HTML
+            const results: Array<{ title: string; snippet: string; url: string }> = [];
+            
+            // Match result blocks - DuckDuckGo HTML format
+            const resultRegex = /<a class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+            let match;
+            
+            while ((match = resultRegex.exec(html)) !== null && results.length < numResults) {
+                const url = match[1];
+                const title = match[2].trim();
+                const snippet = match[3]
+                    .replace(/<[^>]+>/g, '') // Remove HTML tags
+                    .replace(/&quot;/g, '"')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&#x27;/g, "'")
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                
+                if (title && snippet) {
+                    results.push({ title, snippet, url });
+                }
+            }
+            
+            // Fallback: try alternative parsing pattern
+            if (results.length === 0) {
+                const altRegex = /<div class="result[^"]*"[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+                while ((match = altRegex.exec(html)) !== null && results.length < numResults) {
+                    const url = match[1];
+                    const snippet = match[2]
+                        .replace(/<[^>]+>/g, '')
+                        .replace(/&[^;]+;/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    
+                    if (snippet.length > 20) {
+                        results.push({ 
+                            title: snippet.slice(0, 60) + (snippet.length > 60 ? '...' : ''),
+                            snippet, 
+                            url 
+                        });
+                    }
+                }
+            }
+            
+            if (results.length === 0) {
+                return `🔍 No results found for: "${query}"\n\nTry rephrasing your search or using different keywords.`;
+            }
+            
+            let output = `🔍 WEB SEARCH RESULTS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nQuery: "${query}"\n\n`;
+            
+            results.forEach((r, i) => {
+                output += `${i + 1}. ${r.title}\n`;
+                output += `   ${r.snippet}\n`;
+                output += `   🔗 ${r.url}\n\n`;
+            });
+            
+            output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            output += `Found ${results.length} results. Use this information to inform your response.`;
+            
+            return output;
+        } catch (error) {
+            return `Search error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "web_search",
+        description: "Search the web using DuckDuckGo to find current information. Use this to research topics, find facts for slide content, get up-to-date data, or verify information. Returns titles, snippets, and URLs.",
+        schema: z.object({
+            query: z.string().describe("The search query - be specific for better results"),
+            numResults: z.number().optional().default(5).describe("Number of results to return (default: 5, max: 10)"),
+        }),
+    }
+);

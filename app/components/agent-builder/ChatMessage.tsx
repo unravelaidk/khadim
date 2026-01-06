@@ -23,6 +23,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const hasContent = message.content.trim().length > 0;
   const hasPreviewUrl = !!message.previewUrl;
   
+  const hasSlideContent = message.fileContent?.includes('<script id="slide-data"') ?? false;
+  const shouldShowArtifact = hasPreviewUrl || hasSlideContent;
+  
   // Debug logging
   if (!isUser) {
     console.log("[ChatMessage] Render - Steps:", steps.length, "hasSteps:", hasSteps, "hasContent:", hasContent);
@@ -52,7 +55,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </div>
         )}
 
-        {!isUser && hasPreviewUrl && (
+        {!isUser && shouldShowArtifact && (
           <FileArtifact 
             filename="index.html" 
             content={message.fileContent || "// Code content not loaded for this version"} 
@@ -60,7 +63,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           />
         )}
 
-        {!hasContent && hasSteps && !hasPreviewUrl && (
+        {!hasContent && hasSteps && !shouldShowArtifact && (
           <div className="text-sm text-gb-text-muted italic">
             Working on it...
           </div>
