@@ -100,6 +100,21 @@ export function useAgentStream({
                 setActiveAgent(null);
                 setJobId(null);
                 
+                // Extract fileContent from write_file steps (for slides preview)
+                let fileContent: string | undefined;
+                const indexHtmlStep = steps.find(
+                  s => s.tool === "write_file" && 
+                       s.filename === "index.html" && 
+                       s.fileContent
+                );
+                if (indexHtmlStep?.fileContent) {
+                  // Check if it's slide content or has a previewUrl
+                  const isSlideContent = indexHtmlStep.fileContent.includes('<script id="slide-data"');
+                  if (isSlideContent || event.previewUrl) {
+                    fileContent = indexHtmlStep.fileContent;
+                  }
+                }
+                
                 // Final update with all data
                 const msgPreviewUrl = event.previewUrl as string | undefined;
                 setMessages(prev =>
@@ -109,7 +124,8 @@ export function useAgentStream({
                           ...msg, 
                           content: streamedText, 
                           thinkingSteps: [...steps], // Spread to create new array ref
-                          previewUrl: msgPreviewUrl 
+                          previewUrl: msgPreviewUrl,
+                          fileContent 
                         }
                       : msg
                   )
