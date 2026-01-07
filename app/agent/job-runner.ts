@@ -67,11 +67,17 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   let sandbox: Sandbox | null = null;
   let previewUrl: string | null = null;
   let sandboxId: string | null = null;
+  let sandboxInitPromise: Promise<void> | null = null;
 
-  try {
-    const needsSandbox = agentMode !== "chat" || !!existingSandboxId;
+  const ensureSandboxInitialized = async (): Promise<Sandbox> => {
+    if (sandbox) return sandbox;
+    
+    if (sandboxInitPromise) {
+      await sandboxInitPromise;
+      return sandbox!;
+    }
 
-    if (needsSandbox) {
+    sandboxInitPromise = (async () => {
       const sandboxStepId = "sandbox";
       await addStep(jobId, { id: sandboxStepId, title: "Initializing sandbox...", status: "running" });
       await broadcast(jobId, { type: "step_start", data: { id: sandboxStepId, title: "Initializing sandbox..." } });
@@ -88,10 +94,27 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
 
       await updateStep(jobId, sandboxStepId, { status: "complete", result });
       await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result } });
-
       await broadcast(jobId, { type: "sandbox_info", data: { sandboxId } });
-    }
+    })();
 
+    await sandboxInitPromise;
+    return sandbox!;
+  };
+
+  // Create lazy wrappers for sandbox-dependent tools
+  // These tools will initialize the sandbox on first use
+  const createLazyTool = <T extends (...args: any[]) => any>(
+    toolFactory: (sandbox: Sandbox, ...extraArgs: any[]) => T,
+    ...extraArgs: any[]
+  ) => {
+    return async (...toolArgs: Parameters<T>): Promise<ReturnType<T>> => {
+      const sb = await ensureSandboxInitialized();
+      const tool = toolFactory(sb, ...extraArgs);
+      return tool(...toolArgs);
+    };
+  };
+
+  try {
     const allTools: any[] = [
       createPlanTool(),
       createUpdateTodoTool(chatId),
@@ -102,23 +125,57 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createWebSearchTool(),
     ];
 
-    if (sandbox) {
-      allTools.push(
-        createRunCodeTool(sandbox),
-        createReadFileTool(sandbox),
-        createListFilesTool(sandbox),
-        createWriteFileTool(sandbox, chatId),
-        createShellTool(sandbox),
-        createExposePreviewTool(sandbox, (url) => { previewUrl = url; }),
-        createWebAppTool(sandbox, chatId),
-        createSaveArtifactTool(sandbox, chatId),
-        createManageSandboxTool(sandbox)
-      );
-    }
+    // Add sandbox-dependent tools that will lazily initialize sandbox when first called
+    // We always add them, but they trigger sandbox creation on first use
+    const lazySandboxGetter = async () => ensureSandboxInitialized();
+    
+    // Create tools with lazy sandbox - we need to create them with a sandbox proxy
+    // For now, we'll create them upfront if there's an existing sandbox, otherwise create a placeholder
+    // Actually, we need to refactor the tool creation to be lazy
+    
+    // Simpler approach: Always add the tools, but they'll use the lazy getter
+    // The trick is that createXxxTool functions return tools that capture `sandbox` in closure
+    // We need a different approach - create tools that lazily get sandbox
+    
+    // For now, let's use a simpler approach: create a proxy sandbox that triggers init
+    const getSandboxTool = <T>(
+      createFn: (sandbox: Sandbox, ...args: any[]) => T,
+      ...args: any[]
+    ): T => {
+      // Create a lazy tool that initializes sandbox on first invoke
+      const originalTool = createFn(null as any, ...args);
+      if (!originalTool || typeof originalTool !== 'object' || !('invoke' in originalTool)) {
+        return originalTool;
+      }
+      
+      // Wrap the invoke method
+      const tool = originalTool as any;
+      const originalInvoke = tool.invoke.bind(tool);
+      tool.invoke = async (...invokeArgs: any[]) => {
+        await ensureSandboxInitialized();
+        // Re-create the tool with the actual sandbox
+        const realTool = createFn(sandbox!, ...args) as any;
+        return realTool.invoke(...invokeArgs);
+      };
+      return tool;
+    };
+
+    // Add sandbox-dependent tools with lazy initialization
+    allTools.push(
+      getSandboxTool(createRunCodeTool),
+      getSandboxTool(createReadFileTool),
+      getSandboxTool(createListFilesTool),
+      getSandboxTool(createWriteFileTool, chatId),
+      getSandboxTool(createShellTool),
+      getSandboxTool(createExposePreviewTool, (url: string) => { previewUrl = url; }),
+      getSandboxTool(createWebAppTool, chatId),
+      getSandboxTool(createSaveArtifactTool, chatId),
+      getSandboxTool(createManageSandboxTool)
+    );
 
     const orchestratorConfig = {
       model: new ChatOpenAI({
-        model: "kwaipilot/kat-coder-pro:free",
+        model: "z-ai/glm-4.7",
         apiKey: apiKey,
         configuration: { baseURL: "https://openrouter.ai/api/v1" },
         temperature: 0.2,
@@ -216,6 +273,9 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     let lastPlanOutput = "";
 
     const collectedSteps: AgentJobStep[] = [];
+    
+    // Track file writes for real-time display
+    const pendingFileWrites = new Map<string, { path: string; content: string }>();
 
     const eventStream = await app.streamEvents(inputs, {
       version: "v2",
@@ -271,23 +331,46 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
       else if (eventType === "on_tool_start") {
         stepCounter++;
         const toolName = name || "Tool";
-        const toolArgs = data?.input || {};
+        const toolArgs = (data?.input || {}) as Record<string, unknown>;
         const stepId = `tool-${stepCounter}`;
 
         let title = toolName;
+        let filePath: string | undefined;
+        let fileContent: string | undefined;
+        
         if (toolName === "create_plan") title = "📋 Creating execution plan";
         else if (toolName === "run_code") title = "Executing code";
         else if (toolName === "read_file") title = `Reading ${toolArgs.path || "file"}`;
         else if (toolName === "list_files") title = `Listing ${toolArgs.path || "files"}`;
-        else if (toolName === "write_file") title = `Writing ${toolArgs.path || "file"}`;
+        else if (toolName === "write_file") {
+          filePath = typeof toolArgs.path === 'string' ? toolArgs.path : undefined;
+          fileContent = typeof toolArgs.content === 'string' ? toolArgs.content : undefined;
+          title = `Writing ${filePath || "file"}`;
+          // Store file content for step_complete event
+          if (filePath && fileContent) {
+            pendingFileWrites.set(stepId, { path: filePath, content: fileContent });
+          }
+        }
         else if (toolName === "expose_preview") title = "Creating live preview";
         else if (toolName === "create_web_app") title = `Scaffolding ${toolArgs.type} app`;
         else if (toolName === "delegate_to_agent") title = `Delegating to ${toolArgs.agent || "agent"}`;
 
+        // Include file content in broadcast for write_file
         const step: AgentJobStep = { id: stepId, title, status: "running", tool: toolName };
         collectedSteps.push(step);
         await addStep(jobId, step);
-        await broadcast(jobId, { type: "step_start", data: { id: stepId, title, tool: toolName, args: toolArgs } });
+        await broadcast(jobId, { 
+          type: "step_start", 
+          data: { 
+            id: stepId, 
+            title, 
+            tool: toolName, 
+            args: toolArgs,
+            // Include file info for write_file tool
+            filename: filePath,
+            fileContent: fileContent,
+          } 
+        });
       }
       else if (eventType === "on_tool_end") {
         const stepId = `tool-${stepCounter}`;
@@ -325,7 +408,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
                 plan: delegation.plan,
                 context: delegation.context,
                 threadId: chatId,
-                sandboxId: sandbox?.id,
+                sandboxId: sandboxId,
               },
             });
             await updateStep(jobId, stepId, { status: "complete", result: "🔄 Delegating to Build agent..." });
@@ -346,12 +429,34 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         }
         
         await updateStep(jobId, stepId, { status: "complete", result: stepResult });
-        await broadcast(jobId, { type: "step_complete", data: { id: stepId, result: stepResult } });
+        
+        // Include file info in step_complete for write_file tool
+        const fileInfo = pendingFileWrites.get(stepId);
+        await broadcast(jobId, { 
+          type: "step_complete", 
+          data: { 
+            id: stepId, 
+            result: stepResult,
+            tool: toolName,
+            filename: fileInfo?.path,
+            fileContent: fileInfo?.content,
+          } 
+        });
+        
+        // Clean up tracked file write
+        if (fileInfo) {
+          pendingFileWrites.delete(stepId);
+        }
 
         const toolStep = collectedSteps.find(s => s.id === stepId);
         if (toolStep) {
           toolStep.status = "complete";
           toolStep.result = stepResult;
+          // Store file info in the step for persistence
+          if (fileInfo) {
+            (toolStep as any).filename = fileInfo.path;
+            (toolStep as any).fileContent = fileInfo.content;
+          }
         }
       }
       else if (eventType === "on_chain_end" && name === "LangGraph") {
