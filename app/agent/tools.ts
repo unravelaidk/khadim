@@ -2,11 +2,16 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import * as pathMod from "node:path";
 import { Sandbox } from "@deno/sandbox";
-import { db, artifacts } from "../lib/db";
+import { db, artifacts, projects } from "../lib/db";
 import { eq, and } from "drizzle-orm";
+import { createVersionSnapshot } from "../lib/versions";
 
 // In-memory todo storage per chat session
 const todoStorage = new Map<string, Array<{ task: string; status: "pending" | "in_progress" | "done" }>>();
+
+// Track last snapshot time per chat to debounce snapshots (avoid creating too many)
+const lastSnapshotTime = new Map<string, number>();
+const SNAPSHOT_DEBOUNCE_MS = 30000; // 30 seconds between auto-snapshots
 
 // Planning tool - no sandbox needed, just returns the plan for visibility
 export const createPlanTool = () => tool(
@@ -203,6 +208,17 @@ export const createWriteFileTool = (sandbox: Sandbox, chatId?: string) => tool(
                     filename: path,
                     content,
                 });
+
+                // Auto-snapshot with debouncing
+                const now = Date.now();
+                const lastSnapshot = lastSnapshotTime.get(chatId) || 0;
+                if (now - lastSnapshot > SNAPSHOT_DEBOUNCE_MS) {
+                    lastSnapshotTime.set(chatId, now);
+                    // Fire and forget - don't block on snapshot creation
+                    createVersionSnapshot(chatId, `Auto-save: ${path}`).catch(err => {
+                        console.warn("Failed to create auto-snapshot:", err);
+                    });
+                }
             }
 
             return `Successfully wrote ${content.length} bytes to ${path}`;
@@ -452,7 +468,33 @@ Correct usage:
                     }
                 } catch (syncErr) {
                     console.error("Failed to sync artifacts after app creation:", syncErr);
-                    // Don't fail the tool call if sync fails, but log it
+                }
+
+                try {
+                    const devPort = type === "astro" ? 4321 : 5173;
+                    const buildDir = type === "react-router" ? `${name}/build/client` : `${name}/dist`;
+
+                    await db.insert(projects).values({
+                        chatId,
+                        projectType: type,
+                        projectName: name,
+                        devCommand: "npm run dev",
+                        devPort,
+                        buildDir,
+                    }).onConflictDoUpdate({
+                        target: projects.chatId,
+                        set: {
+                            projectType: type,
+                            projectName: name,
+                            devCommand: "npm run dev",
+                            devPort,
+                            buildDir,
+                            updatedAt: new Date(),
+                        }
+                    });
+                    console.log(`Saved project metadata for chat ${chatId}: ${type} app "${name}"`);
+                } catch (metaErr) {
+                    console.error("Failed to save project metadata:", metaErr);
                 }
             }
 

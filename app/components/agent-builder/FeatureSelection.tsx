@@ -15,7 +15,22 @@ import {
   LuArrowLeft,
   LuX,
   LuPlus,
-  LuGamepad
+  LuGamepad,
+  LuTarget,
+  LuSquare,
+  LuCircle,
+  LuTriangle,
+  LuZap,
+  LuRocket,
+  LuGrid3X3,
+  LuFlag,
+  LuCrosshair,
+  LuDiamond,
+  LuCpu,
+  LuChartPie,
+  LuUsers,
+  LuPackage,
+  LuBrain
 } from "react-icons/lu";
 
 interface FeatureSelectionProps {
@@ -48,23 +63,23 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
 
   const categoryExamples: Record<string, Array<{ label: string, prompt: string, icon: React.ReactNode }>> = {
     "games": [
-      { label: "Flappy Bird", prompt: "Create a Flappy Bird style game using React and Canvas with gravity, lift on tap/space, randomized pipes, score tracking, and a restart flow", icon: "🐦" },
-      { label: "Snake", prompt: "Build a classic Snake game with keyboard controls, increasing speed over time, pause/resume, and a score + high score display", icon: "🐍" },
-      { label: "Pong", prompt: "Develop a Pong game with one-player AI, adjustable difficulty, paddle spin on angled hits, and a best-of-5 match UI", icon: "🏓" },
-      { label: "Space Invaders", prompt: "Create a Space Invaders style shooter with enemy waves, shields, player lives, sound toggles, and a game over screen", icon: "👾" },
-      { label: "Brick Breaker", prompt: "Make a Brick Breaker game with multiple levels, power-ups, ball speed changes, and a simple level select", icon: "🧱" },
-      { label: "Asteroids", prompt: "Build an Asteroids game with ship rotation/thrust, inertia physics, asteroid splitting, and a score multiplier for streaks", icon: "☄️" },
-      { label: "Tetris", prompt: "Create a Tetris clone with 7-bag randomizer, ghost piece, hold queue, line-clear scoring, and level progression", icon: "🧩" },
-      { label: "Platformer", prompt: "Design a 2D platformer with tile collisions, double-jump, moving platforms, coins to collect, and a finish flag", icon: "🏁" },
-      { label: "Top-Down Shooter", prompt: "Build a top-down shooter with WASD movement, aim cursor, enemy spawners, weapon upgrades, and a survival timer", icon: "🔫" },
-      { label: "Match-3 Puzzle", prompt: "Create a match-3 puzzle with swap validation, cascading matches, combo bonuses, and a moves-limited objective", icon: "💎" },
+      { label: "Flappy Bird", prompt: "Create a Flappy Bird style game using React and Canvas with gravity, lift on tap/space, randomized pipes, score tracking, and a restart flow", icon: <LuTarget className="w-4 h-4" /> },
+      { label: "Snake", prompt: "Build a classic Snake game with keyboard controls, increasing speed over time, pause/resume, and a score + high score display", icon: <LuSquare className="w-4 h-4" /> },
+      { label: "Pong", prompt: "Develop a Pong game with one-player AI, adjustable difficulty, paddle spin on angled hits, and a best-of-5 match UI", icon: <LuCircle className="w-4 h-4" /> },
+      { label: "Space Invaders", prompt: "Create a Space Invaders style shooter with enemy waves, shields, player lives, sound toggles, and a game over screen", icon: <LuZap className="w-4 h-4" /> },
+      { label: "Brick Breaker", prompt: "Make a Brick Breaker game with multiple levels, power-ups, ball speed changes, and a simple level select", icon: <LuGrid3X3 className="w-4 h-4" /> },
+      { label: "Asteroids", prompt: "Build an Asteroids game with ship rotation/thrust, inertia physics, asteroid splitting, and a score multiplier for streaks", icon: <LuRocket className="w-4 h-4" /> },
+      { label: "Tetris", prompt: "Create a Tetris clone with 7-bag randomizer, ghost piece, hold queue, line-clear scoring, and level progression", icon: <LuTriangle className="w-4 h-4" /> },
+      { label: "Platformer", prompt: "Design a 2D platformer with tile collisions, double-jump, moving platforms, coins to collect, and a finish flag", icon: <LuFlag className="w-4 h-4" /> },
+      { label: "Top-Down Shooter", prompt: "Build a top-down shooter with WASD movement, aim cursor, enemy spawners, weapon upgrades, and a survival timer", icon: <LuCrosshair className="w-4 h-4" /> },
+      { label: "Match-3 Puzzle", prompt: "Create a match-3 puzzle with swap validation, cascading matches, combo bonuses, and a moves-limited objective", icon: <LuDiamond className="w-4 h-4" /> },
     ],
     "slides": [
-      { label: "AI & Work", prompt: "Create a presentation on the impact of AI on the future of work, covering automation, job displacement, new job creation, and the need for reskilling. Keep it engaging and informative with clear visuals and concise text.", icon: "🤖" },
-      { label: "Startup Pitch", prompt: "Build a 10-slide startup pitch deck with problem, solution, market size, product demo, business model, traction, go-to-market, competition, team, and funding ask. Use bold visuals and minimal text.", icon: "🚀" },
-      { label: "Quarterly Results", prompt: "Design a quarterly business review deck with KPIs, revenue breakdown, growth highlights, challenges, next-quarter priorities, and a clean data-visual style.", icon: "📊" },
-      { label: "Workshop Outline", prompt: "Create a workshop slide deck with agenda, learning goals, key concepts, interactive exercises, and a wrap-up with action items. Use friendly icons and callouts.", icon: "🧠" },
-      { label: "Product Launch", prompt: "Build a product launch presentation with the story, key features, target users, pricing tiers, timeline, and a clear call-to-action. Include comparison and testimonial slides.", icon: "📣" },
+      { label: "AI & Work", prompt: "Create a presentation on the impact of AI on the future of work, covering automation, job displacement, new job creation, and the need for reskilling. Keep it engaging and informative with clear visuals and concise text.", icon: <LuCpu className="w-4 h-4" /> },
+      { label: "Startup Pitch", prompt: "Build a 10-slide startup pitch deck with problem, solution, market size, product demo, business model, traction, go-to-market, competition, team, and funding ask. Use bold visuals and minimal text.", icon: <LuRocket className="w-4 h-4" /> },
+      { label: "Quarterly Results", prompt: "Design a quarterly business review deck with KPIs, revenue breakdown, growth highlights, challenges, next-quarter priorities, and a clean data-visual style.", icon: <LuChartPie className="w-4 h-4" /> },
+      { label: "Workshop Outline", prompt: "Create a workshop slide deck with agenda, learning goals, key concepts, interactive exercises, and a wrap-up with action items. Use friendly icons and callouts.", icon: <LuBrain className="w-4 h-4" /> },
+      { label: "Product Launch", prompt: "Build a product launch presentation with the story, key features, target users, pricing tiers, timeline, and a clear call-to-action. Include comparison and testimonial slides.", icon: <LuPackage className="w-4 h-4" /> },
     ]
   };
 

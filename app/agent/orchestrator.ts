@@ -200,9 +200,18 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
             };
         }
 
-        // Pattern-based loop detection: detect sequences like write_file→shell→write_file→shell
-        const currentToolNames = toolCalls.map((call) => call.name || "unknown");
-        const recentHistory = [...state.toolHistory, ...currentToolNames];
+        // Pattern-based loop detection: detect sequences like write_file(same)→shell(same)→write_file(same)→shell(same)
+        // Include first argument in signature to avoid false positives when writing different files
+        const currentToolSignatures = toolCalls.map((call) => {
+            const name = call.name || "unknown";
+            // For write_file, include the path; for shell, include the command
+            const args = call.args as Record<string, unknown> | undefined;
+            const argKey = args?.path || args?.command || args?.filename || "";
+            // Only include first 50 chars of arg to keep signature manageable
+            const truncatedArg = String(argKey).slice(0, 50);
+            return `${name}:${truncatedArg}`;
+        });
+        const recentHistory = [...state.toolHistory, ...currentToolSignatures];
         if (recentHistory.length >= 8) {
             // Check for repeating 2-tool pattern in last 8 tools
             const last8 = recentHistory.slice(-8);
@@ -214,10 +223,12 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
                 last8.slice(6, 8).join(","),
             ];
             if (matches.every((m) => m === pattern)) {
+                // Extract just tool names for the error message
+                const toolNames = pattern.split(",").map(s => s.split(":")[0]).join(" → ");
                 return {
                     messages: [
                         new AIMessage(
-                            `I detected a repetitive tool pattern (${pattern.replace(",", " → ")}) and will stop to avoid an endless loop. The task may have encountered an issue that requires a different approach.`,
+                            `I detected a repetitive tool pattern (${toolNames}) with the same arguments and will stop to avoid an endless loop. The task may have encountered an issue that requires a different approach.`,
                         ),
                     ],
                     loopDetected: true,
@@ -283,7 +294,7 @@ Assigned task: ${state.activeTask || "No specific task assigned."}`),
             toolLoopSignature: signature,
             toolLoopCount: loopCount,
             hasResponded: false, // Reset so agent can respond after tool execution
-            toolHistory: currentToolNames, // This will be merged by the reducer
+            toolHistory: currentToolSignatures, // This will be merged by the reducer
         };
     }
 

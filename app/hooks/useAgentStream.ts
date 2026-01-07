@@ -67,8 +67,9 @@ export function useAgentStream({
                     status: "running",
                     content: "",
                     tool: event.tool,
-                    filename: event.args?.path,
-                    fileContent: event.args?.content,
+                    // File info from write_file tool - check both direct props and args
+                    filename: event.filename || event.args?.path,
+                    fileContent: event.fileContent || event.args?.content,
                   });
                 }
               } else if (event.type === "step_update") {
@@ -84,7 +85,10 @@ export function useAgentStream({
                   steps[stepIndex] = { 
                     ...steps[stepIndex], 
                     status: "complete", 
-                    result: event.result ?? steps[stepIndex].result 
+                    result: event.result ?? steps[stepIndex].result,
+                    // Also include file info on complete (for cases where step_start didn't have it)
+                    filename: steps[stepIndex].filename || event.filename,
+                    fileContent: steps[stepIndex].fileContent || event.fileContent,
                   };
                 }
               } else if (event.type === "text_delta") {

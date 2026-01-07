@@ -18,7 +18,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
         kind: "primary",
         description: "Implement changes and execute tasks with full tool access.",
         allowedTools: "*",
-        temperature: 0.3,
+        temperature: 0.6,
         systemPromptAddition: `
 === BUILD MODE (PRIMARY) ===
 You are the primary BUILD agent with full access to all tools.
@@ -50,7 +50,7 @@ COMPLETION RULES:
             "delegate_to_agent",
             "delegate_to_build",
         ],
-        temperature: 0.1,
+        temperature: 0.4,
         systemPromptAddition: `
 === PLAN MODE (PRIMARY, READ-ONLY) ===
 You are the primary PLANNING agent. Your job is to:

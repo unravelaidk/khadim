@@ -1,7 +1,97 @@
 import type { ActionFunctionArgs } from "react-router";
 import { Sandbox } from "@deno/sandbox";
-import { db, artifacts } from "../lib/db";
+import { db, artifacts, projects } from "../lib/db";
 import { eq } from "drizzle-orm";
+
+// Helper: Start static Deno file server
+async function startStaticServer(sandbox: Sandbox, root: string, port: number): Promise<void> {
+  const serverCode = `
+    import { serveDir } from "jsr:@std/http/file-server";
+    Deno.serve({ port: ${port} }, (req) => serveDir(req, { fsRoot: "${root}" }));
+  `;
+  await sandbox.writeTextFile("_server.ts", serverCode);
+  sandbox.spawn("deno", {
+    args: ["run", "-A", "_server.ts"],
+    stdout: "null",
+    stderr: "null",
+  });
+}
+
+// Helper: Start npm dev server for React/Vite/Astro projects
+async function startDevServer(
+  sandbox: Sandbox, 
+  projectName: string, 
+  devCommand: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Run npm install first
+    console.log(`Running npm install in ${projectName}...`);
+    const installChild = await sandbox.spawn("sh", {
+      args: ["-c", `cd ${projectName} && npm install`],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    
+    let installOutput = "";
+    if (installChild.stdout) {
+      const reader = installChild.stdout.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        installOutput += new TextDecoder().decode(value);
+      }
+    }
+    if (installChild.stderr) {
+      const reader = installChild.stderr.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        installOutput += new TextDecoder().decode(value);
+      }
+    }
+    
+    const installStatus = await installChild.status;
+    if (installStatus.code !== 0) {
+      console.error(`npm install failed: ${installOutput}`);
+      return { success: false, error: `npm install failed: ${installOutput.slice(0, 500)}` };
+    }
+    console.log(`npm install completed successfully`);
+    
+    // Start the dev server in background
+    console.log(`Starting dev server: cd ${projectName} && ${devCommand}`);
+    sandbox.spawn("sh", {
+      args: ["-c", `cd ${projectName} && ${devCommand}`],
+      stdout: "null",
+      stderr: "null",
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error(`Failed to start dev server:`, error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// Helper: Wait for server to be ready
+async function waitForServer(url: string, maxRetries: number = 30, delayMs: number = 500): Promise<boolean> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (res.ok || res.status === 304) {
+        console.log(`Server ready at ${url} after ${i + 1} attempts`);
+        return true;
+      }
+    } catch {
+      // Server not ready yet
+    }
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+  return false;
+}
 
 // POST /api/sandbox/connect - Connect to existing sandbox or create new
 export async function action({ request }: ActionFunctionArgs) {
@@ -19,100 +109,122 @@ export async function action({ request }: ActionFunctionArgs) {
     let isNewSession = false;
 
     if (sandboxId) {
-
       try {
         sandbox = await Sandbox.connect({ id: sandboxId });
         newSandboxId = sandboxId;
       } catch {
-
-        sandbox = await Sandbox.create({ lifetime: "10m" });
+        sandbox = await Sandbox.create({ lifetime: "15m" }); // Longer lifetime for npm install
         newSandboxId = sandbox.id;
         isNewSession = true;
       }
     } else {
-
-      sandbox = await Sandbox.create({ lifetime: "5m" });
+      sandbox = await Sandbox.create({ lifetime: "15m" });
       newSandboxId = sandbox.id;
       isNewSession = true;
     }
 
     let previewUrl: string | null = null;
+    let restorationStatus: "none" | "static" | "dev_server" | "failed" = "none";
+    let restorationError: string | undefined;
 
-    if (chatId) {
+    if (chatId && isNewSession) {
+      // 1. Restore all artifacts first
       const chatArtifacts = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId));
-
+      
       if (chatArtifacts.length > 0) {
-        let hasIndexHtml = false;
-
-        // Restore artifacts if new session
-        if (isNewSession) {
-          console.log(`Restoring ${chatArtifacts.length} artifacts for chat ${chatId} to sandbox ${newSandboxId}`);
-          for (const artifact of chatArtifacts) {
+        console.log(`Restoring ${chatArtifacts.length} artifacts for chat ${chatId}`);
+        
+        for (const artifact of chatArtifacts) {
+          try {
+            // Create parent directories if needed
+            const dir = artifact.filename.split("/").slice(0, -1).join("/");
+            if (dir) {
+              await sandbox.spawn("mkdir", { args: ["-p", dir] });
+            }
             await sandbox.writeTextFile(artifact.filename, artifact.content);
-            if (artifact.filename === "index.html") hasIndexHtml = true;
+          } catch (e) {
+            console.warn(`Failed to restore artifact ${artifact.filename}:`, e);
+          }
+        }
+        
+        // 2. Check if we have project metadata
+        const projectResult = await db.select().from(projects).where(eq(projects.chatId, chatId)).limit(1);
+        const project = projectResult[0];
+        
+        if (project && project.projectType && project.projectName) {
+          // We have a framework project (vite, react-router, astro)
+          console.log(`Detected ${project.projectType} project: ${project.projectName}`);
+          
+          const devResult = await startDevServer(
+            sandbox, 
+            project.projectName, 
+            project.devCommand || "npm run dev"
+          );
+          
+          if (devResult.success) {
+            // Wait a bit for dev server to start
+            await new Promise(r => setTimeout(r, 3000));
+            
+            const port = project.devPort || 5173;
+            try {
+              previewUrl = await sandbox.exposeHttp({ port });
+              
+              // Wait for server to be responsive
+              const isReady = await waitForServer(previewUrl, 20, 500);
+              if (isReady) {
+                restorationStatus = "dev_server";
+                console.log(`Dev server ready at ${previewUrl}`);
+              } else {
+                console.warn(`Dev server exposed but not responding yet at ${previewUrl}`);
+                restorationStatus = "dev_server"; // Still return the URL
+              }
+            } catch (e) {
+              console.error(`Failed to expose dev server:`, e);
+              restorationStatus = "failed";
+              restorationError = "Failed to expose dev server port";
+            }
+          } else {
+            restorationStatus = "failed";
+            restorationError = devResult.error;
           }
         } else {
-             // For existing sessions, check if we expect an index.html
-             hasIndexHtml = chatArtifacts.some(a => a.filename === "index.html");
+          // Check for static HTML project
+          const hasIndexHtml = chatArtifacts.some(a => a.filename === "index.html");
+          
+          if (hasIndexHtml) {
+            console.log(`Detected static HTML project`);
+            await startStaticServer(sandbox, ".", 8000);
+            await new Promise(r => setTimeout(r, 500));
+            
+            try {
+              previewUrl = await sandbox.exposeHttp({ port: 8000 });
+              const isReady = await waitForServer(previewUrl, 10, 200);
+              restorationStatus = isReady ? "static" : "failed";
+            } catch (e) {
+              console.error(`Failed to start static server:`, e);
+              restorationStatus = "failed";
+              restorationError = "Failed to start static server";
+            }
+          }
         }
-
-        // ALWAYS attempt to ensure server is running if we have index.html
-        if (hasIndexHtml) {
-            try {
-              const port = 8000;
-              const serverCode = `
-                  import { serveDir } from "jsr:@std/http/file-server";
-                  Deno.serve({ port: ${port} }, (req) => serveDir(req, { fsRoot: "." }));
-                `;
-              
-              // Only write server file if new session to avoid overwriting running server (though benign)
-              if (isNewSession) {
-                  await sandbox.writeTextFile("_server.ts", serverCode);
-              }
-
-              // Try to start server. If already running, this spawns a process that will fail fast.
-              // Note: sandbox.spawn doesn't throw on non-zero exit, we check status.
-              // We just fire and forget here essentially, but we can verify via exposeHttp.
-              sandbox.spawn("deno", {
-                args: ["run", "-A", "_server.ts"],
-                stdout: "null",
-                stderr: "null",
-              });
-            } catch (e) {
-              console.error("Failed to start server (might be already running)", e);
-            }
-
-            try {
-                // Give it a tiny bit to start if it was just spawned
-                if (isNewSession) await new Promise(r => setTimeout(r, 500));
-
-                previewUrl = await sandbox.exposeHttp({ port: 8000 });
-
-                // Check responsiveness
-                let retries = isNewSession ? 20 : 5; // Fewer retries for existing session
-                while (retries > 0) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 1000); // 1s timeout
-                    const res = await fetch(previewUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId);
-
-                    if (res.ok) {
-                    console.log(`Preview ready: ${previewUrl}`);
-                    break;
-                    }
-                } catch {
-                    // Ignore error
-                }
-                
-                // If it's an existing session and it fails immediately, it might just be loading. 
-                // But we don't want to block too long.
-                await new Promise(r => setTimeout(r, 200));
-                retries--;
-                }
-            } catch (e) {
-                console.error("Failed to expose preview", e);
-            }
+      }
+    } else if (chatId && !isNewSession) {
+      // Existing session - just check if we have project info for the preview URL
+      const projectResult = await db.select().from(projects).where(eq(projects.chatId, chatId)).limit(1);
+      const project = projectResult[0];
+      
+      if (project && project.devPort) {
+        try {
+          previewUrl = await sandbox.exposeHttp({ port: project.devPort });
+        } catch {
+          // Server might not be running
+        }
+      } else {
+        // Check for static server
+        try {
+          previewUrl = await sandbox.exposeHttp({ port: 8000 });
+        } catch {
+          // No server running
         }
       }
     }
@@ -122,6 +234,8 @@ export async function action({ request }: ActionFunctionArgs) {
       sandboxId: newSandboxId,
       reconnected: !isNewSession,
       restoredArtifacts: isNewSession && chatId,
+      restorationStatus,
+      restorationError,
       previewUrl
     });
   } catch (error) {
@@ -130,3 +244,4 @@ export async function action({ request }: ActionFunctionArgs) {
     }, { status: 500 });
   }
 }
+
