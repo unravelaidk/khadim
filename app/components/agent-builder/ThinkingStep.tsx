@@ -1,15 +1,7 @@
 import { useState } from "react";
-import { LuCheck, LuChevronDown, LuChevronRight, LuLoader } from "react-icons/lu";
-
-export interface ThinkingStepData {
-  id: string;
-  title: string;
-  status: "pending" | "running" | "complete" | "error";
-  content?: string;
-  children?: ThinkingStepData[];
-  tool?: string;
-  result?: string;
-}
+import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile } from "react-icons/lu";
+import { FileEditorModal } from "./FileEditorModal";
+import type { ThinkingStepData } from "../../types/chat";
 
 interface ThinkingStepProps {
   step: ThinkingStepData;
@@ -18,16 +10,28 @@ interface ThinkingStepProps {
 
 export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
+  const [showFileEditor, setShowFileEditor] = useState(false);
 
   const hasChildren = step.children && step.children.length > 0;
   const hasContent = step.content || step.result;
   const isExpandable = hasChildren || hasContent;
+  
+  // Check if this is a clickable file step
+  const isFileStep = step.tool === "write_file" && step.filename && step.fileContent;
 
   return (
     <div className={`${depth > 0 ? "ml-6 border-l border-gb-border pl-4" : ""}`}>
       <div
-        className={`flex items-center gap-2 py-1.5 ${isExpandable ? "cursor-pointer" : ""}`}
-        onClick={() => isExpandable && setIsExpanded(!isExpanded)}
+        className={`flex items-center gap-2 py-1.5 ${
+          isExpandable ? "cursor-pointer" : ""
+        } ${isFileStep ? "hover:bg-gb-bg-subtle rounded-md px-1 -mx-1 cursor-pointer" : ""}`}
+        onClick={() => {
+          if (isFileStep) {
+            setShowFileEditor(true);
+          } else if (isExpandable) {
+            setIsExpanded(!isExpanded);
+          }
+        }}
       >
         {/* Status Icon */}
         <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
@@ -58,6 +62,14 @@ export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
         }`}>
           {step.title}
         </span>
+
+        {/* File indicator for clickable file steps */}
+        {isFileStep && (
+          <span className="ml-1 text-xs text-gb-accent flex items-center gap-1">
+            <LuFile className="w-3 h-3" />
+            <span className="underline underline-offset-2">View</span>
+          </span>
+        )}
 
         {/* Expand/Collapse Chevron */}
         {isExpandable && (
@@ -97,6 +109,16 @@ export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* File Editor Modal */}
+      {isFileStep && (
+        <FileEditorModal
+          isOpen={showFileEditor}
+          onClose={() => setShowFileEditor(false)}
+          filename={step.filename!}
+          content={step.fileContent!}
+        />
       )}
     </div>
   );

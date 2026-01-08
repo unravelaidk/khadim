@@ -4,10 +4,15 @@ import * as schema from "./schema";
 
 const connectionString = process.env.DATABASE_URL!;
 
-// For query purposes
 const queryClient = postgres(connectionString);
 export const db = drizzle(queryClient, { schema });
 
-// Export schema tables and types
-export { chats, messages, artifacts } from "./schema";
-export type { Chat, NewChat, Message, NewMessage, Artifact, NewArtifact } from "./schema";
+export { chats, messages, artifacts, projects, projectVersions } from "./schema";
+export type { 
+  Chat, NewChat, 
+  Message, NewMessage, 
+  Artifact, NewArtifact,
+  Project, NewProject,
+  ProjectVersion, NewProjectVersion 
+} from "./schema";
+

@@ -2,11 +2,16 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import * as pathMod from "node:path";
 import { Sandbox } from "@deno/sandbox";
-import { db, artifacts } from "../lib/db";
+import { db, artifacts, projects } from "../lib/db";
 import { eq, and } from "drizzle-orm";
+import { createVersionSnapshot } from "../lib/versions";
 
 // In-memory todo storage per chat session
 const todoStorage = new Map<string, Array<{ task: string; status: "pending" | "in_progress" | "done" }>>();
+
+// Track last snapshot time per chat to debounce snapshots (avoid creating too many)
+const lastSnapshotTime = new Map<string, number>();
+const SNAPSHOT_DEBOUNCE_MS = 30000; // 30 seconds between auto-snapshots
 
 // Planning tool - no sandbox needed, just returns the plan for visibility
 export const createPlanTool = () => tool(
@@ -26,7 +31,7 @@ ${steps.map((step, i) => `   ${i + 1}. ${step}`).join('\n')}
     },
     {
         name: "create_plan",
-        description: "REQUIRED FIRST STEP: Create an execution plan before doing any work. This shows the user what you're about to do.",
+        description: "Create an execution plan before doing complex work. Use when the task benefits from explicit steps and approval.",
         schema: z.object({
             goal: z.string().describe("Brief description of what you're building"),
             steps: z.array(z.string()).describe("List of steps you'll take to complete the task"),
@@ -203,6 +208,17 @@ export const createWriteFileTool = (sandbox: Sandbox, chatId?: string) => tool(
                     filename: path,
                     content,
                 });
+
+                // Auto-snapshot with debouncing
+                const now = Date.now();
+                const lastSnapshot = lastSnapshotTime.get(chatId) || 0;
+                if (now - lastSnapshot > SNAPSHOT_DEBOUNCE_MS) {
+                    lastSnapshotTime.set(chatId, now);
+                    // Fire and forget - don't block on snapshot creation
+                    createVersionSnapshot(chatId, `Auto-save: ${path}`).catch(err => {
+                        console.warn("Failed to create auto-snapshot:", err);
+                    });
+                }
             }
 
             return `Successfully wrote ${content.length} bytes to ${path}`;
@@ -452,7 +468,33 @@ Correct usage:
                     }
                 } catch (syncErr) {
                     console.error("Failed to sync artifacts after app creation:", syncErr);
-                    // Don't fail the tool call if sync fails, but log it
+                }
+
+                try {
+                    const devPort = type === "astro" ? 4321 : 5173;
+                    const buildDir = type === "react-router" ? `${name}/build/client` : `${name}/dist`;
+
+                    await db.insert(projects).values({
+                        chatId,
+                        projectType: type,
+                        projectName: name,
+                        devCommand: "npm run dev",
+                        devPort,
+                        buildDir,
+                    }).onConflictDoUpdate({
+                        target: projects.chatId,
+                        set: {
+                            projectType: type,
+                            projectName: name,
+                            devCommand: "npm run dev",
+                            devPort,
+                            buildDir,
+                            updatedAt: new Date(),
+                        }
+                    });
+                    console.log(`Saved project metadata for chat ${chatId}: ${type} app "${name}"`);
+                } catch (metaErr) {
+                    console.error("Failed to save project metadata:", metaErr);
                 }
             }
 
@@ -543,4 +585,280 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
     }
 );
 
+export const createManageSandboxTool = (sandbox: Sandbox) => tool(
+    async ({ action }: { action: "keep_alive" | "stop" }) => {
+        try {
+            if (action === "keep_alive") {
+                // @ts-ignore - 'extendLifetime' exists in newer versions or passed through
+                if (typeof sandbox.extendLifetime === 'function') {
+                    // @ts-ignore
+                    await sandbox.extendLifetime("30m");
+                    return "✅ Sandbox lifetime extended by 30 minutes.";
+                } else {
+                    return "⚠️ Warning: This sandbox environment does not support extending lifetime directly.";
+                }
+            } else if (action === "stop") {
+                 // @ts-ignore
+                if (typeof sandbox.shutdown === 'function') {
+                    // @ts-ignore
+                    await sandbox.shutdown();
+                    return "🛑 Sandbox shutdown initiated.";
+                } else {
+                     // Fallback: set short lifetime if specific shutdown isn't available
+                     // @ts-ignore
+                     if (typeof sandbox.setLifetime === 'function') {
+                        // @ts-ignore
+                        await sandbox.setLifetime(1000); // 1 second
+                        return "🛑 Sandbox lifetime set to expire immediately.";
+                     }
+                     return "⚠️ Warning: Could not explicitly stop sandbox (shutdown/setLifetime not found).";
+                }
+            }
+            return "❌ Invalid action.";
+        } catch (error) {
+            return `Error managing sandbox: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "manage_sandbox",
+        description: "Control the sandbox lifecycle. Use 'keep_alive' for long tasks to prevent timeout. Use 'stop' when the user cancellation is requested or the task is permanently done.",
+        schema: z.object({
+            action: z.enum(["keep_alive", "stop"]).describe("Action to perform: 'keep_alive' (extends 30m) or 'stop' (shuts down)."),
+        }),
+    }
+);
+
+export const createWebSearchTool = () => tool(
+    async ({ query, numResults = 5 }: { query: string; numResults?: number }) => {
+        try {
+            // Use DuckDuckGo HTML search (more reliable than instant answer API)
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+            
+            const response = await fetch(searchUrl, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+            });
+            
+            if (!response.ok) {
+                return `Search failed with status: ${response.status}`;
+            }
+            
+            const html = await response.text();
+            
+            // Parse results from HTML
+            const results: Array<{ title: string; snippet: string; url: string }> = [];
+            
+            // Match result blocks - DuckDuckGo HTML format
+            const resultRegex = /<a class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+            let match;
+            
+            while ((match = resultRegex.exec(html)) !== null && results.length < numResults) {
+                const url = match[1];
+                const title = match[2].trim();
+                const snippet = match[3]
+                    .replace(/<[^>]+>/g, '') // Remove HTML tags
+                    .replace(/&quot;/g, '"')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&#x27;/g, "'")
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                
+                if (title && snippet) {
+                    results.push({ title, snippet, url });
+                }
+            }
+            
+            // Fallback: try alternative parsing pattern
+            if (results.length === 0) {
+                const altRegex = /<div class="result[^"]*"[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+                while ((match = altRegex.exec(html)) !== null && results.length < numResults) {
+                    const url = match[1];
+                    const snippet = match[2]
+                        .replace(/<[^>]+>/g, '')
+                        .replace(/&[^;]+;/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    
+                    if (snippet.length > 20) {
+                        results.push({ 
+                            title: snippet.slice(0, 60) + (snippet.length > 60 ? '...' : ''),
+                            snippet, 
+                            url 
+                        });
+                    }
+                }
+            }
+            
+            if (results.length === 0) {
+                return `🔍 No results found for: "${query}"\n\nTry rephrasing your search or using different keywords.`;
+            }
+            
+            let output = `🔍 WEB SEARCH RESULTS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nQuery: "${query}"\n\n`;
+            
+            results.forEach((r, i) => {
+                output += `${i + 1}. ${r.title}\n`;
+                output += `   ${r.snippet}\n`;
+                output += `   🔗 ${r.url}\n\n`;
+            });
+            
+            output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            output += `Found ${results.length} results. Use this information to inform your response.`;
+            
+            return output;
+        } catch (error) {
+            return `Search error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "web_search",
+        description: "Search the web using DuckDuckGo to find current information. Use this to research topics, find facts for slide content, get up-to-date data, or verify information. Returns titles, snippets, and URLs.",
+        schema: z.object({
+            query: z.string().describe("The search query - be specific for better results"),
+            numResults: z.number().optional().default(5).describe("Number of results to return (default: 5, max: 10)"),
+        }),
+    }
+);
+
+export const createSearchImagesTool = () => tool(
+    async ({ query, numResults = 5, orientation }: { query: string; numResults?: number; orientation?: "landscape" | "portrait" | "squarish" }) => {
+        try {
+            // Use Unsplash API for high-quality free images
+            // Note: For production, use an API key. This uses the public demo endpoint.
+            const unsplashUrl = `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=${numResults}${orientation ? `&orientation=${orientation}` : ''}`;
+            
+            const response = await fetch(unsplashUrl, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json"
+                }
+            });
+            
+            if (!response.ok) {
+                // Fallback: Try DuckDuckGo image search
+                return await searchDuckDuckGoImages(query, numResults);
+            }
+            
+            const data = await response.json();
+            const results = data.results || [];
+            
+            if (results.length === 0) {
+                return await searchDuckDuckGoImages(query, numResults);
+            }
+            
+            let output = `🖼️ IMAGE SEARCH RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: "${query}"
+
+`;
+            
+            results.slice(0, numResults).forEach((img: any, i: number) => {
+                const url = img.urls?.regular || img.urls?.small || img.urls?.raw;
+                const thumb = img.urls?.thumb || img.urls?.small;
+                const description = img.alt_description || img.description || 'Untitled';
+                const photographer = img.user?.name || 'Unknown';
+                
+                output += `${i + 1}. ${description}
+   📷 By: ${photographer}
+   🔗 URL: ${url}
+   📌 Thumbnail: ${thumb}
+
+`;
+            });
+            
+            output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Found ${results.length} images. Use these URLs in your slides with the 'image' slide type.
+
+Example slide JSON:
+{
+  "type": "image",
+  "title": "Your Title",
+  "imageUrl": "<paste URL here>",
+  "caption": "Photo credit"
+}`;
+            
+            return output;
+        } catch (error) {
+            // Fallback to DuckDuckGo
+            try {
+                return await searchDuckDuckGoImages(query, numResults);
+            } catch {
+                return `Image search error: ${error instanceof Error ? error.message : String(error)}`;
+            }
+        }
+    },
+    {
+        name: "search_images",
+        description: "Search for high-quality images to use in slides or presentations. Returns image URLs that can be used in 'image' type slides. Use descriptive queries like 'mountain landscape sunset' or 'business meeting office'.",
+        schema: z.object({
+            query: z.string().describe("Search query for images - be descriptive (e.g., 'modern office workspace')"),
+            numResults: z.number().optional().default(5).describe("Number of images to return (default: 5)"),
+            orientation: z.enum(["landscape", "portrait", "squarish"]).optional().describe("Image orientation filter"),
+        }),
+    }
+);
+
+// Fallback image search using DuckDuckGo
+async function searchDuckDuckGoImages(query: string, numResults: number = 5): Promise<string> {
+    const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`;
+    
+    // DuckDuckGo images requires a token, so we'll parse from their vqd endpoint
+    const tokenResponse = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
+        headers: { "User-Agent": "Mozilla/5.0" }
+    });
+    
+    const html = await tokenResponse.text();
+    const vqdMatch = html.match(/vqd=['"]([^'"]+)['"]/);
+    
+    if (!vqdMatch) {
+        return `🖼️ IMAGE SEARCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: "${query}"
+
+⚠️ Could not fetch images automatically.
+
+Alternative: Use these free image sources manually:
+• https://unsplash.com/s/photos/${encodeURIComponent(query.replace(/\s+/g, '-'))}
+• https://www.pexels.com/search/${encodeURIComponent(query.replace(/\s+/g, '%20'))}
+
+Then use the URLs in your slide JSON:
+{
+  "type": "image",
+  "title": "Your Title",
+  "imageUrl": "<paste URL here>"
+}`;
+    }
+    
+    const vqd = vqdMatch[1];
+    const imgUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1`;
+    
+    const imgResponse = await fetch(imgUrl, {
+        headers: { "User-Agent": "Mozilla/5.0" }
+    });
+    
+    const imgData = await imgResponse.json();
+    const results = imgData.results || [];
+    
+    let output = `🖼️ IMAGE SEARCH RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: "${query}"
+
+`;
+    
+    results.slice(0, numResults).forEach((img: any, i: number) => {
+        output += `${i + 1}. ${img.title || 'Untitled'}
+   🔗 URL: ${img.image}
+   📌 Thumbnail: ${img.thumbnail}
+   📐 Size: ${img.width}x${img.height}
+
+`;
+    });
+    
+    output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Use these URLs in 'image' type slides.`;
+    
+    return output;
+}
 

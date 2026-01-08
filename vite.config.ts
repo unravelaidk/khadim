@@ -3,6 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import svgr from "vite-plugin-svgr";
+import path from "path";
 
 export default defineConfig(({ isSsrBuild }) => ({
   build: {
@@ -14,6 +15,9 @@ export default defineConfig(({ isSsrBuild }) => ({
   },
   resolve: {
     dedupe: ["react", "react-dom"],
+    alias: {
+      "@khadim/html-to-pptx": path.resolve(__dirname, "packages/html-to-pptx/src/index.ts"),
+    },
   },
   optimizeDeps: {
     include: ["react", "react-dom"],

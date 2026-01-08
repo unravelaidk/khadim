@@ -1,5 +1,5 @@
 import { Button } from "../ui";
-import type { AgentConfig } from "./types";
+import type { AgentConfig } from "../../types/chat";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 
 interface HeaderProps {

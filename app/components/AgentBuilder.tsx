@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  GameBoyScreen,
-  ChatMessage,
   ChatInput,
-  TypingIndicator,
-  SuggestionCards,
   PreviewModal,
-  FeatureSelection,
+  WelcomeScreen,
+  ChatInterface,
+  ChatHeader,
 } from "./agent-builder";
 import type { Message, AgentConfig } from "./agent-builder";
+import type { AttachedFile } from "./agent-builder/WelcomeScreen";
 import { mockWorkspaces } from "./workspace";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { LibraryView } from "./Library/LibraryView";
 import type { Workspace } from "./workspace";
-import KhadimLogo from "../assets/Khadim-logo.svg";
+import { useAgentStream } from "../hooks/useAgentStream";
+import { showError, sandboxErrors, agentMessages } from "../lib/toast";
 
 const suggestedPrompts = [
   "I want an agent that helps me write emails",
@@ -27,8 +27,7 @@ export function AgentBuilder() {
     {
       id: "welcome",
       role: "assistant",
-      content:
-        'Hey! 👋 I\'m here to help you create your own AI agent. Just tell me what you want your agent to do, and I\'ll help you build it step by step.\n\nFor example, you could say:\n• "I want an agent that helps me write better emails"\n• "Create a friendly tutor for learning Spanish"\n• "Build a code reviewer that catches bugs"\n\nWhat kind of agent would you like to create?',
+      content: "",
       timestamp: new Date(),
     },
   ]);
@@ -40,35 +39,52 @@ export function AgentBuilder() {
   const [activeBadges, setActiveBadges] = useState<Array<{ label: string; icon: React.ReactNode; prompt?: string }>>([]);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgent, setActiveAgent] = useState<{ mode: "plan" | "build"; name: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // View state
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    question: string;
+    options?: string[];
+    context?: string;
+    threadId?: string;
+  } | null>(null);
+
   const [currentView, setCurrentView] = useState<'chat' | 'library'>('chat');
 
-  // Sidebar mobile state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
-  // Workspace state (legacy - for library view)
   const [workspaces, setWorkspaces] = useState<Workspace[]>(mockWorkspaces);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     mockWorkspaces[0]?.id ?? null
   );
 
-  // Welcome message
   const welcomeMessage: Message = {
     id: "welcome",
     role: "assistant",
-    content: 'Hey! 👋 I\'m here to help you create your own AI agent. Just tell me what you want your agent to do, and I\'ll help you build it step by step.\n\nFor example, you could say:\n• "I want an agent that helps me write better emails"\n• "Create a friendly tutor for learning Spanish"\n• "Build a code reviewer that catches bugs"\n\nWhat kind of agent would you like to create?',
+    content: "",
     timestamp: new Date(),
   };
 
-  // Handler: Select chat from sidebar
+  const { processStream } = useAgentStream({
+    setMessages,
+    setSandboxId,
+    setJobId,
+    setActiveAgent,
+    setPendingQuestion,
+    setPendingBuildDelegation: (prompt) => {
+       if (prompt) setInput(prompt);
+    },
+    setIsTyping,
+    setIsProcessing,
+    chatId
+  });
+
   const handleSelectChat = async (selectedChatId: string | null) => {
     if (!selectedChatId) {
-      // New chat / deselect
       handleNewChat();
       return;
     }
@@ -79,13 +95,18 @@ export function AgentBuilder() {
         const { chat } = await response.json();
         setChatId(chat.id);
 
-        // Convert db messages to UI messages
         const loadedMessages: Message[] = chat.messages.map((msg: any) => {
-          // Find artifact for this message if it has a preview
           let fileContent: string | undefined;
-          if (msg.previewUrl && chat.artifacts) {
-            const indexHtml = chat.artifacts.find((a: any) => a.filename === "index.html");
-            if (indexHtml) {
+          
+          // Get index.html artifact if available
+          const indexHtml = chat.artifacts?.find((a: any) => a.filename === "index.html");
+          
+          if (indexHtml) {
+            // Check if it's slide content (has slide-data script tag)
+            const isSlideContent = indexHtml.content?.includes('<script id="slide-data"');
+            
+            // Populate fileContent if there's a previewUrl OR if it's slide content
+            if (msg.previewUrl || isSlideContent) {
               fileContent = indexHtml.content;
             }
           }
@@ -95,8 +116,6 @@ export function AgentBuilder() {
             role: msg.role,
             content: msg.content,
             timestamp: new Date(msg.createdAt),
-            // If a preview URL exists in DB, current session is likely dead.
-            // Set to "loading" to show spinner until we restore it.
             previewUrl: msg.previewUrl ? "loading" : undefined,
             fileContent,
             thinkingSteps: msg.thinkingSteps,
@@ -106,7 +125,6 @@ export function AgentBuilder() {
         setMessages([welcomeMessage, ...loadedMessages]);
         setCurrentView('chat');
 
-        // Activate sandbox (reconnect or create new)
         const sandboxForm = new FormData();
         if (chat.sandboxId) {
           sandboxForm.append("sandboxId", chat.sandboxId);
@@ -129,17 +147,55 @@ export function AgentBuilder() {
               msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
             ));
           }
+        } else {
+          sandboxErrors.connectionFailed();
+        }
+
+        try {
+          const jobResponse = await fetch(`/api/agent?chatId=${chat.id}`);
+          if (jobResponse.ok) {
+            setIsProcessing(true);
+            setIsTyping(true);
+
+            const lastMsg = loadedMessages[loadedMessages.length - 1];
+            let targetMessageId: string;
+            let existingSteps: any[] = [];
+
+            if (lastMsg && lastMsg.role === "assistant") {
+              targetMessageId = lastMsg.id;
+              existingSteps = lastMsg.thinkingSteps || [];
+            } else {
+              targetMessageId = (Date.now() + 1).toString();
+              const assistantMessage: Message = {
+                id: targetMessageId,
+                role: "assistant",
+                content: "",
+                timestamp: new Date(),
+                thinkingSteps: [],
+              };
+              setMessages(prev => [...prev, assistantMessage]);
+            }
+
+            processStream(jobResponse, targetMessageId, existingSteps).catch(e => {
+              console.error("Error resuming stream:", e);
+              setIsProcessing(false);
+              setIsTyping(false);
+            });
+          }
+        } catch (e) {
+          console.log("No active job to resume or error checking:", e);
         }
       }
     } catch (error) {
       console.error("Failed to load chat:", error);
+      showError("Failed to load chat. Please try again.");
     }
   };
 
-  // Handler: New chat
   const handleNewChat = () => {
     setChatId(null);
     setSandboxId(null);
+    setJobId(null);
     setMessages([welcomeMessage]);
     setActiveBadges([]);
     setCurrentView('chat');
@@ -164,27 +220,6 @@ export function AgentBuilder() {
     }
   }, [messages, currentView]);
 
-  // Cleanup sandbox when component unmounts or page closes
-  useEffect(() => {
-    const killSandbox = () => {
-      if (sandboxId) {
-        // Use sendBeacon for reliable delivery on page unload
-        const formData = new FormData();
-        formData.append("sandboxId", sandboxId);
-        navigator.sendBeacon("/api/sandbox/kill", formData);
-      }
-    };
-
-    // Kill sandbox on page close/refresh
-    window.addEventListener("beforeunload", killSandbox);
-
-    return () => {
-      window.removeEventListener("beforeunload", killSandbox);
-      // Also kill on component unmount
-      killSandbox();
-    };
-  }, [sandboxId]);
-
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -195,7 +230,6 @@ export function AgentBuilder() {
       timestamp: new Date(),
     };
 
-    // Create a placeholder assistant message that will be updated with streaming content
     const assistantMessageId = (Date.now() + 1).toString();
     const assistantMessage: Message = {
       id: assistantMessageId,
@@ -210,29 +244,22 @@ export function AgentBuilder() {
     setIsTyping(true);
     setIsProcessing(true);
 
-    // Create abort controller for this request
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     try {
-      // Create chat if this is the first user message (after welcome)
       let currentChatId = chatId;
       if (!currentChatId) {
-        // Generate a short, contextual title from the prompt
         const generateTitle = (prompt: string): string => {
-          // Remove common prefixes
           let title = prompt
             .replace(/^(build|create|make|write|design|implement|help me|i want|can you)\s+(a|an|the|me)?\s*/i, '')
             .replace(/^(with|using|that|for)\s+/i, '');
 
-          // Take first 3-4 meaningful words
           const words = title.split(/\s+/).slice(0, 4);
           title = words.join(' ');
 
-          // Capitalize first letter
           title = title.charAt(0).toUpperCase() + title.slice(1);
 
-          // Limit length
           if (title.length > 30) {
             title = title.slice(0, 30).trim() + '...';
           }
@@ -254,7 +281,6 @@ export function AgentBuilder() {
         }
       }
 
-      // Save user message to database
       if (currentChatId) {
         const userMsgForm = new FormData();
         userMsgForm.append("chatId", currentChatId);
@@ -285,91 +311,11 @@ export function AgentBuilder() {
         throw new Error("Failed to get response");
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamedText = "";
-      const steps: Message["thinkingSteps"] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const event = JSON.parse(line.slice(6));
-
-              if (event.type === "step_start") {
-                steps.push({
-                  id: event.id,
-                  title: event.title,
-                  status: "running",
-                  content: "",
-                });
-              } else if (event.type === "step_update") {
-                const step = steps.find(s => s.id === event.id);
-                if (step && event.content) {
-                  step.content = event.content;
-                }
-              } else if (event.type === "step_complete") {
-                const step = steps.find(s => s.id === event.id);
-                if (step) {
-                  step.status = "complete";
-                  if (event.result) step.result = event.result;
-                }
-              } else if (event.type === "sandbox_info") {
-                // Store sandbox ID for future reconnection
-                if (event.sandboxId) {
-                  setSandboxId(event.sandboxId as string);
-                }
-              } else if (event.type === "agent_mode") {
-                // Update active agent indicator
-                setActiveAgent(event as { mode: "plan" | "build"; name: string });
-              } else if (event.type === "done") {
-                // Only set final content from 'done' event
-                streamedText = event.content || "";
-                // Reset active agent when done
-                setActiveAgent(null);
-                streamedText = event.content || "";
-                // Update with previewUrl if provided
-                const msgPreviewUrl = event.previewUrl as string | undefined;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: streamedText, thinkingSteps: [...steps], previewUrl: msgPreviewUrl }
-                      : msg
-                  )
-                );
-                continue; // Skip the normal update below since we just did it
-              } else if (event.type === "error") {
-                throw new Error(event.message);
-              }
-
-              // Update the assistant message in real-time
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: streamedText, thinkingSteps: [...steps] }
-                    : msg
-                )
-              );
-            } catch (parseError) {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
+      await processStream(response, assistantMessageId);
 
     } catch (error) {
       // Don't show error message if request was aborted
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes("Cancelled by user"))) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
@@ -377,6 +323,7 @@ export function AgentBuilder() {
               : msg
           )
         );
+        agentMessages.cancelled();
       } else {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -385,6 +332,7 @@ export function AgentBuilder() {
               : msg
           )
         );
+        agentMessages.failed(error instanceof Error ? error.message : undefined);
       }
     } finally {
       setIsTyping(false);
@@ -466,13 +414,119 @@ export function AgentBuilder() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    setIsTyping(false);
+    setIsProcessing(false);
+    if (jobId || chatId) {
+      const stopForm = new FormData();
+      if (jobId) stopForm.append("jobId", jobId);
+      if (chatId) stopForm.append("chatId", chatId);
+      fetch("/api/agent/stop", { method: "POST", body: stopForm });
+    }
+    abortControllerRef.current = null;
+  };
+
+  const handleAnswerQuestion = async (answer: string) => {
+    if (!pendingQuestion) return;
+
+    // Clear the pending question
+    setPendingQuestion(null);
+
+    // Add user's answer as a message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: answer,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Save user message to database
+    if (chatId) {
+      const userMsgForm = new FormData();
+      userMsgForm.append("chatId", chatId);
+      userMsgForm.append("role", "user");
+      userMsgForm.append("content", answer);
+      fetch("/api/messages", { method: "POST", body: userMsgForm });
+    }
+
+    setInput("");
+    
+    const formData = new FormData();
+    const contextualPrompt = `User answered the question: "${pendingQuestion.question}"\n\nAnswer: ${answer}${pendingQuestion.context ? `\n\nOriginal context: ${pendingQuestion.context}` : ''}`;
+    const planPrefix = "Plan:\n";
+    const planFromContext = pendingQuestion.context?.startsWith(planPrefix)
+      ? pendingQuestion.context.slice(planPrefix.length)
+      : null;
+    const normalizedAnswer = answer.trim().toLowerCase();
+    const isApproval = normalizedAnswer === "yes" || normalizedAnswer.startsWith("yes,") || normalizedAnswer === "y" || normalizedAnswer === "ok" || normalizedAnswer === "okay" || normalizedAnswer === "sure";
+    let nextPrompt = contextualPrompt;
+    let nextMode: "plan" | "build" = activeAgent?.mode ?? "build";
+
+    if (planFromContext) {
+      if (isApproval) {
+        nextPrompt = `Execute this approved plan:\n\n${planFromContext}`;
+        nextMode = "build";
+      } else {
+        nextPrompt = `Update the plan based on this feedback:\n\n${answer}\n\nExisting plan:\n${planFromContext}`;
+        nextMode = "plan";
+      }
+    }
+
+    formData.append("prompt", nextPrompt);
+    formData.append("agentMode", nextMode);
+    if (sandboxId) {
+      formData.append("sandboxId", sandboxId);
+    }
+    if (chatId) {
+      formData.append("chatId", chatId);
+    }
+    if (pendingQuestion.threadId) {
+      formData.append("threadId", pendingQuestion.threadId);
+    }
+
+    setIsTyping(true);
+    setIsProcessing(true);
+
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      thinkingSteps: [],
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      await processStream(response, assistantMessageId);
+    } catch (error) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: "Sorry, there was an error processing your answer." }
+            : msg
+        )
+      );
+    } finally {
+      setIsTyping(false);
+      setIsProcessing(false);
+    }
   };
 
   const handleSuggestionClick = (feature: { label: string; icon: React.ReactNode; prompt?: string }) => {
-    // Add badge (replace existing)
     setActiveBadges([feature]);
 
-    // Optionally set input if provided
     if (feature.prompt) {
       setInput(feature.prompt);
     }
@@ -496,22 +550,8 @@ export function AgentBuilder() {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col bg-gb-bg overflow-hidden relative">
-        {/* Mobile Header */}
-        <div className="md:hidden flex items-center p-4 border-b border-gb-border bg-gb-bg sticky top-0 z-10">
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 -ml-2 rounded-lg text-gb-text-secondary hover:bg-gb-bg-subtle"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-          <span className="ml-3 font-semibold text-gb-text">Khadim</span>
-        </div>
+        <ChatHeader onOpenSidebar={() => setIsSidebarOpen(true)} />
 
         {currentView === 'library' ? (
           <LibraryView
@@ -525,103 +565,28 @@ export function AgentBuilder() {
                 }`}
             >
               {!isInitialState && (
-                <div className="w-full max-w-3xl mx-auto space-y-4 animate-in fade-in duration-500">
-                  <GameBoyScreen>
-                    <div className="space-y-4">
-                      {messages.filter(m => !(isInitialState && m.id === 'welcome')).map((message) => (
-                        <ChatMessage key={message.id} message={message} />
-                      ))}
-                      {isTyping && <TypingIndicator />}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  </GameBoyScreen>
-                </div>
+                <ChatInterface
+                  messages={messages}
+                  isTyping={isTyping}
+                  pendingQuestion={pendingQuestion}
+                  onAnswerQuestion={handleAnswerQuestion}
+                  onCancelQuestion={() => setPendingQuestion(null)}
+                  messagesEndRef={messagesEndRef}
+                />
               )}
 
               {isInitialState && (
-                <div className="flex flex-col items-center justify-center min-h-[60vh] w-full max-w-3xl mx-auto space-y-6 animate-in fade-in duration-700">
-
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider">
-                    <span className="text-gb-text-muted">TURN 1</span>
-                    <span className="w-px h-3 bg-gb-border"></span>
-                    <span className="text-gb-accent hover:underline cursor-pointer animate-pulse">ROLL DICE</span>
-                  </div>
-
-                  {/* Header - Logo & Subtitle */}
-                  <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8 animate-in fade-in zoom-in duration-1000 text-center md:text-left mb-2 md:mb-0">
-                    <div className="w-24 h-24 md:w-32 md:h-32 text-gb-text animate-float">
-                      <KhadimLogo />
-                    </div>
-                    <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide max-w-[200px] md:max-w-none">
-                      Get started building
-                    </p>
-                  </div>
-
-                  {/* Large Input Card */}
-                  <div className="w-full bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col">
-
-                    {/* Active Badges */}
-                    {activeBadges.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 px-6 pt-6 pb-2 animate-in fade-in slide-in-from-bottom-2">
-                        {activeBadges.map((badge) => (
-                          <div key={badge.label} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-md bg-blue-500/10 text-blue-600 border border-blue-500/20 text-sm font-medium">
-                            <span className="text-base">{badge.icon}</span>
-                            <span>{badge.label}</span>
-                            <button
-                              onClick={() => removeBadge(badge.label)}
-                              className="ml-1 p-0.5 rounded-sm hover:bg-blue-500/20 text-blue-600/60 hover:text-blue-600 transition-colors"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <textarea
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      placeholder={activeBadges.length > 0 ? "Describe what you want..." : "Awaiting instructions..."}
-                      className={`w-full bg-transparent px-6 md:px-8 text-base md:text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${activeBadges.length > 0 ? 'h-24 md:h-32 pt-4' : 'h-32 md:h-40 pt-6 md:pt-8'}`}
-                    />
-
-                    {/* Input Footer */}
-                    <div className="flex items-center justify-between px-4 py-3 bg-gb-bg-subtle/50 border-t border-gb-border/50">
-                      <div className="flex items-center gap-2">
-                        <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-                        </button>
-                        <button className="p-2 rounded-lg hover:bg-gb-bg-card text-gb-text-muted hover:text-gb-text transition-colors">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gb-text-muted mr-2 font-mono uppercase tracking-wide">LINK CABLE: READY</span>
-                        <button
-                          onClick={handleSend}
-                          disabled={!input.trim()}
-                          className={`p-2 rounded-full transition-all ${input.trim()
-                            ? "bg-gb-text text-gb-text-inverse hover:opacity-90"
-                            : "bg-gb-border text-gb-text-muted cursor-not-allowed"
-                            }`}
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Feature Selection Chips */}
-                  <FeatureSelection onSelect={handleSuggestionClick} />
-
-                </div>
+                <WelcomeScreen
+                  input={input}
+                  setInput={setInput}
+                  handleSend={handleSend}
+                  activeBadges={activeBadges}
+                  removeBadge={removeBadge}
+                  onSuggestionClick={handleSuggestionClick}
+                  attachedFiles={attachedFiles}
+                  onFilesAttached={setAttachedFiles}
+                  onRemoveFile={(fileName) => setAttachedFiles(prev => prev.filter(f => f.name !== fileName))}
+                />
               )}
             </main>
 
