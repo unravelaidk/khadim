@@ -132,6 +132,7 @@ export function useAgentStream({
                 }
                 
                 // Final update with all data
+                // IMPORTANT: Preserve any fileContent already set by slide_content event
                 const msgPreviewUrl = event.previewUrl as string | undefined;
                 setMessages(prev =>
                   prev.map(msg =>
@@ -141,7 +142,8 @@ export function useAgentStream({
                           content: streamedText, 
                           thinkingSteps: [...steps], // Spread to create new array ref
                           previewUrl: msgPreviewUrl,
-                          fileContent 
+                          // Only set fileContent if we have new content, otherwise preserve existing
+                          fileContent: fileContent || msg.fileContent
                         }
                       : msg
                   )

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { LuDownload, LuExternalLink, LuCode, LuChevronDown, LuChevronRight, LuMaximize2, LuMinimize2, LuLoader, LuPresentation } from "react-icons/lu";
-import { SlidesPreview, type SlideData } from "./SlidesPreview";
+import { SlidesPreview } from "../SlidesPreview";
+import type { SlideData } from "../../types/slides";
 
 interface FileArtifactProps {
   filename?: string;

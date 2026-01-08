@@ -10,7 +10,7 @@ export { ThinkingSteps } from "./ThinkingStep";
 export { FileArtifact } from "./FileArtifact";
 export { AgentQuestion } from "./AgentQuestion";
 export { FileEditorModal } from "./FileEditorModal";
-export { SlidesPreview } from "./SlidesPreview";
+export { SlidesPreview } from "../SlidesPreview";
 export { WelcomeScreen } from "./WelcomeScreen";
 export { ChatInterface } from "./ChatInterface";
 export { ChatHeader } from "./ChatHeader";

@@ -32,14 +32,18 @@ import {
   LuPackage,
   LuBrain
 } from "react-icons/lu";
+import { SlideTemplates } from "./SlideTemplates";
+import type { SlideTemplate, SlideTheme } from "../../types/slides";
 
 interface FeatureSelectionProps {
-  onSelect: (feature: { label: string; icon: React.ReactNode; prompt?: string; isPremade?: boolean }) => void;
+  onSelect: (feature: { label: string; icon: React.ReactNode; prompt?: string; isPremade?: boolean; templateInfo?: { template: SlideTemplate; theme: SlideTheme } }) => void;
 }
 
 export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showTemplateSelection, setShowTemplateSelection] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<{ template: SlideTemplate; theme: SlideTheme } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,17 +98,58 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
     { id: "playbook", label: "Playbook", icon: <LuBook />, external: true },
   ];
 
+  // Render template selection for slides
+  if (showTemplateSelection) {
+    return (
+      <SlideTemplates
+        onSelect={(template, theme) => {
+          setSelectedTemplate({ template, theme });
+          setShowTemplateSelection(false);
+          setSelectedCategory("slides");
+        }}
+        onBack={() => setShowTemplateSelection(false)}
+      />
+    );
+  }
+
   // Render examples view if a category is selected and has examples
   if (selectedCategory && categoryExamples[selectedCategory]) {
     return (
       <div className="relative flex flex-wrap items-center justify-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500" ref={menuRef}>
         <button
-          onClick={() => setSelectedCategory(null)}
+          onClick={() => {
+            if (selectedCategory === "slides") {
+              // Go back to template selection for slides
+              setSelectedCategory(null);
+              setSelectedTemplate(null);
+              setShowTemplateSelection(true);
+            } else {
+              setSelectedCategory(null);
+            }
+          }}
           className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:text-gb-text text-gb-text-secondary transition-all"
         >
           <LuArrowLeft className="text-base" />
           <span className="text-sm font-medium">Back</span>
         </button>
+        
+        {/* Show selected template indicator for slides */}
+        {selectedCategory === "slides" && selectedTemplate && (
+          <div 
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{ 
+              background: `${selectedTemplate.theme.accentColor}15`,
+              color: selectedTemplate.theme.accentColor,
+              border: `1px solid ${selectedTemplate.theme.accentColor}30`
+            }}
+          >
+            <span 
+              className="w-2 h-2 rounded-full"
+              style={{ background: selectedTemplate.theme.accentColor }}
+            />
+            {selectedTemplate.template.name} template
+          </div>
+        )}
         
         {categoryExamples[selectedCategory].map((example) => (
           <button
@@ -112,12 +157,18 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
             onClick={() => {
               const categoryFeature = features.find(f => f.id === selectedCategory);
               if (categoryFeature) {
-                // This is a PREMADE prompt - should go directly to build
+                // Build the prompt with template info if available
+                let finalPrompt = example.prompt;
+                if (selectedCategory === "slides" && selectedTemplate) {
+                  finalPrompt = `Using the "${selectedTemplate.template.name}" template with "${selectedTemplate.theme.name}" theme (${selectedTemplate.theme.description}): ${example.prompt}`;
+                }
+                
                 onSelect({ 
                   label: `${categoryFeature.label}: ${example.label}`, 
                   icon: categoryFeature.icon, 
-                  prompt: example.prompt,
-                  isPremade: true  // Indicates this is a specific, ready-to-build request
+                  prompt: finalPrompt,
+                  isPremade: true,
+                  templateInfo: selectedTemplate || undefined
                 });
               }
             }}
@@ -186,7 +237,10 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
           <button
             key={feature.id}
             onClick={() => {
-              if (categoryExamples[feature.id]) {
+              // For slides, show template selection first
+              if (feature.id === "slides") {
+                setShowTemplateSelection(true);
+              } else if (categoryExamples[feature.id]) {
                 setSelectedCategory(feature.id);
               } else {
                 // This is just a CATEGORY - should go to plan mode for questions

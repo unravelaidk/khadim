@@ -16,7 +16,8 @@ import {
   createWebAppTool,
   createSaveArtifactTool,
   createManageSandboxTool,
-  createWebSearchTool
+  createWebSearchTool,
+  createSearchImagesTool
 } from "./tools";
 import { createAskUserTool, parseAskUserResponse } from "./tools/ask-user";
 import { createDelegateToBuildTool, parseDelegateResponse } from "./tools/delegate-build";
@@ -123,6 +124,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createDelegateToAgentTool(),
       createDelegateToBuildTool(),
       createWebSearchTool(),
+      createSearchImagesTool(),
     ];
 
     // Add sandbox-dependent tools that will lazily initialize sandbox when first called
@@ -175,7 +177,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
 
     const orchestratorConfig = {
       model: new ChatOpenAI({
-        model: "z-ai/glm-4.7",
+        model: "mistralai/devstral-2512:free",
         apiKey: apiKey,
         configuration: { baseURL: "https://openrouter.ai/api/v1" },
         temperature: 0.2,
@@ -199,6 +201,7 @@ AVAILABLE TOOLS:
 - update_todo: Track progress on multi-step tasks
 - read_todo: Check your current progress
 - web_search: Search the web using DuckDuckGo for research
+- search_images: Find high-quality images for slides and presentations
 - create_web_app: Scaffold a new web app (vite, react-router, or astro)
 - write_file: Write HTML/CSS/JS files
 - read_file: Read file contents
@@ -211,6 +214,12 @@ WEB SEARCH:
 Use the web_search tool to research topics before creating content.
 For slide presentations, ALWAYS search first to gather accurate, current information.
 Example: web_search({ query: "AI trends 2024 statistics" })
+
+IMAGE SEARCH:
+Use the search_images tool to find photos for slides and presentations.
+Example: search_images({ query: "modern office workspace", orientation: "landscape" })
+The tool returns image URLs - use them in 'image' type slides:
+{"type": "image", "title": "Our Office", "imageUrl": "<URL from search>", "caption": "Photo credit"}
 
 FRAMEWORK SELECTION:
 - Games/Interactive apps: type="vite"
