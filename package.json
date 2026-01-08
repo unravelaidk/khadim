@@ -7,11 +7,13 @@
     "dev": "cross-env NODE_ENV=development tsx server.ts",
     "start": "tsx server.ts",
     "typecheck": "react-router typegen && tsc -b",
+    "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@deno/sandbox": "^0.5.0",
+    "@khadim/html-to-pptx": "workspace:*",
     "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.7",
     "@langchain/openai": "^1.2.0",
@@ -23,19 +25,27 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@react-router/express": "7.10.1",
     "@react-router/node": "7.10.1",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "compression": "^1.8.1",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",
     "express": "^5.1.0",
+    "html2canvas": "^1.4.1",
+    "ioredis": "^5.8.2",
     "isbot": "^5.1.31",
+    "jspdf": "^4.0.0",
     "langchain": "^1.2.3",
     "morgan": "^1.10.1",
     "postgres": "^3.4.7",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "react-router": "7.10.1",
+    "react-syntax-highlighter": "^16.0.0",
+    "react-toastify": "^11.0.5",
+    "remark-gfm": "^4.0.1",
     "zod": "^4.3.4"
   },
   "devDependencies": {
@@ -55,6 +65,7 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
     "vite-plugin-svgr": "^4.5.0",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^1.6.0"
   }
 }

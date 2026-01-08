@@ -23,8 +23,12 @@ If the user asks to create a **game**, **interactive app**, **canvas game**, **F
 5. **Build the App**:
    - Run: `cd <game-name> && npm run build`
 
-6. **🚨 IMMEDIATELY Serve the Preview** (right after build succeeds!):
-   - Your VERY NEXT tool call after "npm run build" succeeds MUST be expose_preview
+6. **Run Typecheck** (after build succeeds):
+   - Run: `cd <game-name> && npm run typecheck`
+   - If no typecheck script exists, run: `cd <game-name> && npx tsc --noEmit`
+
+7. **🚨 IMMEDIATELY Serve the Preview** (right after typecheck succeeds!):
+   - Your VERY NEXT tool call after typecheck succeeds MUST be expose_preview
    - **DO NOT** read files, list directories, or do anything else first!
    - Vite outputs to `<game-name>/dist`
    - Call the expose_preview TOOL (not a shell command):

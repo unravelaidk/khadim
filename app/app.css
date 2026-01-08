@@ -1,27 +1,28 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
-  --color-gb-primary: #5C5C5C;
-  --color-gb-secondary: #A0A0A0;
-  --color-gb-accent: #8B1D3D;
+  --color-gb-primary: #5c5c5c;
+  --color-gb-secondary: #a0a0a0;
+  --color-gb-accent: #8b1d3d;
 
-  --color-gb-bg: #FAFAF8;
-  --color-gb-bg-subtle: #F5F5F0;
-  --color-gb-bg-card: #FFFFFF;
-  --color-gb-bg-dark: #2D2D2D;
-  
-  --color-gb-text: #1A1A1A;
+  --color-gb-bg: #fafaf8;
+  --color-gb-bg-subtle: #f5f5f0;
+  --color-gb-bg-card: #ffffff;
+  --color-gb-bg-dark: #2d2d2d;
+
+  --color-gb-text: #1a1a1a;
   --color-gb-text-secondary: #666666;
   --color-gb-text-muted: #999999;
-  --color-gb-text-inverse: #FFFFFF;
-  
-  --color-gb-border: #E8E8E5;
-  --color-gb-border-medium: #D0D0CC;
-  --color-gb-border-dark: #B8B8B0;
-  
+  --color-gb-text-inverse: #ffffff;
+
+  --color-gb-border: #e8e8e5;
+  --color-gb-border-medium: #d0d0cc;
+  --color-gb-border-dark: #b8b8b0;
+
   --shadow-gb-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-gb-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-gb-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -34,16 +35,28 @@ body {
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
   }
-
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 .animate-float {
   animation: float 6s ease-in-out infinite;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* ========================================
@@ -286,3 +299,96 @@ body {
   font-weight: 500;
   color: var(--color-gb-text-muted);
 }
+
+/* Toast Notifications - Game Boy Theme */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+
+.gb-toast {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  background: var(--color-gb-bg-card) !important;
+  border: 1px solid var(--color-gb-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  color: var(--color-gb-text) !important;
+  padding: 12px 16px !important;
+}
+
+.gb-toast .Toastify__toast-body {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.gb-toast .Toastify__close-button {
+  color: var(--color-gb-text-muted);
+  opacity: 0.7;
+}
+
+.gb-toast .Toastify__close-button:hover {
+  opacity: 1;
+}
+
+/* Success Toast */
+.gb-toast-success {
+  border-left: 4px solid #10b981 !important;
+}
+
+.gb-toast-success .Toastify__toast-icon svg {
+  fill: #10b981;
+}
+
+.gb-toast-progress-success {
+  background: linear-gradient(90deg, #10b981, #34d399) !important;
+}
+
+/* Error Toast */
+.gb-toast-error {
+  border-left: 4px solid #ef4444 !important;
+}
+
+.gb-toast-error .Toastify__toast-icon svg {
+  fill: #ef4444;
+}
+
+.gb-toast-progress-error {
+  background: linear-gradient(90deg, #ef4444, #f87171) !important;
+}
+
+/* Warning Toast */
+.gb-toast-warning {
+  border-left: 4px solid #f59e0b !important;
+}
+
+.gb-toast-warning .Toastify__toast-icon svg {
+  fill: #f59e0b;
+}
+
+.gb-toast-progress-warning {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24) !important;
+}
+
+/* Info Toast */
+.gb-toast-info {
+  border-left: 4px solid #3b82f6 !important;
+}
+
+.gb-toast-info .Toastify__toast-icon svg {
+  fill: #3b82f6;
+}
+
+.gb-toast-progress-info {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa) !important;
+}
+
+/* Loading Toast */
+.gb-toast-loading {
+  border-left: 4px solid var(--color-gb-accent) !important;
+}
+
+/* Progress bar base style */
+.Toastify__progress-bar {
+  height: 3px !important;
+  border-radius: 0 0 12px 12px !important;
+}
+

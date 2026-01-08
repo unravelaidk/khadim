@@ -8,6 +8,11 @@ export { PreviewModal } from "./PreviewModal";
 export { FeatureSelection } from "./FeatureSelection";
 export { ThinkingSteps } from "./ThinkingStep";
 export { FileArtifact } from "./FileArtifact";
-export type { ThinkingStepData } from "./ThinkingStep";
-
-export type { Message, AgentConfig } from "./types";
+export { AgentQuestion } from "./AgentQuestion";
+export { FileEditorModal } from "./FileEditorModal";
+export { SlidesPreview } from "../SlidesPreview";
+export { WelcomeScreen } from "./WelcomeScreen";
+export { ChatInterface } from "./ChatInterface";
+export { ChatHeader } from "./ChatHeader";
+export type { SlideData } from "../../types/slides";
+export type { ThinkingStepData, Message, AgentConfig } from "../../types/chat";

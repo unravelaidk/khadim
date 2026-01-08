@@ -8,7 +8,7 @@ import {
   DialogClose,
 } from "../ui";
 import { Button } from "../ui";
-import type { AgentConfig } from "./types";
+import type { AgentConfig } from "../../types/chat";
 
 interface PreviewModalProps {
   agentConfig: AgentConfig;

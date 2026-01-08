@@ -7,17 +7,21 @@ interface ChatInputProps {
   onStop?: () => void;
   isProcessing?: boolean;
   activeAgent?: { mode: "plan" | "build"; name: string } | null;
+  badges?: Array<{ label: string; icon: React.ReactNode; prompt?: string }>;
+  onRemoveBadge?: (label: string) => void;
   isCompact?: boolean;
   position?: "fixed" | "relative";
 }
 
 export function ChatInput({
-  value,
+  value = "",
   onChange,
   onSend,
   onStop,
   isProcessing = false,
   activeAgent,
+  badges = [],
+  onRemoveBadge,
   isCompact = false,
   position = "fixed"
 }: ChatInputProps) {
@@ -56,6 +60,33 @@ export function ChatInput({
             </div>
           </div>
         )}
+        
+        {/* Badges/Chips */}
+        {badges.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3 px-2">
+            {badges.map((badge, index) => (
+              <div 
+                key={index} 
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gb-bg-subtle border border-gb-border rounded-full text-xs font-medium text-gb-text-secondary animate-in fade-in slide-in-from-bottom-2"
+              >
+                <span>{badge.icon}</span>
+                <span>{badge.label}</span>
+                {onRemoveBadge && (
+                  <button 
+                    onClick={() => onRemoveBadge(badge.label)}
+                    className="ml-1 p-0.5 hover:text-gb-text hover:bg-gb-bg-card rounded-full transition-colors"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="relative group">
           <textarea
             ref={inputRef}
