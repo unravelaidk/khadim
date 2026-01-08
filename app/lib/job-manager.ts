@@ -21,32 +21,9 @@ redis.on("connect", () => {
 // Key prefixes
 const JOB_PREFIX = "agent:job:";
 
-export interface AgentJobStep {
-  id: string;
-  title: string;
-  status: "pending" | "running" | "complete" | "error";
-  content?: string;
-  result?: string;
-  tool?: string;
-}
+import type { AgentJob, AgentJobStep, JobEvent } from "../types/agent";
 
-export interface AgentJob {
-  id: string;
-  chatId: string;
-  status: "running" | "completed" | "error" | "cancelled";
-  steps: AgentJobStep[];
-  finalContent: string;
-  previewUrl: string | null;
-  sandboxId: string | null;
-  error: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface JobEvent {
-  type: string;
-  data: Record<string, unknown>;
-}
+export type { AgentJob, AgentJobStep, JobEvent };
 
 // In-memory subscribers (process-local, for SSE connections)
 const localSubscribers = new Map<string, Set<(event: JobEvent) => void>>();

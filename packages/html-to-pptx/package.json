@@ -1,0 +1,41 @@
+{
+  "name": "@khadim/html-to-pptx",
+  "version": "1.0.0",
+  "description": "Convert styled HTML slides to native, editable PowerPoint files",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./dist/index.js",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "html",
+    "pptx",
+    "powerpoint",
+    "slides",
+    "conversion"
+  ],
+  "author": "Khadim",
+  "license": "MIT",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^1.6.0",
+    "@types/node": "^22"
+  },
+  "peerDependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

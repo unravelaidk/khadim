@@ -1,6 +1,6 @@
-import type { Message } from "./types";
+import type { Message } from "../../types/chat";
 import { ThinkingSteps } from "./ThinkingStep";
-import type { ThinkingStepData } from "./ThinkingStep";
+import type { ThinkingStepData } from "../../types/chat";
 import { FileArtifact } from "./FileArtifact";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 

@@ -3,9 +3,10 @@ export interface ThinkingStepData {
   title: string;
   status: "pending" | "running" | "complete" | "error";
   content?: string;
-  result?: string;
-  // File editor support
+  children?: ThinkingStepData[];
   tool?: string;
+  result?: string;
+  // File-related data for write_file tool
   filename?: string;
   fileContent?: string;
 }
