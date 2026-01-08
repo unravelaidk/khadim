@@ -721,3 +721,144 @@ export const createWebSearchTool = () => tool(
         }),
     }
 );
+
+export const createSearchImagesTool = () => tool(
+    async ({ query, numResults = 5, orientation }: { query: string; numResults?: number; orientation?: "landscape" | "portrait" | "squarish" }) => {
+        try {
+            // Use Unsplash API for high-quality free images
+            // Note: For production, use an API key. This uses the public demo endpoint.
+            const unsplashUrl = `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=${numResults}${orientation ? `&orientation=${orientation}` : ''}`;
+            
+            const response = await fetch(unsplashUrl, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json"
+                }
+            });
+            
+            if (!response.ok) {
+                // Fallback: Try DuckDuckGo image search
+                return await searchDuckDuckGoImages(query, numResults);
+            }
+            
+            const data = await response.json();
+            const results = data.results || [];
+            
+            if (results.length === 0) {
+                return await searchDuckDuckGoImages(query, numResults);
+            }
+            
+            let output = `🖼️ IMAGE SEARCH RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: "${query}"
+
+`;
+            
+            results.slice(0, numResults).forEach((img: any, i: number) => {
+                const url = img.urls?.regular || img.urls?.small || img.urls?.raw;
+                const thumb = img.urls?.thumb || img.urls?.small;
+                const description = img.alt_description || img.description || 'Untitled';
+                const photographer = img.user?.name || 'Unknown';
+                
+                output += `${i + 1}. ${description}
+   📷 By: ${photographer}
+   🔗 URL: ${url}
+   📌 Thumbnail: ${thumb}
+
+`;
+            });
+            
+            output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Found ${results.length} images. Use these URLs in your slides with the 'image' slide type.
+
+Example slide JSON:
+{
+  "type": "image",
+  "title": "Your Title",
+  "imageUrl": "<paste URL here>",
+  "caption": "Photo credit"
+}`;
+            
+            return output;
+        } catch (error) {
+            // Fallback to DuckDuckGo
+            try {
+                return await searchDuckDuckGoImages(query, numResults);
+            } catch {
+                return `Image search error: ${error instanceof Error ? error.message : String(error)}`;
+            }
+        }
+    },
+    {
+        name: "search_images",
+        description: "Search for high-quality images to use in slides or presentations. Returns image URLs that can be used in 'image' type slides. Use descriptive queries like 'mountain landscape sunset' or 'business meeting office'.",
+        schema: z.object({
+            query: z.string().describe("Search query for images - be descriptive (e.g., 'modern office workspace')"),
+            numResults: z.number().optional().default(5).describe("Number of images to return (default: 5)"),
+            orientation: z.enum(["landscape", "portrait", "squarish"]).optional().describe("Image orientation filter"),
+        }),
+    }
+);
+
+// Fallback image search using DuckDuckGo
+async function searchDuckDuckGoImages(query: string, numResults: number = 5): Promise<string> {
+    const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`;
+    
+    // DuckDuckGo images requires a token, so we'll parse from their vqd endpoint
+    const tokenResponse = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
+        headers: { "User-Agent": "Mozilla/5.0" }
+    });
+    
+    const html = await tokenResponse.text();
+    const vqdMatch = html.match(/vqd=['"]([^'"]+)['"]/);
+    
+    if (!vqdMatch) {
+        return `🖼️ IMAGE SEARCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: "${query}"
+
+⚠️ Could not fetch images automatically.
+
+Alternative: Use these free image sources manually:
+• https://unsplash.com/s/photos/${encodeURIComponent(query.replace(/\s+/g, '-'))}
+• https://www.pexels.com/search/${encodeURIComponent(query.replace(/\s+/g, '%20'))}
+
+Then use the URLs in your slide JSON:
+{
+  "type": "image",
+  "title": "Your Title",
+  "imageUrl": "<paste URL here>"
+}`;
+    }
+    
+    const vqd = vqdMatch[1];
+    const imgUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1`;
+    
+    const imgResponse = await fetch(imgUrl, {
+        headers: { "User-Agent": "Mozilla/5.0" }
+    });
+    
+    const imgData = await imgResponse.json();
+    const results = imgData.results || [];
+    
+    let output = `🖼️ IMAGE SEARCH RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: "${query}"
+
+`;
+    
+    results.slice(0, numResults).forEach((img: any, i: number) => {
+        output += `${i + 1}. ${img.title || 'Untitled'}
+   🔗 URL: ${img.image}
+   📌 Thumbnail: ${img.thumbnail}
+   📐 Size: ${img.width}x${img.height}
+
+`;
+    });
+    
+    output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Use these URLs in 'image' type slides.`;
+    
+    return output;
+}
+

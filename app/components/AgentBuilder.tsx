@@ -7,11 +7,13 @@ import {
   ChatHeader,
 } from "./agent-builder";
 import type { Message, AgentConfig } from "./agent-builder";
+import type { AttachedFile } from "./agent-builder/WelcomeScreen";
 import { mockWorkspaces } from "./workspace";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { LibraryView } from "./Library/LibraryView";
 import type { Workspace } from "./workspace";
 import { useAgentStream } from "../hooks/useAgentStream";
+import { showError, sandboxErrors, agentMessages } from "../lib/toast";
 
 const suggestedPrompts = [
   "I want an agent that helps me write emails",
@@ -53,6 +55,7 @@ export function AgentBuilder() {
   const [currentView, setCurrentView] = useState<'chat' | 'library'>('chat');
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>(mockWorkspaces);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
@@ -144,6 +147,8 @@ export function AgentBuilder() {
               msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
             ));
           }
+        } else {
+          sandboxErrors.connectionFailed();
         }
 
         try {
@@ -183,6 +188,7 @@ export function AgentBuilder() {
       }
     } catch (error) {
       console.error("Failed to load chat:", error);
+      showError("Failed to load chat. Please try again.");
     }
   };
 
@@ -317,6 +323,7 @@ export function AgentBuilder() {
               : msg
           )
         );
+        agentMessages.cancelled();
       } else {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -325,6 +332,7 @@ export function AgentBuilder() {
               : msg
           )
         );
+        agentMessages.failed(error instanceof Error ? error.message : undefined);
       }
     } finally {
       setIsTyping(false);
@@ -575,6 +583,9 @@ export function AgentBuilder() {
                   activeBadges={activeBadges}
                   removeBadge={removeBadge}
                   onSuggestionClick={handleSuggestionClick}
+                  attachedFiles={attachedFiles}
+                  onFilesAttached={setAttachedFiles}
+                  onRemoveFile={(fileName) => setAttachedFiles(prev => prev.filter(f => f.name !== fileName))}
                 />
               )}
             </main>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuChevronLeft, LuChevronRight, LuCode, LuEye, LuDownload, LuPresentation, LuPalette, LuMaximize2, LuMinimize2, LuX, LuMonitor } from "react-icons/lu";
+import { LuChevronLeft, LuChevronRight, LuCode, LuEye, LuDownload, LuPresentation, LuMaximize2, LuMinimize2, LuX, LuMonitor } from "react-icons/lu";
 import { 
   SLIDE_THEMES, 
   getSlideBackground,
@@ -595,46 +595,6 @@ export function SlidesPreview({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Theme Picker */}
-          <div className="relative">
-            <button
-              onClick={() => setShowThemePicker(!showThemePicker)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors bg-gb-bg border border-gb-border hover:border-gb-border-medium"
-            >
-              <LuPalette className="w-3.5 h-3.5" />
-              <span 
-                className="w-3 h-3 rounded-full"
-                style={{ background: currentTheme.accentColor }}
-              />
-              <span className="text-gb-text-muted">{currentTheme.name}</span>
-            </button>
-            
-            {showThemePicker && (
-              <div className="absolute top-full right-0 mt-1 w-48 bg-gb-bg-card border border-gb-border rounded-lg shadow-lg z-50 overflow-hidden">
-                {Array.from(SLIDE_THEMES.values()).map((theme: SlideTheme) => (
-                  <button
-                    key={theme.id}
-                    onClick={() => {
-                      setCurrentTheme(theme);
-                      setShowThemePicker(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-gb-bg-subtle ${
-                      currentTheme.id === theme.id ? "bg-gb-bg-subtle" : ""
-                    }`}
-                  >
-                    <div 
-                      className="w-6 h-6 rounded-md flex-shrink-0"
-                      style={{ background: theme.backgrounds.title }}
-                    />
-                    <div>
-                      <div className="font-medium text-gb-text">{theme.name}</div>
-                      <div className="text-xs text-gb-text-muted">{theme.description}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
 
           {/* View Toggle */}
           <div className="flex bg-gb-bg rounded-lg border border-gb-border p-0.5">
@@ -696,21 +656,13 @@ export function SlidesPreview({
                     className="w-full flex items-start gap-3 px-3 py-2.5 text-left hover:bg-gb-bg-subtle transition-colors border-t border-gb-border disabled:opacity-50"
                   >
                     <div>
-                      <div className="text-xs font-medium text-gb-text">PPTX (Styled)</div>
+                      <div className="text-xs font-medium text-gb-text flex items-center gap-2">
+                        PPTX (Styled)
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold tracking-wider border border-amber-500/20">
+                          BETA
+                        </span>
+                      </div>
                       <div className="text-[10px] text-gb-text-muted">Native editable with styling</div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowExportMenu(false);
-                      downloadAsPptx();
-                    }}
-                    disabled={isDownloading}
-                    className="w-full flex items-start gap-3 px-3 py-2.5 text-left hover:bg-gb-bg-subtle transition-colors border-t border-gb-border disabled:opacity-50"
-                  >
-                    <div>
-                      <div className="text-xs font-medium text-gb-text">PPTX (Basic)</div>
-                      <div className="text-[10px] text-gb-text-muted">Simple text-only export</div>
                     </div>
                   </button>
                 </div>
