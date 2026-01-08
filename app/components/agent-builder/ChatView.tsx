@@ -6,7 +6,7 @@ import {
   SuggestionCards,
   AgentQuestion,
 } from "./index";
-import type { Message, PendingQuestion } from "./types";
+import type { Message, PendingQuestion } from "../../types/chat";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 
 interface ChatViewProps {

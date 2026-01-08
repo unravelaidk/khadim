@@ -6,16 +6,12 @@ import {
   createJob,
   getJob,
   getJobByChatId,
-  failJob,
-  subscribe,
-  type AgentJob,
 } from "../lib/job-manager";
-import { registerJobAbortController, unregisterJobAbortController } from "../lib/job-cancel";
+import type { AgentJob } from "../types/agent";
 import { createId } from "@paralleldrive/cuid2";
-import { formatSseEvent } from "../lib/sse";
 import { decoratePromptWithBadges } from "../lib/badges";
 import { loadChatHistory } from "../lib/chat-history";
-import { runAgentJob } from "../agent/job-runner";
+import { createExistingJobStream, createNewJobStream } from "../agent/stream-utils";
 
 // GET /api/agent?jobId=xxx - Subscribe to existing job updates
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -38,81 +34,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  // Stream existing steps and subscribe to updates
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const send = (type: string, data: Record<string, unknown>) => {
-        try {
-          controller.enqueue(encoder.encode(formatSseEvent(type, data)));
-        } catch (e) {
-          // Client disconnected
-        }
-      };
-
-      // Send existing steps
-      for (const step of job!.steps) {
-        send("step_start", { id: step.id, title: step.title });
-        if (step.content) {
-          send("step_update", { id: step.id, content: step.content });
-        }
-        if (step.status === "complete") {
-          send("step_complete", { id: step.id, result: step.result });
-        }
-      }
-
-      // If job is already completed, send done
-      if (job!.status === "completed") {
-        send("done", { content: job!.finalContent, previewUrl: job!.previewUrl });
-        try {
-          controller.close();
-        } catch (e) {
-          // Already closed
-        }
-        return;
-      }
-
-      if (job!.status === "error") {
-        send("error", { message: job!.error });
-        try {
-          controller.close();
-        } catch (e) {
-          // Already closed
-        }
-        return;
-      }
-
-      // Subscribe to real-time updates
-      const unsubscribe = subscribe(job!.id, (event) => {
-        send(event.type, event.data);
-        if (event.type === "done" || event.type === "error") {
-          try {
-            controller.close();
-          } catch (e) {
-            // Already closed
-          }
-        }
-      });
-
-      // Handle client disconnect
-      request.signal.addEventListener("abort", () => {
-        unsubscribe();
-        try {
-          controller.close();
-        } catch (e) {
-          // Already closed
-        }
-      });
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
-  });
+  // Use utility to create stream
+  return createExistingJobStream(job, request);
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -164,7 +87,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const jobId = createId();
   
   // Create job in Redis
-  const job = await createJob(jobId, chatId || "default");
+  await createJob(jobId, chatId || "default");
 
   // Get agent configuration
   const agentConfig = getAgentConfig(agentMode);
@@ -173,77 +96,24 @@ export async function action({ request }: ActionFunctionArgs) {
   const skillsContent = await loadSkills();
   const history = chatId ? await loadChatHistory(chatId) : [];
 
-  // Return job ID immediately - client can subscribe to updates
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const send = (type: string, data: Record<string, unknown>) => {
-        try {
-          controller.enqueue(encoder.encode(formatSseEvent(type, data)));
-        } catch (e) {
-          // Client disconnected, but agent continues
-        }
-      };
-
-      // Send job info immediately
-      send("job_created", { jobId, chatId });
-      send("agent_mode", { mode: agentMode, name: agentConfig.name });
-
-      // Subscribe to job updates FIRST
-      const unsubscribe = subscribe(jobId, (event) => {
-        console.log("[SSE] Sending event:", event.type, event.data);
-        send(event.type, event.data || {});
-        if (event.type === "done" || event.type === "error") {
-          try {
-            controller.close();
-          } catch (e) {
-            // Already closed
-          }
-        }
-      });
-
-      // NOW start the background job (after subscription is active)
-      const jobAbortController = new AbortController();
-      registerJobAbortController(jobId, jobAbortController);
-
-      const abortListener = () => jobAbortController.abort();
-      request.signal.addEventListener("abort", abortListener);
-
-      runAgentJob({
-        jobId,
-        chatId: chatId || "default",
-        prompt,
-        agentMode,
-        agentConfig,
-        skillsContent,
-        history,
-        existingSandboxId,
-        apiKey,
-        abortSignal: jobAbortController.signal,
-      }).catch((error) => {
-        console.error("Background agent error:", error);
-      }).finally(() => {
-        unregisterJobAbortController(jobId);
-        request.signal.removeEventListener("abort", abortListener);
-      });
-
-      // Handle client disconnect - agent continues running!
-      request.signal.addEventListener("abort", () => {
-        unsubscribe();
-        try {
-          controller.close();
-        } catch (e) {
-          // Already closed
-        }
-      });
+  // Use utility to create steam and start backend job
+  return createNewJobStream(
+    jobId,
+    chatId || "default",
+    agentMode,
+    agentConfig.name,
+    {
+      jobId,
+      chatId: chatId || "default",
+      prompt,
+      agentMode,
+      agentConfig,
+      skillsContent,
+      history,
+      existingSandboxId,
+      apiKey,
+      // abortSignal is attached inside createNewJobStream
     },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
-  });
+    request
+  );
 }

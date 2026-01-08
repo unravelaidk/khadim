@@ -14,7 +14,5 @@ export { SlidesPreview } from "./SlidesPreview";
 export { WelcomeScreen } from "./WelcomeScreen";
 export { ChatInterface } from "./ChatInterface";
 export { ChatHeader } from "./ChatHeader";
-export type { SlideData } from "./SlidesPreview";
-export type { ThinkingStepData } from "./ThinkingStep";
-
-export type { Message, AgentConfig } from "./types";
+export type { SlideData } from "../../types/slides";
+export type { ThinkingStepData, Message, AgentConfig } from "../../types/chat";

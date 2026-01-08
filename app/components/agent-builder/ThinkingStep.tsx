@@ -1,19 +1,7 @@
 import { useState } from "react";
 import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile } from "react-icons/lu";
 import { FileEditorModal } from "./FileEditorModal";
-
-export interface ThinkingStepData {
-  id: string;
-  title: string;
-  status: "pending" | "running" | "complete" | "error";
-  content?: string;
-  children?: ThinkingStepData[];
-  tool?: string;
-  result?: string;
-  // File-related data for write_file tool
-  filename?: string;
-  fileContent?: string;
-}
+import type { ThinkingStepData } from "../../types/chat";
 
 interface ThinkingStepProps {
   step: ThinkingStepData;

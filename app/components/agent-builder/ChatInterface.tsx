@@ -2,7 +2,7 @@ import { GameBoyScreen } from "./GameBoyScreen";
 import { ChatMessage } from "./ChatMessage";
 import { TypingIndicator } from "./TypingIndicator";
 import { AgentQuestion } from "./AgentQuestion";
-import type { Message, PendingQuestion } from "./types";
+import type { Message, PendingQuestion } from "../../types/chat";
 
 interface ChatInterfaceProps {
   messages: Message[];

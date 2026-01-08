@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import type { Message, ThinkingStepData, AgentConfig, PendingQuestion } from "../components/agent-builder/types";
+import type { Message, ThinkingStepData, AgentConfig, PendingQuestion } from "../types/chat";
 
 interface UseAgentStreamProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
