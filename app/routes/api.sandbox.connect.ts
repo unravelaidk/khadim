@@ -189,21 +189,27 @@ export async function action({ request }: ActionFunctionArgs) {
           }
         } else {
           // Check for static HTML project
-          const hasIndexHtml = chatArtifacts.some(a => a.filename === "index.html");
+          const indexHtmlArtifact = chatArtifacts.find(a => a.filename === "index.html");
           
-          if (hasIndexHtml) {
-            console.log(`Detected static HTML project`);
-            await startStaticServer(sandbox, ".", 8000);
-            await new Promise(r => setTimeout(r, 500));
-            
-            try {
-              previewUrl = await sandbox.exposeHttp({ port: 8000 });
-              const isReady = await waitForServer(previewUrl, 10, 200);
-              restorationStatus = isReady ? "static" : "failed";
-            } catch (e) {
-              console.error(`Failed to start static server:`, e);
-              restorationStatus = "failed";
-              restorationError = "Failed to start static server";
+          if (indexHtmlArtifact) {
+            // Check if this is a slide deck - if so, we don't need a server
+            if (indexHtmlArtifact.content.includes('<script id="slide-data"')) {
+              console.log("Detected slide project - skipping server start (native preview)");
+              restorationStatus = "none";
+            } else {
+              console.log(`Detected static HTML project`);
+              await startStaticServer(sandbox, ".", 8000);
+              await new Promise(r => setTimeout(r, 500));
+              
+              try {
+                previewUrl = await sandbox.exposeHttp({ port: 8000 });
+                const isReady = await waitForServer(previewUrl, 10, 200);
+                restorationStatus = isReady ? "static" : "failed";
+              } catch (e) {
+                console.error(`Failed to start static server:`, e);
+                restorationStatus = "failed";
+                restorationError = "Failed to start static server";
+              }
             }
           }
         }
