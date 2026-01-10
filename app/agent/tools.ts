@@ -9,6 +9,26 @@ import { createVersionSnapshot } from "../lib/versions";
 // In-memory todo storage per chat session
 const todoStorage = new Map<string, Array<{ task: string; status: "pending" | "in_progress" | "done" }>>();
 
+// Helper function to read a stream to string (eliminates code duplication)
+async function readStream(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+    if (!stream) return "";
+    let result = "";
+    const reader = stream.getReader();
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        result += new TextDecoder().decode(value);
+    }
+    return result;
+}
+
+// Helper function to get status icon for todo items
+function getStatusIcon(status: "pending" | "in_progress" | "done"): string {
+    if (status === "done") return "✅";
+    if (status === "in_progress") return "🔄";
+    return "⬜";
+}
+
 // Track last snapshot time per chat to debounce snapshots (avoid creating too many)
 const lastSnapshotTime = new Map<string, number>();
 const SNAPSHOT_DEBOUNCE_MS = 30000; // 30 seconds between auto-snapshots
@@ -53,8 +73,7 @@ export const createUpdateTodoTool = (chatId: string) => tool(
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
         tasks.forEach((t, i) => {
-            const icon = t.status === "done" ? "✅" : t.status === "in_progress" ? "🔄" : "⬜";
-            output += `${icon} ${i + 1}. ${t.task}\n`;
+            output += `${getStatusIcon(t.status)} ${i + 1}. ${t.task}\n`;
         });
         output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Progress: ${done}/${tasks.length} done | ${inProgress} in progress | ${pending} pending`;
@@ -85,8 +104,7 @@ export const createReadTodoTool = (chatId: string) => tool(
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
         tasks.forEach((t, i) => {
-            const icon = t.status === "done" ? "✅" : t.status === "in_progress" ? "🔄" : "⬜";
-            output += `${icon} ${i + 1}. ${t.task}\n`;
+            output += `${getStatusIcon(t.status)} ${i + 1}. ${t.task}\n`;
         });
 
         const pending = tasks.filter(t => t.status === "pending").length;
@@ -117,25 +135,10 @@ export const createRunCodeTool = (sandbox: Sandbox) => tool(
                 stderr: "piped",
             });
 
-            let stdout = "";
-            let stderr = "";
-
-            if (child.stdout) {
-                const reader = child.stdout.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    stdout += new TextDecoder().decode(value);
-                }
-            }
-            if (child.stderr) {
-                const reader = child.stderr.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    stderr += new TextDecoder().decode(value);
-                }
-            }
+            const [stdout, stderr] = await Promise.all([
+                readStream(child.stdout),
+                readStream(child.stderr)
+            ]);
 
             const status = await child.status;
             return `Exit Code: ${status.code}\nStdout:\n${stdout}\nStderr:\n${stderr}`;
@@ -268,25 +271,10 @@ This tool starts a Deno file server in the background and returns a public URL.`
                 stderr: "piped",
             });
 
-            let stdout = "";
-            let stderr = "";
-
-            if (child.stdout) {
-                const reader = child.stdout.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    stdout += new TextDecoder().decode(value);
-                }
-            }
-            if (child.stderr) {
-                const reader = child.stderr.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    stderr += new TextDecoder().decode(value);
-                }
-            }
+            const [stdout, stderr] = await Promise.all([
+                readStream(child.stdout),
+                readStream(child.stderr)
+            ]);
 
             const status = await child.status;
 
@@ -400,23 +388,11 @@ Correct usage:
                 stderr: "piped",
             });
 
-            let output = "";
-            if (child.stdout) {
-                const reader = child.stdout.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    output += new TextDecoder().decode(value);
-                }
-            }
-            if (child.stderr) {
-                const reader = child.stderr.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    output += new TextDecoder().decode(value);
-                }
-            }
+            const [stdout, stderr] = await Promise.all([
+                readStream(child.stdout),
+                readStream(child.stderr)
+            ]);
+            const output = stdout + stderr;
 
             const status = await child.status;
 
@@ -433,15 +409,7 @@ Correct usage:
                         stdout: "piped"
                     });
 
-                    let fileListOutput = "";
-                    if (findCmd.stdout) {
-                        const reader = findCmd.stdout.getReader();
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-                            fileListOutput += new TextDecoder().decode(value);
-                        }
-                    }
+                    const fileListOutput = await readStream(findCmd.stdout);
                     await findCmd.status;
 
                     const files = fileListOutput.split("\n").filter(f => f.trim());
@@ -537,15 +505,7 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
                     stdout: "piped"
                 });
 
-                let data = "";
-                if (child.stdout) {
-                    const reader = child.stdout.getReader();
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        data += new TextDecoder().decode(value);
-                    }
-                }
+                const data = await readStream(child.stdout);
                 const status = await child.status;
                 if (status.code !== 0) {
                     return `Error reading file: exit code ${status.code}`;
@@ -862,3 +822,71 @@ Use these URLs in 'image' type slides.`;
     return output;
 }
 
+export const createWriteSlidesTool = (
+    chatId: string, 
+    broadcastFn: (event: { type: string; data: any }) => Promise<void>
+) => tool(
+    async ({ content, title, theme }: { content: string; title?: string; theme?: string }) => {
+        try {
+            // Validate that content contains slide-data script tag
+            if (!content.includes('<script id="slide-data"') && !content.includes("<script id='slide-data'")) {
+                return `❌ ERROR: Slide content must include a <script id="slide-data" type="application/json"> tag with slide data.
+
+Example:
+<script id="slide-data" type="application/json">
+[
+  {"id": 1, "type": "title", "title": "My Presentation", "subtitle": "A great topic"},
+  {"id": 2, "type": "content", "title": "Overview", "bullets": ["Point 1", "Point 2"]}
+]
+</script>`;
+            }
+
+            const filename = "index.html";
+            
+            // Delete existing slide artifact for this chat
+            await db.delete(artifacts)
+                .where(and(
+                    eq(artifacts.chatId, chatId),
+                    eq(artifacts.filename, filename)
+                ));
+
+            // Insert new slide artifact
+            await db.insert(artifacts).values({
+                chatId,
+                filename,
+                content,
+            });
+
+            // Broadcast slide content for live preview
+            await broadcastFn({
+                type: "slide_content",
+                data: { fileContent: content, theme: theme || "brass" }
+            });
+
+            // Also broadcast as a file write for consistency
+            await broadcastFn({
+                type: "file_written",
+                data: { 
+                    filename,
+                    content,
+                    isSlide: true
+                }
+            });
+
+            const themeInfo = theme ? ` with "${theme}" theme` : "";
+            return `✅ Successfully saved ${title ? `"${title}"` : "presentation"}${themeInfo} (${content.length} bytes).
+The slides are now visible in the preview panel.`;
+        } catch (error) {
+            return `Error saving slides: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "write_slides",
+        description: `Write slide presentation HTML (NO SANDBOX NEEDED). THEMES: minimalist, paper, noir, brass, cobalt, emerald, midnight. Ask user their preferred theme first.`,
+        schema: z.object({
+            content: z.string().describe("The complete HTML content with embedded slide-data JSON"),
+            title: z.string().optional().describe("Optional title for the presentation"),
+            theme: z.string().optional().describe("Theme: minimalist, paper, noir, brass, cobalt, emerald, midnight"),
+        }),
+    }
+);

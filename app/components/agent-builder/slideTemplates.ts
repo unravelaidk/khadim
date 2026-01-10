@@ -1,15 +1,11 @@
 // Slide Template System
 // Premium themes and slide types for beautiful presentations
 
-// ============================================
-// THEME PRESETS - Professional Grade
-// ============================================
-
-import type { 
-  SlideTheme, 
-  SlideType, 
+import type {
+  SlideTheme,
+  SlideType,
   SlideData,
-  SlideTemplate 
+  SlideTemplate
 } from "../../types/slides";
 
 export type { SlideTheme, SlideType, SlideData, SlideTemplate };
@@ -418,14 +414,387 @@ export const SLIDE_THEMES = new Map<string, SlideTheme>([
       glow: "rgba(168, 85, 247, 0.25)",
     },
   }],
+
+  // ✨ MINIMALIST - Pure, clean, maximum whitespace
+  ["minimalist", {
+    id: "minimalist",
+    name: "Minimalist",
+    description: "Pure, clean design with maximum whitespace",
+    backgrounds: {
+      title: "#ffffff",
+      content: "#ffffff",
+      accent: "#fafafa",
+      section: "#ffffff",
+      quote: "#fafafa",
+      image: "#ffffff",
+      twoColumn: "#ffffff",
+      comparison: "#fafafa",
+    },
+    pptxColors: {
+      title: "ffffff", content: "ffffff", accent: "fafafa",
+      section: "ffffff", quote: "fafafa", image: "ffffff",
+      twoColumn: "ffffff", comparison: "fafafa",
+    },
+    textColors: {
+      primary: "#1a1a1a",
+      secondary: "rgba(26, 26, 26, 0.7)",
+      muted: "rgba(26, 26, 26, 0.4)",
+    },
+    accentColor: "#1a1a1a",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    decorativeElements: {
+      shapes: false,
+    },
+  }],
+
+  // 📜 PAPER - Warm, elegant paper texture feel
+  ["paper", {
+    id: "paper",
+    name: "Paper",
+    description: "Warm cream tones with elegant paper feel",
+    backgrounds: {
+      title: "linear-gradient(180deg, #faf8f3 0%, #f5f1e8 100%)",
+      content: "linear-gradient(180deg, #fdfcfa 0%, #faf8f3 100%)",
+      accent: "linear-gradient(180deg, #f0ebe0 0%, #e8e2d5 100%)",
+      section: "linear-gradient(180deg, #f5f1e8 0%, #ede8dc 100%)",
+      quote: "linear-gradient(180deg, #fdfcfa 0%, #f8f5ee 100%)",
+      image: "linear-gradient(180deg, #faf8f3 0%, #f5f1e8 100%)",
+      twoColumn: "linear-gradient(180deg, #fdfcfa 0%, #faf8f3 100%)",
+      comparison: "linear-gradient(180deg, #f8f5ee 0%, #fdfcfa 100%)",
+    },
+    pptxColors: {
+      title: "faf8f3", content: "fdfcfa", accent: "f0ebe0",
+      section: "f5f1e8", quote: "fdfcfa", image: "faf8f3",
+      twoColumn: "fdfcfa", comparison: "f8f5ee",
+    },
+    textColors: {
+      primary: "#3d3830",
+      secondary: "rgba(61, 56, 48, 0.75)",
+      muted: "rgba(139, 125, 105, 0.8)",
+    },
+    accentColor: "#8b7d69",
+    fontFamily: "'Cormorant Garamond', Georgia, serif",
+    decorativeElements: {
+      shapes: false,
+    },
+  }],
+
+  // 🖤 NOIR - High contrast dramatic black
+  ["noir", {
+    id: "noir",
+    name: "Noir",
+    description: "High contrast dramatic black and white",
+    backgrounds: {
+      title: "#000000",
+      content: "#000000",
+      accent: "#0a0a0a",
+      section: "#000000",
+      quote: "#050505",
+      image: "#000000",
+      twoColumn: "#000000",
+      comparison: "#050505",
+    },
+    pptxColors: {
+      title: "000000", content: "000000", accent: "0a0a0a",
+      section: "000000", quote: "050505", image: "000000",
+      twoColumn: "000000", comparison: "050505",
+    },
+    textColors: {
+      primary: "#ffffff",
+      secondary: "rgba(255, 255, 255, 0.8)",
+      muted: "rgba(255, 255, 255, 0.5)",
+    },
+    accentColor: "#ffffff",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    decorativeElements: {
+      shapes: false,
+    },
+  }],
+
+  // ============================================
+  // DISTINCTIVE PREMIUM THEMES
+  // ============================================
+
+  // 🔥 BRUTALIST - Raw industrial power
+  ["brutalist", {
+    id: "brutalist",
+    name: "Brutalist",
+    description: "Raw industrial power with oversized typography",
+    backgrounds: {
+      title: "#f5f5f0",
+      content: "#e8e8e0",
+      accent: "#1a1a1a",
+      section: "#f5f5f0",
+      quote: "#1a1a1a",
+      image: "#d4d4c8",
+      twoColumn: "#e8e8e0",
+      comparison: "#f5f5f0",
+    },
+    pptxColors: {
+      title: "f5f5f0", content: "e8e8e0", accent: "1a1a1a",
+      section: "f5f5f0", quote: "1a1a1a", image: "d4d4c8",
+      twoColumn: "e8e8e0", comparison: "f5f5f0",
+    },
+    textColors: {
+      primary: "#0a0a0a",
+      secondary: "rgba(10, 10, 10, 0.8)",
+      muted: "rgba(10, 10, 10, 0.5)",
+    },
+    accentColor: "#ff3d00",
+    fontFamily: "'Space Mono', 'Courier New', monospace",
+    decorativeElements: {
+      pattern: "repeating-linear-gradient(90deg, #0a0a0a 0px, #0a0a0a 1px, transparent 1px, transparent 40px)",
+      shapes: false,
+    },
+    typography: {
+      displayFont: "'Bebas Neue', 'Impact', sans-serif",
+      bodyFont: "'Space Mono', monospace",
+      displayWeight: "400",
+      headingStyle: "uppercase",
+      letterSpacing: "0.05em",
+    },
+    effects: {
+      noise: true,
+      noiseOpacity: 0.03,
+    },
+    layout: {
+      cardStyle: "brutal",
+      borderRadius: "0",
+    },
+  }],
+
+  // 🌈 VAPOR - Synthwave retrowave aesthetic
+  ["vapor", {
+    id: "vapor",
+    name: "Vapor",
+    description: "Synthwave neon dreams with retro-futuristic vibes",
+    backgrounds: {
+      title: "linear-gradient(180deg, #0f0028 0%, #1a0040 50%, #2d1b4e 100%)",
+      content: "linear-gradient(180deg, #0a0018 0%, #140030 100%)",
+      accent: "linear-gradient(135deg, #ff00ff 0%, #00ffff 100%)",
+      section: "linear-gradient(180deg, #1a0040 0%, #2d1b4e 100%)",
+      quote: "linear-gradient(180deg, #0f0028 0%, #1a0040 100%)",
+      image: "linear-gradient(180deg, rgba(255, 0, 255, 0.1) 0%, rgba(0, 255, 255, 0.1) 100%)",
+      twoColumn: "linear-gradient(180deg, #0a0018 0%, #140030 100%)",
+      comparison: "linear-gradient(180deg, #140030 0%, #0a0018 100%)",
+    },
+    pptxColors: {
+      title: "0f0028", content: "0a0018", accent: "ff00ff",
+      section: "1a0040", quote: "0f0028", image: "140030",
+      twoColumn: "0a0018", comparison: "140030",
+    },
+    textColors: {
+      primary: "#ffffff",
+      secondary: "rgba(255, 255, 255, 0.85)",
+      muted: "rgba(255, 0, 255, 0.7)",
+    },
+    accentColor: "#ff00ff",
+    fontFamily: "'Orbitron', 'Audiowide', sans-serif",
+    decorativeElements: {
+      pattern: "linear-gradient(transparent 50%, rgba(255, 0, 255, 0.03) 50%)",
+      shapes: true,
+      glow: "rgba(255, 0, 255, 0.4)",
+    },
+    typography: {
+      displayFont: "'Orbitron', sans-serif",
+      bodyFont: "'Exo 2', sans-serif",
+      displayWeight: "700",
+      headingStyle: "uppercase",
+      letterSpacing: "0.1em",
+    },
+    effects: {
+      scanlines: true,
+      overlay: "linear-gradient(180deg, transparent 0%, rgba(255, 0, 255, 0.05) 100%)",
+    },
+    animations: {
+      entrance: "glitch",
+      duration: "0.8s",
+    },
+  }],
+
+  // 📰 EDITORIAL - Magazine sophistication
+  ["editorial", {
+    id: "editorial",
+    name: "Editorial",
+    description: "Magazine-style sophistication with dramatic whitespace",
+    backgrounds: {
+      title: "#faf9f7",
+      content: "#ffffff",
+      accent: "#f0ede8",
+      section: "#faf9f7",
+      quote: "#f5f3f0",
+      image: "#faf9f7",
+      twoColumn: "#ffffff",
+      comparison: "#f5f3f0",
+    },
+    pptxColors: {
+      title: "faf9f7", content: "ffffff", accent: "f0ede8",
+      section: "faf9f7", quote: "f5f3f0", image: "faf9f7",
+      twoColumn: "ffffff", comparison: "f5f3f0",
+    },
+    textColors: {
+      primary: "#1a1a1a",
+      secondary: "rgba(26, 26, 26, 0.7)",
+      muted: "rgba(26, 26, 26, 0.4)",
+    },
+    accentColor: "#c41e3a",
+    fontFamily: "'Fraunces', 'Georgia', serif",
+    decorativeElements: {
+      shapes: false,
+    },
+    typography: {
+      displayFont: "'Fraunces', serif",
+      bodyFont: "'Source Serif 4', serif",
+      displayWeight: "900",
+      headingStyle: "normal",
+      letterSpacing: "-0.02em",
+    },
+    layout: {
+      contentMaxWidth: "800px",
+      padding: "80px",
+      cardStyle: "outline",
+    },
+  }],
+
+  // 🔷 NEOGEO - Bold geometric Bauhaus
+  ["neogeo", {
+    id: "neogeo",
+    name: "Neo Geo",
+    description: "Bold geometric shapes with Bauhaus-inspired primary colors",
+    backgrounds: {
+      title: "#fffef5",
+      content: "#fffef5",
+      accent: "#0052cc",
+      section: "#ffcc00",
+      quote: "#ff3366",
+      image: "#fffef5",
+      twoColumn: "#fffef5",
+      comparison: "#00cc88",
+    },
+    pptxColors: {
+      title: "fffef5", content: "fffef5", accent: "0052cc",
+      section: "ffcc00", quote: "ff3366", image: "fffef5",
+      twoColumn: "fffef5", comparison: "00cc88",
+    },
+    textColors: {
+      primary: "#0a0a0a",
+      secondary: "rgba(10, 10, 10, 0.85)",
+      muted: "rgba(10, 10, 10, 0.5)",
+    },
+    accentColor: "#0052cc",
+    fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif",
+    decorativeElements: {
+      pattern: "radial-gradient(circle at 100% 0%, #ffcc00 0%, transparent 30%), radial-gradient(circle at 0% 100%, #ff3366 0%, transparent 25%)",
+      shapes: true,
+    },
+    typography: {
+      displayFont: "'Syne', sans-serif",
+      bodyFont: "'DM Sans', sans-serif",
+      displayWeight: "800",
+      headingStyle: "normal",
+    },
+    layout: {
+      borderRadius: "0",
+      cardStyle: "solid",
+    },
+  }],
+
+  // 🌿 ORGANIC - Nature-inspired softness
+  ["organic", {
+    id: "organic",
+    name: "Organic",
+    description: "Soft curves and nature-inspired earth tones",
+    backgrounds: {
+      title: "linear-gradient(160deg, #f7f5f0 0%, #ebe7df 100%)",
+      content: "linear-gradient(160deg, #faf8f5 0%, #f2efe8 100%)",
+      accent: "linear-gradient(135deg, #8b9a6b 0%, #a3b084 100%)",
+      section: "linear-gradient(160deg, #e8e4d8 0%, #ddd8c8 100%)",
+      quote: "linear-gradient(160deg, #f0ece2 0%, #e5e0d5 100%)",
+      image: "linear-gradient(160deg, #f5f2ea 0%, #ebe7dd 100%)",
+      twoColumn: "linear-gradient(160deg, #faf8f5 0%, #f2efe8 100%)",
+      comparison: "linear-gradient(160deg, #f2efe8 0%, #faf8f5 100%)",
+    },
+    pptxColors: {
+      title: "f7f5f0", content: "faf8f5", accent: "8b9a6b",
+      section: "e8e4d8", quote: "f0ece2", image: "f5f2ea",
+      twoColumn: "faf8f5", comparison: "f2efe8",
+    },
+    textColors: {
+      primary: "#3d3d3d",
+      secondary: "rgba(61, 61, 61, 0.75)",
+      muted: "rgba(139, 154, 107, 0.8)",
+    },
+    accentColor: "#8b9a6b",
+    fontFamily: "'Libre Baskerville', Georgia, serif",
+    decorativeElements: {
+      pattern: "radial-gradient(ellipse at 30% 70%, rgba(139, 154, 107, 0.08) 0%, transparent 50%)",
+      shapes: true,
+    },
+    typography: {
+      displayFont: "'Libre Baskerville', serif",
+      bodyFont: "'Nunito', sans-serif",
+      displayWeight: "400",
+      headingStyle: "normal",
+    },
+    layout: {
+      borderRadius: "24px",
+      cardStyle: "soft",
+    },
+  }],
+
+  // ✨ HOLOGRAPHIC - Iridescent future
+  ["holographic", {
+    id: "holographic",
+    name: "Holographic",
+    description: "Iridescent gradients with a futuristic feel",
+    backgrounds: {
+      title: "linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%)",
+      content: "linear-gradient(160deg, #0f0f1a 0%, #1a1a2e 100%)",
+      accent: "linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)",
+      section: "linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%)",
+      quote: "linear-gradient(160deg, #141428 0%, #1a1a2e 100%)",
+      image: "linear-gradient(160deg, rgba(102, 126, 234, 0.15) 0%, rgba(240, 147, 251, 0.15) 100%)",
+      twoColumn: "linear-gradient(160deg, #0f0f1a 0%, #1a1a2e 100%)",
+      comparison: "linear-gradient(160deg, #1a1a2e 0%, #0f0f1a 100%)",
+    },
+    pptxColors: {
+      title: "667eea", content: "0f0f1a", accent: "764ba2",
+      section: "1a1a2e", quote: "141428", image: "667eea",
+      twoColumn: "0f0f1a", comparison: "1a1a2e",
+    },
+    textColors: {
+      primary: "#ffffff",
+      secondary: "rgba(255, 255, 255, 0.85)",
+      muted: "rgba(240, 147, 251, 0.7)",
+    },
+    accentColor: "#f093fb",
+    fontFamily: "'Outfit', system-ui, sans-serif",
+    decorativeElements: {
+      pattern: "linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(240, 147, 251, 0.1) 50%, rgba(79, 172, 254, 0.1) 100%)",
+      shapes: true,
+      glow: "rgba(240, 147, 251, 0.3)",
+    },
+    typography: {
+      displayFont: "'Outfit', sans-serif",
+      bodyFont: "'Outfit', sans-serif",
+      displayWeight: "700",
+      headingStyle: "normal",
+    },
+    effects: {
+      noise: true,
+      noiseOpacity: 0.02,
+    },
+    animations: {
+      entrance: "blur-in",
+      duration: "0.6s",
+      easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+    },
+    layout: {
+      borderRadius: "20px",
+      cardStyle: "glass",
+    },
+  }],
 ]);
-
-// ============================================
-// SLIDE TYPES
-// ============================================
-
-
-
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -435,16 +804,14 @@ export function getSlideBackground(
   slideType: SlideType,
   theme: SlideTheme
 ): string {
-  const typeKey = slideType === "twoColumn" ? "twoColumn" : slideType;
-  return theme.backgrounds[typeKey] || theme.backgrounds.content;
+  return theme.backgrounds[slideType] || theme.backgrounds.content;
 }
 
 export function getSlidePptxColor(
   slideType: SlideType,
   theme: SlideTheme
 ): string {
-  const typeKey = slideType === "twoColumn" ? "twoColumn" : slideType;
-  return theme.pptxColors[typeKey] || theme.pptxColors.content;
+  return theme.pptxColors[slideType] || theme.pptxColors.content;
 }
 
 export function getDefaultTheme(): SlideTheme {
@@ -456,7 +823,7 @@ export function getThemeById(id: string): SlideTheme {
 }
 
 export function isLightTheme(theme: SlideTheme): boolean {
-  return ["sand", "arctic", "mist", "chromatic"].includes(theme.id);
+  return ["sand", "arctic", "mist", "chromatic", "minimalist", "paper", "brutalist", "editorial", "neogeo", "organic"].includes(theme.id);
 }
 
 // ============================================
@@ -464,17 +831,13 @@ export function isLightTheme(theme: SlideTheme): boolean {
 // ============================================
 
 export const slideAnimationStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+  /* Premium Font Stack - Distinctive choices for each theme style */
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@400;500;700&family=Exo+2:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=Inter:wght@300;400;500;600;700&family=Libre+Baskerville:wght@400;700&family=Nunito:wght@400;600;700&family=Orbitron:wght@400;700;900&family=Outfit:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Source+Serif+4:wght@400;600;700&family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap');
 
+  /* Core Animations */
   @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: translateY(30px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes fadeIn {
@@ -482,6 +845,30 @@ export const slideAnimationStyles = `
     to { opacity: 1; }
   }
 
+  @keyframes blurIn {
+    from { opacity: 0; filter: blur(20px); transform: scale(0.95); }
+    to { opacity: 1; filter: blur(0); transform: scale(1); }
+  }
+
+  @keyframes slideLeft {
+    from { opacity: 0; transform: translateX(50px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes zoomIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes glitch {
+    0% { opacity: 0; transform: translate(-5px, 5px); filter: hue-rotate(90deg); }
+    25% { opacity: 0.8; transform: translate(5px, -5px); filter: hue-rotate(180deg); }
+    50% { opacity: 0.6; transform: translate(-3px, 3px); filter: hue-rotate(270deg); }
+    75% { opacity: 0.9; transform: translate(3px, -3px); filter: hue-rotate(360deg); }
+    100% { opacity: 1; transform: translate(0, 0); filter: hue-rotate(0deg); }
+  }
+
+  /* Effects */
   @keyframes shimmer {
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
@@ -502,14 +889,31 @@ export const slideAnimationStyles = `
     50% { box-shadow: 0 0 40px var(--glow-color, rgba(255,255,255,0.2)); }
   }
 
-  .slide-animate {
-    animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  @keyframes neonPulse {
+    0%, 100% { text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 40px currentColor; }
+    50% { text-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 20px currentColor; }
   }
 
-  .slide-fade {
-    animation: fadeIn 0.5s ease-out;
+  @keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
   }
 
+  @keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+
+  /* Animation Classes */
+  .slide-animate { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .slide-fade { animation: fadeIn 0.5s ease-out; }
+  .slide-blur { animation: blurIn 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
+  .slide-left { animation: slideLeft 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .slide-zoom { animation: zoomIn 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+  .slide-glitch { animation: glitch 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* Card Styles */
   .glassmorphism {
     background: rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(12px);
@@ -526,6 +930,27 @@ export const slideAnimationStyles = `
     border-radius: 20px;
   }
 
+  .card-brutal {
+    background: #fff;
+    border: 3px solid #0a0a0a;
+    box-shadow: 6px 6px 0 #0a0a0a;
+    border-radius: 0;
+  }
+
+  .card-soft {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 24px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+  }
+
+  .card-outline {
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+  }
+
+  /* Text Effects */
   .gradient-text {
     background: linear-gradient(135deg, currentColor 0%, currentColor 100%);
     -webkit-background-clip: text;
@@ -533,6 +958,16 @@ export const slideAnimationStyles = `
     background-clip: text;
   }
 
+  .neon-text {
+    text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 40px currentColor;
+  }
+
+  .text-stroke {
+    -webkit-text-stroke: 2px currentColor;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Decorative Elements */
   .decorative-line {
     width: 60px;
     height: 3px;
@@ -546,13 +981,51 @@ export const slideAnimationStyles = `
     opacity: 0.08;
     pointer-events: none;
   }
+
+  /* Noise/Grain Overlay */
+  .noise-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+  }
+
+  /* Scanline Effect (for Vapor theme) */
+  .scanlines::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.1) 2px,
+      rgba(0, 0, 0, 0.1) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* Holographic shimmer */
+  .holo-shimmer {
+    background: linear-gradient(
+      135deg,
+      rgba(102, 126, 234, 0.3) 0%,
+      rgba(118, 75, 162, 0.3) 25%,
+      rgba(240, 147, 251, 0.3) 50%,
+      rgba(245, 87, 108, 0.3) 75%,
+      rgba(79, 172, 254, 0.3) 100%
+    );
+    background-size: 400% 400%;
+    animation: gradientShift 8s ease infinite;
+  }
 `;
 
 // ============================================
 // TEMPLATE PRESETS
 // ============================================
-
-
 
 export const SLIDE_TEMPLATES: SlideTemplate[] = [
   {
@@ -643,6 +1116,236 @@ export const SLIDE_TEMPLATES: SlideTemplate[] = [
       { id: 5, type: "comparison", title: "Year over Year", leftLabel: "2023", leftItems: ["$10M revenue", "100 employees"], rightLabel: "2024", rightItems: ["$12.5M revenue", "150 employees"] },
       { id: 6, type: "content", title: "2025 Outlook", bullets: ["Goal 1", "Goal 2", "Goal 3"] },
       { id: 7, type: "title", title: "Thank You", subtitle: "Questions?" },
+    ],
+  },
+  {
+    id: "noir-luxury",
+    name: "Noir Luxury",
+    description: "High-contrast, dramatic black and white for bold statements",
+    theme: "noir",
+    slides: [
+      { id: 1, type: "title", title: "The New Era", subtitle: "Bold. Stark. Uncompromising." },
+      { id: 2, type: "quote", quote: "Simplicity is the ultimate sophistication.", attribution: "Leonardo da Vinci" },
+      { id: 3, type: "section", title: "Core Principles" },
+      { id: 4, type: "content", title: "Market Analysis", bullets: ["Dominant share", "Rapid growth", "High retention"] },
+      { id: 5, type: "comparison", title: "Versus Competition", leftLabel: "Us", leftItems: ["Focused", "Premium"], rightLabel: "Them", rightItems: ["Generic", "Commodity"] },
+      { id: 6, type: "accent", title: "Vision 2025", subtitle: "Defining the future" },
+      { id: 7, type: "title", title: "Join Us", subtitle: "contact@luxury.brand" },
+    ],
+  },
+  {
+    id: "paper-doc",
+    name: "Paper Doc",
+    description: "Warm, textured feel for literary or human-centric topics",
+    theme: "paper",
+    slides: [
+      { id: 1, type: "title", title: "Our Story", subtitle: "A journey of craftsmanship" },
+      { id: 2, type: "content", title: "Chapter One", bullets: ["The beginning", "First struggles", "Initial success"] },
+      { id: 3, type: "twoColumn", title: "Values", leftTitle: "Tradition", leftBullets: ["Quality", "Heritage"], rightTitle: "Innovation", rightBullets: ["Adaptability", "Future-proof"] },
+      { id: 4, type: "quote", quote: "Every great story happens when someone decides not to give up.", attribution: "Spryte Loriano" },
+      { id: 5, type: "section", title: "The Methodology" },
+      { id: 6, type: "content", title: "Process", bullets: ["Research", "Drafting", "Refining", "Publishing"] },
+      { id: 7, type: "title", title: "The End", subtitle: "Thank you for reading" },
+    ],
+  },
+  {
+    id: "vibrant-flow",
+    name: "Vibrant Flow",
+    description: "Colorful, creative gradients for dynamic energy",
+    theme: "chromatic",
+    slides: [
+      { id: 1, type: "title", title: "Creative Spark", subtitle: "Igniting innovation" },
+      { id: 2, type: "accent", title: "The Big Idea", subtitle: "Changing the game" },
+      { id: 3, type: "content", title: "Features", bullets: ["Dynamic color", "fluid motion", "Engaging layout"] },
+      { id: 4, type: "image", title: "Visual Impact", caption: "Show, don't just tell" },
+      { id: 5, type: "comparison", title: "Before vs After", leftLabel: "Bland", leftItems: ["Gray", "Static"], rightLabel: "Bold", rightItems: ["Colorful", "Dynamic"] },
+      { id: 6, type: "section", title: "Execution Plan" },
+      { id: 7, type: "title", title: "Let's Go", subtitle: "Start the journey" },
+    ],
+  },
+  {
+    id: "arctic-frost",
+    name: "Arctic Frost",
+    description: "Cool, refreshing blue tones for healthcare or clean tech",
+    theme: "arctic",
+    slides: [
+      { id: 1, type: "title", title: "Clean Energy", subtitle: "Powering the future" },
+      { id: 2, type: "content", title: "Mission", bullets: ["Sustainability", "Efficiency", "Reliability"] },
+      { id: 3, type: "twoColumn", title: "Impact", leftTitle: "Global", leftBullets: ["Reduced carbon", "Better air"], rightTitle: "Local", rightBullets: ["Job creation", "Lower costs"] },
+      { id: 4, type: "section", title: "Solutions" },
+      { id: 5, type: "comparison", title: "Energy Sources", leftLabel: "Fossil", leftItems: ["Finite", "Polluting"], rightLabel: "Renewable", rightItems: ["Infinite", "Clean"] },
+      { id: 6, type: "accent", title: "Goal: Net Zero", subtitle: "By 2030" },
+      { id: 7, type: "title", title: "Partner With Us", subtitle: "Together we can" },
+    ],
+  },
+  {
+    id: "amber-glow",
+    name: "Amber Glow",
+    description: "Warm, inviting sunset tones for hospitality or lifestyle",
+    theme: "amber",
+    slides: [
+      { id: 1, type: "title", title: "Summer Collection", subtitle: "Warmth & Style" },
+      { id: 2, type: "image", title: "Inspiration", caption: "Golden hour moments" },
+      { id: 3, type: "content", title: "Trends", bullets: ["Earth tones", "Natural fabrics", "Relaxed fits"] },
+      { id: 4, type: "section", title: "Lookbook" },
+      { id: 5, type: "twoColumn", title: "Materials", leftTitle: "Cotton", leftBullets: ["Breathable", "Soft"], rightTitle: "Linen", rightBullets: ["Durable", "Classic"] },
+      { id: 6, type: "quote", quote: "Style is a way to say who you are without having to speak.", attribution: "Rachel Zoe" },
+      { id: 7, type: "title", title: "Shop Now", subtitle: "Available online" },
+    ],
+  },
+  {
+    id: "structural-blue",
+    name: "Structural Blue",
+    description: "Solid, architectural reliability for construction or finance",
+    theme: "structural",
+    slides: [
+      { id: 1, type: "title", title: "Q3 Financials", subtitle: "Stability & Growth" },
+      { id: 2, type: "content", title: "Key Metrics", bullets: ["Revenue: +15%", "EBITDA: +8%", "Margins: 22%"] },
+      { id: 3, type: "section", title: "Market Analysis" },
+      { id: 4, type: "twoColumn", title: "Performance", leftTitle: "Domestic", leftBullets: ["Strong demand", "High volume"], rightTitle: "International", rightBullets: ["Emerging markets", "Currency headwinds"] },
+      { id: 5, type: "comparison", title: "Forecast", leftLabel: "Conservative", leftItems: ["5% growth"], rightLabel: "Optimistic", rightItems: ["12% growth"] },
+      { id: 6, type: "accent", title: "Strategic Outlook", subtitle: "Long-term value" },
+      { id: 7, type: "title", title: "Q&A", subtitle: "Investor relations" },
+    ],
+  },
+  {
+    id: "mist-grey",
+    name: "Mist Grey",
+    description: "Subtle, ethereal elegance for fashion or art",
+    theme: "mist",
+    slides: [
+      { id: 1, type: "title", title: "Modern Art", subtitle: "Exploring the void" },
+      { id: 2, type: "quote", quote: "Less is more.", attribution: "Mies van der Rohe" },
+      { id: 3, type: "content", title: "Themes", bullets: ["Silence", "Space", "Form"] },
+      { id: 4, type: "section", title: "Gallery" },
+      { id: 5, type: "image", title: "Exhibit A", caption: "Untitled, 2024" },
+      { id: 6, type: "twoColumn", title: "Critique", leftTitle: "Form", leftBullets: ["Balanced", "Subtle"], rightTitle: "Meaning", rightBullets: ["Open", "Interpretive"] },
+      { id: 7, type: "title", title: "Visit Us", subtitle: "Gallery hours" },
+    ],
+  },
+  {
+    id: "onyx-dark",
+    name: "Onyx Dark",
+    description: "Premium, sleek darkness for high-end tech",
+    theme: "onyx",
+    slides: [
+      { id: 1, type: "title", title: "Pro Series X", subtitle: "Redefining performance" },
+      { id: 2, type: "content", title: "Specs", bullets: ["8-core processor", "32GB RAM", "4TB SSD"] },
+      { id: 3, type: "accent", title: "Speed", subtitle: "Unmatched velocity" },
+      { id: 4, type: "comparison", title: "Benchmark", leftLabel: "Available", leftItems: ["Standard speed", "Average loading"], rightLabel: "Pro Series", rightItems: ["Instant load", "Zero latency"] },
+      { id: 5, type: "section", title: "Design" },
+      { id: 6, type: "image", title: "The Chassis", caption: "Aerospace grade aluminum" },
+      { id: 7, type: "title", title: "Pre-order", subtitle: "Coming soon" },
+    ],
+  },
+  {
+    id: "pure-minimal",
+    name: "Pure Minimal",
+    description: "Essential, distraction-free design",
+    theme: "minimalist",
+    slides: [
+      { id: 1, type: "title", title: "Focus", subtitle: "The art of concentration" },
+      { id: 2, type: "content", title: "Principles", bullets: ["De-clutter", "Prioritize", "Execute"] },
+      { id: 3, type: "section", title: "Method" },
+      { id: 4, type: "twoColumn", title: "Routine", leftTitle: "Morning", leftBullets: ["Plan", "Review"], rightTitle: "Deep Work", rightBullets: ["Create", "Build"] },
+      { id: 5, type: "quote", quote: "Simplicity is the keynote of all true elegance.", attribution: "Coco Chanel" },
+      { id: 6, type: "accent", title: "Result", subtitle: "Clarity" },
+      { id: 7, type: "title", title: "Begin", subtitle: "Start today" },
+    ],
+  },
+
+  // ============================================
+  // DISTINCTIVE PREMIUM TEMPLATES
+  // ============================================
+
+  {
+    id: "brutalist-manifesto",
+    name: "Brutalist Manifesto",
+    description: "Raw, industrial power for bold statements and disruption",
+    theme: "brutalist",
+    slides: [
+      { id: 1, type: "title", title: "NO MORE RULES", subtitle: "A manifesto for change" },
+      { id: 2, type: "quote", quote: "BREAK THE MOLD. BUILD SOMETHING RAW.", attribution: "The New Guard" },
+      { id: 3, type: "section", title: "THE PROBLEM" },
+      { id: 4, type: "content", title: "What's Wrong", bullets: ["Conformity kills creativity", "Safe is forgettable", "Average is invisible"] },
+      { id: 5, type: "comparison", title: "OLD VS NEW", leftLabel: "THEN", leftItems: ["Polished", "Safe", "Boring"], rightLabel: "NOW", rightItems: ["Raw", "Bold", "Unforgettable"] },
+      { id: 6, type: "accent", title: "THE SOLUTION", subtitle: "Embrace the brutal truth" },
+      { id: 7, type: "title", title: "JOIN US", subtitle: "hello@brutal.design" },
+    ],
+  },
+  {
+    id: "synthwave-future",
+    name: "Synthwave Future",
+    description: "Neon-soaked retro-futurism for tech and gaming",
+    theme: "vapor",
+    slides: [
+      { id: 1, type: "title", title: "NEON DREAMS", subtitle: "Welcome to the future" },
+      { id: 2, type: "section", title: "ENTER THE GRID" },
+      { id: 3, type: "content", title: "Features", bullets: ["Hyperspeed processing", "Neural interface", "Quantum memory", "Holographic display"] },
+      { id: 4, type: "quote", quote: "The future is already here — it's just not evenly distributed.", attribution: "William Gibson" },
+      { id: 5, type: "twoColumn", title: "Specifications", leftTitle: "Hardware", leftBullets: ["8K resolution", "120Hz refresh"], rightTitle: "Software", rightBullets: ["AI-powered", "Cloud sync"] },
+      { id: 6, type: "accent", title: "LAUNCH DATE", subtitle: "2025.01.01" },
+      { id: 7, type: "title", title: "PRE-ORDER NOW", subtitle: "neon.tech" },
+    ],
+  },
+  {
+    id: "editorial-story",
+    name: "Editorial Story",
+    description: "Magazine-style sophistication for narratives and thought leadership",
+    theme: "editorial",
+    slides: [
+      { id: 1, type: "title", title: "The Art of Storytelling", subtitle: "A visual essay" },
+      { id: 2, type: "quote", quote: "Every great design begins with an even better story.", attribution: "Lorinda Mamo" },
+      { id: 3, type: "section", title: "Chapter One" },
+      { id: 4, type: "content", title: "The Craft", bullets: ["Begin with why", "Show, don't tell", "Leave space for wonder", "End with impact"] },
+      { id: 5, type: "twoColumn", title: "Form & Function", leftTitle: "Design", leftBullets: ["Typography", "Whitespace", "Hierarchy"], rightTitle: "Content", rightBullets: ["Voice", "Narrative", "Emotion"] },
+      { id: 6, type: "image", title: "Visual Poetry", caption: "Where words meet design" },
+      { id: 7, type: "title", title: "Fin", subtitle: "Thank you for reading" },
+    ],
+  },
+  {
+    id: "neogeo-bold",
+    name: "Neo Geo Bold",
+    description: "Bauhaus-inspired geometric boldness for creative agencies",
+    theme: "neogeo",
+    slides: [
+      { id: 1, type: "title", title: "THINK DIFFERENT", subtitle: "Creative Agency" },
+      { id: 2, type: "section", title: "OUR WORK" },
+      { id: 3, type: "content", title: "Services", bullets: ["Brand Strategy", "Visual Identity", "Digital Experience", "Motion Design"] },
+      { id: 4, type: "comparison", title: "Before & After", leftLabel: "Ordinary", leftItems: ["Generic", "Forgettable"], rightLabel: "Extraordinary", rightItems: ["Distinctive", "Memorable"] },
+      { id: 5, type: "twoColumn", title: "Process", leftTitle: "Discover", leftBullets: ["Research", "Insight"], rightTitle: "Create", rightBullets: ["Ideate", "Execute"] },
+      { id: 6, type: "quote", quote: "Form follows function.", attribution: "Louis Sullivan" },
+      { id: 7, type: "title", title: "LET'S CREATE", subtitle: "hello@neogeo.studio" },
+    ],
+  },
+  {
+    id: "organic-wellness",
+    name: "Organic Wellness",
+    description: "Nature-inspired softness for wellness and lifestyle brands",
+    theme: "organic",
+    slides: [
+      { id: 1, type: "title", title: "Return to Nature", subtitle: "Wellness reimagined" },
+      { id: 2, type: "quote", quote: "In every walk with nature, one receives far more than he seeks.", attribution: "John Muir" },
+      { id: 3, type: "section", title: "Our Philosophy" },
+      { id: 4, type: "content", title: "Core Values", bullets: ["Sustainability first", "Mindful ingredients", "Holistic approach", "Community care"] },
+      { id: 5, type: "twoColumn", title: "Products", leftTitle: "Body", leftBullets: ["Natural oils", "Plant extracts"], rightTitle: "Mind", rightBullets: ["Meditation guides", "Wellness rituals"] },
+      { id: 6, type: "image", title: "From Earth", caption: "Ethically sourced, lovingly crafted" },
+      { id: 7, type: "title", title: "Begin Your Journey", subtitle: "organic.wellness" },
+    ],
+  },
+  {
+    id: "holographic-launch",
+    name: "Holographic Launch",
+    description: "Iridescent futurism for product launches and tech reveals",
+    theme: "holographic",
+    slides: [
+      { id: 1, type: "title", title: "THE NEXT DIMENSION", subtitle: "Product Launch 2025" },
+      { id: 2, type: "section", title: "REVEALING" },
+      { id: 3, type: "content", title: "Key Features", bullets: ["Holographic display", "Neural sync", "Quantum processing", "Infinite storage"] },
+      { id: 4, type: "accent", title: "Revolutionary", subtitle: "Nothing like it exists" },
+      { id: 5, type: "comparison", title: "Evolution", leftLabel: "Yesterday", leftItems: ["2D interfaces", "Limited AI"], rightLabel: "Tomorrow", rightItems: ["3D holographics", "Sentient computing"] },
+      { id: 6, type: "quote", quote: "The best way to predict the future is to invent it.", attribution: "Alan Kay" },
+      { id: 7, type: "title", title: "AVAILABLE SOON", subtitle: "holographic.tech" },
     ],
   },
 ];

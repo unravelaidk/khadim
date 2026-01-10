@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { SLIDE_THEMES, slideAnimationStyles } from '../agent-builder/slideTemplates';
 import { useSlideExport } from '../agent-builder/hooks/useSlideExport';
 import { SlideToolbar } from './SlideToolbar';
@@ -6,7 +6,7 @@ import { SlideThumbnail } from './SlideThumbnail';
 import { SlideViewer } from './SlideViewer';
 import { SlideNavigation } from './SlideNavigation';
 import { SlideFullscreen } from './SlideFullscreen';
-import { generateHTMLFromSlides } from './utils';
+import { generateHTMLFromSlides, hasRichHtmlStyling } from './utils';
 import type { SlideData, SlideTheme } from '../../types/slides';
 
 interface SlidesPreviewProps {
@@ -31,19 +31,7 @@ export function SlidesPreview({
   );
   const [slideKey, setSlideKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // Detect if HTML has rich styling
-  const hasRichHtml = useMemo(() => {
-    if (!htmlContent) return false;
-    return (
-      htmlContent.includes('tailwindcss') ||
-      htmlContent.includes('cdn.tailwindcss.com') ||
-      htmlContent.includes('class="slide') ||
-      htmlContent.includes('font-display') ||
-      htmlContent.includes('bg-gradient') ||
-      htmlContent.includes('grid-cols')
-    );
-  }, [htmlContent]);
+  const hasRichHtml = hasRichHtmlStyling(htmlContent);
 
   // Export hook
   const { 
@@ -112,7 +100,7 @@ export function SlidesPreview({
         />
 
         {/* Main Content */}
-        <div className="flex h-[220px]">
+        <div className="flex h-[300px]">
           {/* Sidebar with Thumbnails */}
           <div className="w-44 bg-gb-bg-subtle border-r border-gb-border overflow-y-auto p-2.5 space-y-2.5 scrollbar-hide">
             {slides.map((s, index) => (

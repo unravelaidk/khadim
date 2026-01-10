@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#0d0804',
+              'text': '#fff8ed',
+              'muted': 'rgba(245, 158, 11, 0.7)',
+              'accent': '#f59e0b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0d0804; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(160deg, #0d0804 0%, #1a1008 100%);
+      padding: 60px;
+    }
+
+    /* Amber aesthetic - Warm sunset glow */
+    .slide-title {
+      font-size: 4.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+
+    .slide-subtitle {
+     font-size: 1.5rem;
+      font-weight: 300;
+      color: rgba(255, 248, 237, 0.85);
+      margin-top: 1.5rem;
+      letter-spacing: 0.05em;
+    }
+
+    .slide-content {
+      max-width: 1000px;
+    }
+
+    .card {
+      background: rgba(245, 158, 11, 0.05);
+      border: 1px solid rgba(245, 158, 11, 0.15);
+      padding: 2.5rem;
+      border-radius: 8px;
+    }
+
+    .bullet-list {
+      list-style: none;
+      margin-top: 2rem;
+    }
+
+    .bullet-list li {
+      font-size: 1.25rem;
+      font-weight: 300;
+      color: #fff8ed;
+      padding: 1rem 0;
+      border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .bullet-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 8px;
+      background: #f59e0b;
+      border-radius: 50%;
+    }
+
+    .accent-line {
+      width: 80px;
+      height: 4px;
+      background: #f59e0b;
+      margin-bottom: 2rem;
+      border-radius: 2px;
+    }
+
+    .quote-mark {
+      font-size: 8rem;
+      color: rgba(245, 158, 11, 0.15);
+      line-height: 1;
+    }
+  </style>
+</head>
+<body class="bg-slide-bg text-slide-text">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>

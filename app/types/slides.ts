@@ -34,6 +34,35 @@ export interface SlideTheme {
     shapes?: boolean;
     glow?: string;
   };
+  // Enhanced theming properties
+  typography?: {
+    displayFont: string;
+    bodyFont: string;
+    monoFont?: string;
+    displayWeight?: string;
+    headingStyle?: 'uppercase' | 'capitalize' | 'normal';
+    letterSpacing?: string;
+  };
+  effects?: {
+    noise?: boolean;
+    noiseOpacity?: number;
+    grain?: boolean;
+    scanlines?: boolean;
+    blur?: string;
+    overlay?: string;
+  };
+  animations?: {
+    entrance?: 'fade' | 'slide-up' | 'slide-left' | 'zoom' | 'blur-in' | 'glitch';
+    stagger?: number;
+    duration?: string;
+    easing?: string;
+  };
+  layout?: {
+    contentMaxWidth?: string;
+    padding?: string;
+    borderRadius?: string;
+    cardStyle?: 'glass' | 'solid' | 'outline' | 'brutal' | 'soft';
+  };
 }
 
 // ============================================

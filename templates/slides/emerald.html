@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Inter', 'Helvetica', 'Arial', 'sans-serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#00c35c', 
+              'text': '#ffffff',
+              'muted': 'rgba(255, 255, 255, 0.8)',
+              'accent': '#ffffff',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', sans-serif; background: #00c35c; color: #ffffff; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      grid-template-rows: repeat(12, 1fr);
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+      background: #00c35c;
+    }
+
+    /* Swiss Geometric Backgrounds determined by nth-child to vary layouts or just fixed decorative elements */
+    .slide::before {
+      content: '';
+      position: absolute;
+      top: 10%;
+      right: 10%;
+      width: 30vh;
+      height: 30vh;
+      border: 2px solid white;
+      border-radius: 50%;
+      opacity: 0.5;
+    }
+    
+    .slide::after {
+      content: '';
+      position: absolute;
+      bottom: 10%;
+      left: 10%;
+      width: 10vh;
+      height: 10vh;
+      background: white;
+      opacity: 0.2;
+    }
+
+    .slide-content {
+      grid-column: 2 / span 10;
+      grid-row: 3 / span 8;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* Swiss Typography */
+    .slide-title {
+      font-size: 6rem;
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      margin-bottom: 2rem;
+      text-transform: uppercase;
+      word-wrap: break-word;
+    }
+
+    .slide-subtitle {
+      font-size: 1.5rem;
+      font-weight: 500;
+      margin-top: 1rem;
+      border-top: 4px solid white;
+      padding-top: 1rem;
+      max-width: 400px;
+      display: inline-block;
+    }
+
+    /* Content Styling */
+    .card {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      padding: 3rem;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    .bullet-list {
+      list-style: none;
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .bullet-list li {
+      margin-bottom: 1rem;
+      padding-left: 2rem;
+      position: relative;
+    }
+
+    .bullet-list li::before {
+      content: '//';
+      position: absolute;
+      left: 0;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .accent-line {
+      height: 20px;
+      width: 100px;
+      background: white;
+      margin-bottom: 2rem;
+    }
+
+    .quote-mark {
+      font-size: 8rem;
+      font-weight: 900;
+      line-height: 0.5;
+      opacity: 0.3;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body class="bg-slide-bg text-slide-text">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>
