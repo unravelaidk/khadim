@@ -1,6 +1,64 @@
-import { useMemo } from 'react';
 import { getSlideBackground, isLightTheme } from '../agent-builder/slideTemplates';
+import { hasRichHtmlStyling } from './utils';
 import type { SlideData, SlideTheme } from '../../types/slides';
+
+// CSS for iframe slide control - hides scrollbars and constrains content
+const SLIDE_IFRAME_STYLES = `
+  html, body {
+    overflow: hidden !important;
+    scroll-behavior: auto !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  * {
+    -ms-overflow-style: none !important;
+    scrollbar-width: none !important;
+  }
+  .scroll-container, .slides, [class*="scroll"] {
+    overflow: hidden !important;
+    scroll-snap-type: none !important;
+    height: 100% !important;
+  }
+  canvas { max-height: 200px !important; }
+  .slide, section {
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+`;
+
+// Generates script to show only the target slide in an iframe
+function getSlideControlScript(slideIndex: number): string {
+  return `
+    <style id="slide-controller">${SLIDE_IFRAME_STYLES}</style>
+    <script>
+      window.addEventListener('load', function() {
+        const slides = document.querySelectorAll('section.slide, .slide, section');
+        const targetIndex = ${slideIndex};
+        if (slides.length > 0) {
+          slides.forEach((slide, index) => {
+            if (index !== targetIndex) {
+              slide.style.display = 'none';
+            } else {
+              slide.style.display = 'flex';
+              slide.style.height = '100%';
+              slide.style.overflow = 'hidden';
+            }
+          });
+        }
+        document.querySelectorAll('canvas').forEach(c => {
+          c.style.maxHeight = '200px';
+        });
+      });
+    </script>
+  `;
+}
 
 interface SlideViewerProps {
   slide: SlideData;
@@ -23,19 +81,7 @@ export function SlideViewer({
   const textPrimary = theme.textColors.primary;
   const textSecondary = theme.textColors.secondary;
   const textMuted = theme.textColors.muted;
-
-  // Check if HTML has rich styling that needs iframe
-  const hasRichHtml = useMemo(() => {
-    if (!htmlContent) return false;
-    return (
-      htmlContent.includes('tailwindcss') ||
-      htmlContent.includes('cdn.tailwindcss.com') ||
-      htmlContent.includes('class="slide') ||
-      htmlContent.includes('font-display') ||
-      htmlContent.includes('bg-gradient') ||
-      htmlContent.includes('grid-cols')
-    );
-  }, [htmlContent]);
+  const hasRichHtml = hasRichHtmlStyling(htmlContent);
 
   const renderSlideContent = () => {
     if (!slide) return null;
@@ -349,63 +395,6 @@ export function SlideViewer({
 
   // Iframe mode for rich HTML content
   if (hasRichHtml && htmlContent && useIframe) {
-    const slideControlScript = `
-      <style id="slide-controller">
-        html, body {
-          overflow: hidden !important;
-          scroll-behavior: auto !important;
-          height: 100% !important;
-          max-height: 100% !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        /* Hide all scrollbars */
-        *::-webkit-scrollbar {
-          display: none !important;
-          width: 0 !important;
-          height: 0 !important;
-        }
-        * {
-          -ms-overflow-style: none !important;
-          scrollbar-width: none !important;
-        }
-        .scroll-container, .slides, [class*="scroll"] {
-          overflow: hidden !important;
-          scroll-snap-type: none !important;
-          height: 100% !important;
-        }
-        canvas {
-          max-height: 200px !important;
-        }
-        .slide, section {
-          max-height: 100% !important;
-          overflow: hidden !important;
-        }
-      </style>
-      <script>
-        window.addEventListener('load', function() {
-          const slides = document.querySelectorAll('section.slide, .slide, section');
-          const targetIndex = ${slideIndex};
-          
-          if (slides.length > 0) {
-            slides.forEach((slide, index) => {
-              if (index !== targetIndex) {
-                slide.style.display = 'none';
-              } else {
-                slide.style.display = 'flex';
-                slide.style.height = '100%';
-                slide.style.overflow = 'hidden';
-              }
-            });
-          }
-          
-          document.querySelectorAll('canvas').forEach(c => {
-            c.style.maxHeight = '200px';
-          });
-        });
-      </script>
-    `;
-
     return (
       <div 
         className="w-full h-full relative rounded-xl overflow-hidden shadow-lg bg-black"
@@ -417,18 +406,18 @@ export function SlideViewer({
       >
         <div 
           style={{
-            width: '400%',
-            height: '380%',
-            transform: 'scale(0.25)',
+            width: '333%',
+            height: '333%',
+            transform: 'scale(0.30)',
             transformOrigin: 'top left',
             position: 'absolute',
-            top: 4,
+            top: 0,
             left: 0
           }}
         >
           <iframe
             key={`iframe-${slideIndex}`}
-            srcDoc={htmlContent.replace('</head>', `${slideControlScript}</head>`)}
+            srcDoc={htmlContent.replace('</head>', `${getSlideControlScript(slideIndex)}</head>`)}
             className="w-full h-full border-0"
             title="Slide Preview"
             sandbox="allow-scripts allow-same-origin"

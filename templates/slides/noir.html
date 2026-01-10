@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#000000',
+              'text': '#ffffff',
+              'muted': 'rgba(255, 255, 255, 0.5)',
+              'accent': '#ffffff',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #000; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000000;
+      padding: 60px;
+    }
+
+    /* Noir aesthetic - high contrast, dramatic */
+    .slide-title {
+      font-size: 4.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      color: #ffffff;
+      text-transform: uppercase;
+    }
+
+    .slide-subtitle {
+      font-size: 1.25rem;
+      font-weight: 300;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 1.5rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .slide-content {
+      max-width: 1000px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 2rem;
+    }
+
+    .bullet-list {
+      list-style: none;
+      margin-top: 2rem;
+    }
+
+    .bullet-list li {
+      font-size: 1.125rem;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.85);
+      padding: 1rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .bullet-list li:last-child {
+      border-bottom: none;
+    }
+
+    .accent-line {
+      width: 80px;
+      height: 4px;
+      background: #ffffff;
+      margin-bottom: 2rem;
+    }
+
+    .section-number {
+      font-size: 8rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.05);
+      position: absolute;
+      right: 60px;
+      top: 60px;
+    }
+
+    .quote-mark {
+      font-size: 6rem;
+      color: rgba(255, 255, 255, 0.2);
+      line-height: 1;
+    }
+  </style>
+</head>
+<body class="bg-black text-white">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Playfair Display', 'Georgia', 'serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#0d0b08',
+              'text': '#f5f0e6',
+              'muted': 'rgba(218, 165, 32, 0.7)',
+              'accent': '#daa520',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Playfair Display', Georgia, serif; background: #0d0b08; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(160deg, #0a0a0a 0%, #141210 50%, #0d0b08 100%);
+      padding: 60px;
+    }
+
+    /* Brass aesthetic - Warm gold & bronze metallic elegance */
+    .slide-title {
+      font-size: 4.5rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #cd853f 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+
+    .slide-subtitle {
+      font-size: 1.5rem;
+      font-weight: 400;
+      color: rgba(245, 240, 230, 0.85);
+      margin-top: 1.5rem;
+      font-style: italic;
+    }
+
+    .slide-content {
+      max-width: 1000px;
+    }
+
+    .card {
+      background: rgba(218, 165, 32, 0.05);
+      border: 1px solid rgba(218, 165, 32, 0.2);
+      padding: 2.5rem;
+      border-radius: 4px;
+    }
+
+    .bullet-list {
+      list-style: none;
+      margin-top: 2rem;
+    }
+
+    .bullet-list li {
+      font-size: 1.25rem;
+      font-weight: 400;
+      color: #f5f0e6;
+      padding: 1rem 0;
+      border-bottom: 1px solid rgba(218, 165, 32, 0.15);
+      position: relative;
+      padding-left: 2rem;
+    }
+
+    .bullet-list li::before {
+      content: '✦';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #daa520;
+      font-size: 0.8em;
+    }
+
+    .accent-line {
+      width: 100px;
+      height: 4px;
+      background: linear-gradient(90deg, #b8860b, #daa520);
+      margin-bottom: 2rem;
+    }
+
+    .quote-mark {
+      font-size: 8rem;
+      background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #cd853f 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      opacity: 0.3;
+      line-height: 1;
+      font-family: serif;
+    }
+  </style>
+</head>
+<body class="bg-slide-bg text-slide-text">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>

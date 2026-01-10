@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#ffffff',
+              'text': '#1a1a1a',
+              'muted': 'rgba(26, 26, 26, 0.5)',
+              'accent': '#1a1a1a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      padding: 80px;
+    }
+
+    /* Minimalist aesthetic - lots of whitespace */
+    .slide-title {
+      font-size: 4rem;
+      font-weight: 300;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      color: #1a1a1a;
+    }
+
+    .slide-subtitle {
+      font-size: 1.25rem;
+      font-weight: 400;
+      color: rgba(26, 26, 26, 0.6);
+      margin-top: 1.5rem;
+    }
+
+    .slide-content {
+      max-width: 800px;
+    }
+
+    .bullet-list {
+      list-style: none;
+      margin-top: 2rem;
+    }
+
+    .bullet-list li {
+      font-size: 1.125rem;
+      color: rgba(26, 26, 26, 0.8);
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+    }
+
+    .bullet-list li:last-child {
+      border-bottom: none;
+    }
+
+    .accent-line {
+      width: 40px;
+      height: 2px;
+      background: #1a1a1a;
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body class="bg-white text-slide-text">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Cormorant Garamond', 'Georgia', 'serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#0d0508',
+              'text': '#fff5f6',
+              'muted': 'rgba(232, 180, 184, 0.6)',
+              'accent': '#e8b4b8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Cormorant Garamond', Georgia, serif; background: #0d0508; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(160deg, #0d0508 0%, #1a0a10 100%);
+      padding: 60px;
+    }
+
+    /* Glamour aesthetic - Luxurious dark with rose gold */
+    .slide-title {
+      font-size: 5rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      line-height: 1;
+      background: linear-gradient(135deg, #e8b4b8 0%, #d4a3a8 50%, #c99297 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1.5rem;
+      font-style: italic;
+    }
+
+    .slide-subtitle {
+      font-size: 1.5rem;
+      font-weight: 400;
+      color: rgba(255, 245, 246, 0.85);
+      margin-top: 1rem;
+      letter-spacing: 0.05em;
+    }
+
+    .slide-content {
+      max-width: 1000px;
+    }
+
+    .card {
+      background: rgba(232, 180, 184, 0.05);
+      border: 1px solid rgba(232, 180, 184, 0.15);
+      padding: 2.5rem;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .bullet-list {
+      list-style: none;
+      margin-top: 2rem;
+    }
+
+    .bullet-list li {
+      font-size: 1.35rem;
+      font-weight: 400;
+      color: #fff5f6;
+      padding: 0.75rem 0;
+      padding-left: 2rem;
+      position: relative;
+    }
+
+    .bullet-list li::before {
+      content: '✦';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #e8b4b8;
+      font-size: 1rem;
+    }
+
+    .accent-line {
+      width: 120px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #e8b4b8, transparent);
+      margin: 2rem auto;
+    }
+
+    .quote-mark {
+      font-size: 8rem;
+      background: linear-gradient(135deg, #e8b4b8 0%, #c99297 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      opacity: 0.2;
+      line-height: 1;
+      font-family: serif;
+    }
+  </style>
+</head>
+<body class="bg-slide-bg text-slide-text">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>

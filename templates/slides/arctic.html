@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script id="slide-data" type="application/json">
+{{SLIDE_DATA}}
+  </script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            'slide': {
+              'bg': '#f5fafc',
+              'text': '#0c4a6e',
+              'muted': 'rgba(8, 145, 178, 0.7)',
+              'accent': '#0891b2',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f5fafc; }
+    
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(160deg, #f5fafc 0%, #e8f4f8 100%);
+      padding: 60px;
+    }
+
+    /* Arctic aesthetic - Cool ice blue */
+    .slide-title {
+      font-size: 4rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+      color: #0c4a6e;
+      margin-bottom: 1rem;
+    }
+
+    .slide-subtitle {
+     font-size: 1.5rem;
+      font-weight: 300;
+      color: rgba(12, 74, 110, 0.75);
+      margin-top: 1.5rem;
+    }
+
+    .slide-content {
+      max-width: 1000px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(8, 145, 178, 0.15);
+      padding: 2.5rem;
+      border-radius: 8px;
+    }
+
+    .bullet-list {
+      list-style: none;
+      margin-top: 2rem;
+    }
+
+    .bullet-list li {
+      font-size: 1.25rem;
+      font-weight: 400;
+      color: #0c4a6e;
+      padding: 1rem 0;
+      border-bottom: 1px solid rgba(8, 145, 178, 0.15);
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .bullet-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 6px;
+      height: 6px;
+      background: #0891b2;
+      border-radius: 50%;
+    }
+
+    .accent-line {
+      width: 80px;
+      height: 4px;
+      background: #0891b2;
+      margin-bottom: 2rem;
+      border-radius: 2px;
+    }
+
+    .quote-mark {
+      font-size: 8rem;
+      color: rgba(8, 145, 178, 0.15);
+      line-height: 1;
+    }
+  </style>
+</head>
+<body class="bg-slide-bg text-slide-text">
+  <div class="scroll-snap-y scroll-snap-mandatory h-screen overflow-y-scroll">
+{{SLIDES_HTML}}
+  </div>
+</body>
+</html>

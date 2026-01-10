@@ -1,6 +1,21 @@
 import type { SlideData, SlideTheme } from '../../types/slides';
 
 /**
+ * Checks if HTML content has rich styling that requires iframe rendering
+ */
+export function hasRichHtmlStyling(htmlContent: string | undefined): boolean {
+  if (!htmlContent) return false;
+  return (
+    htmlContent.includes('tailwindcss') ||
+    htmlContent.includes('cdn.tailwindcss.com') ||
+    htmlContent.includes('class="slide') ||
+    htmlContent.includes('font-display') ||
+    htmlContent.includes('bg-gradient') ||
+    htmlContent.includes('grid-cols')
+  );
+}
+
+/**
  * Generates HTML markup from slide data with theme styling
  */
 export function generateHTMLFromSlides(

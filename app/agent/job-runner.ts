@@ -17,7 +17,8 @@ import {
   createSaveArtifactTool,
   createManageSandboxTool,
   createWebSearchTool,
-  createSearchImagesTool
+  createSearchImagesTool,
+  createWriteSlidesTool
 } from "./tools";
 import { createAskUserTool, parseAskUserResponse } from "./tools/ask-user";
 import { createDelegateToBuildTool, parseDelegateResponse } from "./tools/delegate-build";
@@ -87,11 +88,14 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       sandbox = sandboxResult.sandbox;
       sandboxId = sandboxResult.sandboxId;
 
-      const result = sandboxResult.reconnected
-        ? "Reconnected to existing session"
-        : existingSandboxId
-          ? "Created new session"
-          : "Ready";
+      let result: string;
+      if (sandboxResult.reconnected) {
+        result = "Reconnected to existing session";
+      } else if (existingSandboxId) {
+        result = "Created new session";
+      } else {
+        result = "Ready";
+      }
 
       await updateStep(jobId, sandboxStepId, { status: "complete", result });
       await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result } });
@@ -102,20 +106,12 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     return sandbox!;
   };
 
-  // Create lazy wrappers for sandbox-dependent tools
-  // These tools will initialize the sandbox on first use
-  const createLazyTool = <T extends (...args: any[]) => any>(
-    toolFactory: (sandbox: Sandbox, ...extraArgs: any[]) => T,
-    ...extraArgs: any[]
-  ) => {
-    return async (...toolArgs: Parameters<T>): Promise<ReturnType<T>> => {
-      const sb = await ensureSandboxInitialized();
-      const tool = toolFactory(sb, ...extraArgs);
-      return tool(...toolArgs);
-    };
-  };
-
   try {
+    // Create broadcast helper for tools that need it
+    const broadcastForTools = async (event: { type: string; data: any }) => {
+      await broadcast(jobId, event);
+    };
+
     const allTools: any[] = [
       createPlanTool(),
       createUpdateTodoTool(chatId),
@@ -125,6 +121,8 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createDelegateToBuildTool(),
       createWebSearchTool(),
       createSearchImagesTool(),
+      // Sandbox-free slide tool - no sandbox needed!
+      createWriteSlidesTool(chatId, broadcastForTools),
     ];
 
     // Add sandbox-dependent tools that will lazily initialize sandbox when first called
@@ -234,25 +232,24 @@ FRAMEWORK SELECTION:
 
 CRITICAL: The 'create_web_app' tool REQUIRES the 'type' parameter.
 
-=== SLIDE PRESENTATIONS (IMPORTANT!) ===
-When creating slides or presentations, DO NOT use web frameworks. Instead, create a simple index.html with embedded slide data.
-The HTML MUST contain a <script id="slide-data" type="application/json"> tag with slide data in this exact format:
+=== SLIDE PRESENTATIONS (NO SANDBOX NEEDED!) ===
+For slides/presentations, use the 'write_slides' tool - this does NOT require a sandbox!
+
+The HTML MUST contain a <script id="slide-data" type="application/json"> tag:
 
 <script id="slide-data" type="application/json">
 [
   {"id": 1, "type": "title", "title": "Slide Title", "subtitle": "Optional subtitle"},
-  {"id": 2, "type": "content", "title": "Content Slide", "bullets": ["Point 1", "Point 2"]},
-  {"id": 3, "type": "accent", "title": "Highlighted Slide", "bullets": ["Key point"]}
+  {"id": 2, "type": "content", "title": "Content Slide", "bullets": ["Point 1", "Point 2"]}
 ]
 </script>
 
-Slide types: "title" (purple gradient), "content" (dark blue), "accent" (pink/coral).
-Each slide object has: id (number), type, title (optional), subtitle (optional), bullets (optional array).
+Slide types: "title", "content", "accent", "image", "quote", "twoColumn".
 
 When user asks for slides/presentation/ppt:
-1. write_file index.html with the slide-data script tag
-2. DO NOT call expose_preview (slides are rendered natively, not in iframe!)
-3. The UI will detect the slide-data format and show the native slides preview automatically.
+1. Use 'write_slides' tool with the HTML content (NOT write_file!)
+2. DO NOT call expose_preview - slides render natively
+3. Generate ONE slide at a time, adding to the presentation incrementally
 
 === SANDBOX LIFECYCLE ===
 The sandbox will timeout automatically.
