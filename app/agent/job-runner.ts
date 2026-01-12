@@ -175,7 +175,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
 
     const orchestratorConfig = {
       model: new ChatOpenAI({
-        model: "mistralai/devstral-2512:free",
+        model: "qwen/qwen3-coder-plus",
         apiKey: apiKey,
         configuration: { baseURL: "https://openrouter.ai/api/v1" },
         temperature: 0.2,

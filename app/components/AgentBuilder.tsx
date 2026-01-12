@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   ChatInput,
   PreviewModal,
@@ -15,6 +16,10 @@ import type { Workspace } from "./workspace";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { showError, sandboxErrors, agentMessages } from "../lib/toast";
 
+interface AgentBuilderProps {
+  initialChatId?: string;
+}
+
 const suggestedPrompts = [
   "I want an agent that helps me write emails",
   "Create a coding assistant that explains things simply",
@@ -22,15 +27,9 @@ const suggestedPrompts = [
   "I need an agent that helps me brainstorm ideas",
 ];
 
-export function AgentBuilder() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "",
-      timestamp: new Date(),
-    },
-  ]);
+export function AgentBuilder({ initialChatId }: AgentBuilderProps) {
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null);
@@ -38,12 +37,13 @@ export function AgentBuilder() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [activeBadges, setActiveBadges] = useState<Array<{ label: string; icon: React.ReactNode; prompt?: string }>>([]);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
-  const [chatId, setChatId] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(initialChatId || null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgent, setActiveAgent] = useState<{ mode: "plan" | "build"; name: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const initialLoadRef = useRef(false);
 
   const [pendingQuestion, setPendingQuestion] = useState<{
     question: string;
@@ -62,13 +62,6 @@ export function AgentBuilder() {
     mockWorkspaces[0]?.id ?? null
   );
 
-  const welcomeMessage: Message = {
-    id: "welcome",
-    role: "assistant",
-    content: "",
-    timestamp: new Date(),
-  };
-
   const { processStream } = useAgentStream({
     setMessages,
     setSandboxId,
@@ -76,17 +69,30 @@ export function AgentBuilder() {
     setActiveAgent,
     setPendingQuestion,
     setPendingBuildDelegation: (prompt) => {
-       if (prompt) setInput(prompt);
+      if (prompt) setInput(prompt);
     },
     setIsTyping,
     setIsProcessing,
     chatId
   });
 
+  // Load initial chat from URL param
+  useEffect(() => {
+    if (initialChatId && !initialLoadRef.current) {
+      initialLoadRef.current = true;
+      handleSelectChat(initialChatId);
+    }
+  }, [initialChatId]);
+
   const handleSelectChat = async (selectedChatId: string | null) => {
     if (!selectedChatId) {
       handleNewChat();
       return;
+    }
+
+    // Navigate to the chat URL if not already there
+    if (selectedChatId !== initialChatId) {
+      navigate(`/agent/${selectedChatId}`);
     }
 
     try {
@@ -97,14 +103,14 @@ export function AgentBuilder() {
 
         const loadedMessages: Message[] = chat.messages.map((msg: any) => {
           let fileContent: string | undefined;
-          
+
           // Get index.html artifact if available
           const indexHtml = chat.artifacts?.find((a: any) => a.filename === "index.html");
-          
+
           if (indexHtml) {
             // Check if it's slide content (has slide-data script tag)
             const isSlideContent = indexHtml.content?.includes('<script id="slide-data"');
-            
+
             // Populate fileContent if there's a previewUrl OR if it's slide content
             if (msg.previewUrl || isSlideContent) {
               fileContent = indexHtml.content;
@@ -122,33 +128,33 @@ export function AgentBuilder() {
           };
         });
 
-        setMessages([welcomeMessage, ...loadedMessages]);
+        setMessages([...loadedMessages]);
         setCurrentView('chat');
 
-        const sandboxForm = new FormData();
-        if (chat.sandboxId) {
+        // Only connect to sandbox if the chat has messages with previewUrls or artifacts
+        const hasPreviewContent = loadedMessages.some(msg => msg.previewUrl) ||
+                                  chat.artifacts?.some((a: any) => a.filename === "index.html");
+
+        if (hasPreviewContent && chat.sandboxId) {
+          const sandboxForm = new FormData();
           sandboxForm.append("sandboxId", chat.sandboxId);
-        }
-        if (chat.id) {
           sandboxForm.append("chatId", chat.id);
-        }
 
-        const sandboxRes = await fetch("/api/sandbox/connect", {
-          method: "POST",
-          body: sandboxForm,
-        });
+          const sandboxRes = await fetch("/api/sandbox/connect", {
+            method: "POST",
+            body: sandboxForm,
+          });
 
-        if (sandboxRes.ok) {
-          const { sandboxId: newSandboxId, previewUrl: newPreviewUrl } = await sandboxRes.json();
-          setSandboxId(newSandboxId);
+          if (sandboxRes.ok) {
+            const { sandboxId: newSandboxId, previewUrl: newPreviewUrl } = await sandboxRes.json();
+            setSandboxId(newSandboxId);
 
-          if (newPreviewUrl) {
-            setMessages(prev => prev.map(msg =>
-              msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
-            ));
+            if (newPreviewUrl) {
+              setMessages(prev => prev.map(msg =>
+                msg.previewUrl ? { ...msg, previewUrl: newPreviewUrl } : msg
+              ));
+            }
           }
-        } else {
-          sandboxErrors.connectionFailed();
         }
 
         try {
@@ -196,9 +202,11 @@ export function AgentBuilder() {
     setChatId(null);
     setSandboxId(null);
     setJobId(null);
-    setMessages([welcomeMessage]);
+    setMessages([]);
     setActiveBadges([]);
     setCurrentView('chat');
+    initialLoadRef.current = false;
+    navigate('/');
   };
 
   const handleCreateWorkspace = () => {
@@ -277,7 +285,9 @@ export function AgentBuilder() {
           const { chat } = await chatResponse.json();
           currentChatId = chat.id;
           setChatId(chat.id);
-          setSidebarRefreshKey(prev => prev + 1); // Trigger sidebar refresh
+          setSidebarRefreshKey(prev => prev + 1);
+          // Navigate to the new chat URL
+          navigate(`/agent/${chat.id}`, { replace: true });
         }
       }
 
@@ -451,7 +461,7 @@ export function AgentBuilder() {
     }
 
     setInput("");
-    
+
     const formData = new FormData();
     const contextualPrompt = `User answered the question: "${pendingQuestion.question}"\n\nAnswer: ${answer}${pendingQuestion.context ? `\n\nOriginal context: ${pendingQuestion.context}` : ''}`;
     const planPrefix = "Plan:\n";
@@ -536,7 +546,7 @@ export function AgentBuilder() {
     setActiveBadges(prev => prev.filter(b => b.label !== label));
   };
 
-  const isInitialState = messages.length === 1;
+  const isInitialState = messages.length === 0 && !chatId;
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -131,18 +131,20 @@ export async function extractSlideData({
               el.style.visibility = 'hidden';
             });
             
-            // Capture canvas
+            // Capture canvas with high quality for PDF export
             const canvas = await html2canvas(slideElement, {
               width: 1280,
               height: 720,
-              scale: 1, // 1:1 scale is usually enough for 1280x720, maybe 2 for high def PDF? 
-              // For PDF we might want higher quality, but let's stick to 1 for consistency with PPTX first
+              scale: 2, // 2x scale for high-DPI/retina quality
               useCORS: true,
               allowTaint: true,
               backgroundColor: null,
               logging: false,
+              imageTimeout: 15000,
+              removeContainer: true,
             });
-            backgroundImage = canvas.toDataURL('image/png');
+            // Use high quality PNG compression
+            backgroundImage = canvas.toDataURL('image/png', 1.0);
             
             // Restore visibility
             contentElementsToHide.forEach(el => {

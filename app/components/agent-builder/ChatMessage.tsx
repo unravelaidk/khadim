@@ -3,6 +3,7 @@ import { ThinkingSteps } from "./ThinkingStep";
 import type { ThinkingStepData } from "../../types/chat";
 import { FileArtifact } from "./FileArtifact";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { LuUser, LuBot } from "react-icons/lu";
 
 interface ChatMessageProps {
   message: Message;
@@ -10,7 +11,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
-  
+
   const steps: ThinkingStepData[] = (message.thinkingSteps || []).map(step => ({
     id: step.id,
     title: step.title,
@@ -22,10 +23,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const hasSteps = steps.length > 0;
   const hasContent = message.content.trim().length > 0;
   const hasPreviewUrl = !!message.previewUrl;
-  
+
   const hasSlideContent = message.fileContent?.includes('<script id="slide-data"') ?? false;
   const shouldShowArtifact = hasPreviewUrl || hasSlideContent;
-  
+
   // Debug logging
   if (!isUser) {
     console.log("[ChatMessage] Render - Steps:", steps.length, "hasSteps:", hasSteps, "hasContent:", hasContent);
@@ -33,42 +34,62 @@ export function ChatMessage({ message }: ChatMessageProps) {
       console.log("[ChatMessage] Step details:", steps.map(s => `${s.id}(${s.status}): ${(s.content || '').slice(0, 30)}`));
     }
   }
-  
+
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[80%] px-4 py-3 rounded-2xl ${
-          isUser 
-            ? "rounded-br-md bg-gb-primary text-gb-text-inverse" 
-            : "rounded-bl-md bg-gb-bg-subtle text-gb-text"
-        }`}
-      >
-        {!isUser && hasSteps && (
-          <div className="mb-3 border-b border-gb-border pb-3">
-            <ThinkingSteps steps={steps} />
-          </div>
-        )}
+    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+      {/* Assistant Avatar */}
+      {!isUser && (
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-gb-primary to-gb-accent flex items-center justify-center shadow-sm">
+          <LuBot className="w-4 h-4 text-white" />
+        </div>
+      )}
 
-        {hasContent && (
-          <div className="text-sm leading-relaxed">
-            <MarkdownRenderer content={message.content} />
-          </div>
-        )}
+      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[85%] md:max-w-[80%]`}>
+        {/* Role Label */}
+        <span className={`text-[10px] font-semibold uppercase tracking-wider mb-1.5 px-1 ${
+          isUser ? "text-gb-text-muted" : "text-gb-text-secondary"
+        }`}>
+          {isUser ? "You" : "Khadim"}
+        </span>
 
-        {!isUser && shouldShowArtifact && (
-          <FileArtifact 
-            filename="index.html" 
-            content={message.fileContent || "// Code content not loaded for this version"} 
-            previewUrl={message.previewUrl} 
-          />
-        )}
+        <div
+          className={`px-4 py-3 rounded-2xl shadow-sm transition-all duration-200 hover:shadow-md ${
+            isUser
+              ? "rounded-br-md bg-gradient-to-br from-gb-primary to-gb-primary/90 text-gb-text-inverse"
+              : "rounded-bl-md bg-gb-bg-card border border-gb-border/50 text-gb-text"
+          }`}
+        >
+          {!isUser && hasSteps && (
+            <div className={`${hasContent ? "mb-4" : ""}`}>
+              <ThinkingSteps steps={steps} />
+            </div>
+          )}
 
-        {!hasContent && hasSteps && !shouldShowArtifact && (
-          <div className="text-sm text-gb-text-muted italic">
-            Working on it...
-          </div>
-        )}
+          {hasContent && (
+            <div className={`text-sm leading-relaxed ${!isUser ? "prose-gb" : ""}`}>
+              <MarkdownRenderer content={message.content} />
+            </div>
+          )}
+
+          {!isUser && shouldShowArtifact && (
+            <div className={`${hasContent ? "mt-4" : ""}`}>
+              <FileArtifact
+                filename="index.html"
+                content={message.fileContent || "// Code content not loaded for this version"}
+                previewUrl={message.previewUrl}
+              />
+            </div>
+          )}
+
+        </div>
       </div>
+
+      {/* User Avatar */}
+      {isUser && (
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gb-bg-subtle border border-gb-border flex items-center justify-center">
+          <LuUser className="w-4 h-4 text-gb-text-secondary" />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,64 @@
+@startuml
+
+package "Database Schema" {
+  entity "chats" {
+    *id : text <<PK>>
+    --
+    title : text
+    sandbox_id : text
+    created_at : timestamp
+    updated_at : timestamp
+  }
+
+  entity "messages" {
+    *id : text <<PK>>
+    --
+    *chat_id : text <<FK>>
+    role : text
+    content : text
+    preview_url : text
+    thinking_steps : json
+    created_at : timestamp
+  }
+
+  entity "artifacts" {
+    *id : text <<PK>>
+    --
+    *chat_id : text
+    filename : text
+    content : text
+    preview_url : text
+    created_at : timestamp
+  }
+
+  entity "projects" {
+    *id : text <<PK>>
+    --
+    *chat_id : text <<Unique>>
+    project_type : text
+    project_name : text
+    dev_command : text
+    dev_port : integer
+    build_dir : text
+    created_at : timestamp
+    updated_at : timestamp
+  }
+
+  entity "project_versions" {
+    *id : text <<PK>>
+    --
+    *chat_id : text
+    message_id : text
+    label : text
+    artifacts : json
+    project_meta : json
+    created_at : timestamp
+  }
+}
+
+chats ||..o{ messages : "has many"
+chats ||..o{ artifacts : "has many"
+chats ||..|| projects : "has one"
+chats ||..o{ project_versions : "has many"
+
+@enduml

@@ -47,11 +47,11 @@ export function ChatView({
       }`}
     >
       {!isInitialState && (
-        <div className="w-full max-w-3xl mx-auto space-y-4 animate-in fade-in duration-500">
+        <div className="w-full max-w-3xl mx-auto animate-in fade-in duration-500">
           <GameBoyScreen>
-            <div className="space-y-4">
+            <div className="space-y-6">
               {messages
-                .filter((m) => !(isInitialState && m.id === "welcome"))
+                .filter((m) => m.id !== "welcome")
                 .map((message) => (
                   <ChatMessage
                     // The fix: include step count in key to force re-render when steps update
@@ -88,7 +88,7 @@ export function ChatView({
           {/* Header - Logo & Subtitle */}
           <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8 animate-in fade-in zoom-in duration-1000 text-center md:text-left mb-2 md:mb-0">
             <div className="w-24 h-24 md:w-32 md:h-32 text-gb-text animate-float">
-               <KhadimLogo className="w-full h-full" />
+               <KhadimLogo class="w-full h-full" />
             </div>
             <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide max-w-[200px] md:max-w-none">
               Get started building
@@ -102,9 +102,9 @@ export function ChatView({
             </p>
           </div>
 
-          <SuggestionCards 
+          <SuggestionCards
             prompts={['Build a classic Snake game', 'Create a simple landing page', 'Design a dashboard layout', 'Help me write a blog post']}
-            onSelect={onSuggestionClick} 
+            onSelect={onSuggestionClick}
           />
         </div>
       )}

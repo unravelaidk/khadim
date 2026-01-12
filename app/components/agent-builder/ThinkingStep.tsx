@@ -1,30 +1,45 @@
 import { useState } from "react";
-import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile } from "react-icons/lu";
+import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile, LuCircleDot } from "react-icons/lu";
 import { FileEditorModal } from "./FileEditorModal";
 import type { ThinkingStepData } from "../../types/chat";
 
 interface ThinkingStepProps {
   step: ThinkingStepData;
   depth?: number;
+  index?: number;
 }
 
-export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
+export function ThinkingStep({ step, depth = 0, index = 0 }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
   const [showFileEditor, setShowFileEditor] = useState(false);
 
   const hasChildren = step.children && step.children.length > 0;
   const hasContent = step.content || step.result;
   const isExpandable = hasChildren || hasContent;
-  
+
   // Check if this is a clickable file step
   const isFileStep = step.tool === "write_file" && step.filename && step.fileContent;
 
+  const statusStyles = {
+    complete: "bg-emerald-50 border-emerald-200",
+    running: "bg-amber-50/50 border-amber-200",
+    pending: "bg-gb-bg-subtle border-gb-border",
+    error: "bg-red-50 border-red-200",
+  };
+
   return (
-    <div className={`${depth > 0 ? "ml-6 border-l border-gb-border pl-4" : ""}`}>
+    <div
+      className={`${depth > 0 ? "ml-4 pl-3 border-l-2 border-gb-border/50" : ""}`}
+      style={{
+        animationDelay: `${index * 50}ms`,
+      }}
+    >
       <div
-        className={`flex items-center gap-2 py-1.5 ${
-          isExpandable ? "cursor-pointer" : ""
-        } ${isFileStep ? "hover:bg-gb-bg-subtle rounded-md px-1 -mx-1 cursor-pointer" : ""}`}
+        className={`flex items-center gap-2.5 py-2 px-2.5 rounded-lg transition-all duration-200 ${
+          isExpandable ? "cursor-pointer hover:bg-gb-bg-card" : ""
+        } ${isFileStep ? "hover:bg-gb-bg-card cursor-pointer" : ""} ${
+          step.status === "running" ? "bg-gb-bg-card/50" : ""
+        }`}
         onClick={() => {
           if (isFileStep) {
             setShowFileEditor(true);
@@ -36,28 +51,31 @@ export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
         {/* Status Icon */}
         <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
           {step.status === "complete" && (
-            <div className="w-4 h-4 rounded-full bg-green-500/20 flex items-center justify-center">
-              <LuCheck className="w-3 h-3 text-green-600" />
+            <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center ring-2 ring-emerald-200/50">
+              <LuCheck className="w-3 h-3 text-emerald-600" strokeWidth={3} />
             </div>
           )}
           {step.status === "running" && (
-            <LuLoader className="w-4 h-4 text-gb-accent animate-spin" />
+            <div className="relative">
+              <div className="absolute inset-0 w-5 h-5 rounded-full bg-gb-accent/20 animate-ping" />
+              <LuLoader className="relative w-5 h-5 text-gb-accent animate-spin" />
+            </div>
           )}
           {step.status === "pending" && (
-            <div className="w-3 h-3 rounded-full border-2 border-gb-border" />
+            <div className="w-4 h-4 rounded-full border-2 border-gb-border-medium bg-gb-bg-subtle" />
           )}
           {step.status === "error" && (
-            <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center text-red-500 text-xs font-bold">
-              !
+            <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center ring-2 ring-red-200/50">
+              <span className="text-red-600 text-xs font-bold">!</span>
             </div>
           )}
         </div>
 
         {/* Title */}
-        <span className={`text-sm font-medium ${
-          step.status === "complete" ? "text-gb-text-secondary" : 
-          step.status === "running" ? "text-gb-text" : 
-          step.status === "error" ? "text-red-500" :
+        <span className={`text-sm flex-1 transition-colors duration-200 ${
+          step.status === "complete" ? "text-gb-text-secondary font-medium" :
+          step.status === "running" ? "text-gb-text font-semibold" :
+          step.status === "error" ? "text-red-600 font-medium" :
           "text-gb-text-muted"
         }`}>
           {step.title}
@@ -65,15 +83,15 @@ export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
 
         {/* File indicator for clickable file steps */}
         {isFileStep && (
-          <span className="ml-1 text-xs text-gb-accent flex items-center gap-1">
+          <span className="text-xs text-gb-accent flex items-center gap-1 px-2 py-0.5 rounded-full bg-gb-accent/10 hover:bg-gb-accent/20 transition-colors">
             <LuFile className="w-3 h-3" />
-            <span className="underline underline-offset-2">View</span>
+            <span className="font-medium">View</span>
           </span>
         )}
 
         {/* Expand/Collapse Chevron */}
-        {isExpandable && (
-          <div className="ml-auto text-gb-text-muted">
+        {isExpandable && !isFileStep && (
+          <div className={`text-gb-text-muted transition-transform duration-200 ${isExpanded ? "rotate-0" : ""}`}>
             {isExpanded ? (
               <LuChevronDown className="w-4 h-4" />
             ) : (
@@ -84,17 +102,19 @@ export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
       </div>
 
       {/* Expanded Content */}
-      {isExpanded && (
-        <div className="mt-1 mb-2">
+      <div className={`overflow-hidden transition-all duration-300 ease-out ${
+        isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+      }`}>
+        <div className="mt-1 mb-2 ml-7">
           {step.content && (
-            <p className="text-sm text-gb-text-secondary ml-7 leading-relaxed">
+            <p className="text-sm text-gb-text-secondary leading-relaxed py-1.5">
               {step.content}
             </p>
           )}
-          
+
           {step.result && (
-            <div className="ml-7 mt-2 p-2 bg-gb-bg-subtle rounded-md border border-gb-border">
-              <pre className="text-xs text-gb-text-muted font-mono whitespace-pre-wrap break-all max-h-32 overflow-auto">
+            <div className="mt-2 p-3 bg-gb-bg-card rounded-lg border border-gb-border shadow-sm">
+              <pre className="text-xs text-gb-text-muted font-mono whitespace-pre-wrap break-all max-h-32 overflow-auto scrollbar-hide">
                 {step.result}
               </pre>
             </div>
@@ -102,14 +122,14 @@ export function ThinkingStep({ step, depth = 0 }: ThinkingStepProps) {
 
           {/* Nested Children */}
           {hasChildren && (
-            <div className="mt-2">
-              {step.children!.map((child) => (
-                <ThinkingStep key={child.id} step={child} depth={depth + 1} />
+            <div className="mt-2 space-y-0.5">
+              {step.children!.map((child, idx) => (
+                <ThinkingStep key={child.id} step={child} depth={depth + 1} index={idx} />
               ))}
             </div>
           )}
         </div>
-      )}
+      </div>
 
       {/* File Editor Modal */}
       {isFileStep && (
@@ -131,11 +151,33 @@ interface ThinkingStepsProps {
 export function ThinkingSteps({ steps }: ThinkingStepsProps) {
   if (steps.length === 0) return null;
 
+  const completedCount = steps.filter((s) => s.status === "complete").length;
+  const isAllComplete = completedCount === steps.length;
+  const hasRunning = steps.some((s) => s.status === "running");
+
   return (
-    <div className="py-2 space-y-1">
-      {steps.map((step) => (
-        <ThinkingStep key={step.id} step={step} />
-      ))}
+    <div className="rounded-xl bg-gradient-to-b from-gb-bg-card to-gb-bg-subtle border border-gb-border/50 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-gb-bg-card border-b border-gb-border/50">
+        <div className={`w-2 h-2 rounded-full ${
+          hasRunning ? "bg-gb-accent animate-pulse" :
+          isAllComplete ? "bg-emerald-500" :
+          "bg-gb-text-muted"
+        }`} />
+        <span className="text-xs font-semibold uppercase tracking-wider text-gb-text-secondary">
+          {hasRunning ? "Thinking" : isAllComplete ? "Completed" : "Reasoning"}
+        </span>
+        <span className="ml-auto text-xs text-gb-text-muted font-medium tabular-nums">
+          {completedCount}/{steps.length}
+        </span>
+      </div>
+
+      {/* Steps */}
+      <div className="p-2 space-y-0.5">
+        {steps.map((step, index) => (
+          <ThinkingStep key={step.id} step={step} index={index} />
+        ))}
+      </div>
     </div>
   );
 }
