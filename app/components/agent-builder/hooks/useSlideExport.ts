@@ -125,59 +125,135 @@ export function useSlideExport({
 
   const downloadAsPdf = async () => {
     if (!htmlContent) {
-      window.print(); // Fallback
+      window.print();
       return;
     }
 
     setIsDownloading(true);
 
     try {
-      // Use the same extraction logic but in 'image' mode (captures full slide visual)
+      // Extract slides in editable mode to get both background image AND text elements
       const extractedSlides = await extractSlideData({
-         slides,
-         htmlContent,
-         mode: "image"
+        slides,
+        htmlContent,
+        mode: "editable" // Get text elements for overlay
       });
-      
+
+      // Also get full slide images for backgrounds
+      const imageSlides = await extractSlideData({
+        slides,
+        htmlContent,
+        mode: "image"
+      });
+
       const jsPDF = (await import("jspdf")).jsPDF;
-      // Initialize with 16:9 landscape format (approx A4 landscape is 297x210, 16:9 matches screen better)
-      // 1280px x 720px at 96 DPI is approx 13.33in x 7.5in.
-      // jsPDF units: 'pt', 'mm', 'cm', 'in'. 
-      // Let's use points or just fit to standard landscape page.
-      
+
+      // Use higher resolution for crisp output
+      const width = 1280;
+      const height = 720;
+
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "px",
-        format: [1280, 720] // Exact match to our extraction size
+        format: [width, height],
+        compress: true
       });
 
-      extractedSlides.forEach((slide, index) => {
-        if (index > 0) pdf.addPage([1280, 720], "landscape");
-        
-        if (slide.backgroundImage) {
-          // Add the full slide image
+      // Helper to convert CSS color to RGB
+      const parseColor = (color: string): { r: number; g: number; b: number } => {
+        if (!color || color === 'transparent') return { r: 255, g: 255, b: 255 };
+
+        // Handle rgb/rgba
+        const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (rgbMatch) {
+          return {
+            r: parseInt(rgbMatch[1]),
+            g: parseInt(rgbMatch[2]),
+            b: parseInt(rgbMatch[3])
+          };
+        }
+
+        // Handle hex
+        const hexMatch = color.match(/#([a-fA-F0-9]{2})([a-fA-F0-9]{2})([a-fA-F0-9]{2})/);
+        if (hexMatch) {
+          return {
+            r: parseInt(hexMatch[1], 16),
+            g: parseInt(hexMatch[2], 16),
+            b: parseInt(hexMatch[3], 16)
+          };
+        }
+
+        return { r: 255, g: 255, b: 255 };
+      };
+
+      for (let i = 0; i < extractedSlides.length; i++) {
+        if (i > 0) pdf.addPage([width, height], "landscape");
+
+        const imageSlide = imageSlides[i];
+        const editableSlide = extractedSlides[i];
+
+        // Add full slide image as background (preserves exact visual)
+        if (imageSlide?.backgroundImage) {
           pdf.addImage(
-            slide.backgroundImage, 
-            "PNG", 
-            0, 
-            0, 
-            1280, 
-            720,
-            undefined, 
+            imageSlide.backgroundImage,
+            "PNG",
+            0,
+            0,
+            width,
+            height,
+            undefined,
             "FAST"
           );
-        } else {
-            // Fallback if no image (shouldn't happen with our logic)
-            pdf.setFillColor(slide.backgroundColor);
-            pdf.rect(0, 0, 1280, 720, "F");
         }
-      });
+
+        // Add invisible text layer for selectability/searchability (OCR-style)
+        // Text is fully transparent but still selectable in PDF viewers
+        if (editableSlide?.textElements && editableSlide.textElements.length > 0) {
+          // Set text to be invisible (transparent) but still selectable
+          pdf.setTextColor(0, 0, 0);
+          // Use GState to make text fully transparent
+          const gState = new (pdf as any).GState({ opacity: 0 });
+          pdf.setGState(gState);
+
+          for (const textEl of editableSlide.textElements) {
+            if (!textEl.text || textEl.text.trim().length === 0) continue;
+
+            // Set font to match original styling for proper positioning
+            const fontStyle = textEl.isBold && textEl.isItalic
+              ? "bolditalic"
+              : textEl.isBold
+                ? "bold"
+                : textEl.isItalic
+                  ? "italic"
+                  : "normal";
+
+            pdf.setFont("helvetica", fontStyle);
+            pdf.setFontSize(textEl.fontSize || 16);
+
+            // Position text to overlay exactly on the image text
+            const x = textEl.x + 5;
+            const y = textEl.y + (textEl.fontSize || 16);
+
+            const maxWidth = textEl.w - 10;
+            const lines = pdf.splitTextToSize(textEl.text, maxWidth);
+
+            pdf.text(lines, x, y, {
+              maxWidth: maxWidth,
+              align: textEl.textAlign === "center" ? "center" :
+                     textEl.textAlign === "right" ? "right" : "left"
+            });
+          }
+
+          // Reset opacity for any future additions
+          const resetGState = new (pdf as any).GState({ opacity: 1 });
+          pdf.setGState(resetGState);
+        }
+      }
 
       pdf.save(`${title.replace(/[^a-z0-9]/gi, "_")}.pdf`);
 
     } catch (error) {
       console.error("Error generating PDF:", error);
-      // Fallback to print if jspdf fails
       window.print();
     } finally {
       setIsDownloading(false);

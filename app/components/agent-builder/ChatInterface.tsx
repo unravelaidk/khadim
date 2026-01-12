@@ -22,9 +22,9 @@ export function ChatInterface({
   messagesEndRef,
 }: ChatInterfaceProps) {
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-4 animate-in fade-in duration-500">
+    <div className="w-full max-w-3xl mx-auto animate-in fade-in duration-500">
       <GameBoyScreen>
-        <div className="space-y-4">
+        <div className="space-y-6">
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} />
           ))}

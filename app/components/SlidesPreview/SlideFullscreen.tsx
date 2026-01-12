@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { LuX, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { getSlideBackground, isLightTheme } from '../agent-builder/slideTemplates';
 import type { SlideData, SlideTheme } from '../../types/slides';
@@ -72,8 +73,6 @@ export function SlideFullscreen({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, goNext, goPrev, onClose]);
-
-  if (!isOpen) return null;
 
   // Render native slide content
   const renderNativeSlide = () => {
@@ -157,9 +156,12 @@ export function SlideFullscreen({
     }
   };
 
-  return (
-    <div 
-      className="fixed inset-0 z-50"
+  if (!isOpen) return null;
+
+  // Use portal to render at document body level for true fullscreen
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999]"
       style={{ background: getSlideBackground(slide?.type || 'content', theme) }}
     >
       {/* Full-screen iframe for rich HTML content */}
@@ -326,7 +328,8 @@ export function SlideFullscreen({
           exit
         </span>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
