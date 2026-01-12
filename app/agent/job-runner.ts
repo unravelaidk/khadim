@@ -224,11 +224,43 @@ FRAMEWORK SELECTION:
 - Full web apps with routing: type="react-router"
 - Static sites/landing pages: type="astro"
 
-=== BUILD SEQUENCE ===
+=== GAME DEVELOPMENT (CRITICAL!) ===
+When building games, you MUST actually implement the game logic, not just scaffold!
+
+GAME BUILD SEQUENCE:
+1. create_web_app({ type: "vite", name: "game-name" }) → scaffold
+2. shell → "cd game-name && npm install"
+3. write_file → Write the COMPLETE game code to src/App.tsx or src/main.tsx
+   - Include ALL game logic: player controls, physics, collision detection, scoring
+   - Use React hooks (useState, useEffect, useRef) for game state
+   - Use Canvas API or CSS for rendering
+   - Handle keyboard/touch input
+   - Implement game loop with requestAnimationFrame
+4. shell → "cd game-name && npm run build"
+5. expose_preview → Get playable URL
+
+GAME IMPLEMENTATION REQUIREMENTS:
+- Write COMPLETE, WORKING game code - not just a template or placeholder
+- Include: Game state (playing/paused/gameover), Score tracking, Restart functionality
+- Handle player input (keyboard arrows, WASD, space, touch)
+- Implement proper game physics (gravity, velocity, collision)
+- Add visual feedback and game UI (score display, game over screen)
+
+Example game structure in App.tsx:
+- useRef for canvas element
+- useState for game state (score, gameOver, entities)
+- useEffect for game loop and input handlers
+- Draw function to render game
+- Update function for physics/logic
+
+DO NOT just create a scaffold and stop. The user expects a PLAYABLE GAME!
+
+=== BUILD SEQUENCE (General) ===
 1. create_web_app → scaffold
 2. shell → "cd <project> && npm install"
-3. shell → "cd <project> && npm run build"
-4. expose_preview → IMMEDIATELY after build
+3. Write application code with write_file
+4. shell → "cd <project> && npm run build"
+5. expose_preview → IMMEDIATELY after build
 
 CRITICAL: The 'create_web_app' tool REQUIRES the 'type' parameter.
 
