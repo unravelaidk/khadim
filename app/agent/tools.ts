@@ -588,85 +588,116 @@ export const createManageSandboxTool = (sandbox: Sandbox) => tool(
     }
 );
 
+// Helper function for DuckDuckGo search
+async function searchDuckDuckGo(query: string, numResults: number): Promise<Array<{ title: string; snippet: string; url: string }> | null> {
+    try {
+        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+
+        const response = await fetch(searchUrl, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+        });
+
+        if (!response.ok) return null;
+
+        const html = await response.text();
+        const results: Array<{ title: string; snippet: string; url: string }> = [];
+
+        // Match result blocks - DuckDuckGo HTML format
+        const resultRegex = /<a class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+        let match;
+
+        while ((match = resultRegex.exec(html)) !== null && results.length < numResults) {
+            const url = match[1];
+            const title = match[2].trim();
+            const snippet = match[3]
+                .replace(/<[^>]+>/g, '')
+                .replace(/&quot;/g, '"')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&#x27;/g, "'")
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            if (title && snippet) {
+                results.push({ title, snippet, url });
+            }
+        }
+
+        return results.length > 0 ? results : null;
+    } catch {
+        return null;
+    }
+}
+
+// Helper function for Brave Search
+async function searchBrave(query: string, numResults: number): Promise<Array<{ title: string; snippet: string; url: string }> | null> {
+    const braveApiKey = process.env.BRAVE_SEARCH_API_KEY;
+    if (!braveApiKey) return null;
+
+    try {
+        const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${Math.min(numResults, 10)}`;
+
+        const response = await fetch(searchUrl, {
+            headers: {
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": braveApiKey
+            }
+        });
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        const webResults = data.web?.results || [];
+
+        if (webResults.length === 0) return null;
+
+        return webResults.slice(0, numResults).map((r: any) => ({
+            title: r.title || '',
+            snippet: r.description || '',
+            url: r.url || ''
+        }));
+    } catch {
+        return null;
+    }
+}
+
 export const createWebSearchTool = () => tool(
     async ({ query, numResults = 5 }: { query: string; numResults?: number }) => {
         try {
-            // Use DuckDuckGo HTML search (more reliable than instant answer API)
-            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-            
-            const response = await fetch(searchUrl, {
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-            });
-            
-            if (!response.ok) {
-                return `Search failed with status: ${response.status}`;
+            // Try DuckDuckGo first
+            let results = await searchDuckDuckGo(query, numResults);
+            let source = "DuckDuckGo";
+
+            // Fall back to Brave Search if DuckDuckGo fails
+            if (!results || results.length === 0) {
+                results = await searchBrave(query, numResults);
+                source = "Brave";
             }
-            
-            const html = await response.text();
-            
-            // Parse results from HTML
-            const results: Array<{ title: string; snippet: string; url: string }> = [];
-            
-            // Match result blocks - DuckDuckGo HTML format
-            const resultRegex = /<a class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-            let match;
-            
-            while ((match = resultRegex.exec(html)) !== null && results.length < numResults) {
-                const url = match[1];
-                const title = match[2].trim();
-                const snippet = match[3]
-                    .replace(/<[^>]+>/g, '') // Remove HTML tags
-                    .replace(/&quot;/g, '"')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&#x27;/g, "'")
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                
-                if (title && snippet) {
-                    results.push({ title, snippet, url });
+
+            // If both fail, provide helpful message
+            if (!results || results.length === 0) {
+                const hasBraveKey = !!process.env.BRAVE_SEARCH_API_KEY;
+                if (!hasBraveKey) {
+                    return `🔍 No results found for: "${query}"\n\nDuckDuckGo search failed. For better reliability, add BRAVE_SEARCH_API_KEY to your environment.\nGet a free API key at: https://brave.com/search/api/`;
                 }
-            }
-            
-            // Fallback: try alternative parsing pattern
-            if (results.length === 0) {
-                const altRegex = /<div class="result[^"]*"[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-                while ((match = altRegex.exec(html)) !== null && results.length < numResults) {
-                    const url = match[1];
-                    const snippet = match[2]
-                        .replace(/<[^>]+>/g, '')
-                        .replace(/&[^;]+;/g, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-                    
-                    if (snippet.length > 20) {
-                        results.push({ 
-                            title: snippet.slice(0, 60) + (snippet.length > 60 ? '...' : ''),
-                            snippet, 
-                            url 
-                        });
-                    }
-                }
-            }
-            
-            if (results.length === 0) {
                 return `🔍 No results found for: "${query}"\n\nTry rephrasing your search or using different keywords.`;
             }
-            
-            let output = `🔍 WEB SEARCH RESULTS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nQuery: "${query}"\n\n`;
-            
+
+            let output = `🔍 WEB SEARCH RESULTS (${source})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nQuery: "${query}"\n\n`;
+
             results.forEach((r, i) => {
                 output += `${i + 1}. ${r.title}\n`;
                 output += `   ${r.snippet}\n`;
                 output += `   🔗 ${r.url}\n\n`;
             });
-            
+
             output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
             output += `Found ${results.length} results. Use this information to inform your response.`;
-            
+
             return output;
         } catch (error) {
             return `Search error: ${error instanceof Error ? error.message : String(error)}`;
@@ -674,7 +705,7 @@ export const createWebSearchTool = () => tool(
     },
     {
         name: "web_search",
-        description: "Search the web using DuckDuckGo to find current information. Use this to research topics, find facts for slide content, get up-to-date data, or verify information. Returns titles, snippets, and URLs.",
+        description: "Search the web to find current information. Uses DuckDuckGo with Brave Search as fallback. Use this to research topics, find facts for slide content, get up-to-date data, or verify information. Returns titles, snippets, and URLs.",
         schema: z.object({
             query: z.string().describe("The search query - be specific for better results"),
             numResults: z.number().optional().default(5).describe("Number of results to return (default: 5, max: 10)"),
@@ -682,52 +713,162 @@ export const createWebSearchTool = () => tool(
     }
 );
 
+// Enhance image search queries for better results
+function enhanceImageQuery(query: string): string {
+    const q = query.toLowerCase().trim();
+
+    // Map common concepts to better search terms
+    const conceptMappings: Record<string, string> = {
+        'gpu': 'graphics card computer hardware technology',
+        'cpu': 'processor computer chip technology',
+        'ai': 'artificial intelligence technology futuristic',
+        'machine learning': 'artificial intelligence neural network technology',
+        'cloud': 'cloud computing technology server',
+        'data': 'data visualization analytics technology',
+        'code': 'programming software development computer',
+        'coding': 'programming software developer laptop',
+        'server': 'server room data center technology',
+        'network': 'network infrastructure technology connected',
+        'security': 'cybersecurity digital lock protection',
+        'blockchain': 'blockchain cryptocurrency technology digital',
+        'iot': 'internet of things connected devices smart',
+        'robot': 'robotics automation technology futuristic',
+        'vr': 'virtual reality headset technology immersive',
+        'ar': 'augmented reality technology digital overlay',
+    };
+
+    // Check if query matches a concept
+    for (const [concept, enhanced] of Object.entries(conceptMappings)) {
+        if (q.includes(concept)) {
+            return `${query} ${enhanced}`.trim();
+        }
+    }
+
+    // Add quality modifiers for abstract/technical terms
+    const technicalTerms = ['evolution', 'history', 'development', 'growth', 'progress', 'timeline', 'future'];
+    if (technicalTerms.some(term => q.includes(term))) {
+        return `${query} concept illustration professional`;
+    }
+
+    return query;
+}
+
+// Search Pexels for images
+async function searchPexels(query: string, numResults: number, orientation?: string): Promise<Array<{ url: string; thumb: string; description: string; photographer: string }> | null> {
+    const pexelsKey = process.env.PEXELS_API_KEY;
+    if (!pexelsKey) return null;
+
+    try {
+        const orientParam = orientation ? `&orientation=${orientation}` : '';
+        const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${numResults}${orientParam}`;
+
+        const response = await fetch(url, {
+            headers: { "Authorization": pexelsKey }
+        });
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        if (!data.photos || data.photos.length === 0) return null;
+
+        return data.photos.map((p: any) => ({
+            url: p.src?.large || p.src?.original,
+            thumb: p.src?.medium || p.src?.small,
+            description: p.alt || 'Untitled',
+            photographer: p.photographer || 'Unknown'
+        }));
+    } catch {
+        return null;
+    }
+}
+
+// Search Unsplash for images
+async function searchUnsplash(query: string, numResults: number, orientation?: string): Promise<Array<{ url: string; thumb: string; description: string; photographer: string }> | null> {
+    try {
+        const orientParam = orientation ? `&orientation=${orientation}` : '';
+        const url = `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=${numResults}${orientParam}`;
+
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json"
+            }
+        });
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        if (!data.results || data.results.length === 0) return null;
+
+        return data.results.map((img: any) => ({
+            url: img.urls?.regular || img.urls?.small,
+            thumb: img.urls?.thumb || img.urls?.small,
+            description: img.alt_description || img.description || 'Untitled',
+            photographer: img.user?.name || 'Unknown'
+        }));
+    } catch {
+        return null;
+    }
+}
+
 export const createSearchImagesTool = () => tool(
     async ({ query, numResults = 5, orientation }: { query: string; numResults?: number; orientation?: "landscape" | "portrait" | "squarish" }) => {
         try {
-            // Use Unsplash API for high-quality free images
-            // Note: For production, use an API key. This uses the public demo endpoint.
-            const unsplashUrl = `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=${numResults}${orientation ? `&orientation=${orientation}` : ''}`;
-            
-            const response = await fetch(unsplashUrl, {
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept": "application/json"
+            // Enhance the query for better results
+            const enhancedQuery = enhanceImageQuery(query);
+
+            let results: Array<{ url: string; thumb: string; description: string; photographer: string }> | null = null;
+            let source = "";
+
+            // Try Pexels first (if API key available)
+            results = await searchPexels(enhancedQuery, numResults, orientation);
+            if (results && results.length > 0) {
+                source = "Pexels";
+            }
+
+            // Fall back to Unsplash
+            if (!results || results.length === 0) {
+                results = await searchUnsplash(enhancedQuery, numResults, orientation);
+                if (results && results.length > 0) {
+                    source = "Unsplash";
                 }
-            });
-            
-            if (!response.ok) {
-                // Fallback: Try DuckDuckGo image search
+            }
+
+            // Try original query if enhanced didn't work
+            if (!results || results.length === 0) {
+                results = await searchPexels(query, numResults, orientation);
+                if (results && results.length > 0) {
+                    source = "Pexels";
+                }
+            }
+
+            if (!results || results.length === 0) {
+                results = await searchUnsplash(query, numResults, orientation);
+                if (results && results.length > 0) {
+                    source = "Unsplash";
+                }
+            }
+
+            // Fall back to DuckDuckGo
+            if (!results || results.length === 0) {
                 return await searchDuckDuckGoImages(query, numResults);
             }
-            
-            const data = await response.json();
-            const results = data.results || [];
-            
-            if (results.length === 0) {
-                return await searchDuckDuckGoImages(query, numResults);
-            }
-            
-            let output = `🖼️ IMAGE SEARCH RESULTS
+
+            let output = `🖼️ IMAGE SEARCH RESULTS (${source})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Query: "${query}"
+Query: "${query}"${enhancedQuery !== query ? `\nEnhanced: "${enhancedQuery}"` : ''}
 
 `;
-            
-            results.slice(0, numResults).forEach((img: any, i: number) => {
-                const url = img.urls?.regular || img.urls?.small || img.urls?.raw;
-                const thumb = img.urls?.thumb || img.urls?.small;
-                const description = img.alt_description || img.description || 'Untitled';
-                const photographer = img.user?.name || 'Unknown';
-                
-                output += `${i + 1}. ${description}
-   📷 By: ${photographer}
-   🔗 URL: ${url}
-   📌 Thumbnail: ${thumb}
+
+            results.forEach((img, i) => {
+                output += `${i + 1}. ${img.description}
+   📷 By: ${img.photographer}
+   🔗 URL: ${img.url}
+   📌 Thumbnail: ${img.thumb}
 
 `;
             });
-            
+
             output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Found ${results.length} images. Use these URLs in your slides with the 'image' slide type.
 
@@ -738,7 +879,7 @@ Example slide JSON:
   "imageUrl": "<paste URL here>",
   "caption": "Photo credit"
 }`;
-            
+
             return output;
         } catch (error) {
             // Fallback to DuckDuckGo
@@ -751,11 +892,11 @@ Example slide JSON:
     },
     {
         name: "search_images",
-        description: "Search for high-quality images to use in slides or presentations. Returns image URLs that can be used in 'image' type slides. Use descriptive queries like 'mountain landscape sunset' or 'business meeting office'.",
+        description: "Search for high-quality images to use in slides or presentations. Returns image URLs that can be used in 'image' type slides. Use specific, descriptive queries - the tool will enhance them for better results.",
         schema: z.object({
-            query: z.string().describe("Search query for images - be descriptive (e.g., 'modern office workspace')"),
+            query: z.string().describe("Search query for images - be specific (e.g., 'GPU graphics card', 'team collaboration office', 'data visualization chart')"),
             numResults: z.number().optional().default(5).describe("Number of images to return (default: 5)"),
-            orientation: z.enum(["landscape", "portrait", "squarish"]).optional().describe("Image orientation filter"),
+            orientation: z.enum(["landscape", "portrait", "squarish"]).optional().describe("Image orientation filter - use 'landscape' for slide backgrounds"),
         }),
     }
 );
