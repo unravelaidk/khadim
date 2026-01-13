@@ -109,7 +109,7 @@ export function WelcomeScreen({
       </div>
 
       {/* Large Input Card */}
-      <div className={`w-full bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col ${isTemplatePickerOpen ? "mt-6 lg:mt-10" : ""}`}>
+      <div className={`w-full max-w-[92vw] sm:max-w-none mx-auto bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col ${isTemplatePickerOpen ? "mt-6 lg:mt-10" : ""}`}>
 
         {/* Active Badges */}
         {activeBadges.length > 0 && (
@@ -155,10 +155,10 @@ export function WelcomeScreen({
               ? "Describe what you want..."
               : "Awaiting instructions..."
           }
-          className={`w-full bg-transparent px-6 md:px-8 text-base md:text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${
+          className={`w-full bg-transparent px-5 md:px-8 text-base md:text-lg resize-none focus:outline-none placeholder:text-gb-text-muted/50 font-mono transition-all ${
             activeBadges.length > 0
-              ? "h-24 md:h-32 pt-4"
-              : "h-32 md:h-40 pt-6 md:pt-8"
+              ? "h-20 md:h-32 pt-4"
+              : "h-24 md:h-40 pt-5 md:pt-8"
           }`}
         />
 
