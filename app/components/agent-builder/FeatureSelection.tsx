@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { 
-  LuFileText, 
-  LuGlobe, 
-  LuSmartphone, 
+import {
+  LuFileText,
+  LuGlobe,
+  LuSmartphone,
   LuSparkles,
   LuCalendar,
   LuSearch,
@@ -97,139 +97,173 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
     { id: "playbook", label: "Playbook", icon: <LuBook />, external: true },
   ];
 
-  // Render template selection for slides
-  if (showTemplateSelection) {
-    return (
-      <SlideTemplates
-        onSelect={(template, theme) => {
-          // Immediately complete selection with template info - prompt is optional
-          onSelect({
-            label: `Create slides: ${template.name}`,
-            icon: <LuFileText />,
-            isPremade: true,
-            templateInfo: { template, theme }
-          });
-          setShowTemplateSelection(false);
-        }}
-        onBack={() => setShowTemplateSelection(false)}
-      />
-    );
-  }
+  const selectedFeature = selectedCategory
+    ? features.find((feature) => feature.id === selectedCategory)
+    : null;
 
-  // Render examples view if a category is selected and has examples
-  if (selectedCategory && categoryExamples[selectedCategory]) {
-    return (
-      <div className="relative flex flex-wrap items-center justify-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500" ref={menuRef}>
-        <button
-          onClick={() => setSelectedCategory(null)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:text-gb-text text-gb-text-secondary transition-all"
-        >
-          <LuArrowLeft className="text-base" />
-          <span className="text-sm font-medium">Back</span>
-        </button>
-        
-        {categoryExamples[selectedCategory].map((example) => (
+  const headerTitle = showTemplateSelection
+    ? "Slide Themes"
+    : selectedFeature
+      ? `${selectedFeature.label} Prompts`
+      : "Quick Start";
+
+  const headerSubtitle = showTemplateSelection
+    ? "Pick a template and theme"
+    : selectedFeature
+      ? "Choose a prompt to stay in flow"
+      : "Pick a mode or prompt below";
+
+  const content = (() => {
+    if (showTemplateSelection) {
+      return (
+        <SlideTemplates
+          onSelect={(template, theme) => {
+            onSelect({
+              label: `Create slides: ${template.name}`,
+              icon: <LuFileText />,
+              isPremade: true,
+              templateInfo: { template, theme }
+            });
+            setShowTemplateSelection(false);
+          }}
+          onBack={() => setShowTemplateSelection(false)}
+        />
+      );
+    }
+
+    if (selectedCategory && categoryExamples[selectedCategory]) {
+      return (
+        <div className="relative flex flex-wrap items-center justify-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500" ref={menuRef}>
           <button
-            key={example.label}
-            onClick={() => {
-              const categoryFeature = features.find(f => f.id === selectedCategory);
-              if (categoryFeature) {
-                onSelect({
-                  label: `${categoryFeature.label}: ${example.label}`,
-                  icon: categoryFeature.icon,
-                  prompt: example.prompt,
-                  isPremade: true
-                });
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group"
+            onClick={() => setSelectedCategory(null)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:text-gb-text text-gb-text-secondary transition-all"
           >
-            <span className="text-lg opacity-80 group-hover:opacity-100 transition-opacity">
-              {example.icon}
-            </span>
-            <span className="text-sm font-medium text-gb-text-secondary group-hover:text-gb-text">
-              {example.label}
-            </span>
+            <LuArrowLeft className="text-base" />
+            <span className="text-sm font-medium">Back</span>
           </button>
-        ))}
+
+          {categoryExamples[selectedCategory].map((example) => (
+            <button
+              key={example.label}
+              onClick={() => {
+                const categoryFeature = features.find((feature) => feature.id === selectedCategory);
+                if (categoryFeature) {
+                  onSelect({
+                    label: `${categoryFeature.label}: ${example.label}`,
+                    icon: categoryFeature.icon,
+                    prompt: example.prompt,
+                    isPremade: true
+                  });
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group"
+            >
+              <span className="text-lg opacity-80 group-hover:opacity-100 transition-opacity">
+                {example.icon}
+              </span>
+              <span className="text-sm font-medium text-gb-text-secondary group-hover:text-gb-text">
+                {example.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative flex flex-wrap items-center justify-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100" ref={menuRef}>
+        {features.map((feature) => {
+          if (feature.id === "more") {
+            return (
+              <div key={feature.id} className="relative">
+                <button
+                  onClick={() => setShowMoreMenu(!showMoreMenu)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group ${showMoreMenu ? 'bg-gb-bg-card border-gb-primary/30 ring-2 ring-gb-primary/10' : ''}`}
+                >
+                  <span className="text-sm font-medium text-gb-text-secondary group-hover:text-gb-text">
+                    {feature.label}
+                  </span>
+                  <span className="text-lg opacity-80 group-hover:opacity-100 transition-all duration-200">
+                    {showMoreMenu ? <LuX /> : <LuPlus />}
+                  </span>
+                </button>
+
+                {showMoreMenu && (
+                  <div className="absolute bottom-full right-0 mb-2 w-56 bg-gb-bg-card border border-gb-border rounded-xl shadow-gb-md p-1.5 z-50 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex flex-col gap-0.5">
+                      {moreOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          onClick={() => {
+                            onSelect({ label: option.label, icon: option.icon });
+                            setShowMoreMenu(false);
+                          }}
+                          className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm text-gb-text-secondary hover:text-gb-text hover:bg-gb-bg-subtle/50 transition-colors text-left group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-gb-text-muted group-hover:text-gb-text transition-colors text-base">{option.icon}</span>
+                            <span>{option.label}</span>
+                          </div>
+                          {option.external && (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-50 group-hover:opacity-100 text-gb-text-muted group-hover:text-gb-text"><path d="M7 17L17 7M17 7H7M17 7V17" /></svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={feature.id}
+              onClick={() => {
+                if (feature.id === "slides") {
+                  setShowTemplateSelection(true);
+                } else if (categoryExamples[feature.id]) {
+                  setSelectedCategory(feature.id);
+                } else {
+                  onSelect({ label: feature.label, icon: feature.icon, isPremade: false });
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group"
+            >
+              {feature.icon && (
+                <span className="text-lg opacity-80 group-hover:opacity-100 transition-opacity">
+                  {feature.icon}
+                </span>
+              )}
+              <span className="text-sm font-medium text-gb-text-secondary group-hover:text-gb-text">
+                {feature.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     );
-  }
+  })();
 
   return (
-    <div className="relative flex flex-wrap items-center justify-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100" ref={menuRef}>
-      {features.map((feature) => {
-        if (feature.id === "more") {
-          return (
-            <div key={feature.id} className="relative">
-              <button
-                onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group ${showMoreMenu ? 'bg-gb-bg-card border-gb-primary/30 ring-2 ring-gb-primary/10' : ''}`}
-              >
-                <span className="text-sm font-medium text-gb-text-secondary group-hover:text-gb-text">
-                  {feature.label}
-                </span>
-                <span className="text-lg opacity-80 group-hover:opacity-100 transition-all duration-200">
-                  {showMoreMenu ? <LuX /> : <LuPlus />}
-                </span>
-              </button>
-
-              {/* More Menu Dropdown - Anchored to button */}
-              {showMoreMenu && (
-                <div className="absolute bottom-full right-0 mb-2 w-56 bg-gb-bg-card border border-gb-border rounded-xl shadow-gb-md p-1.5 z-50 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="flex flex-col gap-0.5">
-                    {moreOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => {
-                          onSelect({ label: option.label, icon: option.icon });
-                          setShowMoreMenu(false);
-                        }}
-                        className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm text-gb-text-secondary hover:text-gb-text hover:bg-gb-bg-subtle/50 transition-colors text-left group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-gb-text-muted group-hover:text-gb-text transition-colors text-base">{option.icon}</span>
-                          <span>{option.label}</span>
-                        </div>
-                        {option.external && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-50 group-hover:opacity-100 text-gb-text-muted group-hover:text-gb-text"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        return (
-          <button
-            key={feature.id}
-            onClick={() => {
-              // For slides, show template selection first
-              if (feature.id === "slides") {
-                setShowTemplateSelection(true);
-              } else if (categoryExamples[feature.id]) {
-                setSelectedCategory(feature.id);
-              } else {
-                // This is just a CATEGORY - should go to plan mode for questions
-                onSelect({ label: feature.label, icon: feature.icon, isPremade: false });
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 hover:scale-[1.02] transition-all duration-200 group"
-          >
-            {feature.icon && (
-              <span className="text-lg opacity-80 group-hover:opacity-100 transition-opacity">
-                {feature.icon}
+    <div className="w-full animate-in fade-in duration-500 max-h-[65vh] overflow-y-auto scrollbar-hide">
+      <div className="w-full rounded-2xl border border-gb-border/70 bg-gb-bg-card/80 shadow-gb-md px-4 py-4 md:px-6 md:py-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-gb-accent shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-gb-text-secondary">
+                {headerTitle}
               </span>
-            )}
-            <span className="text-sm font-medium text-gb-text-secondary group-hover:text-gb-text">
-              {feature.label}
-            </span>
-          </button>
-        );
-      })}
+              <span className="text-xs text-gb-text-muted">
+                {headerSubtitle}
+              </span>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono uppercase text-gb-text-muted">Select below</span>
+        </div>
+        {content}
+      </div>
     </div>
   );
 }

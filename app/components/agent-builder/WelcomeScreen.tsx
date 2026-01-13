@@ -82,7 +82,7 @@ export function WelcomeScreen({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] w-full max-w-3xl mx-auto space-y-6 animate-in fade-in duration-700">
+    <div className="flex flex-col items-center justify-start min-h-[60vh] w-full max-w-3xl mx-auto space-y-6 pt-6 pb-10 animate-in fade-in duration-700">
       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider">
         <span className="text-gb-text-muted">TURN 1</span>
         <span className="w-px h-3 bg-gb-border"></span>

@@ -577,7 +577,6 @@ export function AgentBuilder({ initialChatId }: AgentBuilderProps) {
               {!isInitialState && (
                 <ChatInterface
                   messages={messages}
-                  isTyping={isTyping}
                   pendingQuestion={pendingQuestion}
                   onAnswerQuestion={handleAnswerQuestion}
                   onCancelQuestion={() => setPendingQuestion(null)}

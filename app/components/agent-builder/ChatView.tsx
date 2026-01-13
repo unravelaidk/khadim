@@ -2,7 +2,6 @@ import { useRef, useEffect } from "react";
 import {
   GameBoyScreen,
   ChatMessage,
-  TypingIndicator,
   SuggestionCards,
   AgentQuestion,
 } from "./index";
@@ -59,7 +58,6 @@ export function ChatView({
                     message={message}
                   />
                 ))}
-              {isTyping && <TypingIndicator />}
               {pendingQuestion && (
                 <AgentQuestion
                   question={pendingQuestion.question}
