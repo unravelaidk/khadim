@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { LuX, LuFile, LuImage, LuTable } from "react-icons/lu";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 import { FeatureSelection } from "./FeatureSelection";
@@ -34,6 +34,7 @@ export function WelcomeScreen({
   onRemoveFile,
 }: WelcomeScreenProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -82,27 +83,34 @@ export function WelcomeScreen({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
   return (
-    <div className="flex flex-col items-center justify-start min-h-[60vh] w-full max-w-3xl mx-auto space-y-6 pt-6 pb-10 animate-in fade-in duration-700">
-      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider">
-        <span className="text-gb-text-muted">TURN 1</span>
-        <span className="w-px h-3 bg-gb-border"></span>
-        <span className="text-gb-accent hover:underline cursor-pointer animate-pulse">
-          ROLL DICE
-        </span>
-      </div>
+    <div className="flex flex-col items-center justify-start min-h-[60vh] w-full max-w-3xl mx-auto space-y-4 pt-6 pb-10 animate-in fade-in duration-700">
+      <div className={`sticky top-0 w-full flex flex-col items-center gap-4 bg-gb-bg/95 backdrop-blur-md pt-1 pb-3 ${isTemplatePickerOpen ? "mt-3" : ""}`}>
+        {!isTemplatePickerOpen && (
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider z-0">
+            <span className="text-gb-text-muted">TURN 1</span>
+            <span className="w-px h-3 bg-gb-border"></span>
+            <span className="text-gb-accent hover:underline cursor-pointer animate-pulse">
+              ROLL DICE
+            </span>
+          </div>
+        )}
 
-      {/* Header - Logo & Subtitle */}
-      <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8 animate-in fade-in zoom-in duration-1000 text-center md:text-left mb-2 md:mb-0">
-        <div className="w-24 h-24 md:w-32 md:h-32 text-gb-text animate-float">
-          <KhadimLogo />
-        </div>
-        <p className="text-xl md:text-2xl font-mono text-gb-text-secondary tracking-wide max-w-[200px] md:max-w-none">
-          Get started building
-        </p>
+        {/* Header - Logo & Subtitle */}
+        {!isTemplatePickerOpen && (
+          <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6 animate-in fade-in zoom-in duration-1000 text-center md:text-left">
+            <div className="w-20 h-20 md:w-28 md:h-28 text-gb-text animate-float z-0">
+              <KhadimLogo />
+            </div>
+            <p className="text-lg md:text-xl font-mono text-gb-text-secondary tracking-wide max-w-[200px] md:max-w-none">
+              Get started building
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Large Input Card */}
-      <div className="w-full bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col">
+      <div className={`w-full bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col ${isTemplatePickerOpen ? "mt-6 lg:mt-10" : ""}`}>
+
         {/* Active Badges */}
         {activeBadges.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 px-6 pt-6 pb-2 animate-in fade-in slide-in-from-bottom-2">
@@ -278,7 +286,12 @@ export function WelcomeScreen({
       </div>
       
       {/* Feature Selection Chips */}
-      <FeatureSelection onSelect={onSuggestionClick} />
+      <div className="w-full mt-6 md:mt-8">
+        <FeatureSelection
+          onSelect={onSuggestionClick}
+          onTemplatePickerChange={setIsTemplatePickerOpen}
+        />
+      </div>
     </div>
   );
 }

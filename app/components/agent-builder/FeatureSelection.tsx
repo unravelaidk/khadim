@@ -37,9 +37,10 @@ import type { SlideTemplate, SlideTheme } from "../../types/slides";
 
 interface FeatureSelectionProps {
   onSelect: (feature: { label: string; icon: React.ReactNode; prompt?: string; isPremade?: boolean; templateInfo?: { template: SlideTemplate; theme: SlideTheme } }) => void;
+  onTemplatePickerChange?: (isOpen: boolean) => void;
 }
 
-export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
+export function FeatureSelection({ onSelect, onTemplatePickerChange }: FeatureSelectionProps) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showTemplateSelection, setShowTemplateSelection] = useState(false);
@@ -54,6 +55,10 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    onTemplatePickerChange?.(showTemplateSelection);
+  }, [onTemplatePickerChange, showTemplateSelection]);
 
   const features = [
     { id: "games", label: "Create games", icon: <LuGamepad /> },
@@ -246,7 +251,7 @@ export function FeatureSelection({ onSelect }: FeatureSelectionProps) {
   })();
 
   return (
-    <div className="w-full animate-in fade-in duration-500 max-h-[65vh] overflow-y-auto scrollbar-hide">
+    <div className="w-full animate-in fade-in duration-500">
       <div className="w-full rounded-2xl border border-gb-border/70 bg-gb-bg-card/80 shadow-gb-md px-4 py-4 md:px-6 md:py-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
