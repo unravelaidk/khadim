@@ -18,43 +18,39 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
           <LuArrowLeft className="w-4 h-4" />
           <span className="text-sm font-medium">Back</span>
         </button>
-        <div className="text-right">
-          <h3 className="text-base font-semibold text-gb-text">Choose a Template</h3>
-          <p className="text-xs text-gb-text-muted">Select a Game Boy-friendly theme</p>
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[52vh] overflow-y-auto pr-1 scrollbar-hide">
         {SLIDE_TEMPLATES.map((template) => {
           const theme = SLIDE_THEMES.get(template.theme)!;
-          
+
           return (
             <button
               key={template.id}
               onClick={() => onSelect(template, theme)}
               className="group relative flex flex-col rounded-2xl border border-gb-border bg-gb-bg-subtle/60 hover:bg-gb-bg-card hover:border-gb-primary/40 hover:shadow-gb-md transition-all duration-300 overflow-hidden text-left"
             >
-              <div 
+              <div
                 className="h-28 w-full relative border-b border-gb-border/60"
                 style={{ background: theme.backgrounds.title }}
               >
                 <div className="absolute inset-3 flex flex-col items-center justify-center">
-                  <div 
+                  <div
                     className="w-12 h-1.5 rounded-full mb-2"
                     style={{ background: theme.accentColor }}
                   />
-                  <div 
+                  <div
                     className="w-20 h-2 rounded mb-1"
                     style={{ background: theme.textColors.primary, opacity: 0.85 }}
                   />
-                  <div 
+                  <div
                     className="w-16 h-1.5 rounded"
                     style={{ background: theme.textColors.secondary, opacity: 0.55 }}
                   />
                 </div>
 
                 {theme.decorativeElements?.pattern && (
-                  <div 
+                  <div
                     className="absolute inset-0 opacity-30"
                     style={{ background: theme.decorativeElements.pattern }}
                   />
@@ -66,9 +62,9 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
                   <h4 className="font-semibold text-sm text-gb-text group-hover:text-gb-accent transition-colors">
                     {template.name}
                   </h4>
-                  <span 
+                  <span
                     className="w-3 h-3 rounded-full border-2"
-                    style={{ 
+                    style={{
                       borderColor: theme.accentColor,
                       background: `${theme.accentColor}40`
                     }}
@@ -78,9 +74,9 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
                   {template.description}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
-                  <span 
+                  <span
                     className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-transparent"
-                    style={{ 
+                    style={{
                       background: `${theme.accentColor}12`,
                       color: theme.accentColor
                     }}
@@ -94,7 +90,7 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
               </div>
 
               <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div 
+                <div
                   className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm"
                   style={{ background: theme.accentColor }}
                 >

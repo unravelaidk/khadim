@@ -100,9 +100,9 @@ export function SlidesPreview({
         />
 
         {/* Main Content */}
-        <div className="flex h-[300px]">
+        <div className="flex h-[360px] md:h-[320px] flex-col md:flex-row">
           {/* Sidebar with Thumbnails */}
-          <div className="w-44 bg-gb-bg-subtle border-r border-gb-border overflow-y-auto p-2.5 space-y-2.5 scrollbar-hide">
+          <div className="w-full md:w-44 bg-gb-bg-subtle border-b md:border-b-0 md:border-r border-gb-border overflow-x-auto md:overflow-y-auto p-2.5 md:p-2.5 md:space-y-2.5 flex md:block gap-2.5 scrollbar-hide">
             {slides.map((s, index) => (
               <SlideThumbnail
                 key={s.id}
@@ -120,7 +120,7 @@ export function SlidesPreview({
             {viewMode === 'preview' ? (
               <>
                 {/* Slide Preview */}
-                <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+                <div className="flex-1 flex items-center justify-center p-3 md:p-4 overflow-hidden">
                   <SlideViewer
                     slide={slide}
                     slideIndex={currentSlide}
@@ -143,7 +143,7 @@ export function SlidesPreview({
               </>
             ) : (
               /* Code View */
-              <div className="flex-1 overflow-auto bg-gb-bg-dark p-4 rounded-br-xl">
+              <div className="flex-1 overflow-auto bg-gb-bg-dark p-3 md:p-4 rounded-br-xl">
                 <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
                   {htmlContent || generateHTMLFromSlides(slides, title, currentTheme)}
                 </pre>

@@ -571,7 +571,7 @@ export function AgentBuilder({ initialChatId }: AgentBuilderProps) {
         ) : (
           <>
             <main
-              className={`flex-1 overflow-y-auto ${isInitialState ? "flex items-center justify-center py-8" : "pt-8 pb-36 px-4"
+              className={`flex-1 overflow-y-auto ${isInitialState ? "flex items-center justify-center py-6" : "pt-6 pb-28 px-3 md:pt-8 md:pb-36 md:px-4"
                 }`}
             >
               {!isInitialState && (
