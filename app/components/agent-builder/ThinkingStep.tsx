@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect } from "react";
 import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile, LuCircleDot } from "react-icons/lu";
 import { FileEditorModal } from "./FileEditorModal";
 import type { ThinkingStepData } from "../../types/chat";
@@ -12,6 +13,14 @@ interface ThinkingStepProps {
 export function ThinkingStep({ step, depth = 0, index = 0 }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
   const [showFileEditor, setShowFileEditor] = useState(false);
+
+  useEffect(() => {
+    if (step.status === "running") {
+      setIsExpanded(true);
+    } else if (step.status === "complete") {
+      setIsExpanded(false);
+    }
+  }, [step.status]);
 
   const hasChildren = step.children && step.children.length > 0;
   const hasContent = step.content || step.result;

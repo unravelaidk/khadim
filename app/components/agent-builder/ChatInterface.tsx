@@ -1,12 +1,10 @@
 import { GameBoyScreen } from "./GameBoyScreen";
 import { ChatMessage } from "./ChatMessage";
-import { TypingIndicator } from "./TypingIndicator";
 import { AgentQuestion } from "./AgentQuestion";
 import type { Message, PendingQuestion } from "../../types/chat";
 
 interface ChatInterfaceProps {
   messages: Message[];
-  isTyping: boolean;
   pendingQuestion: PendingQuestion | null;
   onAnswerQuestion: (answer: string) => void;
   onCancelQuestion: () => void;
@@ -15,7 +13,6 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({
   messages,
-  isTyping,
   pendingQuestion,
   onAnswerQuestion,
   onCancelQuestion,
@@ -28,7 +25,6 @@ export function ChatInterface({
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} />
           ))}
-          {isTyping && <TypingIndicator />}
           {pendingQuestion && (
             <AgentQuestion
               question={pendingQuestion.question}
