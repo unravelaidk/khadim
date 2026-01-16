@@ -1,6 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
-import { Sandbox } from "@deno/sandbox";
 import { eq } from "drizzle-orm";
 import { createOrchestrator } from "./orchestrator";
 import {
@@ -38,6 +37,7 @@ import type { AgentMode } from "./router";
 import { db, messages, chats, artifacts } from "../lib/db";
 
 type AgentConfig = ReturnType<typeof getAgentConfig>;
+type SandboxType = Awaited<ReturnType<typeof ensureSandbox>>['sandbox'];
 
 export interface RunAgentJobParams {
   jobId: string;
@@ -66,12 +66,20 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     abortSignal,
   } = params;
 
-  let sandbox: Sandbox | null = null;
+  let sandbox: SandboxType | null = null;
   let previewUrl: string | null = null;
   let sandboxId: string | null = null;
   let sandboxInitPromise: Promise<void> | null = null;
 
-  const ensureSandboxInitialized = async (): Promise<Sandbox> => {
+  const formatSandboxInitError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("port is already allocated") || message.includes("Bind for 0.0.0.0:10000 failed")) {
+      return "Sandbox failed to start: port 10000 is already in use. Stop the existing sandbox container or configure the sandbox server to use a different port.";
+    }
+    return message;
+  };
+
+  const ensureSandboxInitialized = async (): Promise<SandboxType> => {
     if (sandbox) return sandbox;
     
     if (sandboxInitPromise) {
@@ -84,22 +92,32 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       await addStep(jobId, { id: sandboxStepId, title: "Initializing sandbox...", status: "running" });
       await broadcast(jobId, { type: "step_start", data: { id: sandboxStepId, title: "Initializing sandbox..." } });
 
-      const sandboxResult = await ensureSandbox(existingSandboxId);
-      sandbox = sandboxResult.sandbox;
-      sandboxId = sandboxResult.sandboxId;
+      try {
+        const sandboxResult = await ensureSandbox(existingSandboxId);
+        sandbox = sandboxResult.sandbox;
+        sandboxId = sandboxResult.sandboxId;
 
-      let result: string;
-      if (sandboxResult.reconnected) {
-        result = "Reconnected to existing session";
-      } else if (existingSandboxId) {
-        result = "Created new session";
-      } else {
-        result = "Ready";
+        let result: string;
+        if (sandboxResult.reconnected) {
+          result = "Reconnected to existing session";
+        } else if (existingSandboxId) {
+          result = "Created new session";
+        } else {
+          result = "Ready";
+        }
+
+        await updateStep(jobId, sandboxStepId, { status: "complete", result });
+        await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result } });
+        await broadcast(jobId, { type: "sandbox_info", data: { sandboxId } });
+      } catch (error) {
+        const message = formatSandboxInitError(error);
+        sandbox = null;
+        sandboxId = null;
+        await updateStep(jobId, sandboxStepId, { status: "error", result: message });
+        await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result: message } });
+        sandboxInitPromise = null;
+        throw new Error(message);
       }
-
-      await updateStep(jobId, sandboxStepId, { status: "complete", result });
-      await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result } });
-      await broadcast(jobId, { type: "sandbox_info", data: { sandboxId } });
     })();
 
     await sandboxInitPromise;
@@ -139,7 +157,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     
     // For now, let's use a simpler approach: create a proxy sandbox that triggers init
     const getSandboxTool = <T>(
-      createFn: (sandbox: Sandbox, ...args: any[]) => T,
+      createFn: (sandbox: SandboxType, ...args: any[]) => T,
       ...args: any[]
     ): T => {
       // Create a lazy tool that initializes sandbox on first invoke
@@ -175,7 +193,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
 
     const orchestratorConfig = {
       model: new ChatOpenAI({
-        model: "xiaomi/mimo-v2-flash:free",
+        model: "mistralai/devstral-2512:free",
         apiKey: apiKey,
         configuration: { baseURL: "https://openrouter.ai/api/v1" },
         temperature: 0.2,

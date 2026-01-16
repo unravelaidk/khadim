@@ -1,0 +1,35 @@
+{
+  "name": "@khadim/codeexecution-client",
+  "version": "0.1.0",
+  "description": "Client SDK for remote code execution service",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./dist/index.js",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "code-execution",
+    "sandbox",
+    "trpc",
+    "client"
+  ],
+  "author": "Khadim",
+  "license": "MIT",
+  "dependencies": {
+    "@trpc/client": "^11.0.0-rc.682",
+    "superjson": "^2.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.9.2"
+  }
+}

@@ -3,23 +3,23 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useState } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
+
+const COPY_RESET_DELAY = 2000;
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
 
-// Custom code block with copy button and syntax highlighting
-function CodeBlock({
-  inline,
-  className,
-  children,
-  ...props
-}: {
+type CodeBlockProps = HTMLAttributes<HTMLElement> & {
   inline?: boolean;
   className?: string;
-  children?: React.ReactNode;
-}) {
+  children?: ReactNode;
+};
+
+// Custom code block with copy button and syntax highlighting
+function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : "";
@@ -28,7 +28,7 @@ function CodeBlock({
   const handleCopy = async () => {
     await navigator.clipboard.writeText(codeString);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_RESET_DELAY);
   };
 
   if (!inline && (match || codeString.includes("\n"))) {
@@ -36,11 +36,7 @@ function CodeBlock({
       <div className="relative group my-3">
         {/* Language badge & copy button */}
         <div className="absolute top-0 right-0 flex items-center gap-2 px-3 py-1.5 text-xs">
-          {language && (
-            <span className="text-gray-400 uppercase font-medium">
-              {language}
-            </span>
-          )}
+          {language && <span className="text-gray-400 uppercase font-medium">{language}</span>}
           <button
             onClick={handleCopy}
             className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
@@ -58,7 +54,7 @@ function CodeBlock({
           </button>
         </div>
         <SyntaxHighlighter
-          style={oneDark}
+          style={oneDark as any}
           language={language || "text"}
           PreTag="div"
           customStyle={{

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 interface ChatInputProps {
   value: string;
@@ -7,7 +8,7 @@ interface ChatInputProps {
   onStop?: () => void;
   isProcessing?: boolean;
   activeAgent?: { mode: "plan" | "build"; name: string } | null;
-  badges?: Array<{ label: string; icon: React.ReactNode; prompt?: string }>;
+  badges?: Array<{ label: string; icon: ReactNode; prompt?: string }>;
   onRemoveBadge?: (label: string) => void;
   isCompact?: boolean;
   position?: "fixed" | "relative";
@@ -27,7 +28,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!isProcessing) {
@@ -36,11 +37,12 @@ export function ChatInput({
     }
   };
 
-  const containerClasses = position === "fixed"
+  const isFixed = position === "fixed";
+  const containerClasses = isFixed
     ? "absolute bottom-0 left-0 right-0 pt-4 pb-6 px-3 md:pt-6 md:pb-8 md:px-4"
     : "w-full pt-4 pb-0";
 
-  const containerStyle = position === "fixed"
+  const containerStyle = isFixed
     ? { background: "linear-gradient(to top, var(--color-gb-bg) 70%, transparent)" }
     : undefined;
 
@@ -96,14 +98,14 @@ export function ChatInput({
             placeholder={isProcessing ? "Agent is working..." : "Type a message..."}
             rows={1}
             disabled={isProcessing}
-            className={`w-full bg-gb-bg-card border border-gb-border rounded-2xl md:rounded-full px-4 md:px-6 py-3 md:py-4 pr-12 md:pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-gb-primary/10 transition-all shadow-gb-sm hover:shadow-gb-md text-sm md:text-base text-gb-text placeholder:text-gb-text-muted min-h-[48px] md:min-h-[56px] flex items-center ${isProcessing ? 'opacity-60' : ''}`}
+             className={`w-full bg-gb-bg-card border border-gb-border rounded-2xl md:rounded-full px-4 md:px-6 py-3 md:py-4 pr-12 md:pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-gb-primary/10 transition-all shadow-gb-sm hover:shadow-gb-md text-sm md:text-base text-gb-text placeholder:text-gb-text-muted min-h-[48px] md:min-h-[56px] flex items-center ${isProcessing ? "opacity-60" : ""}`}
+
             style={{ maxHeight: "120px" }}
           />
           {isProcessing ? (
             <button
               onClick={onStop}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all bg-red-500 text-white hover:bg-red-600 hover:scale-105 active:scale-95"
-
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all bg-red-500 text-white hover:bg-red-600 hover:scale-105 active:scale-95"
               title="Stop generation"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -114,11 +116,10 @@ export function ChatInput({
             <button
               onClick={onSend}
               disabled={!value.trim()}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all ${value.trim()
-                  ? "bg-gb-text text-gb-text-inverse hover:scale-105 active:scale-95"
-                  : "bg-gb-bg-subtle text-gb-text-muted cursor-not-allowed"
-                  }`}
-
+              className={`absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all ${value.trim()
+                ? "bg-gb-text text-gb-text-inverse hover:scale-105 active:scale-95"
+                : "bg-gb-bg-subtle text-gb-text-muted cursor-not-allowed"
+                }`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M12 5l7 7-7 7" />

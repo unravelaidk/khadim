@@ -81,71 +81,59 @@ export function SlideViewer({
   const textPrimary = theme.textColors.primary;
   const textSecondary = theme.textColors.secondary;
   const textMuted = theme.textColors.muted;
-  const hasRichHtml = hasRichHtmlStyling(htmlContent);
+  const accentColor = theme.accentColor;
+  const fontFamily = theme.fontFamily;
+  const titleShadow = themeIsLight ? "none" : "0 2px 20px rgba(0,0,0,0.3)";
+  const hasRichHtml = htmlContent ? hasRichHtmlStyling(htmlContent) : false;
 
   const renderSlideContent = () => {
     if (!slide) return null;
 
     switch (slide.type) {
-      case 'title':
-      case 'section':
+      case "title":
+      case "section":
         return (
           <div className="text-center max-w-3xl">
-            <div 
-              className="w-16 h-1 mx-auto mb-8 rounded-full"
-              style={{ background: theme.accentColor }}
-            />
+            <div className="w-16 h-1 mx-auto mb-8 rounded-full" style={{ background: accentColor }} />
             {slide.title && (
-              <h1 
+              <h1
                 className="text-3xl md:text-4xl font-bold mb-6 leading-tight tracking-tight"
-                style={{ 
+                style={{
                   color: textPrimary,
-                  fontFamily: theme.fontFamily,
-                  textShadow: themeIsLight ? 'none' : '0 2px 20px rgba(0,0,0,0.3)'
+                  fontFamily,
+                  textShadow: titleShadow,
                 }}
               >
                 {slide.title}
               </h1>
             )}
             {slide.subtitle && (
-              <p 
+              <p
                 className="text-lg md:text-xl font-light tracking-wide"
-                style={{ 
+                style={{
                   color: textSecondary,
-                  fontFamily: theme.fontFamily
+                  fontFamily,
                 }}
               >
                 {slide.subtitle}
               </p>
             )}
-            <div 
-              className="w-24 h-0.5 mx-auto mt-10 rounded-full opacity-40"
-              style={{ background: theme.accentColor }}
-            />
+            <div className="w-24 h-0.5 mx-auto mt-10 rounded-full opacity-40" style={{ background: accentColor }} />
           </div>
         );
 
-      case 'quote':
-        if ('quote' in slide) {
+      case "quote":
+        if ("quote" in slide) {
           return (
             <div className="text-center max-w-2xl px-8">
-              <div 
-                className="text-5xl mb-6"
-                style={{ color: theme.accentColor }}
-              >
+              <div className="text-5xl mb-6" style={{ color: accentColor }}>
                 "
               </div>
-              <p 
-                className="text-lg italic mb-6 leading-relaxed"
-                style={{ color: textPrimary }}
-              >
+              <p className="text-lg italic mb-6 leading-relaxed" style={{ color: textPrimary }}>
                 {slide.quote}
               </p>
               {slide.attribution && (
-                <p 
-                  className="text-sm"
-                  style={{ color: textMuted }}
-                >
+                <p className="text-sm" style={{ color: textMuted }}>
                   — {slide.attribution}
                 </p>
               )}
@@ -154,65 +142,50 @@ export function SlideViewer({
         }
         break;
 
-      case 'twoColumn':
-        if ('leftBullets' in slide) {
+      case "twoColumn":
+        if ("leftBullets" in slide) {
           return (
             <div className="w-full px-6">
               {slide.title && (
-                <h1 
-                  className="text-xl font-bold mb-6 text-center"
-                  style={{ color: textPrimary }}
-                >
+                <h1 className="text-xl font-bold mb-6 text-center" style={{ color: textPrimary }}>
                   {slide.title}
                 </h1>
               )}
               <div className="grid grid-cols-2 gap-6">
-                <div 
-                  className="p-4 rounded-xl backdrop-blur-sm"
-                  style={{ background: 'rgba(255,255,255,0.08)' }}
-                >
+                <div className="p-4 rounded-xl backdrop-blur-sm" style={{ background: "rgba(255,255,255,0.08)" }}>
                   {slide.leftTitle && (
-                    <h2 
-                      className="text-base font-semibold mb-3"
-                      style={{ color: theme.accentColor }}
-                    >
+                    <h2 className="text-base font-semibold mb-3" style={{ color: accentColor }}>
                       {slide.leftTitle}
                     </h2>
                   )}
                   <ul className="space-y-2 text-xs">
-                    {slide.leftBullets?.map((b: string, i: number) => (
-                      <li 
-                        key={i} 
+                    {slide.leftBullets?.map((bullet, index) => (
+                      <li
+                        key={`${bullet}-${index}`}
                         className="flex items-start gap-2"
                         style={{ color: textSecondary }}
                       >
-                        <span style={{ color: theme.accentColor }}>→</span>
-                        <span>{b}</span>
+                        <span style={{ color: accentColor }}>→</span>
+                        <span>{bullet}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
-                <div 
-                  className="p-4 rounded-xl backdrop-blur-sm"
-                  style={{ background: 'rgba(255,255,255,0.08)' }}
-                >
+                <div className="p-4 rounded-xl backdrop-blur-sm" style={{ background: "rgba(255,255,255,0.08)" }}>
                   {slide.rightTitle && (
-                    <h2 
-                      className="text-base font-semibold mb-3"
-                      style={{ color: theme.accentColor }}
-                    >
+                    <h2 className="text-base font-semibold mb-3" style={{ color: accentColor }}>
                       {slide.rightTitle}
                     </h2>
                   )}
                   <ul className="space-y-2 text-xs">
-                    {slide.rightBullets?.map((b: string, i: number) => (
-                      <li 
-                        key={i} 
+                    {slide.rightBullets?.map((bullet, index) => (
+                      <li
+                        key={`${bullet}-${index}`}
                         className="flex items-start gap-2"
                         style={{ color: textSecondary }}
                       >
-                        <span style={{ color: theme.accentColor }}>→</span>
-                        <span>{b}</span>
+                        <span style={{ color: accentColor }}>→</span>
+                        <span>{bullet}</span>
                       </li>
                     ))}
                   </ul>
@@ -223,81 +196,78 @@ export function SlideViewer({
         }
         break;
 
-      case 'comparison':
-        if ('leftItems' in slide) {
+      case "comparison":
+        if ("leftItems" in slide) {
           return (
             <div className="w-full px-6">
               {slide.title && (
-                <h1 
-                  className="text-xl font-bold mb-6 text-center"
-                  style={{ color: textPrimary }}
-                >
+                <h1 className="text-xl font-bold mb-6 text-center" style={{ color: textPrimary }}>
                   {slide.title}
                 </h1>
               )}
               <div className="grid grid-cols-2 gap-4">
-                <div 
+                <div
                   className="p-4 rounded-xl border-2"
-                  style={{ 
-                    background: 'rgba(255,255,255,0.05)',
-                    borderColor: `${theme.accentColor}40`
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    borderColor: `${accentColor}40`,
                   }}
                 >
                   {slide.leftLabel && (
-                    <h2 
+                    <h2
                       className="text-sm font-bold mb-4 text-center pb-2 border-b"
-                      style={{ 
-                        color: theme.accentColor,
-                        borderColor: `${theme.accentColor}30`
+                      style={{
+                        color: accentColor,
+                        borderColor: `${accentColor}30`,
                       }}
                     >
                       {slide.leftLabel}
                     </h2>
                   )}
                   <ul className="space-y-2 text-xs">
-                    {slide.leftItems?.map((item: string, i: number) => (
-                      <li 
-                        key={i}
+                    {slide.leftItems?.map((item, index) => (
+                      <li
+                        key={`${item}-${index}`}
                         className="flex items-center gap-2"
                         style={{ color: textSecondary }}
                       >
-                        <span 
+                        <span
                           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ background: theme.accentColor }}
+                          style={{ background: accentColor }}
                         />
                         {item}
                       </li>
                     ))}
                   </ul>
                 </div>
-                <div 
+                <div
                   className="p-4 rounded-xl border-2"
-                  style={{ 
-                    background: 'rgba(255,255,255,0.05)',
-                    borderColor: `${theme.accentColor}40`
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    borderColor: `${accentColor}40`,
                   }}
                 >
                   {slide.rightLabel && (
-                    <h2 
+                    <h2
                       className="text-sm font-bold mb-4 text-center pb-2 border-b"
-                      style={{ 
-                        color: theme.accentColor,
-                        borderColor: `${theme.accentColor}30`
+                      style={{
+                        color: accentColor,
+                        borderColor: `${accentColor}30`,
                       }}
                     >
                       {slide.rightLabel}
                     </h2>
                   )}
                   <ul className="space-y-2 text-xs">
-                    {slide.rightItems?.map((item: string, i: number) => (
-                      <li 
-                        key={i}
+                    {slide.rightItems?.map((item, index) => (
+                      <li
+                        key={`${item}-${index}`}
                         className="flex items-center gap-2"
                         style={{ color: textSecondary }}
                       >
-                        <span 
+                        <span
                           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ background: theme.accentColor }}
+                          style={{ background: accentColor }}
                         />
                         {item}
                       </li>
@@ -310,26 +280,23 @@ export function SlideViewer({
         }
         break;
 
-      case 'image':
-        if ('imageUrl' in slide) {
+      case "image":
+        if ("imageUrl" in slide) {
           return (
             <div className="text-center">
               {slide.title && (
-                <h1 
-                  className="text-xl font-bold mb-4"
-                  style={{ color: textPrimary }}
-                >
+                <h1 className="text-xl font-bold mb-4" style={{ color: textPrimary }}>
                   {slide.title}
                 </h1>
               )}
-              <div 
+              <div
                 className="w-full h-36 rounded-xl mb-4 flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.1)' }}
+                style={{ background: "rgba(255,255,255,0.1)" }}
               >
                 {slide.imageUrl ? (
-                  <img 
-                    src={slide.imageUrl} 
-                    alt={slide.caption || ''} 
+                  <img
+                    src={slide.imageUrl}
+                    alt={slide.caption || ""}
                     className="max-h-full max-w-full object-contain rounded-lg"
                   />
                 ) : (
@@ -337,10 +304,7 @@ export function SlideViewer({
                 )}
               </div>
               {slide.caption && (
-                <p 
-                  className="text-xs"
-                  style={{ color: textMuted }}
-                >
+                <p className="text-xs" style={{ color: textMuted }}>
                   {slide.caption}
                 </p>
               )}
@@ -349,38 +313,32 @@ export function SlideViewer({
         }
         break;
 
-      case 'content':
-      case 'accent':
+      case "content":
+      case "accent":
       default:
         return (
           <>
             {slide.title && (
-              <h1 
-                className="text-xl font-bold text-center mb-4"
-                style={{ color: textPrimary }}
-              >
+              <h1 className="text-xl font-bold text-center mb-4" style={{ color: textPrimary }}>
                 {slide.title}
               </h1>
             )}
             {slide.subtitle && (
-              <p 
-                className="text-sm text-center mb-4"
-                style={{ color: textSecondary }}
-              >
+              <p className="text-sm text-center mb-4" style={{ color: textSecondary }}>
                 {slide.subtitle}
               </p>
             )}
-            {'bullets' in slide && slide.bullets && slide.bullets.length > 0 && (
+            {"bullets" in slide && slide.bullets && slide.bullets.length > 0 && (
               <ul className="text-xs space-y-2 mt-4 w-full max-w-md">
-                {slide.bullets.map((bullet: string, i: number) => (
-                  <li 
-                    key={i} 
+                {slide.bullets.map((bullet, index) => (
+                  <li
+                    key={`${bullet}-${index}`}
                     className="flex items-start gap-3"
                     style={{ color: textSecondary }}
                   >
-                    <span 
+                    <span
                       className="mt-1 w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ background: theme.accentColor }}
+                      style={{ background: accentColor }}
                     />
                     <span>{bullet}</span>
                   </li>
@@ -400,19 +358,20 @@ export function SlideViewer({
         className="w-full h-full relative rounded-xl overflow-hidden shadow-lg bg-black"
         style={{ 
           // Container maintains aspect ratio
-          aspectRatio: '16/9',
-          maxHeight: '100%'
+           aspectRatio: "16/9",
+           maxHeight: "100%",
+
         }}
       >
         <div 
           style={{
-            width: '333%',
-            height: '333%',
-            transform: 'scale(0.30)',
-            transformOrigin: 'top left',
-            position: 'absolute',
+            width: "333%",
+            height: "333%",
+            transform: "scale(0.30)",
+            transformOrigin: "top left",
+            position: "absolute",
             top: 0,
-            left: 0
+            left: 0,
           }}
         >
           <iframe
@@ -432,14 +391,14 @@ export function SlideViewer({
     <div 
       key={slideKey}
       className="w-full max-w-4xl aspect-[16/9] rounded-xl shadow-lg flex flex-col items-center justify-center p-8 slide-animate overflow-hidden relative"
-      style={{ background: getSlideBackground(slide?.type || 'content', theme) }}
+      style={{ background: getSlideBackground(slide?.type || "content", theme) }}
     >
       {/* Pattern overlay */}
       <div 
         className="absolute inset-0 opacity-20 pointer-events-none"
         style={{
-          backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)',
-          backgroundSize: '16px 16px',
+          backgroundImage: "radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)",
+          backgroundSize: "16px 16px",
         }}
       />
       <div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
