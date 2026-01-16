@@ -10,9 +10,9 @@ export function SuggestionCards({ prompts, onSelect }: SuggestionCardsProps) {
         Try one of these
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {prompts.map((prompt, i) => (
+        {prompts.map((prompt) => (
           <button
-            key={i}
+            key={prompt}
             onClick={() => onSelect(prompt)}
             className="text-left px-4 py-3 rounded-xl text-sm transition-all hover:scale-[1.01] bg-gb-bg-card text-gb-text-secondary border border-gb-border"
           >

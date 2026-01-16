@@ -1,6 +1,7 @@
 interface Badge {
   label?: string;
   isPremade?: boolean;
+  slideCount?: number;
 }
 
 export function decoratePromptWithBadges(prompt: string, badgesJson?: string | null): {
@@ -18,7 +19,14 @@ export function decoratePromptWithBadges(prompt: string, badgesJson?: string | n
       return { prompt, hasPremadeBadge: false, hasCategoryBadge: false };
     }
 
-    const badgeLabels = badges.map((b: Badge) => b.label).filter(Boolean).join(", ");
+    const badgeLabels = badges
+      .map((badge: Badge) => {
+        if (!badge.label) return null;
+        const suffix = typeof badge.slideCount === "number" ? ` (${badge.slideCount} slides)` : "";
+        return `${badge.label}${suffix}`;
+      })
+      .filter(Boolean)
+      .join(", ");
     const updatedPrompt = badgeLabels ? `[User Context/Selected Features: ${badgeLabels}]\n${prompt}` : prompt;
 
     return {

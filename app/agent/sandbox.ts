@@ -1,37 +1,94 @@
-import { Sandbox } from "@deno/sandbox";
+import { createCodeExecutionClient, type RemoteSandbox } from "@khadim/codeexecution-client";
 import { getJobByChatId } from "../lib/job-manager";
+import type { SandboxInstance } from "./tools";
 
 const SANDBOX_GRACE_MS = 5 * 60 * 1000;
+const SANDBOX_INIT_TIMEOUT_MS = Number(process.env.SANDBOX_INIT_TIMEOUT_MS ?? 20000);
 
+function withTimeout<T>(promise: Promise<T>, action: string, timeoutMs = SANDBOX_INIT_TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`[Sandbox] ${action} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+// Create client singleton (configure URL via env)
+const client = createCodeExecutionClient({
+  url: process.env.SANDBOX_SERVER_URL || "http://localhost:4000",
+  token: process.env.SANDBOX_TOKEN,
+});
+
+// Adapter type to maintain compatibility with existing code
 type SandboxProvider = {
   create: (options: { lifetime: string }) => Promise<SandboxInstance>;
   connect: (options: { id: string }) => Promise<SandboxInstance>;
 };
 
-type SandboxInstance = {
-  id: string;
-  extendLifetime?: (duration: string) => Promise<void>;
-  kill?: () => Promise<void>;
+// Adapter to wrap RemoteSandbox with compatible interface
+function wrapRemoteSandbox(sandbox: RemoteSandbox): SandboxInstance {
+  return {
+    id: sandbox.id,
+    containerId: sandbox.containerId,
+    writeFile: sandbox.writeFile.bind(sandbox),
+    readFile: sandbox.readFile.bind(sandbox),
+    exec: sandbox.exec.bind(sandbox),
+    spawn: sandbox.spawn.bind(sandbox),
+    exposeHttp: sandbox.exposeHttp?.bind(sandbox),
+    kill: sandbox.kill.bind(sandbox),
+  };
+}
+
+// Remote sandbox provider adapter
+export const RemoteSandboxProvider: SandboxProvider = {
+  async create(options: { lifetime: string }) {
+    const sandbox = await client.sandbox.create(options);
+    return wrapRemoteSandbox(sandbox);
+  },
+  async connect(options: { id: string }) {
+    const sandbox = await client.sandbox.connect(options.id);
+    return wrapRemoteSandbox(sandbox);
+  },
 };
+
+// Export client for direct access when needed
+export { client as sandboxClient };
 
 export async function ensureSandbox(
   existingSandboxId?: string | null,
-  sandboxProvider: SandboxProvider = Sandbox
+  sandboxProvider: SandboxProvider = RemoteSandboxProvider
 ) {
   if (!existingSandboxId) {
-    const sandbox = await sandboxProvider.create({ lifetime: "15m" });
+    const sandbox = await withTimeout(
+      sandboxProvider.create({ lifetime: "15m" }),
+      "sandbox create"
+    );
     return { sandbox, sandboxId: sandbox.id, reconnected: false };
   }
 
   try {
-    const sandbox = await sandboxProvider.connect({ id: existingSandboxId });
-    if (sandbox.extendLifetime) {
-      await sandbox.extendLifetime("5m");
-    }
+    const sandbox = await withTimeout(
+      sandboxProvider.connect({ id: existingSandboxId }),
+      `sandbox connect (${existingSandboxId})`
+    );
+    // Note: Remote sandbox doesn't support extendLifetime - lifetime managed by server
     return { sandbox, sandboxId: existingSandboxId, reconnected: true };
   } catch (error) {
     console.warn(`[Sandbox] Failed to reconnect to ${existingSandboxId}:`, error);
-    const sandbox = await sandboxProvider.create({ lifetime: "15m" });
+    const sandbox = await withTimeout(
+      sandboxProvider.create({ lifetime: "15m" }),
+      "sandbox create"
+    );
     return { sandbox, sandboxId: sandbox.id, reconnected: false };
   }
 }
@@ -47,7 +104,7 @@ export function scheduleSandboxCleanup(
 ): void {
   const graceMs = options?.graceMs ?? SANDBOX_GRACE_MS;
   const getJob = options?.getJobByChatIdFn ?? getJobByChatId;
-  const sandboxProvider = options?.sandboxProvider ?? Sandbox;
+  const sandboxProvider = options?.sandboxProvider ?? RemoteSandboxProvider;
 
   setTimeout(() => {
     void (async () => {

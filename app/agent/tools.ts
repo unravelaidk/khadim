@@ -1,26 +1,24 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import * as pathMod from "node:path";
-import { Sandbox } from "@deno/sandbox";
 import { db, artifacts, projects } from "../lib/db";
 import { eq, and } from "drizzle-orm";
 import { createVersionSnapshot } from "../lib/versions";
 
+// Type for our sandbox instance (compatible with RemoteSandbox from @khadim/codeexecution-client)
+export type SandboxInstance = {
+  id: string;
+  containerId?: string;
+  writeFile: (path: string, content: string) => Promise<void>;
+  readFile: (path: string) => Promise<string>;
+  exec: (script: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  spawn?: (command: string[], options?: { cwd?: string; env?: Record<string, string> }) => Promise<{ pid: number }>;
+  exposeHttp?: (options: { port: number }) => Promise<string>;
+  kill?: () => Promise<void>;
+};
+
 // In-memory todo storage per chat session
 const todoStorage = new Map<string, Array<{ task: string; status: "pending" | "in_progress" | "done" }>>();
-
-// Helper function to read a stream to string (eliminates code duplication)
-async function readStream(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-    if (!stream) return "";
-    let result = "";
-    const reader = stream.getReader();
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        result += new TextDecoder().decode(value);
-    }
-    return result;
-}
 
 // Helper function to get status icon for todo items
 function getStatusIcon(status: "pending" | "in_progress" | "done"): string {
@@ -123,43 +121,35 @@ Progress: ${done}/${tasks.length} done | ${inProgress} in progress | ${pending} 
     }
 );
 
-export const createRunCodeTool = (sandbox: Sandbox) => tool(
+export const createRunCodeTool = (sandbox: SandboxInstance) => tool(
     async ({ code }: { code: string }) => {
         try {
+            // Write the script file
             const scriptPath = "script.ts";
-            await sandbox.writeTextFile(scriptPath, code);
+            await sandbox.writeFile(scriptPath, code);
 
-            const child = await sandbox.spawn("deno", {
-                args: ["run", "-A", scriptPath],
-                stdout: "piped",
-                stderr: "piped",
-            });
+            // Execute using bun (the sandbox runs Bun)
+            const result = await sandbox.exec(`bun run ${scriptPath}`);
 
-            const [stdout, stderr] = await Promise.all([
-                readStream(child.stdout),
-                readStream(child.stderr)
-            ]);
-
-            const status = await child.status;
-            return `Exit Code: ${status.code}\nStdout:\n${stdout}\nStderr:\n${stderr}`;
+            return `Exit Code: ${result.exitCode}\nStdout:\n${result.stdout}\nStderr:\n${result.stderr}`;
         } catch (error) {
             return `Execution Error: ${error instanceof Error ? error.message : String(error)}`;
         }
     },
     {
         name: "run_code",
-        description: "Run TypeScript/JavaScript code in the sandbox. You can write files (like HTML/CSS) using Deno.writeTextFile inside your script.",
+        description: "Run TypeScript/JavaScript code in the sandbox. You can write files (like HTML/CSS) using Bun.write inside your script.",
         schema: z.object({
             code: z.string().describe("The TypeScript code to execute."),
         }),
     }
 );
 
-export const createReadFileTool = (sandbox: Sandbox) => tool(
+export const createReadFileTool = (sandbox: SandboxInstance) => tool(
     async ({ path }: { path: string }) => {
         try {
-            const result = await sandbox.sh`cat ${path}`.text();
-            return result;
+            const content = await sandbox.readFile(path);
+            return content;
         } catch (error) {
             return `Error reading file '${path}': ${error instanceof Error ? error.message : String(error)}`;
         }
@@ -173,11 +163,14 @@ export const createReadFileTool = (sandbox: Sandbox) => tool(
     }
 );
 
-export const createListFilesTool = (sandbox: Sandbox) => tool(
+export const createListFilesTool = (sandbox: SandboxInstance) => tool(
     async ({ path }: { path: string }) => {
         try {
-            const result = await sandbox.sh`ls -la ${path}`.text();
-            return result;
+            const result = await sandbox.exec(`ls -la ${path}`);
+            if (result.exitCode !== 0) {
+                return `Error listing files: ${result.stderr}`;
+            }
+            return result.stdout;
         } catch (error) {
             return `Error listing files: ${error instanceof Error ? error.message : String(error)}`;
         }
@@ -189,15 +182,14 @@ export const createListFilesTool = (sandbox: Sandbox) => tool(
     }
 );
 
-export const createWriteFileTool = (sandbox: Sandbox, chatId?: string) => tool(
+export const createWriteFileTool = (sandbox: SandboxInstance, chatId?: string) => tool(
     async ({ path, content }: { path: string; content: string }) => {
         try {
-
             const dir = pathMod.dirname(path);
             if (dir !== "." && dir !== "/") {
-                await sandbox.spawn("mkdir", { args: ["-p", dir] });
+                await sandbox.exec(`mkdir -p ${dir}`);
             }
-            await sandbox.writeTextFile(path, content);
+            await sandbox.writeFile(path, content);
 
             if (chatId) {
                 await db.delete(artifacts)
@@ -239,7 +231,7 @@ export const createWriteFileTool = (sandbox: Sandbox, chatId?: string) => tool(
     }
 );
 
-export const createShellTool = (sandbox: Sandbox) => tool(
+export const createShellTool = (sandbox: SandboxInstance) => tool(
     async ({ command }: { command: string }) => {
         // Block server commands that would hang forever
         const serverPatterns = [
@@ -247,6 +239,7 @@ export const createShellTool = (sandbox: Sandbox) => tool(
             /npm\s+run\s+(dev|start|preview|serve)/i,
             /npx\s+(serve|vite|http-server)/i,
             /deno\s+.*serve/i,
+            /bun\s+.*serve/i,
             /node\s+.*server/i,
         ];
 
@@ -256,99 +249,149 @@ export const createShellTool = (sandbox: Sandbox) => tool(
 
 You tried: ${command}
 
-✅ SOLUTION: Call the 'expose_preview' TOOL instead (not a shell command!):
-
-Tool call: expose_preview
-Arguments: { "port": 8000, "startServer": true, "root": "<your-project>/dist" }
-
-This tool starts a Deno file server in the background and returns a public URL.`;
+✅ SOLUTION: Build your project with 'npm run build', then call 'expose_preview' to start a server and get a public URL.
+Example: expose_preview({ root: "dist" }) or expose_preview({ root: "." })`;
         }
 
         try {
-            const child = await sandbox.spawn("sh", {
-                args: ["-c", command],
-                stdout: "piped",
-                stderr: "piped",
-            });
-
-            const [stdout, stderr] = await Promise.all([
-                readStream(child.stdout),
-                readStream(child.stderr)
-            ]);
-
-            const status = await child.status;
+            const result = await sandbox.exec(command);
 
             // Return full output with clear formatting for error analysis
-            if (status.code !== 0) {
+            if (result.exitCode !== 0) {
                 // Command failed - return detailed error info
                 return `❌ COMMAND FAILED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Command: ${command}
-Exit Code: ${status.code}
+Exit Code: ${result.exitCode}
 
 STDOUT:
-${stdout || "(empty)"}
+${result.stdout || "(empty)"}
 
 STDERR:
-${stderr || "(empty)"}
+${result.stderr || "(empty)"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ ANALYZE THE ERROR ABOVE and fix the specific issue. Do NOT retry with the same command.`;
             }
 
             // Command succeeded
-            return `✅ Exit: ${status.code}\n${stdout}${stderr ? `\nStderr: ${stderr}` : ""}`;
+            return `✅ Exit: ${result.exitCode}\n${result.stdout}${result.stderr ? `\nStderr: ${result.stderr}` : ""}`;
         } catch (error) {
             return `❌ Shell Error: ${error instanceof Error ? error.message : String(error)}`;
         }
     },
     {
         name: "shell",
-        description: "Run a shell command. DO NOT use for long-running processes (like servers) as it will block. Use expose_preview for servers. If a command fails, read the FULL error output.",
+        description: "Run a shell command. DO NOT use for long-running processes (like servers) as it will block. If a command fails, read the FULL error output.",
         schema: z.object({
             command: z.string().describe("The shell command to run"),
         }),
     }
 );
 
-export const createExposePreviewTool = (sandbox: Sandbox, setPreviewUrl: (url: string) => void) => tool(
-    async ({ port, startServer, root }: { port: number; startServer: boolean; root: string }) => {
+export const createExposePreviewTool = (sandbox: SandboxInstance, setPreviewUrl: (url: string) => void) => tool(
+    async ({ root, port }: { root: string; port?: number }) => {
         try {
-            if (startServer) {
-                const serverCode = `
-          import { serveDir } from "jsr:@std/http/file-server";
-          Deno.serve({ port: ${port} }, (req) => serveDir(req, { fsRoot: "${root}" }));
-        `;
-                await sandbox.writeTextFile("_server.ts", serverCode);
-
-                sandbox.spawn("deno", {
-                    args: ["run", "-A", "_server.ts"],
-                    stdout: "null",
-                    stderr: "null",
-                });
-
-                await new Promise(r => setTimeout(r, 1000));
+            const result = await sandbox.exec(`ls -la ${root}`);
+            if (result.exitCode !== 0) {
+                return `Error checking build directory: ${result.stderr}`;
             }
 
-            const url = await sandbox.exposeHttp({ port });
-            setPreviewUrl(url);
+            if (!sandbox.exposeHttp) {
+                return `Live preview is not supported by the current sandbox server. Please save artifacts (like index.html) instead.`;
+            }
 
-            return `Preview URL: ${url}`;
+            const previewPort = port ?? 8000;
+            // Always start a static server for the root directory
+            // The 'port' parameter just specifies which port to use
+            {
+                if (!sandbox.spawn) {
+                    return "Sandbox does not support background servers (spawn missing).";
+                }
+
+                const serverPath = `_preview_server_${previewPort}.ts`;
+                const serverCode = `
+const root = ${JSON.stringify(root)};
+const mimeTypes: Record<string, string> = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+Bun.serve({
+  port: ${previewPort},
+  async fetch(req) {
+    const url = new URL(req.url);
+    let pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+    const filePath = root + pathname;
+
+    const file = Bun.file(filePath);
+    if (!(await file.exists())) {
+      // Try index.html for SPA routing
+      const indexFile = Bun.file(root + "/index.html");
+      if (await indexFile.exists()) {
+        return new Response(indexFile, {
+          headers: { "Content-Type": "text/html" }
+        });
+      }
+      return new Response("Not Found: " + pathname, { status: 404 });
+    }
+
+    const ext = pathname.substring(pathname.lastIndexOf('.'));
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+    return new Response(file, {
+      headers: { "Content-Type": contentType }
+    });
+  },
+});
+console.log("Static server running on port ${previewPort} serving " + root);
+`;
+                await sandbox.writeFile(serverPath, serverCode);
+                const spawnResult = await sandbox.spawn(["bun", "run", serverPath]);
+
+                if (!spawnResult || !spawnResult.pid) {
+                    return `Error: Failed to start preview server - spawn returned no PID`;
+                }
+
+                // Wait for server to start and verify it's running
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Verify the server is actually listening by checking if the process is running
+                const checkResult = await sandbox.exec(`curl -s -o /dev/null -w "%{http_code}" http://localhost:${previewPort}/ 2>/dev/null || echo "failed"`);
+                if (checkResult.stdout.trim() !== "200" && checkResult.stdout.trim() !== "404") {
+                    // Server might not be ready yet, wait a bit more
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            const previewUrl = await sandbox.exposeHttp({ port: previewPort });
+            setPreviewUrl(previewUrl);
+
+            return `✅ Live preview ready: ${previewUrl}`;
         } catch (error) {
             return `Expose Error: ${error instanceof Error ? error.message : String(error)}`;
         }
     },
     {
         name: "expose_preview",
-        description: "Start a web server and expose files publicly. Returns a URL where users can view the creation. Call this after writing HTML/CSS/JS files.",
+        description: "Expose a sandbox port for live preview. If port is omitted, a static server is started from the root on port 8000.",
         schema: z.object({
-            port: z.number().default(8000).describe("Port to serve files on (default 8000)"),
-            startServer: z.boolean().default(true).describe("Whether to start a static file server."),
-            root: z.string().default(".").describe("The directory to serve files from (e.g., '.' or 'dist')"),
+            root: z.string().default(".").describe("The directory containing built files (e.g., '.' or 'dist')"),
+            port: z.number().optional().describe("Port to expose (use when a dev server is already running)."),
         }),
     }
 );
 
-export const createWebAppTool = (sandbox: Sandbox, chatId?: string) => tool(
+export const createWebAppTool = (sandbox: SandboxInstance, chatId?: string) => tool(
     async ({ type, name, template }: { type: "vite" | "react-router" | "astro"; name: string, template?: string }) => {
         // Validate type parameter - this is REQUIRED
         if (!type || !["vite", "react-router", "astro"].includes(type)) {
@@ -363,75 +406,52 @@ Correct usage:
         }
 
         try {
-            let cmd = "npm";
-            let args: string[] = [];
+            let command = "";
 
             if (type === "vite") {
-                args = ["create", "vite@latest", name, "--", "--template", "react-ts"];
+                command = `npm create vite@latest ${name} -- --template react-ts`;
             } else if (type === "react-router") {
-                args = ["create", "react-router@latest", name, "--"];
-
-                if (template) {
-                    args.push("--template", template);
-                }
-                args.push("-y");
+                const templateArg = template ? `--template ${template}` : "";
+                command = `npm create react-router@latest ${name} -- ${templateArg} -y`;
             } else if (type === "astro") {
-                // Astro: npm create astro@latest <name> -- --template <template> --yes
-                args = ["create", "astro@latest", name, "--"];
-                args.push("--template", template || "basics"); // 'basics' is more feature-complete than 'minimal'
-                args.push("--yes"); // Skip interactive prompts
+                const astroTemplate = template || "basics";
+                command = `npm create astro@latest ${name} -- --template ${astroTemplate} --yes`;
             }
 
-            const child = await sandbox.spawn(cmd, {
-                args,
-                stdout: "piped",
-                stderr: "piped",
-            });
+            const result = await sandbox.exec(command);
 
-            const [stdout, stderr] = await Promise.all([
-                readStream(child.stdout),
-                readStream(child.stderr)
-            ]);
-            const output = stdout + stderr;
-
-            const status = await child.status;
-
-            if (status.code !== 0) {
-                return `Failed to create app.\nExit Code: ${status.code}\nOutput:\n${output}`;
+            if (result.exitCode !== 0) {
+                return `Failed to create app.\nExit Code: ${result.exitCode}\nOutput:\n${result.stdout}\n${result.stderr}`;
             }
 
             // Sync artifacts if chatId provided
             if (chatId) {
                 try {
                     // Find all files in the new directory, excluding node_modules and .git
-                    const findCmd = await sandbox.spawn("find", {
-                        args: [name, "-type", "f", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"],
-                        stdout: "piped"
-                    });
+                    const findResult = await sandbox.exec(`find ${name} -type f -not -path "*/node_modules/*" -not -path "*/.git/*"`);
 
-                    const fileListOutput = await readStream(findCmd.stdout);
-                    await findCmd.status;
+                    if (findResult.exitCode === 0) {
+                        const files = findResult.stdout.split("\n").filter(f => f.trim());
 
-                    const files = fileListOutput.split("\n").filter(f => f.trim());
+                        for (const file of files) {
+                            try {
+                                const content = await sandbox.readFile(file);
 
-                    for (const file of files) {
-                        try {
-                            const content = await sandbox.sh`cat ${file}`.text();
+                                // Delete existing artifact for this file to avoid duplicates/stale data
+                                await db.delete(artifacts)
+                                    .where(and(
+                                        eq(artifacts.chatId, chatId),
+                                        eq(artifacts.filename, file)
+                                    ));
 
-                            // Delete existing artifact for this file to avoid duplicates/stale data
-                            await db.delete(artifacts)
-                                .where(and(
-                                    eq(artifacts.chatId, chatId),
-                                    eq(artifacts.filename, file)
-                                ));
-
-                            await db.insert(artifacts).values({
-                                chatId,
-                                filename: file,
-                                content,
-                            });
-                        } catch (err) {
-                            console.warn(`Failed to sync file ${file} to artifacts:`, err);
+                                await db.insert(artifacts).values({
+                                    chatId,
+                                    filename: file,
+                                    content,
+                                });
+                            } catch (err) {
+                                console.warn(`Failed to sync file ${file} to artifacts:`, err);
+                            }
                         }
                     }
                 } catch (syncErr) {
@@ -472,7 +492,7 @@ Correct usage:
                 outputPath = `${name}/build/client`;
             }
 
-            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps for you:\n1. run 'cd ${name}'\n2. run 'npm install'\n3. run 'npm run build'\n4. expose_preview with root='${outputPath}'`;
+            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps:\n1. shell: cd ${name} && npm install\n2. Write your application code with write_file\n3. shell: cd ${name} && npm run build\n4. expose_preview({ root: "${outputPath}" }) to get a live preview URL`;
         } catch (error) {
             return `Error creating app: ${error instanceof Error ? error.message : String(error)}`;
         }
@@ -488,7 +508,7 @@ Correct usage:
     }
 );
 
-export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool(
+export const createSaveArtifactTool = (sandbox: SandboxInstance, chatId: string) => tool(
     async ({ path }: { path: string }) => {
         try {
             // Check extension
@@ -498,23 +518,15 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
 
             let content = "";
             if (isBinary) {
-                // Read as base64
-                // We use sh -c to pipe cat to base64
-                const child = await sandbox.spawn("sh", {
-                    args: ["-c", `cat "${path}" | base64`],
-                    stdout: "piped"
-                });
-
-                const data = await readStream(child.stdout);
-                const status = await child.status;
-                if (status.code !== 0) {
-                    return `Error reading file: exit code ${status.code}`;
+                // Read as base64 using exec
+                const result = await sandbox.exec(`cat "${path}" | base64`);
+                if (result.exitCode !== 0) {
+                    return `Error reading file: ${result.stderr}`;
                 }
-
                 // Remove newlines/spaces from base64 output
-                content = `base64:${data.replace(/\s/g, '')}`;
+                content = `base64:${result.stdout.replace(/\s/g, '')}`;
             } else {
-                content = await sandbox.sh`cat ${path}`.text();
+                content = await sandbox.readFile(path);
             }
 
             // Save to DB
@@ -545,34 +557,20 @@ export const createSaveArtifactTool = (sandbox: Sandbox, chatId: string) => tool
     }
 );
 
-export const createManageSandboxTool = (sandbox: Sandbox) => tool(
+export const createManageSandboxTool = (sandbox: SandboxInstance) => tool(
     async ({ action }: { action: "keep_alive" | "stop" }) => {
         try {
             if (action === "keep_alive") {
-                // @ts-ignore - 'extendLifetime' exists in newer versions or passed through
-                if (typeof sandbox.extendLifetime === 'function') {
-                    // @ts-ignore
-                    await sandbox.extendLifetime("30m");
-                    return "✅ Sandbox lifetime extended by 30 minutes.";
-                } else {
-                    return "⚠️ Warning: This sandbox environment does not support extending lifetime directly.";
-                }
+                // Remote sandbox doesn't support extendLifetime directly
+                // Return a message indicating the limitation
+                return "⚠️ Note: The remote sandbox manages its own lifetime. Your session will remain active while you're working.";
             } else if (action === "stop") {
-                 // @ts-ignore
-                if (typeof sandbox.shutdown === 'function') {
-                    // @ts-ignore
-                    await sandbox.shutdown();
+                // Use kill() if available
+                if (sandbox.kill) {
+                    await sandbox.kill();
                     return "🛑 Sandbox shutdown initiated.";
-                } else {
-                     // Fallback: set short lifetime if specific shutdown isn't available
-                     // @ts-ignore
-                     if (typeof sandbox.setLifetime === 'function') {
-                        // @ts-ignore
-                        await sandbox.setLifetime(1000); // 1 second
-                        return "🛑 Sandbox lifetime set to expire immediately.";
-                     }
-                     return "⚠️ Warning: Could not explicitly stop sandbox (shutdown/setLifetime not found).";
                 }
+                return "⚠️ Warning: Could not explicitly stop sandbox (kill not available).";
             }
             return "❌ Invalid action.";
         } catch (error) {
@@ -581,9 +579,9 @@ export const createManageSandboxTool = (sandbox: Sandbox) => tool(
     },
     {
         name: "manage_sandbox",
-        description: "Control the sandbox lifecycle. Use 'keep_alive' for long tasks to prevent timeout. Use 'stop' when the user cancellation is requested or the task is permanently done.",
+        description: "Control the sandbox lifecycle. Use 'keep_alive' to confirm session is active. Use 'stop' when the task is permanently done.",
         schema: z.object({
-            action: z.enum(["keep_alive", "stop"]).describe("Action to perform: 'keep_alive' (extends 30m) or 'stop' (shuts down)."),
+            action: z.enum(["keep_alive", "stop"]).describe("Action to perform: 'keep_alive' (confirms active) or 'stop' (shuts down)."),
         }),
     }
 );

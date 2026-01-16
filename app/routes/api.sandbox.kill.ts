@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { Sandbox } from "@deno/sandbox";
+import { sandboxClient } from "../agent/sandbox";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") {
@@ -20,7 +20,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const sandbox = await Sandbox.connect({ id: sandboxId });
+    const sandbox = await sandboxClient.sandbox.connect(sandboxId);
     await sandbox.kill();
 
     return new Response(JSON.stringify({ success: true, message: "Sandbox terminated" }), {

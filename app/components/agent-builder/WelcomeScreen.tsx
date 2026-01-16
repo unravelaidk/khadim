@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
+import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
 import { LuX, LuFile, LuImage, LuTable } from "react-icons/lu";
+import type { SlideTemplate, SlideTheme } from "../../types/slides";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 import { FeatureSelection } from "./FeatureSelection";
 
@@ -10,13 +12,23 @@ export interface AttachedFile {
   content?: string; // Base64 or text content
 }
 
+type Badge = {
+  label: string;
+  icon: ReactNode;
+  prompt?: string;
+  isPremade?: boolean;
+  templateInfo?: { template: SlideTemplate; theme: SlideTheme };
+  slideCount?: number;
+};
+
 interface WelcomeScreenProps {
   input: string;
   setInput: (value: string) => void;
   handleSend: () => void;
-  activeBadges: Array<{ label: string; icon: React.ReactNode; prompt?: string }>;
+  activeBadges: Badge[];
   removeBadge: (label: string) => void;
-  onSuggestionClick: (feature: { label: string; icon: React.ReactNode; prompt?: string }) => void;
+  onUpdateSlideCount?: (label: string, count: number) => void;
+  onSuggestionClick: (feature: Badge) => void;
   attachedFiles?: AttachedFile[];
   onFilesAttached?: (files: AttachedFile[]) => void;
   onRemoveFile?: (fileName: string) => void;
@@ -28,6 +40,7 @@ export function WelcomeScreen({
   handleSend,
   activeBadges,
   removeBadge,
+  onUpdateSlideCount,
   onSuggestionClick,
   attachedFiles = [],
   onFilesAttached,
@@ -36,44 +49,46 @@ export function WelcomeScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readFileContent = (file: File): Promise<string> =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Failed to read file."));
+      reader.onload = () => resolve(reader.result as string);
+
+      if (file.type.startsWith("image/") || file.name.endsWith(".xlsx") || file.name.endsWith(".csv")) {
+        reader.readAsDataURL(file);
+      } else {
+        reader.readAsText(file);
+      }
+    });
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || !onFilesAttached) return;
 
-    const newFiles: AttachedFile[] = [];
-    
-    for (const file of Array.from(files)) {
-      const reader = new FileReader();
-      const content = await new Promise<string>((resolve) => {
-        if (file.type.startsWith('image/')) {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.csv')) {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        } else {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsText(file);
-        }
-      });
-      
-      newFiles.push({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        content,
-      });
-    }
-    
-    onFilesAttached([...attachedFiles, ...newFiles]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    try {
+      const newFiles = await Promise.all(
+        Array.from(files).map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          content: await readFileContent(file),
+        }))
+      );
+
+      onFilesAttached([...attachedFiles, ...newFiles]);
+    } catch (error) {
+      console.error("Failed to attach files:", error);
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
   const getFileIcon = (file: AttachedFile) => {
-    if (file.type.startsWith('image/')) return <LuImage className="w-4 h-4" />;
-    if (file.name.endsWith('.xlsx') || file.name.endsWith('.csv')) return <LuTable className="w-4 h-4" />;
+    if (file.type.startsWith("image/")) return <LuImage className="w-4 h-4" />;
+    if (file.name.endsWith(".xlsx") || file.name.endsWith(".csv")) return <LuTable className="w-4 h-4" />;
     return <LuFile className="w-4 h-4" />;
   };
 
@@ -82,9 +97,32 @@ export function WelcomeScreen({
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  const clampSlideCount = (count: number) => Math.min(20, Math.max(1, count));
+
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleSlideCountChange = (label: string, count: number) => {
+    if (!onUpdateSlideCount) return;
+    if (Number.isNaN(count)) {
+      onUpdateSlideCount(label, 1);
+      return;
+    }
+    onUpdateSlideCount(label, clampSlideCount(count));
+  };
+
   return (
     <div className="flex flex-col items-center justify-start min-h-[60vh] w-full max-w-3xl mx-auto space-y-4 pt-6 pb-10 animate-in fade-in duration-700">
-      <div className={`sticky top-0 w-full flex flex-col items-center gap-4 bg-gb-bg/95 backdrop-blur-md pt-1 pb-3 ${isTemplatePickerOpen ? "mt-3" : ""}`}>
+      <div
+        className={`sticky top-0 w-full flex flex-col items-center gap-4 bg-gb-bg/95 backdrop-blur-md pt-1 pb-3 ${
+          isTemplatePickerOpen ? "mt-3" : ""
+        }`}
+      >
         {!isTemplatePickerOpen && (
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gb-bg-card border border-gb-border shadow-sm text-xs font-mono font-medium text-gb-text-secondary uppercase tracking-wider z-0">
             <span className="text-gb-text-muted">TURN 1</span>
@@ -109,7 +147,11 @@ export function WelcomeScreen({
       </div>
 
       {/* Large Input Card */}
-      <div className={`w-full max-w-[92vw] sm:max-w-none mx-auto bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col ${isTemplatePickerOpen ? "mt-6 lg:mt-10" : ""}`}>
+      <div
+        className={`w-full max-w-[92vw] sm:max-w-none mx-auto bg-gb-bg-card border border-gb-border rounded-3xl shadow-gb-md hover:shadow-gb-lg transition-all duration-300 overflow-hidden relative group flex flex-col ${
+          isTemplatePickerOpen ? "mt-6 lg:mt-10" : ""
+        }`}
+      >
 
         {/* Active Badges */}
         {activeBadges.length > 0 && (
@@ -121,6 +163,27 @@ export function WelcomeScreen({
               >
                 <span className="text-base">{badge.icon}</span>
                 <span>{badge.label}</span>
+                {badge.templateInfo && onUpdateSlideCount && (
+                  <div className="ml-2 flex items-center gap-1 rounded-full border border-gb-border bg-white/90 px-1.5 py-0.5 text-gb-text">
+                    <button
+                      type="button"
+                      onClick={() => handleSlideCountChange(badge.label, (badge.slideCount || badge.templateInfo?.template.slides.length || 1) - 1)}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold text-gb-text hover:bg-gb-bg-subtle"
+                    >
+                      −
+                    </button>
+                    <span className="w-6 text-center text-xs font-semibold text-gb-text">
+                      {clampSlideCount(badge.slideCount || badge.templateInfo?.template.slides.length || 1)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSlideCountChange(badge.label, (badge.slideCount || badge.templateInfo?.template.slides.length || 1) + 1)}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold text-gb-text hover:bg-gb-bg-subtle"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={() => removeBadge(badge.label)}
                   className="ml-1 p-0.5 rounded-sm hover:bg-blue-500/20 text-blue-600/60 hover:text-blue-600 transition-colors"
@@ -144,12 +207,7 @@ export function WelcomeScreen({
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
+          onKeyDown={handleInputKeyDown}
           placeholder={
             activeBadges.length > 0
               ? "Describe what you want..."
@@ -171,7 +229,7 @@ export function WelcomeScreen({
                 className="relative group"
               >
                 {/* Image Preview */}
-                {file.type.startsWith('image/') && file.content ? (
+                {file.type.startsWith("image/") && file.content ? (
                   <div className="relative">
                     <img 
                       src={file.content} 
@@ -261,7 +319,7 @@ export function WelcomeScreen({
             </button>
             {attachedFiles.length > 0 && (
               <span className="text-xs text-gb-text-muted ml-1">
-                {attachedFiles.length} file{attachedFiles.length !== 1 ? 's' : ''} attached
+                {attachedFiles.length} file{attachedFiles.length !== 1 ? "s" : ""} attached
               </span>
             )}
           </div>
