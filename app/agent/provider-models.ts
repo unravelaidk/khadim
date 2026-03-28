@@ -1,4 +1,6 @@
+import { getModels } from "@mariozechner/pi-ai";
 import type { ProviderType } from "./models";
+import { getOpenAICodexApiKey } from "./oauth";
 
 export interface ProviderModel {
   id: string;
@@ -14,11 +16,12 @@ interface DiscoverOptions {
 const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
+  "openai-codex": "https://chatgpt.com/backend-api/codex",
   openrouter: "https://openrouter.ai/api/v1",
   ollama: "http://localhost:11434",
 };
 
-function getApiKey(provider: ProviderType, passedApiKey?: string) {
+async function getApiKey(provider: ProviderType, passedApiKey?: string): Promise<string | undefined> {
   if (passedApiKey) return passedApiKey;
 
   switch (provider) {
@@ -26,6 +29,8 @@ function getApiKey(provider: ProviderType, passedApiKey?: string) {
       return process.env.OPENAI_API_KEY;
     case "anthropic":
       return process.env.ANTHROPIC_API_KEY;
+    case "openai-codex":
+      return getOpenAICodexApiKey(passedApiKey);
     case "openrouter":
       return process.env.OPENROUTER_API_KEY;
     case "ollama":
@@ -49,11 +54,22 @@ function normalizeModelList(items: Array<{ id?: string; name?: string }>) {
 
 export async function discoverProviderModels(options: DiscoverOptions): Promise<ProviderModel[]> {
   const { provider } = options;
-  const apiKey = getApiKey(provider, options.apiKey);
+  const apiKey = await getApiKey(provider, options.apiKey);
   const baseUrl = options.baseUrl || DEFAULT_BASE_URLS[provider];
 
   if ((provider === "openai" || provider === "anthropic") && !apiKey) {
     throw new Error(`Missing API key for ${provider}. Add it in settings or server env.`);
+  }
+
+  if (provider === "openai-codex" && !apiKey) {
+    throw new Error("Connect your ChatGPT Plus or Pro Codex subscription first.");
+  }
+
+  if (provider === "openai-codex") {
+    return getModels("openai-codex").map((model) => ({
+      id: model.id,
+      name: model.name,
+    }));
   }
 
   if (provider === "ollama") {

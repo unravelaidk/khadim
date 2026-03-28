@@ -92,7 +92,7 @@ export async function setActiveModel(id: string): Promise<void> {
   });
 }
 
-export function createModelInstance(config: ModelConfig, defaultApiKey?: string) {
+export async function createModelInstance(config: ModelConfig, defaultApiKey?: string) {
   return createChatModel(config, defaultApiKey);
 }
 
