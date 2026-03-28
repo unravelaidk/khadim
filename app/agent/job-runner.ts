@@ -31,13 +31,23 @@ import {
   type AgentJobStep,
 } from "../lib/job-manager";
 import { ensureSandbox, scheduleSandboxCleanup } from "./sandbox";
-import { getAgentConfig } from "./agents";
+import { filterToolsForAgent, getAgentConfig } from "./agents";
 import type { AgentMode } from "./router";
 import { db, messages, chats, artifacts, workspaceFiles } from "../lib/db";
 import { getActiveModel, createModelInstance } from "./model-manager";
 
 type AgentConfig = ReturnType<typeof getAgentConfig>;
 type SandboxType = Awaited<ReturnType<typeof ensureSandbox>>['sandbox'];
+
+function formatAvailableTools(tools: Array<{ name: string; description?: string }>): string {
+  if (tools.length === 0) {
+    return "- No tools are available in this mode.";
+  }
+
+  return tools
+    .map((tool) => `- ${tool.name}: ${tool.description || "No description available."}`)
+    .join("\n");
+}
 
 export interface RunAgentJobParams {
   jobId: string;
@@ -206,6 +216,19 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       throw new Error("No active model configured. Add or activate a model in Settings.");
     }
 
+    const activeTools = filterToolsForAgent(allTools, agentMode);
+    const activeToolNames = new Set(activeTools.map((tool) => tool.name));
+    const availableToolsText = formatAvailableTools(activeTools);
+    const askUserGuidance = activeToolNames.has("ask_user")
+      ? `IMPORTANT: When you need to ask the user a question, you MUST use the ask_user tool. Do NOT ask questions in your text response - the user cannot reply to text questions. The ask_user tool shows an interactive prompt the user can respond to.`
+      : `IMPORTANT: No interactive question tool is available in this mode. If you are missing required information, explain the blocker plainly instead of inventing a tool call.`;
+    const webSearchGuidance = activeToolNames.has("web_search")
+      ? `WEB SEARCH:\nUse the web_search tool to research topics before creating content.\nFor slide presentations, ALWAYS search first to gather accurate, current information.\nExample: web_search({ query: "AI trends 2024 statistics" })`
+      : `WEB SEARCH:\nThe web_search tool is not available in this mode. Do not claim to have searched the web or emit fake tool calls.`;
+    const imageSearchGuidance = activeToolNames.has("search_images")
+      ? `IMAGE SEARCH:\nUse the search_images tool to find photos for slides and presentations.\nExample: search_images({ query: "modern office workspace", orientation: "landscape" })\nThe tool returns image URLs - use them in 'image' type slides:\n{"type": "image", "title": "Our Office", "imageUrl": "<URL from search>", "caption": "Photo credit"}`
+      : `IMAGE SEARCH:\nThe search_images tool is not available in this mode.`;
+
     const orchestratorConfig = {
       model: resolvedModel.model,
       tools: allTools,
@@ -225,32 +248,13 @@ ${skillsContent}
 === END MODEL ===
 
 AVAILABLE TOOLS:
-- create_plan: Create an execution plan when needed
-- update_todo: Track progress on multi-step tasks
-- read_todo: Check your current progress
-- ask_user: Ask the user a clarifying question when you need more information. ALWAYS use this tool instead of asking questions in plain text. This lets the user respond through the UI.
-- web_search: Search the web using DuckDuckGo for research
-- search_images: Find high-quality images for slides and presentations
-- create_web_app: Scaffold a new web app (vite, react-router, or astro)
-- write_file: Write HTML/CSS/JS files
-- read_file: Read file contents
-- list_files: List directory contents
-- run_code: Execute TypeScript/JavaScript code
-- shell: Run shell commands
-- expose_preview: Start a web server and get a public URL
+${availableToolsText}
 
-IMPORTANT: When you need to ask the user a question, you MUST use the ask_user tool. Do NOT ask questions in your text response — the user cannot reply to text questions. The ask_user tool shows an interactive prompt the user can respond to.
+${askUserGuidance}
 
-WEB SEARCH:
-Use the web_search tool to research topics before creating content.
-For slide presentations, ALWAYS search first to gather accurate, current information.
-Example: web_search({ query: "AI trends 2024 statistics" })
+${webSearchGuidance}
 
-IMAGE SEARCH:
-Use the search_images tool to find photos for slides and presentations.
-Example: search_images({ query: "modern office workspace", orientation: "landscape" })
-The tool returns image URLs - use them in 'image' type slides:
-{"type": "image", "title": "Our Office", "imageUrl": "<URL from search>", "caption": "Photo credit"}
+${imageSearchGuidance}
 
 FRAMEWORK SELECTION:
 - Games/Interactive apps: type="vite"
