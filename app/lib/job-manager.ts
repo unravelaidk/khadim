@@ -20,6 +20,7 @@ redis.on("connect", () => {
 
 // Key prefixes
 const JOB_PREFIX = "agent:job:";
+const ACTIVE_SESSION_JOBS_PREFIX = "agent:session:active:";
 
 import type { AgentJob, AgentJobStep, JobEvent } from "../types/agent";
 
@@ -28,10 +29,24 @@ export type { AgentJob, AgentJobStep, JobEvent };
 // In-memory subscribers (process-local, for SSE connections)
 const localSubscribers = new Map<string, Set<(event: JobEvent) => void>>();
 
-export async function createJob(id: string, chatId: string): Promise<AgentJob> {
+function getActiveSessionJobsKey(chatId: string, sessionId: string) {
+  return `${ACTIVE_SESSION_JOBS_PREFIX}${chatId}:${sessionId}`;
+}
+
+async function touchActiveJob(job: Pick<AgentJob, "id" | "chatId" | "sessionId" | "status">): Promise<void> {
+  if (job.status !== "running") {
+    await redis.zrem(getActiveSessionJobsKey(job.chatId, job.sessionId), job.id);
+    return;
+  }
+
+  await redis.zadd(getActiveSessionJobsKey(job.chatId, job.sessionId), Date.now(), job.id);
+}
+
+export async function createJob(id: string, chatId: string, sessionId = "default"): Promise<AgentJob> {
   const job: AgentJob = {
     id,
     chatId,
+    sessionId,
     status: "running",
     steps: [],
     finalContent: "",
@@ -43,6 +58,7 @@ export async function createJob(id: string, chatId: string): Promise<AgentJob> {
   };
   
   await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+  await touchActiveJob(job);
   console.log(`[JobManager] Created job ${id} for chat ${chatId}`);
   return job;
 }
@@ -52,7 +68,19 @@ export async function getJob(id: string): Promise<AgentJob | null> {
   return data ? JSON.parse(data) : null;
 }
 
-export async function getJobByChatId(chatId: string): Promise<AgentJob | null> {
+export async function getJobByChatId(chatId: string, sessionId?: string): Promise<AgentJob | null> {
+  if (sessionId) {
+    const jobIds = await redis.zrevrange(getActiveSessionJobsKey(chatId, sessionId), 0, 19);
+    for (const jobId of jobIds) {
+      const job = await getJob(jobId);
+      if (job?.chatId === chatId && job.sessionId === sessionId && job.status === "running") {
+        return job;
+      }
+      await redis.zrem(getActiveSessionJobsKey(chatId, sessionId), jobId);
+    }
+    return null;
+  }
+
   const keys = await redis.keys(JOB_PREFIX + "*");
   for (const key of keys) {
     const data = await redis.get(key);
@@ -71,6 +99,7 @@ export async function updateJob(id: string, updates: Partial<AgentJob>): Promise
   if (job) {
     Object.assign(job, updates, { updatedAt: new Date().toISOString() });
     await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await touchActiveJob(job);
   }
 }
 
@@ -80,6 +109,7 @@ export async function addStep(jobId: string, step: AgentJobStep): Promise<void> 
     job.steps.push(step);
     job.updatedAt = new Date().toISOString();
     await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", 3600);
+    await touchActiveJob(job);
   }
 }
 
@@ -95,6 +125,7 @@ export async function updateStep(
       Object.assign(step, updates);
       job.updatedAt = new Date().toISOString();
       await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", 3600);
+      await touchActiveJob(job);
     }
   }
 }
@@ -111,6 +142,7 @@ export async function completeJob(
     job.previewUrl = previewUrl;
     job.updatedAt = new Date().toISOString();
     await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await touchActiveJob(job);
     
     // Broadcast completion to local subscribers
     broadcast(id, { type: "done", data: { content: finalContent, previewUrl } });
@@ -125,6 +157,7 @@ export async function failJob(id: string, error: string): Promise<void> {
     job.error = error;
     job.updatedAt = new Date().toISOString();
     await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await touchActiveJob(job);
     
     broadcast(id, { type: "error", data: { message: error } });
     console.log(`[JobManager] Job ${id} failed: ${error}`);
@@ -137,6 +170,7 @@ export async function cancelJob(id: string): Promise<void> {
     job.status = "cancelled";
     job.updatedAt = new Date().toISOString();
     await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await touchActiveJob(job);
     
     // Broadcast cancellation (as error type 'cancelled' for now to fit existing frontend)
     broadcast(id, { type: "error", data: { message: "Cancelled by user" } });

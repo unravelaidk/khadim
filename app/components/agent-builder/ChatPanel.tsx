@@ -1,6 +1,8 @@
+import { useMemo, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatInterface } from "./ChatInterface";
 import { WelcomeScreen } from "./WelcomeScreen";
+import { StickySlidePreview } from "./StickySlidePreview";
 import type { RefObject } from "react";
 import type { ActiveBadge } from "./hooks/useAgentBuilder";
 import type { AttachedFile } from "./WelcomeScreen";
@@ -26,6 +28,10 @@ interface ChatPanelProps {
   attachedFiles: AttachedFile[];
   onFilesAttached: (files: AttachedFile[]) => void;
   onRemoveFile: (fileName: string) => void;
+  onStartWorkspace: () => void;
+  onViewWorkspace: () => void;
+  hasWorkspace: boolean;
+  workspaceId?: string | null;
 }
 
 export function ChatPanel({
@@ -48,24 +54,102 @@ export function ChatPanel({
   attachedFiles,
   onFilesAttached,
   onRemoveFile,
+  onStartWorkspace,
+  onViewWorkspace,
+  hasWorkspace,
+  workspaceId,
 }: ChatPanelProps) {
+  // Derive latest slide artifact + building state from messages
+  const slideState = useMemo(() => {
+    let latestContent: string | null = null;
+    let isStreaming = false;
+    let isBuilding = false;
+
+    // Find latest slide content from any assistant message
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === "assistant" && msg.fileContent?.includes('<script id="slide-data"')) {
+        latestContent = msg.fileContent;
+        isStreaming = (msg.thinkingSteps || []).some(s => s.status === "running");
+        break;
+      }
+    }
+
+    // Check if the agent is actively working on more slides
+    const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
+    if (lastAssistant) {
+      const hasRunningSteps = (lastAssistant.thinkingSteps || []).some(s => s.status === "running");
+      if (hasRunningSteps) {
+        const hasSlideToolRunning = (lastAssistant.thinkingSteps || []).some(
+          s => s.status === "running" && (s.tool === "write_slides" || (s.tool === "write_file" && s.filename === "index.html"))
+        );
+        if (hasSlideToolRunning || latestContent) {
+          // Agent has running steps and we have existing slides = building more
+          isBuilding = true;
+        }
+      }
+    }
+
+    // If agent is processing and we already have slides, it's likely adding more
+    if (isProcessing && latestContent) {
+      isBuilding = true;
+    }
+
+    if (!latestContent && !isBuilding) return null;
+    return { content: latestContent, isStreaming, isBuilding };
+  }, [messages, isProcessing]);
+
+  const [slideMinimized, setSlideMinimized] = useState(false);
+
   return (
     <>
+      {/* Sticky slide preview panel */}
+      {slideState && !isInitialState && (
+        <StickySlidePreview
+          content={slideState.content}
+          isStreaming={slideState.isStreaming}
+          isBuilding={slideState.isBuilding}
+          isMinimized={slideMinimized}
+          onToggleMinimize={() => setSlideMinimized(prev => !prev)}
+          workspaceId={workspaceId}
+        />
+      )}
+
       <main
         className={`flex-1 overflow-y-auto ${
           isInitialState
-            ? "flex items-center justify-center py-6"
-            : "pt-6 pb-28 px-3 md:pt-8 md:pb-36 md:px-4"
+            ? "flex items-center justify-center px-0 py-4 sm:py-6"
+            : "px-2 pb-28 pt-4 sm:px-3 sm:pt-6 md:px-6 md:pb-36 md:pt-8"
         }`}
       >
         {!isInitialState && (
-          <ChatInterface
-            messages={messages}
-            pendingQuestion={pendingQuestion}
-            onAnswerQuestion={onAnswerQuestion}
-            onCancelQuestion={onCancelQuestion}
-            messagesEndRef={messagesEndRef}
-          />
+          <>
+            <div className="mx-auto mb-4 flex w-full max-w-5xl justify-end px-1">
+              {hasWorkspace ? (
+                <button
+                  onClick={onViewWorkspace}
+                  className="border-2 border-black bg-black px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-white transition-colors hover:bg-black/80"
+                >
+                  View workspace
+                </button>
+              ) : (
+                <button
+                  onClick={onStartWorkspace}
+                  className="border-2 border-black bg-white px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-black transition-colors hover:bg-black hover:text-white"
+                >
+                  Start workspace
+                </button>
+              )}
+            </div>
+            <ChatInterface
+              messages={messages}
+              pendingQuestion={pendingQuestion}
+              onAnswerQuestion={onAnswerQuestion}
+              onCancelQuestion={onCancelQuestion}
+              messagesEndRef={messagesEndRef}
+              workspaceId={workspaceId}
+            />
+          </>
         )}
 
         {isInitialState && (
@@ -80,6 +164,7 @@ export function ChatPanel({
             attachedFiles={attachedFiles}
             onFilesAttached={onFilesAttached}
             onRemoveFile={onRemoveFile}
+            onStartWorkspace={hasWorkspace ? undefined : onStartWorkspace}
           />
         )}
       </main>

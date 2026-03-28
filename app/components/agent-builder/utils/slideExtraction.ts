@@ -202,21 +202,49 @@ export async function extractSlideData({
                 const isBold = parseInt(fontWeight, 10) >= 600 || fontWeight === 'bold' || fontWeight === 'bolder';
                 
                 let color = elStyle.color || 'rgb(255, 255, 255)';
-                if (color === 'rgba(0, 0, 0, 0)' || color === 'transparent') color = 'rgb(255, 255, 255)';
-                
+                // Handle gradient text: -webkit-text-fill-color: transparent makes color invisible
+                // Walk up DOM to find the gradient and extract its first color stop
+                if (color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
+                  let found = false;
+                  let el: HTMLElement | null = element;
+                  while (el && el !== slideElement) {
+                    const s = iframeWindow.getComputedStyle(el);
+                    const bgImg = s.backgroundImage;
+                    if (bgImg && bgImg.includes('gradient')) {
+                      const colorMatch = bgImg.match(/rgba?\([^)]+\)|#[a-fA-F0-9]{3,8}/);
+                      if (colorMatch) { color = colorMatch[0]; found = true; break; }
+                    }
+                    el = el.parentElement;
+                  }
+                  if (!found) color = 'rgb(255, 255, 255)';
+                }
+
+                // Extract actual font family from computed style
+                const rawFontFamily = elStyle.fontFamily || 'Arial';
+
+                // Extract line height for proper text spacing
+                const lineHeight = parseFloat(elStyle.lineHeight) || 0;
+                const fontSize = parseFloat(elStyle.fontSize) || 16;
+                const lineSpacingMultiple = lineHeight > 0 ? lineHeight / fontSize : 1.2;
+
+                // Extract letter spacing
+                const letterSpacing = parseFloat(elStyle.letterSpacing) || 0;
+
                 textElements.push({
                   text,
                   x,
                   y,
                   w: elRect.width,
                   h: elRect.height,
-                  fontSize: parseFloat(elStyle.fontSize) || 16,
-                  fontFamily: 'Arial',
+                  fontSize,
+                  fontFamily: rawFontFamily,
                   color,
                   backgroundColor: elStyle.backgroundColor,
                   isBold,
                   isItalic: elStyle.fontStyle === 'italic',
                   textAlign: elStyle.textAlign || 'center',
+                  lineSpacingMultiple,
+                  letterSpacing,
                 });
                 
                 processedElements.add(element);

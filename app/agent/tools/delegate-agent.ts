@@ -1,4 +1,4 @@
-import { tool } from "@langchain/core/tools";
+import { tool } from "../pi-tool";
 import { z } from "zod";
 
 export type DelegateAgentPayload = {

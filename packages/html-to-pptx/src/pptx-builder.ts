@@ -34,6 +34,8 @@ interface ExtractedText {
   isBold: boolean;
   isItalic: boolean;
   textAlign: string;
+  lineSpacingMultiple?: number;
+  letterSpacing?: number;
 }
 
 /**
@@ -265,26 +267,22 @@ export function addSlideFromData(
       
       const fillColor = colorToHex(shape.fill);
       
-      if (shape.type === 'ellipse') {
-        slide.addShape('ellipse', {
-          x,
-          y,
-          w,
-          h,
-          fill: { color: fillColor, transparency: shape.opacity ? (1 - shape.opacity) * 100 : 0 },
-          line: shape.borderColor ? { color: colorToHex(shape.borderColor), width: shape.borderWidth || 1 } : undefined,
-        });
-      } else {
-        // Rectangle (potentially rounded)
-        slide.addShape('rect', {
-          x,
-          y,
-          w,
-          h,
-          fill: { color: fillColor, transparency: shape.opacity ? (1 - shape.opacity) * 100 : 0 },
-          line: shape.borderColor ? { color: colorToHex(shape.borderColor), width: shape.borderWidth || 1 } : undefined,
-        });
+      const shapeOpts: any = {
+        x,
+        y,
+        w,
+        h,
+        fill: { color: fillColor, transparency: shape.opacity ? (1 - shape.opacity) * 100 : 0 },
+        line: shape.borderColor ? { color: colorToHex(shape.borderColor), width: shape.borderWidth || 1 } : undefined,
+      };
+
+      // Add rounded corners for rectangles
+      if (shape.type !== 'ellipse' && shape.borderRadius && shape.borderRadius > 0) {
+        // Convert px border-radius to inches (pptxgenjs uses inches for rectRadius)
+        shapeOpts.rectRadius = (shape.borderRadius / 96) * (dimensions.pptxWidth / dimensions.width);
       }
+
+      slide.addShape(shape.type === 'ellipse' ? 'ellipse' : 'roundRect', shapeOpts);
     }
   }
   
@@ -298,7 +296,7 @@ export function addSlideFromData(
     // Skip text that would be off-slide
     if (x >= dimensions.pptxWidth || y >= dimensions.pptxHeight) continue;
     
-    slide.addText(textEl.text, {
+    const textOpts: any = {
       x,
       y,
       w,
@@ -311,7 +309,19 @@ export function addSlideFromData(
       align: mapTextAlign(textEl.textAlign),
       valign: 'middle',
       wrap: true,
-    });
+    };
+
+    // Add line spacing if available
+    if (textEl.lineSpacingMultiple && textEl.lineSpacingMultiple > 0) {
+      textOpts.lineSpacingMultiple = Math.round(textEl.lineSpacingMultiple * 100) / 100;
+    }
+
+    // Add letter spacing (pptxgenjs uses charSpacing in points, 100 = 1pt)
+    if (textEl.letterSpacing && textEl.letterSpacing !== 0) {
+      textOpts.charSpacing = Math.round(textEl.letterSpacing * 0.75);
+    }
+
+    slide.addText(textEl.text, textOpts);
   }
   
   return slide;

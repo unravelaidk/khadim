@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { SLIDE_THEMES, slideAnimationStyles } from '../agent-builder/slideTemplates';
 import { useSlideExport } from '../agent-builder/hooks/useSlideExport';
 import { SlideToolbar } from './SlideToolbar';
@@ -9,20 +9,26 @@ import { SlideFullscreen } from './SlideFullscreen';
 import { generateHTMLFromSlides, hasRichHtmlStyling } from './utils';
 import type { SlideData, SlideTheme } from '../../types/slides';
 
+type PreviewSlide = SlideData & { __building?: boolean };
+
 interface SlidesPreviewProps {
   slides: SlideData[];
   htmlContent?: string;
   onDownloadPptx?: () => void;
   title?: string;
   initialTheme?: string;
+  isStreaming?: boolean;
+  workspaceId?: string | null;
 }
 
-export function SlidesPreview({ 
-  slides, 
-  htmlContent, 
-  onDownloadPptx, 
+export function SlidesPreview({
+  slides,
+  htmlContent,
+  onDownloadPptx,
   title = 'Presentation',
-  initialTheme = 'brass'
+  initialTheme = 'brass',
+  isStreaming = false,
+  workspaceId,
 }: SlidesPreviewProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
@@ -31,19 +37,42 @@ export function SlidesPreview({
   );
   const [slideKey, setSlideKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [recentUpdate, setRecentUpdate] = useState<string>('Ready');
   const hasRichHtml = hasRichHtmlStyling(htmlContent);
+  const previousSlideCountRef = useRef(slides.length);
+  const previousHtmlRef = useRef(htmlContent);
+  const previewSlides = useMemo<PreviewSlide[]>(() => {
+    if (!isStreaming) return slides;
+    return [
+      ...slides,
+      {
+        id: Number.MAX_SAFE_INTEGER,
+        type: 'content',
+        title: `Slide ${slides.length + 1} in progress`,
+        subtitle: 'Khadim is drafting the next section now.',
+        bullets: [
+          'Generating structure and copy',
+          'Updating layout and visuals',
+          'Preview will refresh automatically',
+        ],
+        __building: true,
+      },
+    ];
+  }, [slides, isStreaming]);
 
   // Export hook
   const { 
     isDownloading,
     downloadAsStyledPptx, 
-    downloadAsPdf 
+    downloadAsPdf,
+    savePdfToWorkspace,
   } = useSlideExport({
     slides,
     htmlContent,
     title,
     currentTheme,
-    onDownloadPptx
+    onDownloadPptx,
+    workspaceId,
   });
 
   // Inject animation styles
@@ -57,17 +86,54 @@ export function SlidesPreview({
     }
   }, []);
 
+  // Keep currentSlide in bounds when slides array changes during streaming
+  useEffect(() => {
+    if (currentSlide >= previewSlides.length) {
+      setCurrentSlide(Math.max(0, previewSlides.length - 1));
+    }
+  }, [currentSlide, previewSlides.length]);
+
+  useEffect(() => {
+    if (isStreaming && previewSlides.length > 0) {
+      setCurrentSlide(previewSlides.length - 1);
+    }
+  }, [isStreaming, previewSlides.length]);
+
   useEffect(() => {
     setSlideKey(prev => prev + 1);
   }, [currentSlide]);
 
+  useEffect(() => {
+    const previousCount = previousSlideCountRef.current;
+    const previousHtml = previousHtmlRef.current;
+    const latestSlide = slides[slides.length - 1];
+    const latestTitle = latestSlide?.title || `Slide ${slides.length}`;
+
+    if (slides.length > previousCount && latestSlide) {
+      setRecentUpdate(`Added slide ${slides.length}: ${latestTitle}`);
+    } else if (slides.length > 0 && htmlContent && previousHtml && htmlContent !== previousHtml) {
+      const currentTitle = slides[Math.min(currentSlide, slides.length - 1)]?.title || `Slide ${currentSlide + 1}`;
+      setRecentUpdate(`Updated ${currentTitle}`);
+    } else if (!isStreaming && slides.length > 0) {
+      setRecentUpdate(`Showing slide ${currentSlide + 1} of ${slides.length}`);
+    }
+
+    previousSlideCountRef.current = slides.length;
+    previousHtmlRef.current = htmlContent;
+  }, [slides, htmlContent, currentSlide, isStreaming]);
+
+  const statusLabel = useMemo(() => {
+    if (isStreaming) return 'Updating';
+    return 'Ready';
+  }, [isStreaming]);
+
   const goToSlide = (index: number) => {
-    if (index >= 0 && index < slides.length) {
+    if (index >= 0 && index < previewSlides.length) {
       setCurrentSlide(index);
     }
   };
 
-  const slide = slides[currentSlide];
+  const slide = previewSlides[Math.min(currentSlide, previewSlides.length - 1)];
 
   return (
     <>
@@ -84,7 +150,7 @@ export function SlidesPreview({
       />
 
       {/* Main Preview Card */}
-      <div className="border border-gb-border rounded-xl overflow-hidden bg-gb-bg-card shadow-[var(--shadow-gb-md)]">
+      <div className="overflow-hidden border-2 border-black bg-white shadow-gb-md">
         {/* Toolbar */}
         <SlideToolbar
           title={title}
@@ -92,18 +158,27 @@ export function SlidesPreview({
           theme={currentTheme}
           viewMode={viewMode}
           isDownloading={isDownloading}
+          isStreaming={isStreaming}
+          recentUpdate={recentUpdate}
+          statusLabel={statusLabel}
           hasRichHtml={hasRichHtml}
           onViewModeChange={setViewMode}
           onFullscreen={() => setIsFullscreen(true)}
           onExportPdf={downloadAsPdf}
           onExportPptx={downloadAsStyledPptx}
+          onSavePdfToWorkspace={workspaceId ? savePdfToWorkspace : undefined}
         />
 
         {/* Main Content */}
-        <div className="flex h-[360px] md:h-[320px] flex-col md:flex-row">
+        <div className="border-b-2 border-black bg-[#f5f5f5] px-4 py-2 text-xs text-black/70">
+          <span className="font-medium text-black">{statusLabel}:</span>{' '}
+              <span>{recentUpdate}</span>
+        </div>
+
+        <div className="flex h-[360px] md:h-[460px] lg:h-[520px] flex-col md:flex-row">
           {/* Sidebar with Thumbnails */}
-          <div className="w-full md:w-44 bg-gb-bg-subtle border-b md:border-b-0 md:border-r border-gb-border overflow-x-auto md:overflow-y-auto p-2.5 md:p-2.5 md:space-y-2.5 flex md:block gap-2.5 scrollbar-hide">
-            {slides.map((s, index) => (
+          <div className="w-full border-b-2 border-black bg-[#fafafa] md:w-48 md:border-b-0 md:border-r-2 lg:w-52 overflow-x-auto md:overflow-y-auto p-2.5 md:space-y-2.5 flex md:block gap-2.5 scrollbar-hide">
+            {previewSlides.map((s, index) => (
               <SlideThumbnail
                 key={s.id}
                 slide={s}
@@ -116,11 +191,11 @@ export function SlidesPreview({
           </div>
 
           {/* Slide Viewer / Code View */}
-          <div className="flex-1 flex flex-col bg-gb-bg">
+          <div className="flex-1 flex min-w-0 flex-col bg-[#fcfcfc]">
             {viewMode === 'preview' ? (
               <>
                 {/* Slide Preview */}
-                <div className="flex-1 flex items-center justify-center p-3 md:p-4 overflow-hidden">
+                <div className="flex-1 flex items-center justify-center overflow-hidden p-3 md:p-5 lg:p-6">
                   <SlideViewer
                     slide={slide}
                     slideIndex={currentSlide}
@@ -132,21 +207,28 @@ export function SlidesPreview({
 
                 {/* Navigation */}
                 <SlideNavigation
-                  currentSlide={currentSlide}
-                  totalSlides={slides.length}
+                  currentSlide={Math.min(currentSlide, previewSlides.length - 1)}
+                  totalSlides={previewSlides.length}
                   theme={currentTheme}
-                  onPrevious={() => goToSlide(currentSlide - 1)}
-                  onNext={() => goToSlide(currentSlide + 1)}
+                  onPrevious={() => goToSlide(Math.min(currentSlide, previewSlides.length - 1) - 1)}
+                  onNext={() => goToSlide(Math.min(currentSlide, previewSlides.length - 1) + 1)}
                   onGoTo={goToSlide}
                   variant="compact"
                 />
               </>
             ) : (
               /* Code View */
-              <div className="flex-1 overflow-auto bg-gb-bg-dark p-3 md:p-4 rounded-br-xl">
-                <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
-                  {htmlContent || generateHTMLFromSlides(slides, title, currentTheme)}
-                </pre>
+              <div className="relative flex-1 overflow-auto bg-gb-bg-dark">
+                <div className="flex text-[11px] leading-5 font-mono">
+                  <div className="sticky left-0 select-none border-r border-white/5 bg-gb-bg-dark px-3 py-3 text-right text-white/20" aria-hidden>
+                    {(htmlContent || generateHTMLFromSlides(slides, title, currentTheme)).split('\n').map((_, i) => (
+                      <div key={i}>{i + 1}</div>
+                    ))}
+                  </div>
+                  <pre className="flex-1 overflow-x-auto px-4 py-3 text-gray-300 whitespace-pre">
+                    {htmlContent || generateHTMLFromSlides(slides, title, currentTheme)}
+                  </pre>
+                </div>
               </div>
             )}
           </div>

@@ -7,10 +7,10 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
   return (
-    <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-gb-border bg-gb-bg/80 backdrop-blur-md sticky top-0 z-20 transition-all duration-200">
+    <div className="sticky top-0 z-20 flex items-center justify-between border-b-2 border-black bg-white px-4 py-3 transition-all duration-200 lg:hidden">
       <button
         onClick={onOpenSidebar}
-        className="p-2 -ml-2 rounded-lg text-gb-text-secondary hover:bg-gb-bg-subtle hover:text-gb-text transition-colors active:scale-95 duration-100"
+        className="-ml-2 p-2 text-black/70 transition-colors duration-100 hover:bg-black hover:text-white"
         aria-label="Open Menu"
       >
         <LuMenu className="w-6 h-6" />
@@ -21,11 +21,10 @@ export function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
           <div className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full">
             <KhadimLogo />
           </div>
-          <span className="font-semibold text-gb-text text-lg tracking-tight">Khadim</span>
+          <span className="font-display text-lg font-bold tracking-tight text-black">Khadim</span>
         </div>
       </div>
       
-      {/* Spacer for potential future right-side action button, also helps balance layout if we drop absolute positioning */}
       <div className="w-10" />
     </div>
   );

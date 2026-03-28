@@ -97,9 +97,6 @@ export function createNewJobStream(
       const jobAbortController = new AbortController();
       registerJobAbortController(jobId, jobAbortController);
 
-      const abortListener = () => jobAbortController.abort();
-      request.signal.addEventListener("abort", abortListener);
-
       const optionsWithSignal = { ...runnerOptions, abortSignal: jobAbortController.signal };
 
       runAgentJob(optionsWithSignal).catch((error) => {
@@ -107,7 +104,6 @@ export function createNewJobStream(
         send("error", { message: "Internal agent error" });
       }).finally(() => {
         unregisterJobAbortController(jobId);
-        request.signal.removeEventListener("abort", abortListener);
       });
 
       request.signal.addEventListener("abort", () => {

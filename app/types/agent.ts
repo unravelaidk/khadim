@@ -10,6 +10,7 @@ export interface AgentJobStep {
 export interface AgentJob {
   id: string;
   chatId: string;
+  sessionId: string;
   status: "running" | "completed" | "error" | "cancelled";
   steps: AgentJobStep[];
   finalContent: string;

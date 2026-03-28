@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { LuX, LuDownload, LuCopy, LuCheck, LuFile } from "react-icons/lu";
+import { LuX, LuDownload, LuCopy, LuCheck, LuFile, LuSave } from "react-icons/lu";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 interface FileEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   filename: string;
   content: string;
+  editable?: boolean;
+  onSave?: (content: string) => Promise<void>;
 }
 
-// Simple language detection for syntax highlighting classes
 function getLanguageFromFilename(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   const langMap: Record<string, string> = {
@@ -25,20 +28,24 @@ function getLanguageFromFilename(filename: string): string {
   return langMap[ext] || 'text';
 }
 
-export function FileEditorModal({ isOpen, onClose, filename, content }: FileEditorModalProps) {
+export function FileEditorModal({ isOpen, onClose, filename, content, editable = false, onSave }: FileEditorModalProps) {
   const [copied, setCopied] = useState(false);
+  const [draft, setDraft] = useState(content);
+  const [saving, setSaving] = useState(false);
   const language = getLanguageFromFilename(filename);
 
   if (!isOpen) return null;
 
+  const currentContent = editable ? draft : content;
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(content);
+    await navigator.clipboard.writeText(currentContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
-    const blob = new Blob([content], { type: 'text/plain' });
+    const blob = new Blob([currentContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -49,7 +56,17 @@ export function FileEditorModal({ isOpen, onClose, filename, content }: FileEdit
     URL.revokeObjectURL(url);
   };
 
-  const lines = content.split('\n');
+  const handleSave = async () => {
+    if (!editable || !onSave) return;
+    setSaving(true);
+    try {
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const lines = currentContent.split('\n');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -85,6 +102,16 @@ export function FileEditorModal({ isOpen, onClose, filename, content }: FileEdit
               <LuDownload className="w-3.5 h-3.5" />
               Download
             </button>
+            {editable && onSave && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+              >
+                <LuSave className="w-3.5 h-3.5" />
+                {saving ? "Saving..." : "Save"}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
@@ -95,26 +122,50 @@ export function FileEditorModal({ isOpen, onClose, filename, content }: FileEdit
         </div>
 
         {/* Code Content */}
-        <div className="overflow-auto max-h-[calc(80vh-60px)]">
-          <div className="flex min-w-full">
-            {/* Line Numbers */}
-            <div className="flex-shrink-0 py-4 px-3 text-right bg-[#1e1e1e] border-r border-gray-800 select-none">
-              {lines.map((_, i) => (
-                <div key={i} className="text-xs leading-6 text-gray-600 font-mono">
-                  {i + 1}
-                </div>
-              ))}
-            </div>
-            
-            {/* Code */}
-            <div className="flex-1 py-4 px-4 overflow-x-auto">
-              <pre className="text-sm leading-6 font-mono text-gray-300">
-                {lines.map((line, i) => (
-                  <div key={i} className="hover:bg-gray-800/50">
-                    {line || ' '}
+        <div className="scrollbar-hide overflow-auto max-h-[calc(80vh-60px)]">
+          <div className="grid min-w-full grid-cols-1">
+            <div className="flex min-w-0">
+              <div className="flex-shrink-0 py-4 px-3 text-right bg-[#1e1e1e] border-r border-gray-800 select-none">
+                {lines.map((_, i) => (
+                  <div key={i} className="text-xs leading-6 text-gray-600 font-mono">
+                    {i + 1}
                   </div>
                 ))}
-              </pre>
+              </div>
+
+              <div className="scrollbar-hide flex-1 overflow-x-hidden px-4 py-4">
+                <div className="relative min-h-[60vh]">
+                  <SyntaxHighlighter
+                    language={language}
+                    style={vscDarkPlus}
+                    customStyle={{
+                      margin: 0,
+                      padding: 0,
+                      background: "transparent",
+                      fontSize: "0.875rem",
+                      lineHeight: "1.5rem",
+                      minHeight: "60vh",
+                    }}
+                    wrapLongLines
+                    showLineNumbers={false}
+                  >
+                    {currentContent}
+                  </SyntaxHighlighter>
+                  {editable && (
+                    <textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      spellCheck={false}
+                      className="scrollbar-hide absolute inset-0 min-h-[60vh] w-full resize-none overflow-x-hidden bg-transparent text-sm leading-6 font-mono text-transparent caret-white outline-none"
+                      style={{
+                        WebkitTextFillColor: "transparent",
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -25,7 +25,7 @@ export function SlideNavigation({
   return (
     <div className={`
       flex items-center justify-between 
-      bg-gb-bg-subtle/80 backdrop-blur-sm border-t border-gb-border
+      border-t-2 border-black bg-white
       ${isCompact ? 'px-3 py-2' : 'px-4 py-3'}
     `}>
       {/* Previous Button */}
@@ -33,9 +33,9 @@ export function SlideNavigation({
         onClick={onPrevious}
         disabled={currentSlide === 0}
         className={`
-          flex items-center gap-1.5 font-medium text-gb-text-secondary 
-          hover:text-gb-text disabled:opacity-30 disabled:cursor-not-allowed 
-          transition-all duration-150 hover:scale-105 active:scale-95
+          flex items-center gap-1.5 border-2 border-transparent font-medium text-black/60 
+          hover:border-black hover:bg-[#f5f5f5] hover:text-black disabled:opacity-30 disabled:cursor-not-allowed 
+          transition-all duration-150
           ${isCompact ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'}
         `}
       >
@@ -45,7 +45,7 @@ export function SlideNavigation({
 
       {/* Slide Indicators */}
       <div className="flex items-center gap-2">
-        <span className={`text-gb-text-muted font-medium ${isCompact ? 'text-[10px]' : 'text-xs'}`}>
+        <span className={`font-medium text-black/50 ${isCompact ? 'text-[10px]' : 'text-xs'}`}>
           {currentSlide + 1} / {totalSlides}
         </span>
         
@@ -54,19 +54,19 @@ export function SlideNavigation({
             <button
               key={index}
               onClick={() => onGoTo(index)}
-              className="transition-all duration-200 rounded-full hover:scale-125"
-              aria-label={`Go to slide ${index + 1}`}
-              style={{
-                width: index === currentSlide ? '16px' : '6px',
-                height: '6px',
-                background: index === currentSlide 
-                  ? theme.accentColor 
-                  : 'var(--color-gb-border-dark)',
-                boxShadow: index === currentSlide 
-                  ? `0 0 8px ${theme.accentColor}60` 
-                  : 'none',
-              }}
-            />
+                className="transition-all duration-200"
+                aria-label={`Go to slide ${index + 1}`}
+                style={{
+                 width: index === currentSlide ? '16px' : '6px',
+                 height: '6px',
+                 background: index === currentSlide 
+                   ? '#e5ff00' 
+                   : '#000000',
+                 boxShadow: index === currentSlide 
+                   ? '2px 2px 0 rgba(0,0,0,0.12)' 
+                   : 'none',
+               }}
+             />
           ))}
         </div>
       </div>
@@ -76,9 +76,9 @@ export function SlideNavigation({
         onClick={onNext}
         disabled={currentSlide === totalSlides - 1}
         className={`
-          flex items-center gap-1.5 font-medium text-gb-text-secondary 
-          hover:text-gb-text disabled:opacity-30 disabled:cursor-not-allowed 
-          transition-all duration-150 hover:scale-105 active:scale-95
+          flex items-center gap-1.5 border-2 border-transparent font-medium text-black/60 
+          hover:border-black hover:bg-[#f5f5f5] hover:text-black disabled:opacity-30 disabled:cursor-not-allowed 
+          transition-all duration-150
           ${isCompact ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'}
         `}
       >

@@ -1,10 +1,32 @@
-import { pgTable, text, timestamp, json, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, json, integer, boolean } from "drizzle-orm/pg-core";
 import { createId } from "@paralleldrive/cuid2";
+
+// Persisted workspaces for longer-running agent efforts
+export const workspaces = pgTable("workspaces", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  name: text("name").notNull(),
+  agentId: text("agent_id").notNull().default("build"),
+  sourceChatId: text("source_chat_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const workspaceFiles = pgTable("workspace_files", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  content: text("content").notNull(),
+  size: integer("size"),
+  mimeType: text("mime_type"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 // Chat conversation
 export const chats = pgTable("chats", {
   id: text("id").primaryKey().$defaultFn(() => createId()),
   title: text("title"),
+  workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   sandboxId: text("sandbox_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -58,6 +80,10 @@ export const projectVersions = pgTable("project_versions", {
 
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
+export type Workspace = typeof workspaces.$inferSelect;
+export type NewWorkspace = typeof workspaces.$inferInsert;
+export type WorkspaceFile = typeof workspaceFiles.$inferSelect;
+export type NewWorkspaceFile = typeof workspaceFiles.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 export type Artifact = typeof artifacts.$inferSelect;
@@ -66,3 +92,21 @@ export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type ProjectVersion = typeof projectVersions.$inferSelect;
 export type NewProjectVersion = typeof projectVersions.$inferInsert;
+
+// LLM Model configurations
+export const modelConfigs = pgTable("model_configs", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  name: text("name").notNull(), // Display name (e.g., "DevStral Free")
+  provider: text("provider").notNull(), // "openai" | "anthropic" | "openrouter" | "ollama"
+  model: text("model").notNull(), // Model ID (e.g., "mistralai/devstral-2512:free")
+  apiKey: text("api_key"), // Optional: can be env var instead
+  baseUrl: text("base_url"), // Optional: custom base URL
+  temperature: text("temperature").default("0.2"),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type ModelConfig = typeof modelConfigs.$inferSelect;
+export type NewModelConfig = typeof modelConfigs.$inferInsert;

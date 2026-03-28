@@ -30,11 +30,11 @@ export function AgentQuestion({ question, options, context, onAnswer, onCancel }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="bg-gradient-to-b from-gb-bg-card to-gb-bg-subtle border border-gb-border rounded-xl overflow-hidden shadow-[var(--shadow-gb-md)]">
+      <div className="overflow-hidden rounded-2xl border border-gb-border/70 bg-gb-bg-card shadow-gb-sm">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 bg-gb-accent/5 border-b border-gb-border">
-          <div className="w-2 h-2 rounded-full bg-gb-accent animate-pulse" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-gb-accent">
+        <div className="flex items-center gap-2 border-b border-gb-border/80 bg-gb-bg-subtle/50 px-4 py-3">
+          <div className="h-2 w-2 rounded-full bg-gb-text" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-gb-text-secondary">
             Input Required
           </span>
           {onCancel && (
@@ -51,7 +51,7 @@ export function AgentQuestion({ question, options, context, onAnswer, onCancel }
         <div className="p-4 space-y-4">
           {/* Question */}
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-gb-primary to-gb-accent flex items-center justify-center shadow-sm">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gb-text shadow-sm">
               <LuMessageCircleQuestion className="w-4 h-4 text-white" />
             </div>
             <p className="text-gb-text font-medium text-base leading-relaxed pt-1.5">
@@ -61,8 +61,8 @@ export function AgentQuestion({ question, options, context, onAnswer, onCancel }
 
           {/* Context (if provided) */}
           {context && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-gb-bg-subtle rounded-lg text-sm text-gb-text-secondary border border-gb-border/50">
-              <LuLightbulb className="w-4 h-4 text-gb-accent flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 rounded-xl border border-gb-border/60 bg-gb-bg-subtle/70 px-3 py-2.5 text-sm text-gb-text-secondary">
+              <LuLightbulb className="mt-0.5 h-4 w-4 shrink-0 text-gb-text-secondary" />
               <span>{context}</span>
             </div>
           )}
@@ -74,9 +74,9 @@ export function AgentQuestion({ question, options, context, onAnswer, onCancel }
                 <button
                   key={index}
                   onClick={() => handleOptionClick(option)}
-                  className="w-full text-left px-4 py-3 rounded-lg border border-gb-border bg-gb-bg-card hover:bg-gb-bg-subtle hover:border-gb-border-medium transition-all duration-200 font-medium text-gb-text group"
+                  className="group w-full rounded-xl border border-gb-border/70 bg-gb-bg-card px-4 py-3 text-left font-medium text-gb-text transition-all duration-200 hover:bg-gb-bg-subtle"
                 >
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-gb-bg-subtle text-gb-text-secondary text-sm font-mono mr-3 group-hover:bg-gb-accent group-hover:text-white transition-colors">
+                  <span className="mr-3 inline-flex h-6 w-6 items-center justify-center rounded-md bg-gb-bg-subtle text-sm font-mono text-gb-text-secondary transition-colors group-hover:bg-gb-bg group-hover:text-gb-text">
                     {String.fromCharCode(65 + index)}
                   </span>
                   {option}
@@ -103,12 +103,13 @@ export function AgentQuestion({ question, options, context, onAnswer, onCancel }
                   }
                 }}
                 placeholder="Type your answer..."
-                className="flex-1 px-4 py-2.5 rounded-lg border border-gb-border bg-gb-bg-card focus:border-gb-primary focus:outline-none focus:ring-2 focus:ring-gb-primary/10 transition-all placeholder:text-gb-text-muted text-sm"
+                className="flex-1 rounded-xl border border-gb-border/70 bg-gb-bg-card px-4 py-2.5 text-sm transition-all placeholder:text-gb-text-muted focus:border-gb-border-dark focus:outline-none focus:ring-2 focus:ring-black/5"
+                autoFocus
               />
               <button
                 onClick={handleSubmit}
                 disabled={!textAnswer.trim()}
-                className="px-4 py-2.5 rounded-lg bg-gb-primary text-white font-medium hover:bg-gb-primary/90 disabled:bg-gb-border disabled:text-gb-text-muted disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                className="flex items-center gap-2 rounded-xl bg-gb-primary px-4 py-2.5 font-medium text-white transition-all hover:bg-gb-primary/90 disabled:cursor-not-allowed disabled:bg-gb-border disabled:text-gb-text-muted"
               >
                 <LuSend className="w-4 h-4" />
                 <span className="hidden sm:inline">Send</span>

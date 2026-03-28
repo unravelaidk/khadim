@@ -1,0 +1,2 @@
+-- Agent hub scaffold migration intentionally left as a no-op.
+-- Agent/project workspace modeling will be introduced in a later migration.

@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { db, chats, messages, artifacts } from "../lib/db";
+import { db, chats, messages, artifacts, workspaceFiles } from "../lib/db";
 import { eq, asc } from "drizzle-orm";
 
 // GET /api/chats/:id - Get chat with messages
@@ -27,7 +27,25 @@ export async function loader({ params }: LoaderFunctionArgs) {
     .from(artifacts)
     .where(eq(artifacts.chatId, chatId));
 
-  return Response.json({ chat: { ...chat, messages: chatMessages, artifacts: chatArtifacts } });
+  const sharedWorkspaceFiles = chat.workspaceId
+    ? await db.select().from(workspaceFiles).where(eq(workspaceFiles.workspaceId, chat.workspaceId))
+    : [];
+
+  const artifactMap = new Map<string, any>();
+  for (const file of sharedWorkspaceFiles) {
+    artifactMap.set(file.path, {
+      id: file.id,
+      chatId,
+      filename: file.path,
+      content: file.content,
+      createdAt: file.createdAt,
+    });
+  }
+  for (const artifact of chatArtifacts) {
+    artifactMap.set(artifact.filename, artifact);
+  }
+
+  return Response.json({ chat: { ...chat, messages: chatMessages, artifacts: Array.from(artifactMap.values()) } });
 }
 
 // PATCH /api/chats/:id - Update chat (title, sandboxId)
@@ -42,10 +60,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const formData = await request.formData();
     const title = formData.get("title")?.toString();
     const sandboxId = formData.get("sandboxId")?.toString();
+    const workspaceIdValue = formData.get("workspaceId");
 
-    const data: { title?: string; sandboxId?: string; updatedAt?: Date } = { updatedAt: new Date() };
+    const data: { title?: string; sandboxId?: string; workspaceId?: string | null; updatedAt?: Date } = { updatedAt: new Date() };
     if (title) data.title = title;
     if (sandboxId) data.sandboxId = sandboxId;
+    if (workspaceIdValue !== null) data.workspaceId = workspaceIdValue.toString() || null;
 
     const [chat] = await db.update(chats).set(data).where(eq(chats.id, chatId)).returning();
     return Response.json({ chat });

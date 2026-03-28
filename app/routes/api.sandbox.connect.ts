@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { sandboxClient } from "../agent/sandbox";
-import { db, artifacts, projects } from "../lib/db";
+import { db, artifacts, chats, projects, workspaceFiles } from "../lib/db";
 import { eq } from "drizzle-orm";
 
 // Helper: Start static Bun file server
@@ -104,7 +104,24 @@ export async function action({ request }: ActionFunctionArgs) {
     let restorationError: string | undefined;
 
     if (chatId && isNewSession) {
-      // 1. Restore all artifacts first
+      const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
+      const sharedWorkspaceFiles = chat?.workspaceId
+        ? await db.select().from(workspaceFiles).where(eq(workspaceFiles.workspaceId, chat.workspaceId))
+        : [];
+
+      for (const file of sharedWorkspaceFiles) {
+        try {
+          const dir = file.path.split("/").slice(0, -1).join("/");
+          if (dir) {
+            await sandbox.exec(`mkdir -p ${dir}`);
+          }
+          await sandbox.writeFile(file.path, file.content);
+        } catch (e) {
+          console.warn(`Failed to restore workspace file ${file.path}:`, e);
+        }
+      }
+
+      // 1. Restore all chat artifacts last so per-chat files override workspace files
       const chatArtifacts = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId));
       
       if (chatArtifacts.length > 0) {

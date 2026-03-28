@@ -1,9 +1,10 @@
-import { tool } from "@langchain/core/tools";
+import { tool } from "./pi-tool";
 import { z } from "zod";
 import * as pathMod from "node:path";
 import { db, artifacts, projects } from "../lib/db";
 import { eq, and } from "drizzle-orm";
 import { createVersionSnapshot } from "../lib/versions";
+import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 
 // Type for our sandbox instance (compatible with RemoteSandbox from @khadim/codeexecution-client)
 export type SandboxInstance = {
@@ -182,14 +183,23 @@ export const createListFilesTool = (sandbox: SandboxInstance) => tool(
     }
 );
 
-export const createWriteFileTool = (sandbox: SandboxInstance, chatId?: string) => tool(
+export const createWriteFileTool = (
+    sandboxOrGetter: SandboxInstance | null | (() => SandboxInstance | null),
+    chatId?: string
+) => tool(
     async ({ path, content }: { path: string; content: string }) => {
         try {
-            const dir = pathMod.dirname(path);
-            if (dir !== "." && dir !== "/") {
-                await sandbox.exec(`mkdir -p ${dir}`);
+            const sandbox = typeof sandboxOrGetter === "function" ? sandboxOrGetter() : sandboxOrGetter;
+
+            if (sandbox) {
+                const dir = pathMod.dirname(path);
+                if (dir !== "." && dir !== "/") {
+                    await sandbox.exec(`mkdir -p ${dir}`);
+                }
+                await sandbox.writeFile(path, content);
+            } else if (!chatId) {
+                return `Error writing file '${path}': no active sandbox is available.`;
             }
-            await sandbox.writeFile(path, content);
 
             if (chatId) {
                 await db.delete(artifacts)
@@ -203,6 +213,7 @@ export const createWriteFileTool = (sandbox: SandboxInstance, chatId?: string) =
                     filename: path,
                     content,
                 });
+                await syncWorkspaceFileForChat(chatId, path, content);
 
                 // Auto-snapshot with debouncing
                 const now = Date.now();
@@ -216,14 +227,18 @@ export const createWriteFileTool = (sandbox: SandboxInstance, chatId?: string) =
                 }
             }
 
-            return `Successfully wrote ${content.length} bytes to ${path}`;
+            if (sandbox) {
+                return `Successfully wrote ${content.length} bytes to ${path}`;
+            }
+
+            return `Successfully saved ${content.length} bytes to ${path} in chat storage${chatId ? "; it will also sync to any workspace linked later" : ""}`;
         } catch (error) {
             return `Error writing file '${path}': ${error instanceof Error ? error.message : String(error)}`;
         }
     },
     {
         name: "write_file",
-        description: "Write content directly to a file in the sandbox. Use this for HTML, CSS, JS files.",
+        description: "Write content to a file in the sandbox when available, or persist it to chat storage so it can later sync into a workspace.",
         schema: z.object({
             path: z.string().describe("Path to the file (e.g., index.html)"),
             content: z.string().describe("Content to write to the file"),
@@ -449,6 +464,7 @@ Correct usage:
                                     filename: file,
                                     content,
                                 });
+                                await syncWorkspaceFileForChat(chatId, file, content);
                             } catch (err) {
                                 console.warn(`Failed to sync file ${file} to artifacts:`, err);
                             }
@@ -541,6 +557,7 @@ export const createSaveArtifactTool = (sandbox: SandboxInstance, chatId: string)
                 filename: path,
                 content,
             }).returning();
+            await syncWorkspaceFileForChat(chatId, path, content);
 
             return `Saved artifact '${path}' (ID: ${artifact.id}). View/Download at: /api/artifacts/${artifact.id}`;
 
@@ -995,6 +1012,7 @@ Example:
                 filename,
                 content,
             });
+            await syncWorkspaceFileForChat(chatId, filename, content);
 
             // Broadcast slide content for live preview
             await broadcastFn({

@@ -13,5 +13,5 @@ export function loader({ params }: Route.LoaderArgs) {
 }
 
 export default function AgentChat({ loaderData }: Route.ComponentProps) {
-  return <AgentBuilder initialChatId={loaderData.chatId} />;
+  return <AgentBuilder initialChatId={loaderData.chatId} initialView="chat" />;
 }

@@ -13,6 +13,5 @@ export function loader({ context }: Route.LoaderArgs) {
 }
 
 export default function Home() {
-  return <AgentBuilder />;
+  return <AgentBuilder initialView="chat" />;
 }
-

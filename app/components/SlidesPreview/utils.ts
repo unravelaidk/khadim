@@ -1,5 +1,7 @@
 import type { SlideData, SlideTheme } from '../../types/slides';
 
+const SLIDE_SCRIPT_RE = /<script id=["']slide-data["'][^>]*>([\s\S]*?)<\/script>/i;
+
 /**
  * Checks if HTML content has rich styling that requires iframe rendering
  */
@@ -13,6 +15,58 @@ export function hasRichHtmlStyling(htmlContent: string | undefined): boolean {
     htmlContent.includes('bg-gradient') ||
     htmlContent.includes('grid-cols')
   );
+}
+
+/**
+ * Parses SlideData[] from HTML containing a <script id="slide-data"> tag
+ */
+export function parseSlidesFromHtml(htmlContent: string): SlideData[] | null {
+  const match = htmlContent.match(SLIDE_SCRIPT_RE);
+  if (!match?.[1]) return null;
+
+  try {
+    const parsed = JSON.parse(match[1].trim());
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    if (!parsed.every((s: any) => s && typeof s === 'object' && 'type' in s)) return null;
+    return parsed as SlideData[];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts the <title> from HTML content
+ */
+export function extractPresentationTitle(htmlContent: string): string {
+  const match = htmlContent.match(/<title>([^<]*)<\/title>/i);
+  return match?.[1]?.trim() || 'Presentation';
+}
+
+/**
+ * Extracts theme name from HTML via data-theme attr or meta tag
+ */
+export function extractPresentationTheme(htmlContent: string): string | undefined {
+  const themeMatch = htmlContent.match(/data-theme=["']([^"']+)["']/i);
+  if (themeMatch?.[1]) return themeMatch[1];
+  const metaMatch = htmlContent.match(/<meta name=["']slide-theme["'] content=["']([^"']+)["']/i);
+  return metaMatch?.[1];
+}
+
+/**
+ * Extracts body text from a slide for basic PPTX export
+ */
+export function getSlideBodyText(slide: SlideData): string | undefined {
+  if (slide.subtitle) return slide.subtitle;
+  if ('bullets' in slide && slide.bullets?.length) return slide.bullets.join('\n');
+  if (slide.type === 'quote' && 'quote' in slide) return slide.quote;
+  if (slide.type === 'twoColumn') {
+    return [...(slide.leftBullets || []), ...(slide.rightBullets || [])].join('\n');
+  }
+  if (slide.type === 'comparison') {
+    return [...(slide.leftItems || []), ...(slide.rightItems || [])].join('\n');
+  }
+  if (slide.type === 'image') return slide.caption;
+  return undefined;
 }
 
 /**

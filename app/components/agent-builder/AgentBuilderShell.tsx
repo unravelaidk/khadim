@@ -9,9 +9,9 @@ interface AgentBuilderShellProps {
 
 export function AgentBuilderShell({ sidebar, header, content, footer }: AgentBuilderShellProps) {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="gb-page-shell flex h-screen overflow-hidden">
       {sidebar}
-      <div className="flex-1 flex flex-col bg-gb-bg overflow-hidden relative">
+      <div className="relative z-10 flex flex-1 flex-col overflow-hidden bg-transparent min-w-0">
         {header}
         {content}
         {footer}

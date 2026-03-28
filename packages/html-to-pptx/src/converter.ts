@@ -29,6 +29,17 @@ export const FONT_MAP: Record<string, string> = {
   'sans-serif': 'Arial',
   '-apple-system': 'Segoe UI',
   'BlinkMacSystemFont': 'Segoe UI',
+
+  // Display / Condensed
+  'Bebas Neue': 'Impact',
+  'Oswald': 'Impact',
+  'Anton': 'Impact',
+  'Archivo Black': 'Impact',
+  'Raleway': 'Segoe UI',
+  'Quicksand': 'Arial',
+  'DM Sans': 'Segoe UI',
+  'Space Grotesk': 'Segoe UI',
+  'Outfit': 'Arial',
   
   // Serif
   'Playfair Display': 'Georgia',

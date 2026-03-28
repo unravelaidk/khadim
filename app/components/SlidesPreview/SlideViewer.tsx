@@ -41,6 +41,7 @@ function getSlideControlScript(slideIndex: number): string {
       window.addEventListener('load', function() {
         const slides = document.querySelectorAll('section.slide, .slide, section');
         const targetIndex = ${slideIndex};
+
         if (slides.length > 0) {
           slides.forEach((slide, index) => {
             if (index !== targetIndex) {
@@ -52,6 +53,7 @@ function getSlideControlScript(slideIndex: number): string {
             }
           });
         }
+
         document.querySelectorAll('canvas').forEach(c => {
           c.style.maxHeight = '200px';
         });
@@ -77,6 +79,7 @@ export function SlideViewer({
   useIframe = true,
   slideKey,
 }: SlideViewerProps) {
+  const isBuilding = Boolean('__building' in slide && slide.__building);
   const themeIsLight = isLightTheme(theme);
   const textPrimary = theme.textColors.primary;
   const textSecondary = theme.textColors.secondary;
@@ -88,6 +91,61 @@ export function SlideViewer({
 
   const renderSlideContent = () => {
     if (!slide) return null;
+
+    if (isBuilding) {
+      return (
+        <div className="flex w-full max-w-3xl flex-col gap-8 px-8">
+          <div className="space-y-3 text-center">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/45">
+              Building live preview
+            </div>
+            <div className="mx-auto h-1.5 w-24 bg-[#e5ff00]" />
+            <div className="space-y-2">
+              <h2 className="text-3xl font-bold tracking-tight text-black">
+                {slide.title || `Slide ${slideIndex + 1} in progress`}
+              </h2>
+              <p className="mx-auto max-w-xl text-sm text-black/55">
+                {slide.subtitle || 'Khadim is drafting this slide and the preview will update as content lands.'}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="border-2 border-black bg-white p-4 shadow-gb-sm">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-black/45">Draft copy</div>
+              <div className="space-y-2">
+                {'bullets' in slide && slide.bullets?.map((bullet, index) => (
+                  <div key={`${bullet}-${index}`} className="flex items-start gap-2 text-sm text-black/70">
+                    <span className="mt-1.5 h-1.5 w-1.5 animate-pulse bg-black" style={{ animationDelay: `${index * 120}ms` }} />
+                    <span>{bullet}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="border-2 border-black bg-[#f5f5f5] p-4 shadow-gb-sm">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-black/45">Current step</div>
+              <div className="space-y-3 text-sm text-black/70">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 animate-pulse bg-[#e5ff00]" />
+                  Writing the next slide section
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 animate-pulse bg-black/20" style={{ animationDelay: '150ms' }} />
+                  Syncing preview content
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 animate-pulse bg-black/20" style={{ animationDelay: '300ms' }} />
+                  Preparing final layout
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-black/50">
+            <span className="h-2 w-2 animate-pulse bg-[#e5ff00]" />
+            Drafting slide content
+          </div>
+        </div>
+      );
+    }
 
     switch (slide.type) {
       case "title":
@@ -352,15 +410,13 @@ export function SlideViewer({
   };
 
   // Iframe mode for rich HTML content
-  if (hasRichHtml && htmlContent && useIframe) {
+  if (!isBuilding && hasRichHtml && htmlContent && useIframe) {
     return (
       <div 
         className="w-full h-full relative rounded-xl overflow-hidden shadow-lg bg-black"
         style={{ 
-          // Container maintains aspect ratio
-           aspectRatio: "16/9",
-           maxHeight: "100%",
-
+          aspectRatio: "16/9",
+          maxHeight: "100%",
         }}
       >
         <div 
@@ -391,16 +447,29 @@ export function SlideViewer({
     <div 
       key={slideKey}
       className="w-full max-w-4xl aspect-[16/9] rounded-xl shadow-lg flex flex-col items-center justify-center p-8 slide-animate overflow-hidden relative"
-      style={{ background: getSlideBackground(slide?.type || "content", theme) }}
+      style={{
+        background: isBuilding ? '#fcfcfc' : getSlideBackground(slide?.type || "content", theme),
+        border: isBuilding ? '2px solid #000000' : undefined,
+      }}
     >
-      {/* Pattern overlay */}
-      <div 
-        className="absolute inset-0 opacity-20 pointer-events-none"
-        style={{
-          backgroundImage: "radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)",
-          backgroundSize: "16px 16px",
-        }}
-      />
+      {!isBuilding && (
+        <div 
+          className="absolute inset-0 opacity-20 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)",
+            backgroundSize: "16px 16px",
+          }}
+        />
+      )}
+      {isBuilding && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: "linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px)",
+            backgroundSize: '28px 28px',
+          }}
+        />
+      )}
       <div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
         {renderSlideContent()}
       </div>

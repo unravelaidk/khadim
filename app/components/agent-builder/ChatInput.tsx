@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 interface ChatInputProps {
@@ -28,10 +28,21 @@ export function ChatInput({
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const resizeTextarea = () => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 168)}px`;
+  };
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [value]);
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isProcessing) {
+      if (!isProcessing && value.trim()) {
         onSend();
       }
     }
@@ -39,11 +50,11 @@ export function ChatInput({
 
   const isFixed = position === "fixed";
   const containerClasses = isFixed
-    ? "absolute bottom-0 left-0 right-0 pt-4 pb-6 px-3 md:pt-6 md:pb-8 md:px-4"
+    ? "absolute bottom-0 left-0 right-0 px-3 pb-5 pt-4 sm:px-4 sm:pb-7 sm:pt-5 md:px-6 md:pb-9 md:pt-7"
     : "w-full pt-4 pb-0";
 
   const containerStyle = isFixed
-    ? { background: "linear-gradient(to top, var(--color-gb-bg) 70%, transparent)" }
+    ? { background: "linear-gradient(to top, #fafafa 70%, transparent)" }
     : undefined;
 
   return (
@@ -51,32 +62,31 @@ export function ChatInput({
       className={containerClasses}
       style={containerStyle}
     >
-      <div className={`mx-auto ${isCompact ? "max-w-xl" : "max-w-3xl"}`}>
+      <div className={`mx-auto ${isCompact ? "max-w-xl" : "max-w-4xl"}`}>
         {activeAgent && isProcessing && (
-          <div className="flex justify-center mb-2">
-            <div className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 ${activeAgent.mode === "plan"
-                ? "bg-blue-100 text-blue-700 border border-blue-200"
-                : "bg-green-100 text-green-700 border border-green-200"
+          <div className="mb-2 flex justify-center">
+            <div className={`flex items-center gap-2 border-2 px-3 py-1 text-xs font-medium shadow-gb-sm ${activeAgent.mode === "plan"
+                ? "border-black bg-white text-black/70"
+                : "border-black bg-[#e5ff00] text-black"
               }`}>
               {activeAgent.mode === "plan" ? "🧠" : "🔨"} {activeAgent.name} Agent Active
             </div>
           </div>
         )}
         
-        {/* Badges/Chips */}
         {badges.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-3 px-2">
             {badges.map((badge, index) => (
               <div 
                 key={index} 
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gb-bg-subtle border border-gb-border rounded-full text-xs font-medium text-gb-text-secondary animate-in fade-in slide-in-from-bottom-2"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-black text-xs font-medium text-black shadow-gb-sm animate-in fade-in slide-in-from-bottom-2"
               >
                 <span>{badge.icon}</span>
                 <span>{badge.label}</span>
                 {onRemoveBadge && (
                   <button 
                     onClick={() => onRemoveBadge(badge.label)}
-                    className="ml-1 p-0.5 hover:text-gb-text hover:bg-gb-bg-card rounded-full transition-colors"
+                    className="ml-1 p-0.5 hover:bg-black hover:text-white transition-colors"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="18" y1="6" x2="6" y2="18" />
@@ -90,23 +100,27 @@ export function ChatInput({
         )}
 
         <div className="relative group">
-          <textarea
-            ref={inputRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isProcessing ? "Agent is working..." : "Type a message..."}
-            rows={1}
-            disabled={isProcessing}
-             className={`w-full bg-gb-bg-card border border-gb-border rounded-2xl md:rounded-full px-4 md:px-6 py-3 md:py-4 pr-12 md:pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-gb-primary/10 transition-all shadow-gb-sm hover:shadow-gb-md text-sm md:text-base text-gb-text placeholder:text-gb-text-muted min-h-[48px] md:min-h-[56px] flex items-center ${isProcessing ? "opacity-60" : ""}`}
+            <textarea
+              ref={inputRef}
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                resizeTextarea();
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={isProcessing ? "Agent is working... you can keep typing" : "Type a message..."}
+              rows={1}
+              className="flex min-h-[52px] w-full resize-none items-center border-2 border-black bg-white px-4 py-3 pr-12 text-sm text-black transition-all placeholder:text-black/40 focus:border-black focus:outline-none md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base shadow-gb-sm"
 
-            style={{ maxHeight: "120px" }}
-          />
+            style={{ maxHeight: "168px" }}
+            aria-label="Chat message input"
+            />
           {isProcessing ? (
             <button
               onClick={onStop}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all bg-red-500 text-white hover:bg-red-600 hover:scale-105 active:scale-95"
+              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center bg-black text-white transition-all hover:bg-black/80 shadow-gb-sm md:h-10 md:w-10"
               title="Stop generation"
+              aria-label="Stop generation"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -114,21 +128,22 @@ export function ChatInput({
             </button>
           ) : (
             <button
-              onClick={onSend}
-              disabled={!value.trim()}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all ${value.trim()
-                ? "bg-gb-text text-gb-text-inverse hover:scale-105 active:scale-95"
-                : "bg-gb-bg-subtle text-gb-text-muted cursor-not-allowed"
+                onClick={onSend}
+                disabled={!value.trim()}
+                className={`absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center transition-all shadow-gb-sm md:h-10 md:w-10 ${value.trim()
+                ? "bg-black text-white hover:bg-black/80"
+                : "bg-white text-black/30 cursor-not-allowed border-2 border-black"
                 }`}
-            >
+                aria-label="Send message"
+              >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
           )}
         </div>
-        <p className="text-xs text-center mt-3 text-gb-text-muted font-medium opacity-60">
-          {isProcessing ? "Click stop to cancel" : "Press Enter to send"}
+        <p className="mt-3 text-center text-xs font-medium text-black/50">
+          {isProcessing ? "Click stop to cancel. Press Enter to queue your next thought." : "Press Enter to send, Shift+Enter for newline"}
         </p>
       </div>
     </div>

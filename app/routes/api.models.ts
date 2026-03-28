@@ -1,0 +1,154 @@
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
+import { z } from "zod";
+import {
+  getAllModels,
+  createModel,
+  updateModel,
+  deleteModel,
+  setDefaultModel,
+  setActiveModel,
+  initializeDefaultModels,
+} from "../agent/model-manager";
+import { SUPPORTED_PROVIDERS, RECOMMENDED_MODELS } from "../agent/models";
+import { discoverProviderModels } from "../agent/provider-models";
+
+const modelSchema = z.object({
+  name: z.string().min(1),
+  provider: z.enum(["openai", "anthropic", "openrouter", "ollama"]),
+  model: z.string().min(1),
+  apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
+  temperature: z.string().optional().default("0.2"),
+  isDefault: z.boolean().optional().default(false),
+  isActive: z.boolean().optional().default(true),
+});
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+  const action = url.searchParams.get("action");
+
+  if (action === "init") {
+    await initializeDefaultModels();
+    return Response.json({ success: true });
+  }
+
+  if (action === "providers") {
+    return Response.json({ providers: SUPPORTED_PROVIDERS, recommended: RECOMMENDED_MODELS });
+  }
+
+  const models = await getAllModels();
+  return Response.json({ models });
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  try {
+    switch (intent) {
+      case "create": {
+        const data = modelSchema.parse({
+          name: formData.get("name"),
+          provider: formData.get("provider"),
+          model: formData.get("model"),
+          apiKey: formData.get("apiKey") || undefined,
+          baseUrl: formData.get("baseUrl") || undefined,
+          temperature: formData.get("temperature") || "0.2",
+          isDefault: formData.get("isDefault") === "true",
+          isActive: formData.get("isActive") !== "false",
+        });
+
+        const created = await createModel(data);
+        
+        if (data.isDefault) {
+          await setDefaultModel(created.id);
+        }
+        if (data.isActive) {
+          await setActiveModel(created.id);
+        }
+
+        return Response.json({ success: true, model: created });
+      }
+
+      case "update": {
+        const id = formData.get("id");
+        if (!id || typeof id !== "string") {
+          return Response.json({ error: "Model ID required" }, { status: 400 });
+        }
+
+        const data = modelSchema.partial().parse({
+          name: formData.get("name"),
+          provider: formData.get("provider"),
+          model: formData.get("model"),
+          apiKey: formData.get("apiKey") || undefined,
+          baseUrl: formData.get("baseUrl") || undefined,
+          temperature: formData.get("temperature"),
+          isDefault: formData.get("isDefault") === "true",
+          isActive: formData.get("isActive") === "true",
+        });
+
+        const updated = await updateModel(id, data);
+        
+        if (data.isDefault) {
+          await setDefaultModel(id);
+        }
+        if (data.isActive) {
+          await setActiveModel(id);
+        }
+
+        return Response.json({ success: true, model: updated });
+      }
+
+      case "delete": {
+        const id = formData.get("id");
+        if (!id || typeof id !== "string") {
+          return Response.json({ error: "Model ID required" }, { status: 400 });
+        }
+
+        await deleteModel(id);
+        return Response.json({ success: true });
+      }
+
+      case "setDefault": {
+        const id = formData.get("id");
+        if (!id || typeof id !== "string") {
+          return Response.json({ error: "Model ID required" }, { status: 400 });
+        }
+
+        await setDefaultModel(id);
+        return Response.json({ success: true });
+      }
+
+      case "setActive": {
+        const id = formData.get("id");
+        if (!id || typeof id !== "string") {
+          return Response.json({ error: "Model ID required" }, { status: 400 });
+        }
+
+        await setActiveModel(id);
+        return Response.json({ success: true });
+      }
+
+      case "discover": {
+        const provider = formData.get("provider");
+        if (!provider || typeof provider !== "string") {
+          return Response.json({ error: "Provider is required" }, { status: 400 });
+        }
+
+        const models = await discoverProviderModels({
+          provider: provider as "openai" | "anthropic" | "openrouter" | "ollama",
+          apiKey: formData.get("apiKey")?.toString() || undefined,
+          baseUrl: formData.get("baseUrl")?.toString() || undefined,
+        });
+
+        return Response.json({ success: true, models });
+      }
+
+      default:
+        return Response.json({ error: "Invalid intent" }, { status: 400 });
+    }
+  } catch (error) {
+    console.error("Model API error:", error);
+    return Response.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+  }
+}

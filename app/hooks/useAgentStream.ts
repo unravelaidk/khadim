@@ -24,6 +24,15 @@ export function useAgentStream({
   setIsProcessing,
   chatId
 }: UseAgentStreamProps) {
+  const updateAssistantMessage = (
+    assistantMessageId: string,
+    updater: (message: Message) => Message
+  ) => {
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === assistantMessageId ? updater(msg) : msg))
+    );
+  };
+
   
   const processStream = async (
     response: Response, 
@@ -103,16 +112,22 @@ export function useAgentStream({
                 // Capture slide file content for real-time preview
                 const slideContent = event.fileContent as string | undefined;
                 if (slideContent) {
-                  setMessages(prev =>
-                    prev.map(msg =>
-                      msg.id === assistantMessageId
-                        ? { ...msg, fileContent: slideContent }
-                        : msg
-                    )
-                  );
+                  updateAssistantMessage(assistantMessageId, (msg) => ({
+                    ...msg,
+                    fileContent: slideContent,
+                  }));
+                }
+              } else if (event.type === "file_written") {
+                const filename = typeof event.filename === "string" ? event.filename : undefined;
+                const fileContent = typeof event.content === "string" ? event.content : undefined;
+                if (filename === "index.html" && fileContent?.includes('<script id="slide-data"')) {
+                  updateAssistantMessage(assistantMessageId, (msg) => ({
+                    ...msg,
+                    fileContent,
+                  }));
                 }
               } else if (event.type === "done") {
-                streamedText = event.content || "";
+                streamedText = event.content ?? streamedText;
                 setActiveAgent(null);
                 setJobId(null);
                 
@@ -134,20 +149,13 @@ export function useAgentStream({
                 // Final update with all data
                 // IMPORTANT: Preserve any fileContent already set by slide_content event
                 const msgPreviewUrl = event.previewUrl as string | undefined;
-                setMessages(prev =>
-                  prev.map(msg =>
-                    msg.id === assistantMessageId
-                      ? { 
-                          ...msg, 
-                          content: streamedText, 
-                          thinkingSteps: [...steps], // Spread to create new array ref
-                          previewUrl: msgPreviewUrl,
-                          // Only set fileContent if we have new content, otherwise preserve existing
-                          fileContent: fileContent || msg.fileContent
-                        }
-                      : msg
-                  )
-                );
+                updateAssistantMessage(assistantMessageId, (msg) => ({
+                  ...msg,
+                  content: streamedText,
+                  thinkingSteps: [...steps],
+                  previewUrl: msgPreviewUrl,
+                  fileContent: fileContent || msg.fileContent,
+                }));
                 continue;
               } else if (event.type === "ask_user") {
                 setPendingQuestion({
@@ -157,26 +165,22 @@ export function useAgentStream({
                   threadId: event.threadId,
                 });
                 setIsTyping(false);
-                setMessages(prev =>
-                  prev.map(msg =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: `🤔 I have a question for you...`, thinkingSteps: [...steps] }
-                      : msg
-                  )
-                );
+                updateAssistantMessage(assistantMessageId, (msg) => ({
+                  ...msg,
+                  content: `🤔 I have a question for you...`,
+                  thinkingSteps: [...steps],
+                }));
               } else if (event.type === "delegate_build") {
                 const planInfo = {
                   plan: event.plan as string,
                   context: event.context as string,
                 };
                 
-                setMessages(prev =>
-                  prev.map(msg =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: `✅ Plan approved! The Build agent will now execute...`, thinkingSteps: [...steps] }
-                      : msg
-                  )
-                );
+                updateAssistantMessage(assistantMessageId, (msg) => ({
+                  ...msg,
+                  content: `✅ Plan approved! The Build agent will now execute...`,
+                  thinkingSteps: [...steps],
+                }));
                 
                 const buildPrompt = `Execute this approved plan:\n\n${planInfo.plan}${planInfo.context ? `\n\nContext: ${planInfo.context}` : ""}`;
                 setPendingBuildDelegation(buildPrompt);
@@ -189,13 +193,11 @@ export function useAgentStream({
               // We deep clone steps to ensure React detects the change (fixing the rendering issue)
               const clonedSteps = steps.map(s => ({ ...s }));
               
-              setMessages(prev =>
-                prev.map(msg =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: streamedText, thinkingSteps: clonedSteps }
-                    : msg
-                )
-              );
+              updateAssistantMessage(assistantMessageId, (msg) => ({
+                ...msg,
+                content: streamedText,
+                thinkingSteps: clonedSteps,
+              }));
             } catch (e) {
               console.error("Error parsing SSE event:", e);
             }
