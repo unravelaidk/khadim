@@ -39,7 +39,7 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
           {language && <span className="text-gray-400 uppercase font-medium">{language}</span>}
           <button
             onClick={handleCopy}
-            className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+            className="text-gray-400 transition-colors hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
             title="Copy code"
           >
             {copied ? (
@@ -63,6 +63,7 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
             fontSize: "0.875rem",
             padding: "1rem",
             paddingTop: "2rem",
+            fontFamily: "var(--font-mono)",
           }}
           {...props}
         >

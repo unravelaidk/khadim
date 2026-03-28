@@ -9,6 +9,7 @@ interface ChatInterfaceProps {
   onAnswerQuestion: (answer: string) => void;
   onCancelQuestion: () => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  workspaceId?: string | null;
 }
 
 export function ChatInterface({
@@ -17,13 +18,16 @@ export function ChatInterface({
   onAnswerQuestion,
   onCancelQuestion,
   messagesEndRef,
+  workspaceId,
 }: ChatInterfaceProps) {
+  const hasMessages = messages.length > 0 || !!pendingQuestion;
+
   return (
-    <div className="w-full max-w-3xl mx-auto animate-in fade-in duration-500">
+    <div className="mx-auto w-full max-w-4xl animate-in fade-in duration-500">
       <GameBoyScreen>
         <div className="space-y-6">
           {messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage key={message.id} message={message} workspaceId={workspaceId} />
           ))}
           {pendingQuestion && (
             <AgentQuestion
@@ -33,6 +37,9 @@ export function ChatInterface({
               onAnswer={onAnswerQuestion}
               onCancel={onCancelQuestion}
             />
+          )}
+          {!hasMessages && (
+            <p className="text-center text-sm text-gb-text-muted">Start a conversation to see chat activity here.</p>
           )}
           <div ref={messagesEndRef} />
         </div>

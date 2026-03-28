@@ -190,6 +190,8 @@ export interface ExtractedSlideData {
     isBold: boolean;
     isItalic: boolean;
     textAlign: string;
+    lineSpacingMultiple?: number;
+    letterSpacing?: number;
   }>;
   shapeElements?: ShapeData[];
 }

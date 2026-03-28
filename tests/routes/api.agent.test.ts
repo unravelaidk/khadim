@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const subscribeMock = vi.fn();
 const createJobMock = vi.fn();
 const getJobMock = vi.fn();
+const getJobByChatIdMock = vi.fn();
+const runAgentJobMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../../app/agent/skills", () => ({
   loadSkills: vi.fn().mockResolvedValue(""),
@@ -19,7 +21,7 @@ vi.mock("../../app/agent/router", () => ({
 vi.mock("../../app/lib/job-manager", () => ({
   createJob: createJobMock,
   getJob: getJobMock,
-  getJobByChatId: vi.fn(),
+  getJobByChatId: getJobByChatIdMock,
   failJob: vi.fn(),
   subscribe: subscribeMock,
 }));
@@ -30,7 +32,7 @@ vi.mock("../../app/lib/job-cancel", () => ({
 }));
 
 vi.mock("../../app/agent/job-runner", () => ({
-  runAgentJob: vi.fn().mockResolvedValue(undefined),
+  runAgentJob: runAgentJobMock,
 }));
 
 vi.mock("../../app/lib/badges", () => ({
@@ -54,6 +56,7 @@ const { action, loader } = await import("../../app/routes/api.agent");
 describe("api.agent streams", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    runAgentJobMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -126,5 +129,63 @@ describe("api.agent streams", () => {
 
     expect(subscribers[0]).toBeDefined();
     expect(() => subscribers[0]!({ type: "error", data: { message: "boom" } })).not.toThrow();
+  });
+
+  it("scopes loader lookups by session id", async () => {
+    getJobByChatIdMock.mockResolvedValue(null);
+
+    await loader({
+      request: new Request("http://local/api/agent?chatId=chat-1&sessionId=session-1", {
+        method: "GET",
+      }),
+    } as any);
+
+    expect(getJobByChatIdMock).toHaveBeenCalledWith("chat-1", "session-1");
+  });
+
+  it("creates jobs with the provided session id", async () => {
+    createJobMock.mockResolvedValue({ id: "job-123", chatId: "chat-1", sessionId: "session-1" });
+
+    const formData = new FormData();
+    formData.append("prompt", "Hello");
+    formData.append("chatId", "chat-1");
+    formData.append("sessionId", "session-1");
+
+    await action({
+      request: new Request("http://local/api/agent", {
+        method: "POST",
+        body: formData,
+      }),
+    } as any);
+
+    expect(createJobMock).toHaveBeenCalledWith("job-123", "chat-1", "session-1");
+  });
+
+  it("keeps the job running after the client stream disconnects", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    runAgentJobMock.mockImplementation(async (options: { abortSignal?: AbortSignal }) => {
+      capturedSignal = options.abortSignal;
+    });
+
+    createJobMock.mockResolvedValue({ id: "job-123", chatId: "default", sessionId: "default" });
+
+    const formData = new FormData();
+    formData.append("prompt", "Hello");
+
+    const abortController = new AbortController();
+    await action({
+      request: new Request("http://local/api/agent", {
+        method: "POST",
+        body: formData,
+        signal: abortController.signal,
+      }),
+    } as any);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    abortController.abort();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { db, artifacts, projects, projectVersions } from "./db";
 import { eq } from "drizzle-orm";
+import { syncWorkspaceFileForChat } from "./workspace-sync";
 
 export interface VersionSnapshot {
   id: string;
@@ -144,6 +145,10 @@ export async function restoreVersion(versionId: string): Promise<{
           content: a.content,
         }))
       );
+
+      for (const artifact of snapshotArtifacts) {
+        await syncWorkspaceFileForChat(chatId, artifact.filename, artifact.content);
+      }
     }
 
     // Restore project metadata if present

@@ -81,11 +81,11 @@ export function LibraryView({ workspaces: initialWorkspaces, onSelectWorkspace }
   }
 
   return (
-    <div className="flex-1 h-full bg-gb-bg-subtle/50 p-8 overflow-hidden flex flex-col">
-      <header className="mb-8 space-y-6">
+    <div className="flex h-full flex-1 flex-col overflow-hidden bg-gb-bg/30 p-6 md:p-9">
+      <header className="mb-8 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="mt-1 font-sans text-gb-text-muted text-sm px-1">
+            <p className="mt-1 px-1 text-sm text-gb-text-muted">
               Manage and access your archived project workspaces.
             </p>
           </div>
@@ -104,9 +104,9 @@ export function LibraryView({ workspaces: initialWorkspaces, onSelectWorkspace }
       </header>
       
       <ScrollArea className="flex-1 -mr-4 pr-4">
-        <div className={`pb-20 pt-10 ${
+        <div className={`pb-20 pt-8 ${
           viewMode === "grid" 
-            ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8" 
+            ? "grid grid-cols-1 gap-7 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
             : "flex flex-col gap-2"
         }`}>
           {filteredWorkspaces.map((workspace) => (
@@ -121,7 +121,7 @@ export function LibraryView({ workspaces: initialWorkspaces, onSelectWorkspace }
           
           {/* Empty State / Slots */}
           {filteredWorkspaces.length === 0 && (
-             <div className="col-span-full flex flex-col items-center justify-center py-20 text-gb-text-muted opacity-50">
+             <div className="col-span-full flex flex-col items-center justify-center py-20 text-gb-text-muted opacity-60">
                <span className="text-4xl mb-4">🔍</span>
                <p>No workspaces found matching filters</p>
              </div>

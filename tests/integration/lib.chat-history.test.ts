@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { loadChatHistory } from "../../app/lib/chat-history";
 
 const sampleMessages = [
@@ -16,14 +15,14 @@ const fakeDb = {
 };
 
 describe("loadChatHistory", () => {
-  it("maps DB rows to LangChain messages", async () => {
+  it("maps DB rows to pi messages", async () => {
     const history = await loadChatHistory("chat-1", { dbClient: fakeDb as any });
 
     expect(history.length).toBe(2);
-    expect(history[0] instanceof HumanMessage).toBe(true);
-    expect(history[1] instanceof AIMessage).toBe(true);
+    expect(history[0].role).toBe("user");
+    expect(history[1].role).toBe("assistant");
     expect(history[0].content).toBe("Hello");
-    expect(history[1].content).toBe("Hi there");
+    expect(history[1].content).toEqual([{ type: "text", text: "Hi there" }]);
   });
 
   it("returns empty array when there are no messages", async () => {
@@ -39,7 +38,7 @@ describe("loadChatHistory", () => {
     expect(history).toEqual([]);
   });
 
-  it("treats unknown roles as AIMessage fallback", async () => {
+  it("treats unknown roles as assistant fallback", async () => {
     const dbWithUnknown = {
       select: () => ({
         from: () => ({
@@ -50,8 +49,8 @@ describe("loadChatHistory", () => {
 
     const history = await loadChatHistory("chat-unknown", { dbClient: dbWithUnknown as any });
     expect(history.length).toBe(1);
-    expect(history[0] instanceof AIMessage).toBe(true);
-    expect(history[0].content).toBe("note");
+    expect(history[0].role).toBe("assistant");
+    expect(history[0].content).toEqual([{ type: "text", text: "note" }]);
   });
 
   it("passes chatId through to DB where clause", async () => {
@@ -86,12 +85,12 @@ describe("loadChatHistory", () => {
     const historyB = await loadChatHistory("chat-B", { loadMessages });
 
     expect(historyA.length).toBe(1);
-    expect(historyA[0] instanceof HumanMessage).toBe(true);
+    expect(historyA[0].role).toBe("user");
     expect(historyA[0].content).toBe("Hi A");
 
     expect(historyB.length).toBe(1);
-    expect(historyB[0] instanceof AIMessage).toBe(true);
-    expect(historyB[0].content).toBe("Hello from B");
+    expect(historyB[0].role).toBe("assistant");
+    expect(historyB[0].content).toEqual([{ type: "text", text: "Hello from B" }]);
 
     expect(loadMessages).toHaveBeenCalledTimes(2);
     expect(loadMessages).toHaveBeenNthCalledWith(1, "chat-A");

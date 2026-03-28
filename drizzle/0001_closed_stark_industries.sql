@@ -1,4 +1,4 @@
-CREATE TABLE "project_versions" (
+CREATE TABLE IF NOT EXISTS "project_versions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"chat_id" text NOT NULL,
 	"message_id" text,
@@ -8,7 +8,7 @@ CREATE TABLE "project_versions" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "projects" (
+CREATE TABLE IF NOT EXISTS "projects" (
 	"id" text PRIMARY KEY NOT NULL,
 	"chat_id" text NOT NULL,
 	"project_type" text,

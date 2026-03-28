@@ -1,5 +1,4 @@
-import { ChatOpenAI } from "@langchain/openai";
-import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+import type { Message, Model } from "@mariozechner/pi-ai";
 import { eq } from "drizzle-orm";
 import { createOrchestrator } from "./orchestrator";
 import {
@@ -20,7 +19,7 @@ import {
   createWriteSlidesTool
 } from "./tools";
 import { createAskUserTool, parseAskUserResponse } from "./tools/ask-user";
-import { createDelegateToBuildTool, parseDelegateResponse } from "./tools/delegate-build";
+import { createDelegateToBuildTool } from "./tools/delegate-build";
 import { createDelegateToAgentTool } from "./tools/delegate-agent";
 import {
   addStep,
@@ -34,7 +33,8 @@ import {
 import { ensureSandbox, scheduleSandboxCleanup } from "./sandbox";
 import { getAgentConfig } from "./agents";
 import type { AgentMode } from "./router";
-import { db, messages, chats, artifacts } from "../lib/db";
+import { db, messages, chats, artifacts, workspaceFiles } from "../lib/db";
+import { getActiveModel, createModelInstance } from "./model-manager";
 
 type AgentConfig = ReturnType<typeof getAgentConfig>;
 type SandboxType = Awaited<ReturnType<typeof ensureSandbox>>['sandbox'];
@@ -46,11 +46,13 @@ export interface RunAgentJobParams {
   agentMode: AgentMode;
   agentConfig: AgentConfig;
   skillsContent: string;
-  history: (HumanMessage | AIMessage)[];
+  history: Message[];
   existingSandboxId?: string;
-  apiKey: string;
+  apiKey?: string;
   abortSignal?: AbortSignal;
 }
+
+export type JobRunnerOptions = RunAgentJobParams;
 
 export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   const {
@@ -96,6 +98,30 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
         const sandboxResult = await ensureSandbox(existingSandboxId);
         sandbox = sandboxResult.sandbox;
         sandboxId = sandboxResult.sandboxId;
+
+        if (!sandboxResult.reconnected) {
+          const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
+          const sharedFiles = chat?.workspaceId
+            ? await db.select().from(workspaceFiles).where(eq(workspaceFiles.workspaceId, chat.workspaceId))
+            : [];
+          const chatArtifacts = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId));
+
+          const filesToRestore = new Map<string, string>();
+          for (const file of sharedFiles) {
+            filesToRestore.set(file.path, file.content);
+          }
+          for (const artifact of chatArtifacts) {
+            filesToRestore.set(artifact.filename, artifact.content);
+          }
+
+          for (const [path, content] of filesToRestore) {
+            const dir = path.split("/").slice(0, -1).join("/");
+            if (dir) {
+              await sandbox.exec(`mkdir -p ${dir}`);
+            }
+            await sandbox.writeFile(path, content);
+          }
+        }
 
         let result: string;
         if (sandboxResult.reconnected) {
@@ -143,47 +169,26 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createWriteSlidesTool(chatId, broadcastForTools),
     ];
 
-    // Add sandbox-dependent tools that will lazily initialize sandbox when first called
-    // We always add them, but they trigger sandbox creation on first use
-    const lazySandboxGetter = async () => ensureSandboxInitialized();
-    
-    // Create tools with lazy sandbox - we need to create them with a sandbox proxy
-    // For now, we'll create them upfront if there's an existing sandbox, otherwise create a placeholder
-    // Actually, we need to refactor the tool creation to be lazy
-    
-    // Simpler approach: Always add the tools, but they'll use the lazy getter
-    // The trick is that createXxxTool functions return tools that capture `sandbox` in closure
-    // We need a different approach - create tools that lazily get sandbox
-    
-    // For now, let's use a simpler approach: create a proxy sandbox that triggers init
-    const getSandboxTool = <T>(
+    const getSandboxTool = <T extends { execute: (...args: any[]) => Promise<any> }>(
       createFn: (sandbox: SandboxType, ...args: any[]) => T,
       ...args: any[]
     ): T => {
-      // Create a lazy tool that initializes sandbox on first invoke
       const originalTool = createFn(null as any, ...args);
-      if (!originalTool || typeof originalTool !== 'object' || !('invoke' in originalTool)) {
-        return originalTool;
-      }
-      
-      // Wrap the invoke method
       const tool = originalTool as any;
-      const originalInvoke = tool.invoke.bind(tool);
-      tool.invoke = async (...invokeArgs: any[]) => {
+      tool.execute = async (...invokeArgs: any[]) => {
         await ensureSandboxInitialized();
-        // Re-create the tool with the actual sandbox
         const realTool = createFn(sandbox!, ...args) as any;
-        return realTool.invoke(...invokeArgs);
+        return realTool.execute(...invokeArgs);
       };
       return tool;
     };
 
     // Add sandbox-dependent tools with lazy initialization
     allTools.push(
+      createWriteFileTool(() => sandbox, chatId),
       getSandboxTool(createRunCodeTool),
       getSandboxTool(createReadFileTool),
       getSandboxTool(createListFilesTool),
-      getSandboxTool(createWriteFileTool, chatId),
       getSandboxTool(createShellTool),
       getSandboxTool(createExposePreviewTool, (url: string) => { previewUrl = url; }),
       getSandboxTool(createWebAppTool, chatId),
@@ -191,14 +196,21 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       getSandboxTool(createManageSandboxTool)
     );
 
+    // Get active model configuration from database
+    const modelConfig = await getActiveModel();
+    
+    let resolvedModel: { model: Model<any>; apiKey: string; temperature: number };
+    if (modelConfig) {
+      resolvedModel = createModelInstance(modelConfig, apiKey);
+    } else {
+      throw new Error("No active model configured. Add or activate a model in Settings.");
+    }
+
     const orchestratorConfig = {
-      model: new ChatOpenAI({
-        model: "mistralai/devstral-2512:free",
-        apiKey: apiKey,
-        configuration: { baseURL: "https://openrouter.ai/api/v1" },
-        temperature: 0.2,
-      }),
+      model: resolvedModel.model,
       tools: allTools,
+      apiKey: resolvedModel.apiKey,
+      temperature: resolvedModel.temperature,
       systemPrompt: `You are an expert full-stack developer agent with access to a persistent Deno Sandbox.
 ${agentConfig.systemPromptAddition}
 
@@ -216,6 +228,7 @@ AVAILABLE TOOLS:
 - create_plan: Create an execution plan when needed
 - update_todo: Track progress on multi-step tasks
 - read_todo: Check your current progress
+- ask_user: Ask the user a clarifying question when you need more information. ALWAYS use this tool instead of asking questions in plain text. This lets the user respond through the UI.
 - web_search: Search the web using DuckDuckGo for research
 - search_images: Find high-quality images for slides and presentations
 - create_web_app: Scaffold a new web app (vite, react-router, or astro)
@@ -225,6 +238,8 @@ AVAILABLE TOOLS:
 - run_code: Execute TypeScript/JavaScript code
 - shell: Run shell commands
 - expose_preview: Start a web server and get a public URL
+
+IMPORTANT: When you need to ask the user a question, you MUST use the ask_user tool. Do NOT ask questions in your text response — the user cannot reply to text questions. The ask_user tool shows an interactive prompt the user can respond to.
 
 WEB SEARCH:
 Use the web_search tool to research topics before creating content.
@@ -313,9 +328,8 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
 
     const inputs = {
       messages: [
-        new SystemMessage("You are an expert full-stack developer agent."),
         ...history,
-        new HumanMessage(prompt),
+        { role: "user" as const, content: prompt, timestamp: Date.now() },
       ],
       currentAgent: agentMode,
       requestedMode: agentMode,
@@ -333,18 +347,14 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     // Track file writes for real-time display
     const pendingFileWrites = new Map<string, { path: string; content: string }>();
 
-    const eventStream = await app.streamEvents(inputs, {
-      version: "v2",
-      recursionLimit: 100,
-      signal: abortSignal,
-    });
+    const eventStream = app.streamEvents(inputs, { signal: abortSignal });
 
     for await (const event of eventStream) {
       if (abortSignal?.aborted) {
         throw new Error("AbortError");
       }
 
-      const { event: eventType, name, data } = event;
+      const { event: eventType, name, data } = event as { event: string; name?: string; data?: any };
 
       if (eventType === "on_chat_model_start") {
         thinkingStepCounter++;
@@ -368,6 +378,13 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
               : thinkingContent;
             await broadcast(jobId, { type: "step_update", data: { id: currentThinkingId, content: displayContent } });
           }
+        }
+      }
+      else if (eventType === "text_delta") {
+        const text = typeof data?.content === "string" ? data.content : "";
+        if (text) {
+          finalContent += text;
+          await broadcast(jobId, { type: "text_delta", data: { content: text } });
         }
       }
       else if (eventType === "on_chat_model_end") {
@@ -455,25 +472,6 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           }
         }
 
-        if (toolName === "delegate_to_build" && typeof output === "string") {
-          const delegation = parseDelegateResponse(output);
-          if (delegation) {
-            await broadcast(jobId, {
-              type: "delegate_build",
-              data: {
-                plan: delegation.plan,
-                context: delegation.context,
-                threadId: chatId,
-                sandboxId: sandboxId,
-              },
-            });
-            await updateStep(jobId, stepId, { status: "complete", result: "🔄 Delegating to Build agent..." });
-            await broadcast(jobId, { type: "step_complete", data: { id: stepId, result: "🔄 Delegating to Build agent..." } });
-            // Don't return early - let the orchestrator continue with the build agent
-            // The orchestrator's processTools() already routes to build agent via parseDelegateResponse
-          }
-        }
-
         let stepResult: string;
         if (toolName === "create_plan") {
           stepResult = typeof output === "string" ? output : "Plan created";
@@ -515,7 +513,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           }
         }
       }
-      else if (eventType === "on_chain_end" && name === "LangGraph") {
+      else if (eventType === "on_chain_end") {
         const msgs = data?.output?.messages;
         if (msgs && msgs.length > 0) {
           const lastMsg = msgs[msgs.length - 1];

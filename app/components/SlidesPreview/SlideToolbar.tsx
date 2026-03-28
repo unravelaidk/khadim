@@ -15,11 +15,15 @@ interface SlideToolbarProps {
   theme: SlideTheme;
   viewMode: 'preview' | 'code';
   isDownloading: boolean;
+  isStreaming?: boolean;
+  recentUpdate?: string;
+  statusLabel?: string;
   hasRichHtml: boolean;
   onViewModeChange: (mode: 'preview' | 'code') => void;
   onFullscreen: () => void;
   onExportPdf: () => void;
   onExportPptx: () => void;
+  onSavePdfToWorkspace?: () => void;
 }
 
 export function SlideToolbar({
@@ -28,50 +32,51 @@ export function SlideToolbar({
   theme,
   viewMode,
   isDownloading,
+  isStreaming = false,
+  recentUpdate,
+  statusLabel,
   hasRichHtml,
   onViewModeChange,
   onFullscreen,
   onExportPdf,
   onExportPptx,
+  onSavePdfToWorkspace,
 }: SlideToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gb-bg-subtle to-gb-bg border-b border-gb-border">
+    <div className="flex items-center justify-between border-b-2 border-black bg-white px-4 py-3">
       {/* Title Section */}
       <div className="flex items-center gap-3">
-        <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm transition-transform hover:scale-105"
-          style={{ 
-            background: `linear-gradient(135deg, ${theme.accentColor}20 0%, ${theme.accentColor}10 100%)`,
-            border: `1px solid ${theme.accentColor}30`
-          }}
-        >
-          <LuPresentation 
-            className="w-4.5 h-4.5" 
-            style={{ color: theme.accentColor }}
-          />
+        <div className="flex h-9 w-9 items-center justify-center border-2 border-black bg-white shadow-gb-sm">
+          <LuPresentation className="h-4.5 w-4.5 text-black" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-gb-text leading-tight">{title}</h3>
-          <span className="text-xs text-gb-text-muted">
-            {slideCount} {slideCount === 1 ? 'slide' : 'slides'}
-          </span>
+          <h3 className="leading-tight text-sm font-semibold text-black">{title}</h3>
+          <div className="flex items-center gap-2 text-xs text-black/50">
+            <span>{slideCount} {slideCount === 1 ? 'slide' : 'slides'}</span>
+            {isStreaming && (
+              <span className="inline-flex items-center gap-1 border border-black bg-[#e5ff00] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-black">
+                <span className="h-1.5 w-1.5 animate-pulse bg-black" />
+                {statusLabel || 'Updating'}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
         {/* View Toggle */}
-        <div className="flex bg-gb-bg rounded-lg border border-gb-border p-0.5 shadow-sm">
+        <div className="flex border-2 border-black bg-white p-0.5 shadow-gb-sm">
           <button
             onClick={() => onViewModeChange('preview')}
             className={`
-              flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium 
+              flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium 
               transition-all duration-150
               ${viewMode === 'preview' 
-                ? 'bg-gb-bg-card text-gb-text shadow-sm' 
-                : 'text-gb-text-muted hover:text-gb-text hover:bg-gb-bg-card/50'
+                ? 'bg-black text-white' 
+                : 'text-black/50 hover:bg-[#f5f5f5] hover:text-black'
               }
             `}
           >
@@ -81,11 +86,11 @@ export function SlideToolbar({
           <button
             onClick={() => onViewModeChange('code')}
             className={`
-              flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium 
+              flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium 
               transition-all duration-150
               ${viewMode === 'code' 
-                ? 'bg-gb-bg-card text-gb-text shadow-sm' 
-                : 'text-gb-text-muted hover:text-gb-text hover:bg-gb-bg-card/50'
+                ? 'bg-black text-white' 
+                : 'text-black/50 hover:bg-[#f5f5f5] hover:text-black'
               }
             `}
           >
@@ -100,10 +105,9 @@ export function SlideToolbar({
             onClick={() => setShowExportMenu(!showExportMenu)}
             disabled={isDownloading}
             className="
-              flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium 
-              bg-gb-bg border border-gb-border text-gb-text-secondary
-              hover:text-gb-text hover:bg-gb-bg-card hover:border-gb-border-medium
-              disabled:opacity-50 transition-all duration-150 shadow-sm
+              flex items-center gap-1.5 border-2 border-black bg-white px-3 py-1.5 text-xs font-medium 
+              text-black/70 hover:bg-[#f5f5f5] hover:text-black
+              disabled:opacity-50 transition-all duration-150 shadow-gb-sm
             "
           >
             <LuDownload className="w-3.5 h-3.5" />
@@ -122,7 +126,7 @@ export function SlideToolbar({
               />
               
               {/* Menu */}
-              <div className="absolute right-0 top-full mt-2 w-52 bg-gb-bg-card border border-gb-border rounded-xl shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden border-2 border-black bg-white shadow-gb-md animate-in fade-in slide-in-from-top-2 duration-150">
                 <div className="p-1">
                   <button
                     onClick={() => {
@@ -130,11 +134,11 @@ export function SlideToolbar({
                       onExportPdf();
                     }}
                     disabled={isDownloading || !hasRichHtml}
-                    className="w-full flex items-start gap-3 px-3 py-2.5 text-left rounded-lg hover:bg-gb-bg-subtle transition-colors disabled:opacity-50"
+                    className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
                   >
                     <div className="flex-1">
-                      <div className="text-xs font-semibold text-gb-text">PDF Export</div>
-                      <div className="text-[10px] text-gb-text-muted mt-0.5">
+                      <div className="text-xs font-semibold text-black">PDF Export</div>
+                      <div className="mt-0.5 text-[10px] text-black/50">
                         Preserves all CSS styling
                       </div>
                     </div>
@@ -146,20 +150,38 @@ export function SlideToolbar({
                       onExportPptx();
                     }}
                     disabled={isDownloading || !hasRichHtml}
-                    className="w-full flex items-start gap-3 px-3 py-2.5 text-left rounded-lg hover:bg-gb-bg-subtle transition-colors disabled:opacity-50"
+                    className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
                   >
                     <div className="flex-1">
-                      <div className="text-xs font-semibold text-gb-text flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-black">
                         PPTX Export
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-bold tracking-wide border border-amber-500/20">
+                        <span className="border border-black bg-[#e5ff00] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-black">
                           BETA
                         </span>
                       </div>
-                      <div className="text-[10px] text-gb-text-muted mt-0.5">
+                      <div className="mt-0.5 text-[10px] text-black/50">
                         Native editable PowerPoint
                       </div>
                     </div>
                   </button>
+
+                  {onSavePdfToWorkspace && (
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        onSavePdfToWorkspace();
+                      }}
+                      disabled={isDownloading || !hasRichHtml}
+                      className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+                    >
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-black">Save PDF to workspace</div>
+                        <div className="mt-0.5 text-[10px] text-black/50">
+                          Stores the exported PDF with workspace files
+                        </div>
+                      </div>
+                    </button>
+                  )}
                 </div>
               </div>
             </>
@@ -170,10 +192,9 @@ export function SlideToolbar({
         <button
           onClick={onFullscreen}
           className="
-            flex items-center justify-center w-8 h-8 rounded-lg text-xs 
-            bg-gb-bg border border-gb-border text-gb-text-secondary
-            hover:text-gb-text hover:bg-gb-bg-card hover:border-gb-border-medium
-            transition-all duration-150 shadow-sm hover:scale-105
+            flex h-8 w-8 items-center justify-center border-2 border-black bg-white text-xs 
+            text-black/70 hover:bg-[#f5f5f5] hover:text-black
+            transition-all duration-150 shadow-gb-sm
           "
           title="Present fullscreen (ESC to exit)"
         >

@@ -4,8 +4,6 @@ import { useNavigate } from "react-router";
 import type { AgentConfig, Message, PendingQuestion } from "../../../types/chat";
 import type { SlideTemplate, SlideTheme } from "../../../types/slides";
 import type { AttachedFile } from "../WelcomeScreen";
-import type { Workspace } from "../../workspace";
-import { mockWorkspaces } from "../../workspace";
 import { useAgentStream } from "../../../hooks/useAgentStream";
 import { agentMessages, showError } from "../../../lib/toast";
 
@@ -20,6 +18,8 @@ export type ActiveBadge = {
 
 interface UseAgentBuilderOptions {
   initialChatId?: string;
+  initialView?: "chat" | "workspace";
+  initialWorkspaceId?: string | null;
 }
 
 export interface AgentBuilderState {
@@ -32,16 +32,15 @@ export interface AgentBuilderState {
   activeBadges: ActiveBadge[];
   sandboxId: string | null;
   chatId: string | null;
+  selectedWorkspaceId: string | null;
   jobId: string | null;
   sidebarRefreshKey: number;
   isProcessing: boolean;
   activeAgent: { mode: "plan" | "build"; name: string } | null;
   pendingQuestion: PendingQuestion | null;
-  currentView: "chat" | "library";
+  currentView: "chat" | "workspace" | "settings";
   isSidebarOpen: boolean;
   attachedFiles: AttachedFile[];
-  workspaces: Workspace[];
-  selectedWorkspaceId: string | null;
   isInitialState: boolean;
 }
 
@@ -50,10 +49,12 @@ export interface AgentBuilderActions {
   setShowPreview: (value: boolean) => void;
   setIsSidebarOpen: (value: boolean) => void;
   setAttachedFiles: (files: AttachedFile[]) => void;
-  setCurrentView: (view: "chat" | "library") => void;
+  handleNavigate: (view: "chat" | "workspace" | "settings") => void;
   handleSelectChat: (selectedChatId: string | null) => Promise<void>;
   handleNewChat: () => void;
-  handleSelectWorkspace: (id: string) => void;
+  handleSelectWorkspace: (workspaceId: string | null) => void;
+  handleOpenWorkspace: () => void;
+  handleCreateChatInWorkspace: () => Promise<void>;
   handleSend: () => Promise<void>;
   handleStop: () => void;
   handleAnswerQuestion: (answer: string) => Promise<void>;
@@ -64,7 +65,19 @@ export interface AgentBuilderActions {
   clearPendingQuestion: () => void;
 }
 
-export function useAgentBuilder({ initialChatId }: UseAgentBuilderOptions) {
+export function useAgentBuilder({ initialChatId, initialView = "chat", initialWorkspaceId = null }: UseAgentBuilderOptions) {
+  const getClientSessionId = () => {
+    if (typeof window === "undefined") return "default";
+
+    const storageKey = "khadim-agent-session-id";
+    const existing = window.sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+
+    const sessionId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    window.sessionStorage.setItem(storageKey, sessionId);
+    return sessionId;
+  };
+
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -75,21 +88,19 @@ export function useAgentBuilder({ initialChatId }: UseAgentBuilderOptions) {
   const [activeBadges, setActiveBadges] = useState<ActiveBadge[]>([]);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(initialChatId || null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(initialWorkspaceId);
   const [jobId, setJobId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgent, setActiveAgent] = useState<{ mode: "plan" | "build"; name: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string>(getClientSessionId());
   const initialLoadRef = useRef(false);
 
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
-  const [currentView, setCurrentView] = useState<"chat" | "library">("chat");
+  const [currentView, setCurrentView] = useState<"chat" | "workspace" | "settings">(initialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
-  const [workspaces] = useState<Workspace[]>(mockWorkspaces);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
-    mockWorkspaces[0]?.id ?? null
-  );
 
   const removeAttachedFile = (fileName: string) => {
     setAttachedFiles((prev) => prev.filter((file) => file.name !== fileName));
@@ -173,6 +184,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
       const { chat } = await response.json();
       setChatId(chat.id);
+      setSelectedWorkspaceId(chat.workspaceId || null);
 
       const loadedMessages: Message[] = chat.messages.map((msg: any) => {
         let fileContent: string | undefined;
@@ -224,7 +236,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       }
 
       try {
-        const jobResponse = await fetch(`/api/agent?chatId=${chat.id}`);
+        const jobResponse = await fetch(`/api/agent?chatId=${chat.id}&sessionId=${encodeURIComponent(sessionIdRef.current)}`);
         if (!jobResponse.ok) return;
 
         setIsProcessing(true);
@@ -274,9 +286,86 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     navigate("/");
   };
 
-  const handleSelectWorkspace = (id: string) => {
-    setSelectedWorkspaceId(id);
-    setCurrentView("chat");
+  const handleSelectWorkspace = (workspaceId: string | null) => {
+    setSelectedWorkspaceId(workspaceId);
+    setCurrentView("workspace");
+    navigate(workspaceId ? `/workspace/${workspaceId}` : "/workspace");
+  };
+
+  const deriveWorkspaceName = () => {
+    const firstUserMessage = messages.find((message) => message.role === "user" && message.content.trim().length > 0);
+    if (firstUserMessage) {
+      return generateTitle(firstUserMessage.content).replace(/\.\.\.$/, "") + " Workspace";
+    }
+    return "New Workspace";
+  };
+
+  const createWorkspace = async (sourceChatId?: string | null) => {
+    const formData = new FormData();
+    formData.append("name", deriveWorkspaceName());
+    formData.append("agentId", activeAgent?.mode || "build");
+    if (sourceChatId) {
+      formData.append("chatId", sourceChatId);
+    }
+
+    const response = await fetch("/api/workspaces", { method: "POST", body: formData });
+    if (!response.ok) {
+      throw new Error("Failed to create workspace");
+    }
+
+    const { workspace } = await response.json();
+    setSelectedWorkspaceId(workspace.id);
+    return workspace as { id: string };
+  };
+
+  const handleOpenWorkspace = async () => {
+    try {
+      if (selectedWorkspaceId) {
+        setCurrentView("workspace");
+        navigate(`/workspace/${selectedWorkspaceId}`);
+        return;
+      }
+
+      const workspace = await createWorkspace(chatId);
+      setCurrentView("workspace");
+      navigate(`/workspace/${workspace.id}`);
+    } catch (error) {
+      showError("Failed to open workspace. Please try again.");
+    }
+  };
+
+  const handleCreateChatInWorkspace = async () => {
+    if (!selectedWorkspaceId) {
+      handleNewChat();
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("title", "New Chat");
+    formData.append("workspaceId", selectedWorkspaceId);
+
+    const response = await fetch("/api/chats", { method: "POST", body: formData });
+    if (!response.ok) {
+      showError("Failed to create workspace chat. Please try again.");
+      return;
+    }
+
+    const { chat } = await response.json();
+    setSidebarRefreshKey((prev) => prev + 1);
+    await handleSelectChat(chat.id);
+  };
+
+  const handleNavigate = (view: "chat" | "workspace" | "settings") => {
+    setCurrentView(view);
+
+    if (view === "chat") {
+      navigate(chatId ? `/agent/${chatId}` : "/");
+      return;
+    }
+
+    if (view === "workspace") {
+      navigate(selectedWorkspaceId ? `/workspace/${selectedWorkspaceId}` : "/workspace");
+    }
   };
 
   const scrollToBottom = () => {
@@ -334,6 +423,9 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       if (!currentChatId) {
         const createChatForm = new FormData();
         createChatForm.append("title", generateTitle(userMessage.content));
+        if (selectedWorkspaceId) {
+          createChatForm.append("workspaceId", selectedWorkspaceId);
+        }
         const chatResponse = await fetch("/api/chats", {
           method: "POST",
           body: createChatForm,
@@ -342,6 +434,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           const { chat } = await chatResponse.json();
           currentChatId = chat.id;
           setChatId(chat.id);
+          setSelectedWorkspaceId(chat.workspaceId || selectedWorkspaceId || null);
           setSidebarRefreshKey((prev) => prev + 1);
           navigate(`/agent/${chat.id}`, { replace: true });
         }
@@ -365,6 +458,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       if (currentChatId) {
         formData.append("chatId", currentChatId);
       }
+      formData.append("sessionId", sessionIdRef.current);
       if (activeBadges.length > 0) {
         formData.append("badges", JSON.stringify(activeBadges));
       }
@@ -424,6 +518,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       const stopForm = new FormData();
       if (jobId) stopForm.append("jobId", jobId);
       if (chatId) stopForm.append("chatId", chatId);
+      stopForm.append("sessionId", sessionIdRef.current);
       fetch("/api/agent/stop", { method: "POST", body: stopForm });
     }
     abortControllerRef.current = null;
@@ -493,6 +588,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     if (pendingQuestion.threadId) {
       formData.append("threadId", pendingQuestion.threadId);
     }
+    formData.append("sessionId", sessionIdRef.current);
 
     setIsTyping(true);
     setIsProcessing(true);
@@ -568,6 +664,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       activeBadges,
       sandboxId,
       chatId,
+      selectedWorkspaceId,
       jobId,
       sidebarRefreshKey,
       isProcessing,
@@ -576,8 +673,6 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       currentView,
       isSidebarOpen,
       attachedFiles,
-      workspaces,
-      selectedWorkspaceId,
       isInitialState,
     },
     actions: {
@@ -585,10 +680,12 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       setShowPreview,
       setIsSidebarOpen,
       setAttachedFiles,
-      setCurrentView,
+      handleNavigate,
       handleSelectChat,
       handleNewChat,
       handleSelectWorkspace,
+      handleOpenWorkspace,
+      handleCreateChatInWorkspace,
       handleSend,
       handleStop,
       handleAnswerQuestion,

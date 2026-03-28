@@ -3,10 +3,10 @@ import { getSlidePptxColor } from "../slideTemplates";
 import type { 
   SlideData, 
   SlideTheme, 
-  ShapeData, 
-  ExtractedSlideData 
 } from "../../../types/slides";
 import { extractSlideData } from "../utils/slideExtraction";
+import { getSlideBodyText } from "../../SlidesPreview/utils";
+import { showError, showSuccess } from "../../../lib/toast";
 
 interface UseSlideExportProps {
   slides: SlideData[];
@@ -14,6 +14,7 @@ interface UseSlideExportProps {
   title: string;
   currentTheme: SlideTheme;
   onDownloadPptx?: () => void;
+  workspaceId?: string | null;
 }
 
 export function useSlideExport({
@@ -22,6 +23,7 @@ export function useSlideExport({
   title,
   currentTheme,
   onDownloadPptx,
+  workspaceId,
 }: UseSlideExportProps) {
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -63,9 +65,9 @@ export function useSlideExport({
           });
         }
 
-        // Add other content based on slide type (simplified for basic export)
-        if (slide.content) {
-          pptSlide.addText(slide.content, {
+        const bodyText = getSlideBodyText(slide);
+        if (bodyText) {
+          pptSlide.addText(bodyText, {
             x: 0.5,
             y: 2.0,
             w: "90%",
@@ -132,23 +134,14 @@ export function useSlideExport({
     setIsDownloading(true);
 
     try {
-      // Extract slides in editable mode to get both background image AND text elements
-      const extractedSlides = await extractSlideData({
-        slides,
-        htmlContent,
-        mode: "editable" // Get text elements for overlay
-      });
-
-      // Also get full slide images for backgrounds
-      const imageSlides = await extractSlideData({
-        slides,
-        htmlContent,
-        mode: "image"
-      });
+      // Extract full slide images + text for searchable PDF
+      const [imageSlides, editableSlides] = await Promise.all([
+        extractSlideData({ slides, htmlContent, mode: "image" }),
+        extractSlideData({ slides, htmlContent, mode: "editable" }),
+      ]);
 
       const jsPDF = (await import("jspdf")).jsPDF;
 
-      // Use higher resolution for crisp output
       const width = 1280;
       const height = 720;
 
@@ -159,92 +152,46 @@ export function useSlideExport({
         compress: true
       });
 
-      // Helper to convert CSS color to RGB
-      const parseColor = (color: string): { r: number; g: number; b: number } => {
-        if (!color || color === 'transparent') return { r: 255, g: 255, b: 255 };
-
-        // Handle rgb/rgba
-        const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (rgbMatch) {
-          return {
-            r: parseInt(rgbMatch[1]),
-            g: parseInt(rgbMatch[2]),
-            b: parseInt(rgbMatch[3])
-          };
-        }
-
-        // Handle hex
-        const hexMatch = color.match(/#([a-fA-F0-9]{2})([a-fA-F0-9]{2})([a-fA-F0-9]{2})/);
-        if (hexMatch) {
-          return {
-            r: parseInt(hexMatch[1], 16),
-            g: parseInt(hexMatch[2], 16),
-            b: parseInt(hexMatch[3], 16)
-          };
-        }
-
-        return { r: 255, g: 255, b: 255 };
-      };
-
-      for (let i = 0; i < extractedSlides.length; i++) {
+      for (let i = 0; i < slides.length; i++) {
         if (i > 0) pdf.addPage([width, height], "landscape");
 
         const imageSlide = imageSlides[i];
-        const editableSlide = extractedSlides[i];
+        const editableSlide = editableSlides[i];
 
-        // Add full slide image as background (preserves exact visual)
+        // Full slide screenshot as background — pixel-perfect
         if (imageSlide?.backgroundImage) {
-          pdf.addImage(
-            imageSlide.backgroundImage,
-            "PNG",
-            0,
-            0,
-            width,
-            height,
-            undefined,
-            "FAST"
-          );
+          pdf.addImage(imageSlide.backgroundImage, "PNG", 0, 0, width, height, undefined, "FAST");
         }
 
-        // Add invisible text layer for selectability/searchability (OCR-style)
-        // Text is fully transparent but still selectable in PDF viewers
-        if (editableSlide?.textElements && editableSlide.textElements.length > 0) {
-          // Set text to be invisible (transparent) but still selectable
+        // Invisible text layer for copy/paste and search
+        if (editableSlide?.textElements?.length) {
           pdf.setTextColor(0, 0, 0);
-          // Use GState to make text fully transparent
           const gState = new (pdf as any).GState({ opacity: 0 });
           pdf.setGState(gState);
 
           for (const textEl of editableSlide.textElements) {
-            if (!textEl.text || textEl.text.trim().length === 0) continue;
+            if (!textEl.text?.trim()) continue;
 
-            // Set font to match original styling for proper positioning
-            const fontStyle = textEl.isBold && textEl.isItalic
-              ? "bolditalic"
-              : textEl.isBold
-                ? "bold"
-                : textEl.isItalic
-                  ? "italic"
-                  : "normal";
+            const fontStyle = textEl.isBold && textEl.isItalic ? "bolditalic"
+              : textEl.isBold ? "bold"
+              : textEl.isItalic ? "italic"
+              : "normal";
 
             pdf.setFont("helvetica", fontStyle);
             pdf.setFontSize(textEl.fontSize || 16);
 
-            // Position text to overlay exactly on the image text
             const x = textEl.x + 5;
             const y = textEl.y + (textEl.fontSize || 16);
-
             const maxWidth = textEl.w - 10;
             const lines = pdf.splitTextToSize(textEl.text, maxWidth);
 
             pdf.text(lines, x, y, {
-              maxWidth: maxWidth,
+              maxWidth,
               align: textEl.textAlign === "center" ? "center" :
                      textEl.textAlign === "right" ? "right" : "left"
             });
           }
 
-          // Reset opacity for any future additions
           const resetGState = new (pdf as any).GState({ opacity: 1 });
           pdf.setGState(resetGState);
         }
@@ -260,10 +207,112 @@ export function useSlideExport({
     }
   };
 
+  const savePdfToWorkspace = async () => {
+    if (!workspaceId) {
+      showError("Open a workspace to save this PDF there.");
+      return;
+    }
+
+    if (!htmlContent) {
+      showError("No slide HTML is available to save as PDF.");
+      return;
+    }
+
+    setIsDownloading(true);
+
+    try {
+      const [imageSlides, editableSlides] = await Promise.all([
+        extractSlideData({ slides, htmlContent, mode: "image" }),
+        extractSlideData({ slides, htmlContent, mode: "editable" }),
+      ]);
+
+      const jsPDF = (await import("jspdf")).jsPDF;
+      const width = 1280;
+      const height = 720;
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "px",
+        format: [width, height],
+        compress: true,
+      });
+
+      for (let i = 0; i < slides.length; i++) {
+        if (i > 0) pdf.addPage([width, height], "landscape");
+
+        const imageSlide = imageSlides[i];
+        const editableSlide = editableSlides[i];
+
+        if (imageSlide?.backgroundImage) {
+          pdf.addImage(imageSlide.backgroundImage, "PNG", 0, 0, width, height, undefined, "FAST");
+        }
+
+        if (editableSlide?.textElements?.length) {
+          pdf.setTextColor(0, 0, 0);
+          const gState = new (pdf as any).GState({ opacity: 0 });
+          pdf.setGState(gState);
+
+          for (const textEl of editableSlide.textElements) {
+            if (!textEl.text?.trim()) continue;
+            const fontStyle = textEl.isBold && textEl.isItalic ? "bolditalic"
+              : textEl.isBold ? "bold"
+              : textEl.isItalic ? "italic"
+              : "normal";
+            pdf.setFont("helvetica", fontStyle);
+            pdf.setFontSize(textEl.fontSize || 16);
+            const x = textEl.x + 5;
+            const y = textEl.y + (textEl.fontSize || 16);
+            const maxWidth = textEl.w - 10;
+            const lines = pdf.splitTextToSize(textEl.text, maxWidth);
+            pdf.text(lines, x, y, {
+              maxWidth,
+              align: textEl.textAlign === "center" ? "center" : textEl.textAlign === "right" ? "right" : "left",
+            });
+          }
+
+          const resetGState = new (pdf as any).GState({ opacity: 1 });
+          pdf.setGState(resetGState);
+        }
+      }
+
+      const arrayBuffer = pdf.output("arraybuffer");
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      const base64 = btoa(binary);
+
+      const formData = new FormData();
+      formData.append("workspaceId", workspaceId);
+      formData.append("path", `exports/${title.replace(/[^a-z0-9]/gi, "_")}.pdf`);
+      formData.append("content", `base64:${base64}`);
+      formData.append("mimeType", "application/pdf");
+      formData.append("size", String(bytes.length));
+
+      const response = await fetch("/api/workspace-files", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save PDF to workspace");
+      }
+
+      showSuccess("PDF saved to workspace.");
+    } catch (error) {
+      console.error("Error saving PDF to workspace:", error);
+      showError("Failed to save PDF to workspace.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return {
     isDownloading,
     downloadAsPptx,
     downloadAsStyledPptx,
-    downloadAsPdf
+    downloadAsPdf,
+    savePdfToWorkspace,
   };
 }
