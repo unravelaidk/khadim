@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { LuX, LuDownload, LuCopy, LuCheck, LuFile, LuSave } from "react-icons/lu";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 interface FileEditorModalProps {
   isOpen: boolean;
