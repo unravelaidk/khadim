@@ -211,7 +211,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     
     let resolvedModel: { model: Model<any>; apiKey: string; temperature: number };
     if (modelConfig) {
-      resolvedModel = createModelInstance(modelConfig, apiKey);
+      resolvedModel = await createModelInstance(modelConfig, apiKey);
     } else {
       throw new Error("No active model configured. Add or activate a model in Settings.");
     }

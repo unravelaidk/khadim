@@ -11,10 +11,16 @@ import {
 } from "../agent/model-manager";
 import { SUPPORTED_PROVIDERS, RECOMMENDED_MODELS } from "../agent/models";
 import { discoverProviderModels } from "../agent/provider-models";
+import {
+  getOpenAICodexLoginStatus,
+  hasOpenAICodexAuth,
+  startOpenAICodexLogin,
+  submitOpenAICodexManualCode,
+} from "../agent/oauth";
 
 const modelSchema = z.object({
   name: z.string().min(1),
-  provider: z.enum(["openai", "anthropic", "openrouter", "ollama"]),
+  provider: z.enum(["openai", "anthropic", "openai-codex", "openrouter", "ollama"]),
   model: z.string().min(1),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
@@ -33,7 +39,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   if (action === "providers") {
-    return Response.json({ providers: SUPPORTED_PROVIDERS, recommended: RECOMMENDED_MODELS });
+    return Response.json({
+      providers: SUPPORTED_PROVIDERS,
+      recommended: RECOMMENDED_MODELS,
+      oauth: {
+        openaiCodexConnected: await hasOpenAICodexAuth(),
+      },
+    });
+  }
+
+  if (action === "codexAuthStatus") {
+    const sessionId = url.searchParams.get("sessionId");
+    if (!sessionId) {
+      return Response.json({ error: "Session ID is required" }, { status: 400 });
+    }
+
+    const session = getOpenAICodexLoginStatus(sessionId);
+    return Response.json({
+      success: true,
+      session,
+      oauth: {
+        openaiCodexConnected: await hasOpenAICodexAuth(),
+      },
+    });
   }
 
   const models = await getAllModels();
@@ -136,12 +164,39 @@ export async function action({ request }: ActionFunctionArgs) {
         }
 
         const models = await discoverProviderModels({
-          provider: provider as "openai" | "anthropic" | "openrouter" | "ollama",
+          provider: provider as "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama",
           apiKey: formData.get("apiKey")?.toString() || undefined,
           baseUrl: formData.get("baseUrl")?.toString() || undefined,
         });
 
         return Response.json({ success: true, models });
+      }
+
+      case "codexAuthStart": {
+        const session = await startOpenAICodexLogin();
+        return Response.json({
+          success: true,
+          session,
+          oauth: {
+            openaiCodexConnected: await hasOpenAICodexAuth(),
+          },
+        });
+      }
+
+      case "codexAuthComplete": {
+        const sessionId = formData.get("sessionId")?.toString();
+        const code = formData.get("code")?.toString();
+
+        if (!sessionId) {
+          return Response.json({ error: "Session ID is required" }, { status: 400 });
+        }
+
+        if (!code) {
+          return Response.json({ error: "Authorization code is required" }, { status: 400 });
+        }
+
+        submitOpenAICodexManualCode(sessionId, code);
+        return Response.json({ success: true });
       }
 
       default:

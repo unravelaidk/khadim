@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { showError, showSuccess } from "../../lib/toast";
-import { LuBrain, LuGlobe, LuBot, LuServer, LuSearch, LuCheck } from "react-icons/lu";
+import { LuBrain, LuGlobe, LuBot, LuServer, LuSearch, LuCheck, LuCodeXml } from "react-icons/lu";
 
-type ProviderType = "openai" | "anthropic" | "openrouter" | "ollama";
+type ProviderType = "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama";
 
 interface ModelConfig {
   id: string;
@@ -29,6 +29,13 @@ interface DiscoveredModel {
 interface ApiData {
   models?: ModelConfig[];
   providers?: ProviderOption[];
+  oauth?: {
+    openaiCodexConnected?: boolean;
+  };
+  session?: {
+    sessionId: string;
+    authUrl: string;
+  };
   success?: boolean;
   error?: string;
 }
@@ -37,6 +44,19 @@ interface DiscoverApiData {
   success?: boolean;
   models?: DiscoveredModel[];
   error?: string;
+}
+
+interface CodexAuthStatusApiData {
+  success?: boolean;
+  error?: string;
+  oauth?: {
+    openaiCodexConnected?: boolean;
+  };
+  session?: {
+    status: "pending" | "connected" | "failed";
+    error: string | null;
+    authUrl: string | null;
+  };
 }
 
 const EMPTY_FORM = {
@@ -56,6 +76,12 @@ export function SettingsPanel() {
   const [discovering, setDiscovering] = useState(false);
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [codexConnected, setCodexConnected] = useState(false);
+  const [codexConnecting, setCodexConnecting] = useState(false);
+  const [codexSessionId, setCodexSessionId] = useState<string | null>(null);
+  const [codexAuthUrl, setCodexAuthUrl] = useState<string | null>(null);
+  const [manualCode, setManualCode] = useState("");
+  const [submittingManualCode, setSubmittingManualCode] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
   const providerInfo = useMemo(
@@ -76,6 +102,7 @@ export function SettingsPanel() {
 
       setModels(modelsData.models ?? []);
       setProviders(providersData.providers ?? []);
+      setCodexConnected(Boolean(providersData.oauth?.openaiCodexConnected));
     } catch (error) {
       console.error("Failed to load model settings", error);
       showError("Failed to load model settings");
@@ -135,6 +162,81 @@ export function SettingsPanel() {
 
     return () => clearTimeout(timeout);
   }, [form.provider, form.apiKey, form.baseUrl]);
+
+  useEffect(() => {
+    if (!codexSessionId) return;
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/models?action=codexAuthStatus&sessionId=${encodeURIComponent(codexSessionId)}`);
+        const payload = (await response.json()) as CodexAuthStatusApiData;
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Failed to check Codex connection status");
+        }
+
+        setCodexConnected(Boolean(payload.oauth?.openaiCodexConnected));
+        setCodexAuthUrl(payload.session?.authUrl ?? null);
+
+        if (payload.session?.status === "connected") {
+          setCodexConnecting(false);
+          setCodexSessionId(null);
+          setManualCode("");
+          showSuccess("Codex subscription connected");
+          await fetchSettings();
+        }
+
+        if (payload.session?.status === "failed") {
+          setCodexConnecting(false);
+          setCodexSessionId(null);
+          showError(payload.session.error || "Failed to connect Codex");
+        }
+      } catch (error) {
+        setCodexConnecting(false);
+        setCodexSessionId(null);
+        showError(error instanceof Error ? error.message : "Failed to check Codex status");
+      }
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
+  }, [codexSessionId]);
+
+  const handleStartCodexAuth = async () => {
+    setCodexConnecting(true);
+    try {
+      const payload = await submitIntent("codexAuthStart", {});
+      const session = payload.session;
+
+      if (!session?.sessionId || !session.authUrl) {
+        throw new Error("Failed to start Codex login");
+      }
+
+      setCodexSessionId(session.sessionId);
+      setCodexAuthUrl(session.authUrl);
+      window.open(session.authUrl, "_blank", "noopener,noreferrer");
+      showSuccess("Opened Codex login in a new tab");
+    } catch (error) {
+      setCodexConnecting(false);
+      showError(error instanceof Error ? error.message : "Failed to start Codex login");
+    }
+  };
+
+  const handleSubmitManualCode = async () => {
+    if (!codexSessionId || !manualCode.trim()) return;
+
+    setSubmittingManualCode(true);
+    try {
+      await submitIntent("codexAuthComplete", {
+        sessionId: codexSessionId,
+        code: manualCode.trim(),
+      });
+      showSuccess("Authorization code submitted");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to submit authorization code");
+    } finally {
+      setSubmittingManualCode(false);
+    }
+  };
 
   const handleCreateModel = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -218,6 +320,8 @@ export function SettingsPanel() {
         return <LuBrain className="h-4 w-4" />;
       case "anthropic":
         return <LuBot className="h-4 w-4" />;
+      case "openai-codex":
+        return <LuCodeXml className="h-4 w-4" />;
       case "openrouter":
         return <LuGlobe className="h-4 w-4" />;
       case "ollama":
@@ -242,6 +346,60 @@ export function SettingsPanel() {
           <p className="mt-1 text-xs text-gb-text-secondary">
             Models are fetched automatically when provider, key, or base URL changes.
           </p>
+          {form.provider === "openai-codex" ? (
+            <div className="mt-3 rounded-2xl border border-gb-border/70 bg-gb-bg-subtle/40 p-3 md:col-span-2">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gb-text">ChatGPT Plus or Pro</p>
+                  <p className="mt-1 text-xs text-gb-text-secondary">
+                    Connect your Codex subscription once, then add any supported Codex model without storing a manual API key.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-gb-bg px-2.5 py-1 text-xs text-gb-text-secondary">
+                    {codexConnected ? "Connected" : codexConnecting ? "Waiting for login" : "Not connected"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleStartCodexAuth}
+                    disabled={codexConnecting}
+                    className="rounded-xl border border-gb-border px-3 py-2 text-xs font-medium text-gb-text hover:bg-gb-bg disabled:opacity-60"
+                  >
+                    {codexConnected ? "Reconnect Codex" : codexConnecting ? "Connecting..." : "Connect Codex"}
+                  </button>
+                </div>
+              </div>
+
+              {codexAuthUrl ? (
+                <div className="mt-3 space-y-2">
+                  <a
+                    href={codexAuthUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex text-xs text-gb-accent hover:underline"
+                  >
+                    Open login page again
+                  </a>
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <input
+                      value={manualCode}
+                      onChange={(event) => setManualCode(event.target.value)}
+                      className="flex-1 rounded-xl border border-gb-border/70 bg-gb-bg px-3.5 py-2.5 text-sm text-gb-text"
+                      placeholder="Paste the redirect URL or authorization code if the browser callback does not finish"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSubmitManualCode}
+                      disabled={!codexSessionId || !manualCode.trim() || submittingManualCode}
+                      className="rounded-xl border border-gb-border px-3 py-2 text-xs font-medium text-gb-text hover:bg-gb-bg disabled:opacity-60"
+                    >
+                      {submittingManualCode ? "Submitting..." : "Submit code"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <input
               required
@@ -297,7 +455,9 @@ export function SettingsPanel() {
               value={form.apiKey}
               onChange={(event) => setForm((previous) => ({ ...previous, apiKey: event.target.value }))}
               className="rounded-xl border border-gb-border/70 bg-gb-bg px-3.5 py-2.5 text-sm text-gb-text md:col-span-2"
-              placeholder="API key (optional if server env provides it)"
+              placeholder={form.provider === "openai-codex"
+                ? "API key optional if auth.json or OPENAI_CODEX_API_KEY is available"
+                : "API key (optional if server env provides it)"}
             />
 
             {providerInfo?.needsBaseUrl && (
