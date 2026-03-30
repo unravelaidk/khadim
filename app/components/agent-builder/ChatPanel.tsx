@@ -6,6 +6,7 @@ import { StickySlidePreview } from "./StickySlidePreview";
 import type { RefObject } from "react";
 import type { ActiveBadge } from "./hooks/useAgentBuilder";
 import type { AttachedFile } from "./WelcomeScreen";
+import type { ModelOption } from "./ModelSelector";
 import type { Message, PendingQuestion } from "../../types/chat";
 
 interface ChatPanelProps {
@@ -32,6 +33,13 @@ interface ChatPanelProps {
   onViewWorkspace: () => void;
   hasWorkspace: boolean;
   workspaceId?: string | null;
+  availableModels: ModelOption[];
+  selectedModelId: string | null;
+  isModelLoading: boolean;
+  isModelUpdating: boolean;
+  onSelectModel: (modelId: string) => Promise<void>;
+  webBrowsingEnabled: boolean;
+  onToggleWebBrowsing: (enabled: boolean) => void;
 }
 
 export function ChatPanel({
@@ -58,6 +66,13 @@ export function ChatPanel({
   onViewWorkspace,
   hasWorkspace,
   workspaceId,
+  availableModels,
+  selectedModelId,
+  isModelLoading,
+  isModelUpdating,
+  onSelectModel,
+  webBrowsingEnabled,
+  onToggleWebBrowsing,
 }: ChatPanelProps) {
   // Derive latest slide artifact + building state from messages
   const slideState = useMemo(() => {
@@ -102,7 +117,7 @@ export function ChatPanel({
   const [slideMinimized, setSlideMinimized] = useState(false);
 
   return (
-    <>
+    <div className="relative flex h-full min-h-0 flex-col">
       {/* Sticky slide preview panel */}
       {slideState && !isInitialState && (
         <StickySlidePreview
@@ -116,10 +131,10 @@ export function ChatPanel({
       )}
 
       <main
-        className={`flex-1 overflow-y-auto ${
+        className={`min-h-0 flex-1 overflow-y-auto ${
           isInitialState
-            ? "flex items-center justify-center px-0 py-4 sm:py-6"
-            : "px-2 pb-28 pt-4 sm:px-3 sm:pt-6 md:px-6 md:pb-36 md:pt-8"
+            ? "flex items-start justify-center px-0 py-6 sm:py-8 lg:py-10"
+            : "px-2 pb-52 pt-4 sm:px-3 sm:pt-6 md:px-6 md:pb-56 md:pt-8"
         }`}
       >
         {!isInitialState && (
@@ -128,14 +143,14 @@ export function ChatPanel({
               {hasWorkspace ? (
                 <button
                   onClick={onViewWorkspace}
-                  className="border-2 border-black bg-black px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-white transition-colors hover:bg-black/80"
+                  className="btn-ink rounded-full px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.18em]"
                 >
                   View workspace
                 </button>
               ) : (
                 <button
                   onClick={onStartWorkspace}
-                  className="border-2 border-black bg-white px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-black transition-colors hover:bg-black hover:text-white"
+                  className="btn-glass rounded-full px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.18em]"
                 >
                   Start workspace
                 </button>
@@ -165,22 +180,42 @@ export function ChatPanel({
             onFilesAttached={onFilesAttached}
             onRemoveFile={onRemoveFile}
             onStartWorkspace={hasWorkspace ? undefined : onStartWorkspace}
+            availableModels={availableModels}
+            selectedModelId={selectedModelId}
+            isModelLoading={isModelLoading}
+            isModelUpdating={isModelUpdating}
+            onSelectModel={onSelectModel}
+            webBrowsingEnabled={webBrowsingEnabled}
+            onToggleWebBrowsing={onToggleWebBrowsing}
           />
         )}
       </main>
 
       {!isInitialState && (
-        <ChatInput
-          value={input}
-          onChange={onInputChange}
-          onSend={onSend}
-          onStop={onStop}
-          isProcessing={isProcessing}
-          activeAgent={activeAgent}
-          isCompact={false}
-          position="fixed"
-        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40">
+          {/* Fade gradient overlay */}
+          <div className="h-16 bg-gradient-to-t from-[var(--surface-bg)] to-transparent" />
+          <div className="pointer-events-auto bg-[var(--surface-bg)]">
+            <ChatInput
+              value={input}
+              onChange={onInputChange}
+              onSend={onSend}
+              onStop={onStop}
+              isProcessing={isProcessing}
+              activeAgent={activeAgent}
+              isCompact={false}
+              position="relative"
+              availableModels={availableModels}
+              selectedModelId={selectedModelId}
+              isModelLoading={isModelLoading}
+              isModelUpdating={isModelUpdating}
+              onSelectModel={onSelectModel}
+              webBrowsingEnabled={webBrowsingEnabled}
+              onToggleWebBrowsing={onToggleWebBrowsing}
+            />
+          </div>
+        </div>
       )}
-    </>
+    </div>
   );
 }

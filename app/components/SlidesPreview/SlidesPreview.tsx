@@ -19,6 +19,7 @@ interface SlidesPreviewProps {
   initialTheme?: string;
   isStreaming?: boolean;
   workspaceId?: string | null;
+  hideHeader?: boolean;
 }
 
 export function SlidesPreview({
@@ -29,6 +30,7 @@ export function SlidesPreview({
   initialTheme = 'brass',
   isStreaming = false,
   workspaceId,
+  hideHeader = false,
 }: SlidesPreviewProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
@@ -150,34 +152,38 @@ export function SlidesPreview({
       />
 
       {/* Main Preview Card */}
-      <div className="overflow-hidden border-2 border-black bg-white shadow-gb-md">
-        {/* Toolbar */}
-        <SlideToolbar
-          title={title}
-          slideCount={slides.length}
-          theme={currentTheme}
-          viewMode={viewMode}
-          isDownloading={isDownloading}
-          isStreaming={isStreaming}
-          recentUpdate={recentUpdate}
-          statusLabel={statusLabel}
-          hasRichHtml={hasRichHtml}
-          onViewModeChange={setViewMode}
-          onFullscreen={() => setIsFullscreen(true)}
-          onExportPdf={downloadAsPdf}
-          onExportPptx={downloadAsStyledPptx}
-          onSavePdfToWorkspace={workspaceId ? savePdfToWorkspace : undefined}
-        />
+      <div className="overflow-hidden rounded-2xl glass-panel-strong">
+        {!hideHeader && (
+          <>
+            {/* Toolbar */}
+            <SlideToolbar
+              title={title}
+              slideCount={slides.length}
+              theme={currentTheme}
+              viewMode={viewMode}
+              isDownloading={isDownloading}
+              isStreaming={isStreaming}
+              recentUpdate={recentUpdate}
+              statusLabel={statusLabel}
+              hasRichHtml={hasRichHtml}
+              onViewModeChange={setViewMode}
+              onFullscreen={() => setIsFullscreen(true)}
+              onExportPdf={downloadAsPdf}
+              onExportPptx={downloadAsStyledPptx}
+              onSavePdfToWorkspace={workspaceId ? savePdfToWorkspace : undefined}
+            />
 
-        {/* Main Content */}
-        <div className="border-b-2 border-black bg-[#f5f5f5] px-4 py-2 text-xs text-black/70">
-          <span className="font-medium text-black">{statusLabel}:</span>{' '}
-              <span>{recentUpdate}</span>
-        </div>
+            {/* Main Content */}
+            <div className="border-b border-[var(--glass-border)] bg-[var(--glass-bg)] px-4 py-2 text-xs text-[var(--text-secondary)]">
+              <span className="font-medium text-[var(--text-primary)]">{statusLabel}:</span>{' '}
+                  <span>{recentUpdate}</span>
+            </div>
+          </>
+        )}
 
         <div className="flex h-[360px] md:h-[460px] lg:h-[520px] flex-col md:flex-row">
           {/* Sidebar with Thumbnails */}
-          <div className="w-full border-b-2 border-black bg-[#fafafa] md:w-48 md:border-b-0 md:border-r-2 lg:w-52 overflow-x-auto md:overflow-y-auto p-2.5 md:space-y-2.5 flex md:block gap-2.5 scrollbar-hide">
+          <div className="w-full border-b border-[var(--glass-border)] bg-[var(--glass-bg)] md:w-48 md:border-b-0 md:border-r-[var(--glass-border)] lg:w-52 overflow-x-auto md:overflow-y-auto p-2.5 md:space-y-2.5 flex md:block gap-2.5 scrollbar-hide">
             {previewSlides.map((s, index) => (
               <SlideThumbnail
                 key={s.id}
@@ -191,7 +197,7 @@ export function SlidesPreview({
           </div>
 
           {/* Slide Viewer / Code View */}
-          <div className="flex-1 flex min-w-0 flex-col bg-[#fcfcfc]">
+          <div className="flex-1 flex min-w-0 flex-col bg-[var(--surface-bg-subtle)]">
             {viewMode === 'preview' ? (
               <>
                 {/* Slide Preview */}
@@ -218,9 +224,9 @@ export function SlidesPreview({
               </>
             ) : (
               /* Code View */
-              <div className="relative flex-1 overflow-auto bg-gb-bg-dark">
+              <div className="relative flex-1 overflow-auto bg-[#0d1117]">
                 <div className="flex text-[11px] leading-5 font-mono">
-                  <div className="sticky left-0 select-none border-r border-white/5 bg-gb-bg-dark px-3 py-3 text-right text-white/20" aria-hidden>
+                  <div className="sticky left-0 select-none border-r border-white/5 bg-[#0d1117] px-3 py-3 text-right text-white/20" aria-hidden>
                     {(htmlContent || generateHTMLFromSlides(slides, title, currentTheme)).split('\n').map((_, i) => (
                       <div key={i}>{i + 1}</div>
                     ))}

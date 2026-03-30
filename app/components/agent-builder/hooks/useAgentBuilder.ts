@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import type { AgentConfig, Message, PendingQuestion } from "../../../types/chat";
 import type { SlideTemplate, SlideTheme } from "../../../types/slides";
 import type { AttachedFile } from "../WelcomeScreen";
+import type { ModelOption } from "../ModelSelector";
 import { useAgentStream } from "../../../hooks/useAgentStream";
 import { agentMessages, showError } from "../../../lib/toast";
 
@@ -42,6 +43,11 @@ export interface AgentBuilderState {
   isSidebarOpen: boolean;
   attachedFiles: AttachedFile[];
   isInitialState: boolean;
+  availableModels: ModelOption[];
+  selectedModelId: string | null;
+  isModelLoading: boolean;
+  isModelUpdating: boolean;
+  webBrowsingEnabled: boolean;
 }
 
 export interface AgentBuilderActions {
@@ -63,6 +69,19 @@ export interface AgentBuilderActions {
   updateSlideCount: (label: string, count: number) => void;
   removeAttachedFile: (fileName: string) => void;
   clearPendingQuestion: () => void;
+  handleSelectModel: (modelId: string) => Promise<void>;
+  setWebBrowsingEnabled: (enabled: boolean) => void;
+}
+
+interface ModelsApiResponse {
+  models?: Array<{
+    id: string;
+    name: string;
+    provider: ModelOption["provider"];
+    model: string;
+    isActive?: boolean | null;
+  }>;
+  error?: string;
 }
 
 export function useAgentBuilder({ initialChatId, initialView = "chat", initialWorkspaceId = null }: UseAgentBuilderOptions) {
@@ -101,9 +120,85 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const [currentView, setCurrentView] = useState<"chat" | "workspace" | "settings">(initialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [isModelLoading, setIsModelLoading] = useState(true);
+  const [isModelUpdating, setIsModelUpdating] = useState(false);
+  const [webBrowsingEnabled, setWebBrowsingEnabled] = useState(true);
 
   const removeAttachedFile = (fileName: string) => {
     setAttachedFiles((prev) => prev.filter((file) => file.name !== fileName));
+  };
+
+  const fetchAvailableModels = async () => {
+    setIsModelLoading(true);
+    try {
+      const response = await fetch("/api/models");
+      const payload = (await response.json()) as ModelsApiResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load models");
+      }
+
+      const mapped = (payload.models || []).map((model) => ({
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        model: model.model,
+        isActive: model.isActive,
+      }));
+
+      setAvailableModels(mapped);
+      const active = mapped.find((model) => model.isActive);
+      setSelectedModelId((previous) => {
+        if (previous && mapped.some((model) => model.id === previous)) {
+          return previous;
+        }
+        return active?.id || mapped[0]?.id || null;
+      });
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to load models");
+      setAvailableModels([]);
+      setSelectedModelId(null);
+    } finally {
+      setIsModelLoading(false);
+    }
+  };
+
+  const handleSelectModel = async (modelId: string) => {
+    if (!modelId || modelId === selectedModelId) return;
+
+    const previousModelId = selectedModelId;
+    setSelectedModelId(modelId);
+    setIsModelUpdating(true);
+
+    try {
+      const body = new FormData();
+      body.append("intent", "setActive");
+      body.append("id", modelId);
+
+      const response = await fetch("/api/models", {
+        method: "POST",
+        body,
+      });
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to update active model");
+      }
+
+      setAvailableModels((previous) =>
+        previous.map((model) => ({
+          ...model,
+          isActive: model.id === modelId,
+        }))
+      );
+    } catch (error) {
+      setSelectedModelId(previousModelId);
+      showError(error instanceof Error ? error.message : "Failed to update active model");
+    } finally {
+      setIsModelUpdating(false);
+    }
   };
 
   const { processStream } = useAgentStream({
@@ -369,7 +464,13 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesEndRef.current;
+    if (!el) return;
+    // Scroll only the nearest scrollable parent (<main>), not the whole page
+    const scrollParent = el.closest('main');
+    if (scrollParent) {
+      scrollParent.scrollTop = scrollParent.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -384,6 +485,12 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       handleSelectChat(initialChatId);
     }
   }, [initialChatId]);
+
+  useEffect(() => {
+    if (currentView === "chat") {
+      void fetchAvailableModels();
+    }
+  }, [currentView]);
 
   const handleSend = async () => {
     if (!input.trim() && attachedFiles.length === 0) return;
@@ -462,6 +569,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       if (activeBadges.length > 0) {
         formData.append("badges", JSON.stringify(activeBadges));
       }
+      formData.append("webBrowsing", webBrowsingEnabled ? "true" : "false");
 
       const [response] = await Promise.all([
         fetch("/api/agent", {
@@ -674,6 +782,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       isSidebarOpen,
       attachedFiles,
       isInitialState,
+      availableModels,
+      selectedModelId,
+      isModelLoading,
+      isModelUpdating,
+      webBrowsingEnabled,
     },
     actions: {
       setInput,
@@ -693,6 +806,8 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       removeBadge,
       updateSlideCount,
       removeAttachedFile,
+      handleSelectModel,
+      setWebBrowsingEnabled,
       clearPendingQuestion: () => setPendingQuestion(null),
     },
   };

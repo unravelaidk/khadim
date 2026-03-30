@@ -16,13 +16,11 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Detect if content contains slide data
   const slideData = useMemo(() => parseSlidesFromHtml(content), [content]);
   const isSlidePresentation = slideData !== null;
   const presentationTitle = useMemo(() => extractPresentationTitle(content), [content]);
   const presentationTheme = useMemo(() => extractPresentationTheme(content), [content]);
 
-  // Reset loading when URL changes
   useEffect(() => {
     if (previewUrl) setIsLoading(true);
   }, [previewUrl]);
@@ -49,7 +47,6 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
     URL.revokeObjectURL(url);
   };
 
-  // Render native SlidesPreview for slide presentations
   if (isSlidePresentation && slideData) {
     return (
       <div className="my-3">
@@ -66,12 +63,14 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
   }
 
   return (
-    <div className="my-3 border border-gb-border rounded-lg overflow-hidden bg-gb-bg">
+    <div className="my-3 rounded-2xl glass-card-static overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-gb-bg-subtle border-b border-gb-border">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--glass-border)]">
         <div className="flex items-center gap-2">
-          <LuCode className="w-4 h-4 text-gb-accent" />
-          <span className="text-sm font-medium text-gb-text">{filename}</span>
+          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#10150a]">
+            <LuCode className="w-3 h-3 text-[var(--text-inverse)]" />
+          </div>
+          <span className="text-sm font-medium text-[var(--text-primary)]">{filename}</span>
         </div>
         <div className="flex items-center gap-2">
           {previewUrl && (
@@ -79,7 +78,7 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
               href={previewUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gb-accent hover:bg-gb-accent/10 rounded transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[#1c2214]"
             >
               <LuExternalLink className="w-3.5 h-3.5" />
               Open
@@ -87,7 +86,7 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
           )}
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gb-text-secondary hover:bg-gb-border/50 rounded transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full btn-glass transition-colors"
           >
             <LuDownload className="w-3.5 h-3.5" />
             Download
@@ -97,20 +96,20 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
 
       {/* Iframe Preview */}
       {previewUrl && (
-        <div className="border-b border-gb-border">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-gray-800">
-            <span className="text-xs text-gb-text-muted truncate flex-1">
+        <div className="border-b border-[var(--glass-border)]">
+          <div className="flex items-center justify-between px-4 py-1.5 bg-[var(--glass-bg)]">
+            <span className="text-xs text-[var(--text-muted)] truncate flex-1">
               {previewUrl === "loading" ? "Restoring preview..." : previewUrl}
             </span>
             {previewUrl !== "loading" && (
               <button 
                 onClick={() => setIsPreviewExpanded(!isPreviewExpanded)}
-                className="p-1 hover:bg-gb-border/50 rounded"
+                className="p-1 hover:bg-[var(--glass-bg-strong)] rounded-lg transition-colors"
               >
                 {isPreviewExpanded ? (
-                  <LuMinimize2 className="w-3.5 h-3.5 text-gb-text-muted" />
+                  <LuMinimize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 ) : (
-                  <LuMaximize2 className="w-3.5 h-3.5 text-gb-text-muted" />
+                  <LuMaximize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 )}
               </button>
             )}
@@ -118,9 +117,9 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
           {isPreviewExpanded && (
             <div className="relative bg-white" style={{ height: '300px' }}>
               {(isLoading || previewUrl === "loading") && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-50 text-gb-text-muted z-10">
+                <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-elevated)] text-[var(--text-muted)] z-10">
                   <div className="flex flex-col items-center gap-2">
-                    <LuLoader className="w-6 h-6 animate-spin text-gb-accent" />
+                    <LuLoader className="w-6 h-6 animate-spin text-[#10150a]" />
                     <span className="text-xs font-medium">
                       {previewUrl === "loading" ? "Restoring sandbox environment..." : "Loading preview..."}
                     </span>
@@ -144,7 +143,7 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
       {/* Code Toggle */}
       <button
         onClick={() => setShowCode(!showCode)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gb-text-muted hover:bg-gb-bg-subtle transition-colors"
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--glass-bg)] transition-colors"
       >
         {showCode ? <LuChevronDown className="w-3.5 h-3.5" /> : <LuChevronRight className="w-3.5 h-3.5" />}
         {showCode ? "Hide code" : "Show code"}
@@ -152,8 +151,8 @@ export function FileArtifact({ filename = "index.html", content, previewUrl, isS
 
       {/* Code Preview */}
       {showCode && (
-        <div className="px-3 py-2 max-h-64 overflow-auto bg-gray-900">
-          <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-all">
+        <div className="px-4 py-3 max-h-64 overflow-auto bg-[#0f1409]">
+          <pre className="text-xs text-[#e4ebd6] font-mono whitespace-pre-wrap break-all">
             {content.slice(0, 5000)}{content.length > 5000 ? "\n\n... (truncated)" : ""}
           </pre>
         </div>

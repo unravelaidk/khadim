@@ -23,7 +23,7 @@ export function ChatInterface({
   const hasMessages = messages.length > 0 || !!pendingQuestion;
 
   return (
-    <div className="mx-auto w-full max-w-4xl animate-in fade-in duration-500">
+    <div className="mx-auto w-full max-w-5xl animate-in fade-in duration-500">
       <GameBoyScreen>
         <div className="space-y-6">
           {messages.map((message) => (
@@ -39,7 +39,7 @@ export function ChatInterface({
             />
           )}
           {!hasMessages && (
-            <p className="text-center text-sm text-gb-text-muted">Start a conversation to see chat activity here.</p>
+            <p className="text-center text-sm text-[var(--text-muted)]">Start a conversation to see chat activity here.</p>
           )}
           <div ref={messagesEndRef} />
         </div>

@@ -23,9 +23,9 @@ export function PreviewModal({ agentConfig, isOpen, onClose, onDeploy }: Preview
       <DialogContent>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gb-primary">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#10150a]">
               <svg
-                className="w-5 h-5 text-gb-text-inverse"
+                className="w-5 h-5 text-[var(--text-inverse)]"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -49,14 +49,14 @@ export function PreviewModal({ agentConfig, isOpen, onClose, onDeploy }: Preview
 
         <div className="p-6 space-y-5">
           <div>
-            <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-gb-text-muted">
+            <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-[var(--text-muted)]">
               Capabilities
             </h3>
             <div className="flex flex-wrap gap-2">
               {agentConfig.capabilities.map((cap, i) => (
                 <span
                   key={i}
-                  className="px-3 py-1.5 rounded-lg text-sm bg-gb-bg-subtle text-gb-text-secondary"
+                  className="px-3 py-1.5 rounded-lg text-sm bg-[var(--glass-bg)] text-[var(--text-secondary)]"
                 >
                   {cap}
                 </span>
@@ -65,10 +65,10 @@ export function PreviewModal({ agentConfig, isOpen, onClose, onDeploy }: Preview
           </div>
 
           <div>
-            <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-gb-text-muted">
+            <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-[var(--text-muted)]">
               Description
             </h3>
-            <p className="text-sm text-gb-text-secondary">
+            <p className="text-sm text-[var(--text-secondary)]">
               {agentConfig.description}
             </p>
           </div>

@@ -6,8 +6,9 @@ interface ChatContainerProps {
 
 export function GameBoyScreen({ children }: ChatContainerProps) {
   return (
-    <div className="overflow-hidden rounded-[28px] border border-gb-border/60 bg-gb-bg-card shadow-gb-md">
-      <div className="min-h-[360px] p-5 md:p-7">
+    <div className="relative overflow-hidden rounded-[1.75rem] glass-card-static shadow-[var(--shadow-glass-lg)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--glass-shine)] to-transparent" />
+      <div className="p-4 sm:p-5 md:p-7">
         {children}
       </div>
     </div>

@@ -39,7 +39,7 @@ const ScrollBar = forwardRef<ScrollBarRef, ScrollBarProps>(
       } ${className || ""}`}
       {...props}
     >
-      <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-gb-border-dark" />
+      <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-[var(--glass-bg)]-dark" />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   )
 );

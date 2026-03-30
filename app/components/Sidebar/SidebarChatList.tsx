@@ -81,7 +81,7 @@ export function SidebarChatList({
           <div className="p-2 flex flex-col gap-1">
             {loading ? (
               <div className="p-3 flex justify-center">
-                <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin" />
+                <div className="w-4 h-4 rounded-full border-2 border-[#10150a] border-t-transparent animate-spin" />
               </div>
             ) : chats.length === 0 ? (
               <button
@@ -89,7 +89,7 @@ export function SidebarChatList({
                   onNewChat();
                   if (onClose) onClose();
                 }}
-                className="p-3 flex justify-center text-black/40 hover:text-black hover:bg-black/5 transition-colors"
+                className="p-3 flex justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] rounded-xl transition-colors"
                 title="New Chat"
               >
                 <LuMessageSquare className="w-5 h-5" />
@@ -105,10 +105,10 @@ export function SidebarChatList({
                       if (onClose) onClose();
                     }}
                     className={`
-                      p-3 flex justify-center transition-colors relative group
+                      p-3 flex justify-center rounded-xl transition-all relative group
                       ${isSelected 
-                        ? "bg-black text-white" 
-                        : "text-black/70 hover:bg-black/5 hover:text-black"
+                        ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 
+                        : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
                       }
                     `}
                     title={chat.title || "Untitled Chat"}
@@ -117,7 +117,7 @@ export function SidebarChatList({
                     {!isSelected && (
                       <button
                         onClick={(e) => handleDeleteChat(e, chat.id)}
-                        className="absolute right-1 top-1 p-1 bg-white border border-black text-black opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute right-1 top-1 p-1 rounded-lg bg-[var(--surface-elevated)] text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Delete"
                       >
                         <LuTrash2 className="w-3 h-3" />
@@ -135,33 +135,33 @@ export function SidebarChatList({
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      <div className="px-4 py-2 border-b border-black/10">
+      <div className="px-4 py-2 border-b border-[var(--glass-border)]">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <span className="text-xs font-medium uppercase tracking-wide text-black/50">Recent chats</span>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-black/30">
+            <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">Recent chats</span>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]" style={{ opacity: 0.6 }}>
               {currentView === "workspace" && selectedWorkspaceId ? "Workspace chats" : "Unified inbox"}
             </p>
           </div>
-          <span className="text-xs text-black/30">{chats.length}</span>
+          <span className="text-xs text-[var(--text-muted)]">{chats.length}</span>
         </div>
       </div>
 
       <ScrollArea className="flex-1 px-2">
         {loading ? (
           <div className="px-3 py-4 flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-[#10150a] border-t-transparent animate-spin" />
           </div>
         ) : chats.length === 0 ? (
           <div className="px-3 py-6 text-center">
-            <LuMessageSquare className="w-8 h-8 mx-auto mb-2 text-black/20" />
-            <p className="text-xs text-black/40">No chats yet</p>
+            <LuMessageSquare className="w-8 h-8 mx-auto mb-2 text-[var(--text-muted)]" style={{ opacity: 0.4 }} />
+            <p className="text-xs text-[var(--text-muted)]">No chats yet</p>
             <button
               onClick={() => {
                 onNewChat();
                 if (onClose) onClose();
               }}
-              className="mt-3 text-xs font-medium text-black hover:underline"
+              className="mt-3 text-xs font-medium text-[var(--text-primary)] underline underline-offset-2"
             >
               Start a conversation
             </button>
@@ -179,10 +179,10 @@ export function SidebarChatList({
                       if (onClose) onClose();
                     }}
                     className={`
-                      w-full flex items-center gap-2 px-3 py-2 text-left transition-all
+                      w-full flex items-center gap-2 px-3 py-2 text-left rounded-xl transition-all
                       ${isSelected 
-                        ? "bg-black text-white" 
-                        : "text-black/70 hover:bg-black/5 hover:text-black"
+                        ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 
+                        : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
                       }
                     `}
                   >
@@ -192,11 +192,11 @@ export function SidebarChatList({
 
                   {!isSelected && (
                     <button
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--glass-bg-strong)]"
                       onClick={(e) => handleDeleteChat(e, chat.id)}
                       title="Delete chat"
                     >
-                      <LuTrash2 className="h-3.5 w-3.5 text-black/50 hover:text-black" />
+                      <LuTrash2 className="h-3.5 w-3.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]" />
                     </button>
                   )}
                 </div>

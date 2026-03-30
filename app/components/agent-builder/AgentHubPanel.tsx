@@ -141,19 +141,19 @@ export function AgentHubPanel({
     const fileTree = buildFileTree(detail.files);
 
     return (
-      <div className="flex h-full flex-1 flex-col overflow-hidden bg-gb-bg/30 p-6 md:p-9">
-        <header className="mb-8 rounded-2xl border border-black bg-white p-6 shadow-gb-sm">
+      <div className="flex h-full flex-1 flex-col overflow-hidden  p-6 md:p-9">
+        <header className="mb-8 rounded-2xl glass-card-static p-6 shadow-[var(--shadow-glass-sm)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-black/50">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-[var(--text-muted)]">
                 <span>{agent?.name ?? "Workspace"}</span>
                 <span className="h-1 w-1 rounded-full bg-black/30" />
                 <span>{detail.files.length} files</span>
                 <span className="h-1 w-1 rounded-full bg-black/30" />
                 <span>{detail.chats.length} chats</span>
               </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-black">{detail.workspace.name}</h1>
-              <p className="max-w-2xl text-sm text-black/65">
+              <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">{detail.workspace.name}</h1>
+              <p className="max-w-2xl text-sm text-[var(--text-secondary)]">
                 This workspace stores agent-related files and keeps the chat threads attached to the same stream of work.
               </p>
             </div>
@@ -161,13 +161,13 @@ export function AgentHubPanel({
             <div className="flex gap-3">
               <button
                 onClick={() => onSelectWorkspace(null)}
-                className="border border-black px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white"
+                className="rounded-xl btn-ink px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--glass-bg-strong)]"
               >
                 All workspaces
               </button>
               <button
                 onClick={() => void onCreateChatInWorkspace()}
-                className="border border-black bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-black/80"
+                className="btn-ink px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1c2214]"
               >
                 New workspace chat
               </button>
@@ -176,13 +176,13 @@ export function AgentHubPanel({
         </header>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="min-h-0 rounded-2xl border border-black bg-white p-5 shadow-gb-sm">
+          <section className="min-h-0 rounded-2xl glass-card-static p-5 shadow-[var(--shadow-glass-sm)]">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.22em] text-black/40">Files</p>
-                <h2 className="mt-1 text-xl font-semibold text-black">Workspace files</h2>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Files</p>
+                <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">Workspace files</h2>
               </div>
-              <span className="text-xs text-black/45">Synced from workspace chats</span>
+              <span className="text-xs text-[var(--text-muted)]">Synced from workspace chats</span>
             </div>
             <ScrollArea className="h-[32rem] pr-4">
               {fileTree.length === 0 ? (
@@ -197,25 +197,25 @@ export function AgentHubPanel({
             </ScrollArea>
           </section>
 
-          <section className="min-h-0 rounded-2xl border border-black bg-white p-5 shadow-gb-sm">
+          <section className="min-h-0 rounded-2xl glass-card-static p-5 shadow-[var(--shadow-glass-sm)]">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.22em] text-black/40">Activity</p>
-                <h2 className="mt-1 text-xl font-semibold text-black">Active chats and agents</h2>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Activity</p>
+                <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">Active chats and agents</h2>
               </div>
             </div>
             <ScrollArea className="h-[32rem] pr-4">
               <div className="space-y-6 pb-6">
                 <div>
-                  <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-black/40">Active agents</p>
+                  <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Active agents</p>
                   {detail.activeAgents.length === 0 ? (
                     <EmptyCard label="No active agents right now." />
                   ) : (
                     <div className="space-y-3">
                       {detail.activeAgents.map((agent) => (
-                        <div key={agent.id} className="rounded-2xl border border-black px-4 py-3">
-                          <p className="text-sm font-semibold text-black">{agent.name}</p>
-                          <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-black/40">
+                        <div key={agent.id} className="rounded-2xl rounded-xl btn-ink px-4 py-3">
+                          <p className="text-sm font-semibold text-[var(--text-primary)]">{agent.name}</p>
+                          <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
                             {agent.activeChatCount} active chat{agent.activeChatCount === 1 ? "" : "s"}
                           </p>
                         </div>
@@ -225,7 +225,7 @@ export function AgentHubPanel({
                 </div>
 
                 <div>
-                  <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-black/40">Workspace chats</p>
+                  <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Workspace chats</p>
                   {detail.chats.length === 0 ? (
                     <EmptyCard label="No chats are linked to this workspace yet." />
                   ) : (
@@ -234,15 +234,15 @@ export function AgentHubPanel({
                         <button
                           key={chat.id}
                           onClick={() => onSelectChat(chat.id)}
-                          className="flex w-full items-center justify-between rounded-2xl border border-black bg-white px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-gb-sm"
+                          className="flex w-full items-center justify-between rounded-2xl glass-card-static px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-glass-sm)]"
                         >
                           <div>
-                            <p className="text-sm font-semibold text-black">{chat.title || "Untitled Chat"}</p>
-                            <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-black/40">
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">{chat.title || "Untitled Chat"}</p>
+                            <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
                               {chat.isActive ? `Active now${chat.activeAgentId ? ` · ${getAgentProfile(chat.activeAgentId)?.name ?? chat.activeAgentId}` : ""}` : "Workspace chat"}
                             </p>
                           </div>
-                          <span className="text-xs text-black/45">{formatDate(chat.updatedAt)}</span>
+                          <span className="text-xs text-[var(--text-muted)]">{formatDate(chat.updatedAt)}</span>
                         </button>
                       ))}
                     </div>
@@ -267,19 +267,19 @@ export function AgentHubPanel({
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden bg-gb-bg/30 p-6 md:p-9">
+    <div className="flex h-full flex-1 flex-col overflow-hidden  p-6 md:p-9">
       <header className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.3em] text-black/45">Workspace</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-black">Turn important chats into durable workspaces.</h1>
-          <p className="max-w-3xl text-sm text-black/65">
+          <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">Workspace</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">Turn important chats into durable workspaces.</h1>
+          <p className="max-w-3xl text-sm text-[var(--text-secondary)]">
             Workspaces keep files, code, and related chat threads together. Start one from a chat, then keep building inside that shared context.
           </p>
         </div>
 
         <button
           onClick={() => void onCreateWorkspace()}
-          className="border border-black bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-black/80"
+          className="btn-ink px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1c2214]"
         >
           New workspace
         </button>
@@ -290,8 +290,8 @@ export function AgentHubPanel({
           <section>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.22em] text-black/40">Current workspaces</p>
-                <h2 className="mt-1 text-xl font-semibold text-black">Existing workspaces</h2>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Current workspaces</p>
+                <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">Existing workspaces</h2>
               </div>
             </div>
             {loading ? (
@@ -306,16 +306,16 @@ export function AgentHubPanel({
                     <button
                       key={workspace.id}
                       onClick={() => onSelectWorkspace(workspace.id)}
-                      className="rounded-3xl border border-black bg-white p-6 text-left shadow-gb-sm transition-all hover:-translate-y-1 hover:shadow-gb-md"
+                      className="rounded-3xl glass-card-static p-6 text-left shadow-[var(--shadow-glass-sm)] transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-glass-md)]"
                     >
                       <div className="mb-6 flex items-start justify-between gap-4">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.25em] text-black/45">{agent?.name ?? workspace.agentId}</p>
-                          <h3 className="mt-2 text-2xl font-semibold text-black">{workspace.name}</h3>
+                          <p className="text-xs uppercase tracking-[0.25em] text-[var(--text-muted)]">{agent?.name ?? workspace.agentId}</p>
+                          <h3 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{workspace.name}</h3>
                         </div>
-                        <span className="rounded-full border border-black px-2 py-1 text-[11px] uppercase tracking-[0.18em] text-black/55">Open</span>
+                        <span className="rounded-full rounded-xl btn-ink px-2 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Open</span>
                       </div>
-                      <p className="text-sm text-black/60">Updated {formatDate(workspace.updatedAt)}</p>
+                      <p className="text-sm text-[var(--text-secondary)]">Updated {formatDate(workspace.updatedAt)}</p>
                     </button>
                   );
                 })}
@@ -325,15 +325,15 @@ export function AgentHubPanel({
 
           <section>
             <div className="mb-4">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-black/40">Current agents</p>
-              <h2 className="mt-1 text-xl font-semibold text-black">Agent overview</h2>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Current agents</p>
+              <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">Agent overview</h2>
             </div>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
               {agentProfiles.map((agent) => (
-                <div key={agent.id} className="rounded-3xl border border-black bg-white p-6 shadow-gb-sm">
-                  <p className="text-xs uppercase tracking-[0.25em] text-black/45">{agent.kind}</p>
-                  <h3 className="mt-2 text-2xl font-semibold text-black">{agent.name}</h3>
-                  <p className="mt-3 text-sm text-black/70">{agent.description}</p>
+                <div key={agent.id} className="rounded-3xl glass-card-static p-6 shadow-[var(--shadow-glass-sm)]">
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--text-muted)]">{agent.kind}</p>
+                  <h3 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{agent.name}</h3>
+                  <p className="mt-3 text-sm text-[var(--text-secondary)]">{agent.description}</p>
                 </div>
               ))}
             </div>
@@ -425,7 +425,7 @@ function FileTreeNode({ node, depth, onOpenFile }: { node: FileNode; depth: numb
   return (
     <div>
       <div
-        className={`rounded-xl border border-black/10 bg-gb-bg/20 px-3 py-2 text-sm text-black ${node.type === "file" ? "cursor-pointer hover:bg-black hover:text-white" : ""}`}
+        className={`rounded-xl border border-black/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-[var(--text-primary)] ${node.type === "file" ? "cursor-pointer hover:bg-[var(--glass-bg-strong)]" : ""}`}
         style={{ marginLeft: `${depth * 16}px` }}
         onClick={node.type === "file" ? () => onOpenFile(node.id) : undefined}
       >
@@ -444,7 +444,7 @@ function FileTreeNode({ node, depth, onOpenFile }: { node: FileNode; depth: numb
 
 function EmptyCard({ label }: { label: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-black/20 bg-white/70 p-8 text-sm text-black/50">{label}</div>
+    <div className="rounded-2xl border border-dashed border-[var(--glass-border)] bg-[var(--glass-bg)] p-8 text-sm text-[var(--text-muted)]">{label}</div>
   );
 }
 

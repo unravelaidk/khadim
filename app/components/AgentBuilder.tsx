@@ -72,6 +72,13 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
             onViewWorkspace={() => void actions.handleOpenWorkspace()}
             hasWorkspace={Boolean(state.selectedWorkspaceId)}
             workspaceId={state.selectedWorkspaceId}
+            availableModels={state.availableModels}
+            selectedModelId={state.selectedModelId}
+            isModelLoading={state.isModelLoading}
+            isModelUpdating={state.isModelUpdating}
+            onSelectModel={actions.handleSelectModel}
+            webBrowsingEnabled={state.webBrowsingEnabled}
+            onToggleWebBrowsing={actions.setWebBrowsingEnabled}
           />
         )
       }

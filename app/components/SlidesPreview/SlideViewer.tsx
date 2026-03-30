@@ -96,51 +96,51 @@ export function SlideViewer({
       return (
         <div className="flex w-full max-w-3xl flex-col gap-8 px-8">
           <div className="space-y-3 text-center">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/45">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
               Building live preview
             </div>
-            <div className="mx-auto h-1.5 w-24 bg-[#e5ff00]" />
+            <div className="mx-auto h-1.5 w-24 bg-[var(--color-accent)]" />
             <div className="space-y-2">
-              <h2 className="text-3xl font-bold tracking-tight text-black">
+              <h2 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">
                 {slide.title || `Slide ${slideIndex + 1} in progress`}
               </h2>
-              <p className="mx-auto max-w-xl text-sm text-black/55">
+              <p className="mx-auto max-w-xl text-sm text-[var(--text-secondary)]">
                 {slide.subtitle || 'Khadim is drafting this slide and the preview will update as content lands.'}
               </p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="border-2 border-black bg-white p-4 shadow-gb-sm">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-black/45">Draft copy</div>
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4 shadow-[var(--shadow-glass-sm)]">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Draft copy</div>
               <div className="space-y-2">
                 {'bullets' in slide && slide.bullets?.map((bullet, index) => (
-                  <div key={`${bullet}-${index}`} className="flex items-start gap-2 text-sm text-black/70">
-                    <span className="mt-1.5 h-1.5 w-1.5 animate-pulse bg-black" style={{ animationDelay: `${index * 120}ms` }} />
+                  <div key={`${bullet}-${index}`} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
+                    <span className="mt-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--text-primary)]" style={{ animationDelay: `${index * 120}ms` }} />
                     <span>{bullet}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="border-2 border-black bg-[#f5f5f5] p-4 shadow-gb-sm">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-black/45">Current step</div>
-              <div className="space-y-3 text-sm text-black/70">
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--surface-bg-subtle)] p-4 shadow-[var(--shadow-glass-sm)]">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Current step</div>
+              <div className="space-y-3 text-sm text-[var(--text-secondary)]">
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse bg-[#e5ff00]" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-accent)]" />
                   Writing the next slide section
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse bg-black/20" style={{ animationDelay: '150ms' }} />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--text-muted)]" style={{ animationDelay: '150ms' }} />
                   Syncing preview content
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse bg-black/20" style={{ animationDelay: '300ms' }} />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--text-muted)]" style={{ animationDelay: '300ms' }} />
                   Preparing final layout
                 </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-black/50">
-            <span className="h-2 w-2 animate-pulse bg-[#e5ff00]" />
+          <div className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-accent)]" />
             Drafting slide content
           </div>
         </div>
@@ -446,10 +446,9 @@ export function SlideViewer({
   return (
     <div 
       key={slideKey}
-      className="w-full max-w-4xl aspect-[16/9] rounded-xl shadow-lg flex flex-col items-center justify-center p-8 slide-animate overflow-hidden relative"
+      className="w-full max-w-4xl aspect-[16/9] rounded-xl shadow-lg flex flex-col items-center justify-center p-8 slide-animate overflow-hidden relative border border-[var(--glass-border)]"
       style={{
-        background: isBuilding ? '#fcfcfc' : getSlideBackground(slide?.type || "content", theme),
-        border: isBuilding ? '2px solid #000000' : undefined,
+        background: isBuilding ? 'var(--surface-bg)' : getSlideBackground(slide?.type || "content", theme),
       }}
     >
       {!isBuilding && (
