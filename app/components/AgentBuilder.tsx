@@ -59,7 +59,6 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
             onSend={actions.handleSend}
             onStop={actions.handleStop}
             isProcessing={state.isProcessing}
-            activeAgent={state.activeAgent}
             isInitialState={state.isInitialState}
             activeBadges={state.activeBadges}
             removeBadge={actions.removeBadge}

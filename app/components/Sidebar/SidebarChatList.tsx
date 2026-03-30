@@ -31,7 +31,7 @@ export function SidebarChatList({
   onClose,
   refreshKey = 0,
   isCollapsed = false
-}: SidebarChatListProps) {
+}:SidebarChatListProps) {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -98,13 +98,13 @@ export function SidebarChatList({
               chats.slice(0, 5).map((chat) => {
                 const isSelected = chat.id === selectedChatId;
                 return (
-                  <button
-                    key={chat.id}
-                    onClick={() => {
-                      onSelectChat(chat.id);
-                      if (onClose) onClose();
-                    }}
-                    className={`
+<button
+                      key={chat.id}
+                      onClick={() => {
+                        onSelectChat(chat.id);
+                        if (onClose) onClose();
+                      }}
+                      className={`
                       p-3 flex justify-center rounded-xl transition-all relative group
                       ${isSelected 
                         ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 
@@ -173,12 +173,12 @@ export function SidebarChatList({
 
               return (
                 <div key={chat.id} className="group relative">
-                  <button
-                    onClick={() => {
-                      onSelectChat(chat.id);
-                      if (onClose) onClose();
-                    }}
-                    className={`
+<button
+                      onClick={() => {
+                        onSelectChat(chat.id);
+                        if (onClose) onClose();
+                      }}
+                      className={`
                       w-full flex items-center gap-2 px-3 py-2 text-left rounded-xl transition-all
                       ${isSelected 
                         ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 

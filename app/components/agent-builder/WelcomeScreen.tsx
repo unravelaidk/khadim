@@ -274,7 +274,7 @@ export function WelcomeScreen({
   };
 
   return (
-    <div className="mx-auto flex min-h-[60vh] w-full max-w-5xl flex-col items-center justify-start space-y-4 px-3 pb-12 pt-4 sm:space-y-6 sm:px-4 sm:pt-8 md:px-6 animate-in fade-in duration-700">
+    <div className="mx-auto flex min-h-[60vh] w-full max-w-5xl flex-col items-center justify-start space-y-4 px-3 pb-12 pt-14 sm:space-y-6 sm:px-4 sm:pt-8 md:px-6 animate-in fade-in duration-700">
       <div className="relative w-full rounded-3xl glass-card-static px-4 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7">
         <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-col items-center gap-4 md:flex-row">
