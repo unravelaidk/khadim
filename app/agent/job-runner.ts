@@ -16,7 +16,8 @@ import {
   createManageSandboxTool,
   createWebSearchTool,
   createSearchImagesTool,
-  createWriteSlidesTool
+  createWriteSlidesTool,
+  createParseDocumentTool
 } from "./tools";
 import { createAskUserTool, parseAskUserResponse } from "./tools/ask-user";
 import { createDelegateToBuildTool } from "./tools/delegate-build";
@@ -175,6 +176,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createDelegateToBuildTool(),
       createWebSearchTool(),
       createSearchImagesTool(),
+      createParseDocumentTool(),
       // Sandbox-free slide tool - no sandbox needed!
       createWriteSlidesTool(chatId, broadcastForTools),
     ];
@@ -228,6 +230,9 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     const imageSearchGuidance = activeToolNames.has("search_images")
       ? `IMAGE SEARCH:\nUse the search_images tool to find photos for slides and presentations.\nExample: search_images({ query: "modern office workspace", orientation: "landscape" })\nThe tool returns image URLs - use them in 'image' type slides:\n{"type": "image", "title": "Our Office", "imageUrl": "<URL from search>", "caption": "Photo credit"}`
       : `IMAGE SEARCH:\nThe search_images tool is not available in this mode.`;
+    const parseDocumentGuidance = activeToolNames.has("parse_document")
+      ? `DOCUMENT PARSING:\nUse the parse_document tool to extract text from PDFs and documents when the user provides a URL or when you need to analyze document contents.\nExample: parse_document({ url: "https://example.com/report.pdf" })\nFor large documents, use targetPages to parse specific pages: parse_document({ url: "...", targetPages: "1-5" })\nEnable ocrEnabled for scanned documents with images instead of text.`
+      : `DOCUMENT PARSING:\nThe parse_document tool is not available in this mode.`;
 
     const orchestratorConfig = {
       model: resolvedModel.model,
@@ -255,6 +260,8 @@ ${askUserGuidance}
 ${webSearchGuidance}
 
 ${imageSearchGuidance}
+
+${parseDocumentGuidance}
 
 FRAMEWORK SELECTION:
 - Games/Interactive apps: type="vite"

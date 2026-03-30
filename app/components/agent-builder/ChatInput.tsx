@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
+import { LuGlobe } from "react-icons/lu";
+import { ModelSelector } from "./ModelSelector";
+import type { ModelOption } from "./ModelSelector";
 
 interface ChatInputProps {
   value: string;
@@ -12,6 +15,13 @@ interface ChatInputProps {
   onRemoveBadge?: (label: string) => void;
   isCompact?: boolean;
   position?: "fixed" | "relative";
+  availableModels: ModelOption[];
+  selectedModelId: string | null;
+  isModelLoading: boolean;
+  isModelUpdating: boolean;
+  onSelectModel: (modelId: string) => Promise<void>;
+  webBrowsingEnabled: boolean;
+  onToggleWebBrowsing: (enabled: boolean) => void;
 }
 
 export function ChatInput({
@@ -24,7 +34,14 @@ export function ChatInput({
   badges = [],
   onRemoveBadge,
   isCompact = false,
-  position = "fixed"
+  position = "fixed",
+  availableModels,
+  selectedModelId,
+  isModelLoading,
+  isModelUpdating,
+  onSelectModel,
+  webBrowsingEnabled,
+  onToggleWebBrowsing,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -50,24 +67,17 @@ export function ChatInput({
 
   const isFixed = position === "fixed";
   const containerClasses = isFixed
-    ? "absolute bottom-0 left-0 right-0 px-3 pb-5 pt-4 sm:px-4 sm:pb-7 sm:pt-5 md:px-6 md:pb-9 md:pt-7"
-    : "w-full pt-4 pb-0";
-
-  const containerStyle = isFixed
-    ? { background: "linear-gradient(to top, #fafafa 70%, transparent)" }
-    : undefined;
+    ? "absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] sm:w-[calc(100%-48px)] max-w-5xl z-40"
+    : "w-full shrink-0 px-2 sm:px-3 md:px-6 pt-2 pb-4 sm:pb-6 z-40";
 
   return (
-    <div
-      className={containerClasses}
-      style={containerStyle}
-    >
-      <div className={`mx-auto ${isCompact ? "max-w-xl" : "max-w-4xl"}`}>
+    <div className={containerClasses}>
+      <div className={`mx-auto ${isCompact ? "max-w-xl" : "max-w-5xl"}`}>
         {activeAgent && isProcessing && (
           <div className="mb-2 flex justify-center">
-            <div className={`flex items-center gap-2 border-2 px-3 py-1 text-xs font-medium shadow-gb-sm ${activeAgent.mode === "plan"
-                ? "border-black bg-white text-black/70"
-                : "border-black bg-[#e5ff00] text-black"
+            <div className={`flex items-center gap-2 rounded-full glass-panel px-4 py-1.5 text-xs font-medium ${activeAgent.mode === "plan"
+                ? "text-[var(--text-secondary)]"
+                : "text-[var(--text-primary)]"
               }`}>
               {activeAgent.mode === "plan" ? "🧠" : "🔨"} {activeAgent.name} Agent Active
             </div>
@@ -79,14 +89,14 @@ export function ChatInput({
             {badges.map((badge, index) => (
               <div 
                 key={index} 
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-black text-xs font-medium text-black shadow-gb-sm animate-in fade-in slide-in-from-bottom-2"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-panel text-xs font-medium text-[var(--text-primary)] animate-in fade-in slide-in-from-bottom-2"
               >
                 <span>{badge.icon}</span>
                 <span>{badge.label}</span>
                 {onRemoveBadge && (
                   <button 
                     onClick={() => onRemoveBadge(badge.label)}
-                    className="ml-1 p-0.5 hover:bg-black hover:text-white transition-colors"
+                    className="ml-1 p-0.5 hover:bg-[var(--glass-bg-strong)] rounded-full transition-colors"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="18" y1="6" x2="6" y2="18" />
@@ -99,6 +109,35 @@ export function ChatInput({
           </div>
         )}
 
+        <div className="mb-2 flex items-center gap-2 px-1">
+          <div className="group/web relative">
+            <button
+              type="button"
+              onClick={() => onToggleWebBrowsing(!webBrowsingEnabled)}
+              className={`inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium transition-all ${
+                webBrowsingEnabled
+                  ? "btn-accent"
+                  : "btn-glass"
+              }`}
+            >
+              <LuGlobe className="h-4 w-4" />
+              <span className="hidden sm:inline">Web</span>
+            </button>
+            <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-xl glass-panel px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover/web:opacity-100">
+              {webBrowsingEnabled ? "Web browsing is on — click to disable" : "Web browsing is off — click to enable"}
+            </span>
+          </div>
+          <ModelSelector
+            models={availableModels}
+            selectedModelId={selectedModelId}
+            onSelectModel={onSelectModel}
+            isLoading={isModelLoading}
+            isUpdating={isModelUpdating}
+            className="w-64 max-w-full"
+            direction="up"
+          />
+        </div>
+
         <div className="relative group">
             <textarea
               ref={inputRef}
@@ -110,15 +149,14 @@ export function ChatInput({
               onKeyDown={handleKeyDown}
               placeholder={isProcessing ? "Agent is working... you can keep typing" : "Type a message..."}
               rows={1}
-              className="flex min-h-[52px] w-full resize-none items-center border-2 border-black bg-white px-4 py-3 pr-12 text-sm text-black transition-all placeholder:text-black/40 focus:border-black focus:outline-none md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base shadow-gb-sm"
-
+              className="flex min-h-[52px] w-full resize-none items-center rounded-3xl glass-panel-strong px-4 py-3 pr-12 text-sm text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--glass-border-strong)] focus:ring-4 focus:ring-[#10150a]/10 focus:outline-none md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base"
             style={{ maxHeight: "168px" }}
             aria-label="Chat message input"
             />
           {isProcessing ? (
             <button
               onClick={onStop}
-              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center bg-black text-white transition-all hover:bg-black/80 shadow-gb-sm md:h-10 md:w-10"
+              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full btn-accent transition-all hover:scale-105 md:h-11 md:w-11"
               title="Stop generation"
               aria-label="Stop generation"
             >
@@ -130,9 +168,9 @@ export function ChatInput({
             <button
                 onClick={onSend}
                 disabled={!value.trim()}
-                className={`absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center transition-all shadow-gb-sm md:h-10 md:w-10 ${value.trim()
-                ? "bg-black text-white hover:bg-black/80"
-                : "bg-white text-black/30 cursor-not-allowed border-2 border-black"
+                className={`absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all md:h-11 md:w-11 ${value.trim()
+                ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] hover:scale-105 hover:shadow-[var(--shadow-glass-md)]"
+                : "bg-[var(--glass-bg)] text-[var(--text-muted)] cursor-not-allowed"
                 }`}
                 aria-label="Send message"
               >
@@ -142,7 +180,7 @@ export function ChatInput({
             </button>
           )}
         </div>
-        <p className="mt-3 text-center text-xs font-medium text-black/50">
+        <p className="mt-3 text-center text-xs font-medium text-[var(--text-muted)]">
           {isProcessing ? "Click stop to cancel. Press Enter to queue your next thought." : "Press Enter to send, Shift+Enter for newline"}
         </p>
       </div>

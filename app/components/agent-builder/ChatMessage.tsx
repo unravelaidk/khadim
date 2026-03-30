@@ -40,23 +40,24 @@ export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
 
   return (
     <div className={`animate-in fade-in slide-in-from-bottom-2 flex gap-2.5 duration-300 md:gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
+      {/* Assistant avatar — black circle with accent icon */}
       {!isUser && (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-black shadow-gb-sm md:h-8 md:w-8">
-          <LuBot className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#10150a] shadow-[var(--shadow-glass-sm)] md:h-8 md:w-8">
+          <LuBot className="w-3.5 h-3.5 md:w-4 md:h-4 text-[var(--text-inverse)]" />
         </div>
       )}
 
       <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[92%] md:max-w-[80%]`}>
-        <span className={`mb-1 flex items-center gap-1 px-1 text-[9px] font-medium uppercase tracking-wide text-black/50 md:text-[10px]`}>
+        <span className={`mb-1 flex items-center gap-1 px-1 text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)] md:text-[10px]`}>
           {isUser ? "You" : "Khadim"}
-          {timeLabel && <span className="text-black/40">{timeLabel}</span>}
+          {timeLabel && <span style={{ opacity: 0.7 }}>{timeLabel}</span>}
         </span>
 
         <div
-          className={`px-4 py-3 transition-all duration-200 md:px-5 md:py-3.5 ${
+          className={`rounded-2xl px-4 py-3 transition-all duration-200 md:px-5 md:py-3.5 ${
             isUser
-              ? "bg-black text-white shadow-gb-sm"
-              : "bg-white border-2 border-black text-black shadow-gb-sm"
+              ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
+              : "glass-card-static"
           }`}
         >
           {!isUser && hasSteps && (
@@ -66,18 +67,20 @@ export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
           )}
 
           {hasContent && (
-            <div className={`text-sm leading-relaxed ${!isUser ? "prose-gb" : "text-white/95"}`}>
+            <div className={`text-sm leading-relaxed ${!isUser ? "prose-gb" : "text-[var(--text-inverse)]"}`}>
               <MarkdownRenderer content={message.content} />
             </div>
           )}
 
           {!isUser && hasSlideContent && (
-            <div className={`${hasContent ? "mt-3" : ""} flex items-center gap-2 border-2 border-black bg-[#e5ff00] px-3 py-2`}>
-              <LuPresentation className="w-4 h-4 text-black flex-shrink-0" />
-              <span className="text-xs font-medium text-black">Presentation updated</span>
+            <div className={`${hasContent ? "mt-3" : ""} flex items-center gap-2 rounded-xl glass-panel px-3 py-2`}>
+              <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#10150a]">
+                <LuPresentation className="w-3 h-3 text-[var(--text-inverse)]" />
+              </div>
+              <span className="text-xs font-medium text-[var(--text-primary)]">Presentation updated</span>
               {isArtifactStreaming && (
-                <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-black">
-                  <span className="h-1.5 w-1.5 animate-pulse bg-black" />
+                <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--text-secondary)]">
+                  <span className="h-1.5 w-1.5 rounded-full animate-pulse bg-[#10150a]" />
                   Writing
                 </span>
               )}
@@ -99,9 +102,10 @@ export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
         </div>
       </div>
 
+      {/* User avatar — black circle with white icon */}
       {isUser && (
-        <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-white border-2 border-black flex items-center justify-center shadow-gb-sm">
-          <LuUser className="w-3.5 h-3.5 md:w-4 md:h-4 text-black" />
+        <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-xl bg-[#10150a] border border-black/80 flex items-center justify-center shadow-[var(--shadow-glass-sm)]">
+          <LuUser className="w-3.5 h-3.5 md:w-4 md:h-4 text-[var(--text-inverse)]" />
         </div>
       )}
     </div>

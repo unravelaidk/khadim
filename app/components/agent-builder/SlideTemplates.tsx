@@ -13,7 +13,7 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gb-bg-subtle border border-gb-border hover:bg-gb-bg-card hover:border-gb-primary/30 text-gb-text-secondary hover:text-gb-text transition-all"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] hover:glass-card-static hover:border-[var(--glass-border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
         >
           <LuArrowLeft className="w-4 h-4" />
           <span className="text-sm font-medium">Back</span>
@@ -28,10 +28,10 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
             <button
               key={template.id}
               onClick={() => onSelect(template, theme)}
-              className="group relative flex flex-col rounded-2xl border border-gb-border bg-gb-bg-subtle/60 hover:bg-gb-bg-card hover:border-gb-primary/40 hover:shadow-gb-md transition-all duration-300 overflow-hidden text-left"
+              className="group relative flex flex-col rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)]/60 hover:glass-card-static hover:border-[var(--glass-border-strong)] hover:shadow-[var(--shadow-glass-md)] transition-all duration-300 overflow-hidden text-left"
             >
               <div
-                className="h-28 w-full relative border-b border-gb-border/60"
+                className="h-28 w-full relative border-b border-[var(--glass-border)]"
                 style={{ background: theme.backgrounds.title }}
               >
                 <div className="absolute inset-3 flex flex-col items-center justify-center">
@@ -59,7 +59,7 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
 
               <div className="p-4 flex-1">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <h4 className="font-semibold text-sm text-gb-text group-hover:text-gb-accent transition-colors">
+                  <h4 className="font-semibold text-sm text-[var(--text-primary)] group-hover:text-[var(--text-primary)] transition-colors">
                     {template.name}
                   </h4>
                   <span
@@ -70,7 +70,7 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
                     }}
                   />
                 </div>
-                <p className="text-xs text-gb-text-muted leading-relaxed line-clamp-2">
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed line-clamp-2">
                   {template.description}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
@@ -83,7 +83,7 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
                   >
                     {theme.name} theme
                   </span>
-                  <span className="text-[10px] text-gb-text-muted">
+                  <span className="text-[10px] text-[var(--text-muted)]">
                     • {template.slides.length} slides
                   </span>
                 </div>
@@ -94,7 +94,7 @@ export function SlideTemplates({ onSelect, onBack }: SlideTemplatesProps) {
                   className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm"
                   style={{ background: theme.accentColor }}
                 >
-                  <LuCheck className="w-4 h-4 text-white" />
+                  <LuCheck className="w-4 h-4 text-[var(--text-inverse)]" />
                 </div>
               </div>
             </button>

@@ -1,6 +1,7 @@
 import { tool } from "./pi-tool";
 import { z } from "zod";
 import * as pathMod from "node:path";
+import { LiteParse } from "@llamaindex/liteparse";
 import { db, artifacts, projects } from "../lib/db";
 import { eq, and } from "drizzle-orm";
 import { createVersionSnapshot } from "../lib/versions";
@@ -1044,6 +1045,67 @@ The slides are now visible in the preview panel.`;
             content: z.string().describe("The complete HTML content with embedded slide-data JSON"),
             title: z.string().optional().describe("Optional title for the presentation"),
             theme: z.string().optional().describe("Theme: minimalist, paper, noir, brass, cobalt, emerald, midnight"),
+        }),
+    }
+);
+
+// Singleton parser instance — reused across calls
+let liteparseInstance: InstanceType<typeof LiteParse> | null = null;
+
+function getLiteParse(): InstanceType<typeof LiteParse> {
+    if (!liteparseInstance) {
+        liteparseInstance = new LiteParse({ outputFormat: "text" });
+    }
+    return liteparseInstance;
+}
+
+export const createParseDocumentTool = () => tool(
+    async ({ url, targetPages, ocrEnabled = false }: { url: string; targetPages?: string; ocrEnabled?: boolean }) => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                return `Error: Failed to fetch document from URL (${response.status} ${response.statusText})`;
+            }
+
+            const contentType = response.headers.get("content-type") || "";
+            const buffer = Buffer.from(await response.arrayBuffer());
+
+            const parser = getLiteParse();
+            // Reconfigure per call if needed
+            const config: Record<string, unknown> = { outputFormat: "text" };
+            if (targetPages) config.targetPages = targetPages;
+            if (ocrEnabled) config.ocrEnabled = true;
+
+            const freshParser = new LiteParse(config as any);
+            const result = await freshParser.parse(buffer, true);
+
+            const pageCount = result.pages?.length ?? 0;
+            const textLength = result.text?.length ?? 0;
+            const truncated = textLength > 30000;
+            const text = truncated ? result.text.slice(0, 30000) : result.text;
+
+            let output = `📄 DOCUMENT PARSED SUCCESSFULLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Source: ${url}
+Content-Type: ${contentType}
+Pages: ${pageCount}
+Characters: ${textLength}${truncated ? " (truncated to 30,000)" : ""}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${text}`;
+
+            return output;
+        } catch (error) {
+            return `Error parsing document: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "parse_document",
+        description: "Parse a PDF or document from a URL and extract its text content. Supports PDFs natively, with optional OCR for scanned documents. Use this to read, summarize, or analyze document contents. Provide a direct URL to the file.",
+        schema: z.object({
+            url: z.string().describe("Direct URL to the PDF or document file"),
+            targetPages: z.string().optional().describe("Page range to parse, e.g. '1-5' or '1,3,7'. Omit to parse all pages."),
+            ocrEnabled: z.boolean().optional().default(false).describe("Enable OCR for scanned/image-based documents (slower)"),
         }),
     }
 );

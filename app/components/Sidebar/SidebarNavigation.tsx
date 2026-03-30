@@ -16,7 +16,7 @@ const navItems = [
 
 export function SidebarNavigation({ currentView, onNavigate, isCollapsed = false }: SidebarNavigationProps) {
   return (
-    <nav className={`border-b-2 border-black ${isCollapsed ? "p-2" : "p-3"}`}>
+    <nav className={`border-b border-[var(--glass-border)] ${isCollapsed ? "p-2" : "p-3"}`}>
       <div className={`flex ${isCollapsed ? "flex-col items-stretch" : "flex-col gap-1"}`}>
         {navItems.map((item) => {
           const isActive = currentView === item.id;
@@ -27,11 +27,11 @@ export function SidebarNavigation({ currentView, onNavigate, isCollapsed = false
               key={item.id}
               onClick={() => onNavigate(item.id)}
               className={`
-                flex items-center gap-3 transition-all
+                flex items-center gap-3 rounded-xl transition-all
                 ${isCollapsed ? "justify-center p-3" : "px-3 py-2"}
                 ${isActive 
-                  ? "bg-black text-white" 
-                  : "text-black/70 hover:bg-black/5 hover:text-black"
+                  ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 
+                  : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
                 }
               `}
               title={isCollapsed ? item.label : undefined}

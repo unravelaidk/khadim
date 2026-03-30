@@ -30,7 +30,7 @@ const DialogContent = forwardRef<DialogContentRef, DialogContentProps>(
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
-        className={`fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl bg-gb-bg-card shadow-gb-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 ${className || ""}`}
+        className={`fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl glass-card-static shadow-[var(--shadow-glass-lg)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 ${className || ""}`}
         {...props}
       >
         {children}
@@ -45,7 +45,7 @@ const DialogHeader: FC<HTMLAttributes<HTMLDivElement>> = ({
   ...props
 }) => (
   <div
-    className={`p-6 border-b border-gb-border ${className || ""}`}
+    className={`p-6 border-b border-[var(--glass-border)]/10 ${className || ""}`}
     {...props}
   />
 );
@@ -56,7 +56,7 @@ const DialogFooter: FC<HTMLAttributes<HTMLDivElement>> = ({
   ...props
 }) => (
   <div
-    className={`p-6 flex gap-3 border-t border-gb-border ${className || ""}`}
+    className={`p-6 flex gap-3 border-t border-[var(--glass-border)]/10 ${className || ""}`}
     {...props}
   />
 );
@@ -69,7 +69,7 @@ const DialogTitle = forwardRef<DialogTitleRef, DialogTitleProps>(
   ({ className, ...props }, ref) => (
     <DialogPrimitive.Title
       ref={ref}
-      className={`text-lg font-semibold text-gb-text ${className || ""}`}
+      className={`text-lg font-semibold text-[var(--text-primary)] ${className || ""}`}
       {...props}
     />
   )
@@ -83,7 +83,7 @@ const DialogDescription = forwardRef<DialogDescriptionRef, DialogDescriptionProp
   ({ className, ...props }, ref) => (
     <DialogPrimitive.Description
       ref={ref}
-      className={`text-sm text-gb-text-muted ${className || ""}`}
+      className={`text-sm text-[var(--text-muted)] ${className || ""}`}
       {...props}
     />
   )

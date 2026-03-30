@@ -59,7 +59,7 @@ export const DropdownContent = ({ children, className, align = "end" }: { childr
   const alignmentClass = align === "end" ? "right-0" : "left-0";
 
   return (
-    <div className={`absolute ${alignmentClass} mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 animate-in fade-in zoom-in-95 duration-100 ${className || ""}`}>
+    <div className={`absolute ${alignmentClass} mt-2 w-48 rounded-2xl bg-white/90 backdrop-blur-md shadow-[var(--shadow-glass-md)] border border-black/5 focus:outline-none z-50 animate-in fade-in zoom-in-95 duration-200 ${className || ""}`}>
       <div className="py-1" role="menu" aria-orientation="vertical">
         {children}
       </div>
@@ -79,7 +79,7 @@ export const DropdownItem = ({ children, onClick, className }: { children: React
   return (
     <button
       onClick={handleClick}
-      className={`block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${className || ""}`}
+      className={`block w-[calc(100%-16px)] mx-2 my-1 text-left px-4 py-2 text-sm text-gray-700 hover:bg-black/5 hover:text-gray-900 rounded-xl transition-colors ${className || ""}`}
       role="menuitem"
     >
       {children}

@@ -7,13 +7,13 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
   return (
-    <div className="sticky top-0 z-20 flex items-center justify-between border-b-2 border-black bg-white px-4 py-3 transition-all duration-200 lg:hidden">
+    <div className="shrink-0 z-20 flex items-center justify-between border-b border-[var(--glass-border)] glass-panel-strong px-4 py-3 shadow-[var(--shadow-glass-sm)] transition-all duration-200 lg:hidden">
       <button
         onClick={onOpenSidebar}
-        className="-ml-2 p-2 text-black/70 transition-colors duration-100 hover:bg-black hover:text-white"
+        className="-ml-1.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-colors duration-100 hover:bg-[#1c2214]"
         aria-label="Open Menu"
       >
-        <LuMenu className="w-6 h-6" />
+        <LuMenu className="w-5 h-5" />
       </button>
 
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -21,7 +21,7 @@ export function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
           <div className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full">
             <KhadimLogo />
           </div>
-          <span className="font-display text-lg font-bold tracking-tight text-black">Khadim</span>
+          <span className="font-display text-lg font-bold tracking-tight text-[var(--text-primary)]">Khadim</span>
         </div>
       </div>
       

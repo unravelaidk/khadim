@@ -18,7 +18,6 @@ type CodeBlockProps = HTMLAttributes<HTMLElement> & {
   children?: ReactNode;
 };
 
-// Custom code block with copy button and syntax highlighting
 function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || "");
@@ -34,7 +33,6 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
   if (!inline && (match || codeString.includes("\n"))) {
     return (
       <div className="relative group my-3">
-        {/* Language badge & copy button */}
         <div className="absolute top-0 right-0 flex items-center gap-2 px-3 py-1.5 text-xs">
           {language && <span className="text-gray-400 uppercase font-medium">{language}</span>}
           <button
@@ -59,7 +57,7 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
           PreTag="div"
           customStyle={{
             margin: 0,
-            borderRadius: "0.5rem",
+            borderRadius: "0.75rem",
             fontSize: "0.875rem",
             padding: "1rem",
             paddingTop: "2rem",
@@ -73,10 +71,9 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
     );
   }
 
-  // Inline code
   return (
     <code
-      className="bg-gb-bg px-1.5 py-0.5 rounded text-gb-accent font-mono text-[0.9em]"
+      className="bg-[var(--surface-card)] border border-[var(--glass-border)] px-1.5 py-0.5 rounded-md font-mono text-[0.9em] text-[var(--text-primary)]"
       {...props}
     >
       {children}
@@ -90,26 +87,19 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Code blocks with syntax highlighting
           code: CodeBlock as any,
-          
-          // Headings
           h1: ({ children }) => (
-            <h1 className="text-xl font-bold mt-6 mb-3 text-gb-text border-b border-gb-border pb-2">
+            <h1 className="text-xl font-bold mt-6 mb-3 text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-lg font-semibold mt-5 mb-2 text-gb-text">{children}</h2>
+            <h2 className="text-lg font-semibold mt-5 mb-2 text-[var(--text-primary)]">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-base font-semibold mt-4 mb-2 text-gb-text">{children}</h3>
+            <h3 className="text-base font-semibold mt-4 mb-2 text-[var(--text-primary)]">{children}</h3>
           ),
-          
-          // Paragraphs
           p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
-          
-          // Lists
           ul: ({ children }) => (
             <ul className="list-disc list-inside mb-3 space-y-1 ml-2">{children}</ul>
           ),
@@ -117,55 +107,43 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
             <ol className="list-decimal list-inside mb-3 space-y-1 ml-2">{children}</ol>
           ),
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-          
-          // Links
           a: ({ href, children }) => (
             <a
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gb-accent hover:underline"
+              className="text-[var(--text-primary)] underline underline-offset-2 hover:text-[var(--text-secondary)]"
             >
               {children}
             </a>
           ),
-          
-          // Blockquotes
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-gb-accent pl-4 my-3 italic text-gb-text-secondary">
+            <blockquote className="border-l-4 border-[#10150a] pl-4 my-3 italic text-[var(--text-secondary)]">
               {children}
             </blockquote>
           ),
-          
-          // Tables (GFM)
           table: ({ children }) => (
             <div className="overflow-x-auto my-4">
-              <table className="min-w-full border-collapse border border-gb-border rounded-lg overflow-hidden">
+              <table className="min-w-full border-collapse border border-[var(--glass-border)] rounded-xl overflow-hidden">
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-gb-bg-subtle">{children}</thead>
+            <thead className="bg-[var(--glass-bg)]">{children}</thead>
           ),
           th: ({ children }) => (
-            <th className="border border-gb-border px-3 py-2 text-left font-semibold text-sm">
+            <th className="border border-[var(--glass-border)] px-3 py-2 text-left font-semibold text-sm">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border border-gb-border px-3 py-2 text-sm">{children}</td>
+            <td className="border border-[var(--glass-border)] px-3 py-2 text-sm">{children}</td>
           ),
-          
-          // Horizontal rules
-          hr: () => <hr className="my-6 border-t border-gb-border" />,
-          
-          // Strong & emphasis
+          hr: () => <hr className="my-6 border-t border-[var(--glass-border)]" />,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
-          
-          // Strikethrough (GFM)
-          del: ({ children }) => <del className="line-through text-gb-text-muted">{children}</del>,
+          del: ({ children }) => <del className="line-through text-[var(--text-muted)]">{children}</del>,
         }}
       >
         {content}

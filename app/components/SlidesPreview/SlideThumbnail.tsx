@@ -23,34 +23,28 @@ export function SlideThumbnail({
       onClick={onClick}
       className={`
         group relative aspect-[16/9] w-full overflow-hidden 
-        border-2 transition-all duration-200 ease-out
+        border transition-all duration-200 ease-out rounded-xl
         ${isActive 
-          ? 'shadow-gb-sm' 
-          : 'border-black hover:bg-[#f5f5f5]'
+          ? 'border-[var(--color-accent)] shadow-[var(--shadow-glow-sm)]' 
+          : 'border-[var(--glass-border)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--glass-bg-strong)]'
         }
       `}
-      style={{
-        borderColor: isActive ? '#000000' : undefined,
-        boxShadow: isActive 
-          ? '3px 3px 0 rgba(0,0,0,0.12)' 
-          : undefined,
-      }}
       >
       {isBuilding ? (
-        <div className="absolute inset-0 flex flex-col justify-between bg-[#f5f5f5] p-2">
+        <div className="absolute inset-0 flex flex-col justify-between bg-[var(--surface-bg-subtle)] p-2">
           <div className="space-y-1.5">
-            <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-black/55">
+            <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Building
             </div>
-            <div className="text-[9px] font-semibold leading-tight text-black">
+            <div className="text-[9px] font-semibold leading-tight text-[var(--text-primary)]">
               {slide.title || `Slide ${index + 1}`}
             </div>
-            <div className="h-1.5 w-1/2 animate-pulse bg-black/20" />
+            <div className="h-1.5 w-1/2 animate-pulse bg-[var(--text-muted)]" />
           </div>
           <div className="space-y-1">
-            <div className="h-1.5 w-full animate-pulse bg-black/10" />
-            <div className="h-1.5 w-5/6 animate-pulse bg-black/10" style={{ animationDelay: '150ms' }} />
-            <div className="h-1.5 w-4/6 animate-pulse bg-[#e5ff00]" style={{ animationDelay: '300ms' }} />
+            <div className="h-1.5 w-full animate-pulse bg-[var(--glass-border)]" />
+            <div className="h-1.5 w-5/6 animate-pulse bg-[var(--glass-border)]" style={{ animationDelay: '150ms' }} />
+            <div className="h-1.5 w-4/6 animate-pulse bg-[var(--color-accent)]" style={{ animationDelay: '300ms' }} />
           </div>
         </div>
       ) : (
@@ -72,9 +66,9 @@ export function SlideThumbnail({
       )}
 
       <div 
-        className="absolute bottom-1 left-1 bg-black px-1.5 py-0.5 text-[9px] font-bold text-white"
+        className="absolute bottom-1 left-1 px-1.5 py-0.5 text-[9px] font-bold text-[var(--text-inverse)]"
         style={{ 
-          background: 'rgba(0,0,0,0.9)'
+          background: 'rgba(0,0,0,0.85)'
         }}
       >
         {index + 1}
@@ -82,7 +76,7 @@ export function SlideThumbnail({
 
       {isActive && (
         <div 
-          className="absolute right-1 top-1 h-2 w-2 animate-pulse bg-[#e5ff00]"
+          className="absolute right-1 top-1 h-2 w-2 animate-pulse bg-[var(--color-accent)]"
         />
       )}
 

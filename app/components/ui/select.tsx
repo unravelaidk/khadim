@@ -68,7 +68,7 @@ export const SelectTrigger = ({ children, className }: SelectTriggerProps) => {
   return (
     <button
       onClick={() => context.setOpen(!context.open)}
-      className={`flex h-10 w-full items-center justify-between rounded-md border border-gb-border bg-white px-3 py-2 text-sm shadow-sm ring-offset-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50 ${className || ""}`}
+      className={`flex h-10 w-full items-center justify-between rounded-2xl border border-[var(--glass-border)]/20 bg-white/50 backdrop-blur-sm px-4 py-2 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[var(--input-focus-ring)] hover:border-[var(--glass-border)]/40 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-black/50 dark:border-white/10 dark:focus:ring-white/20 dark:hover:border-white/20 ${className || ""}`}
     >
       {children}
       <span className="opacity-50 ml-2">
@@ -101,7 +101,7 @@ export const SelectContent = ({ children, className }: { children: React.ReactNo
   if (!context || !context.open) return null;
 
   return (
-    <div className={`absolute z-50 mt-1 max-h-60 w-full min-w-[8rem] overflow-auto rounded-md border border-gb-border bg-white text-gb-text shadow-lg ring-1 ring-black ring-opacity-5 animate-in fade-in zoom-in-95 duration-100 ${className || ""}`}>
+    <div className={`absolute z-50 mt-1 max-h-60 w-full min-w-[8rem] overflow-auto rounded-2xl border border-[var(--glass-border)]/10 bg-white/90 backdrop-blur-md text-[var(--text-primary)] shadow-[var(--shadow-glass-md)] animate-in fade-in zoom-in-95 duration-200 dark:bg-black/90 dark:border-white/10 ${className || ""}`}>
       <div className="p-1">
         {children}
       </div>
@@ -138,7 +138,7 @@ export const SelectItem = ({ value, children, className }: SelectItemProps) => {
     return (
         <div
             onClick={handleClick}
-            className={`relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-gb-bg-subtle hover:text-gb-text data-[disabled]:pointer-events-none data-[disabled]:opacity-50 ${isSelected ? "bg-gb-bg-subtle text-gb-accent font-medium" : ""} ${className || ""}`}
+            className={`relative flex w-full cursor-pointer select-none items-center rounded-xl py-2 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-black/5 hover:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:hover:bg-white/5 ${isSelected ? "bg-black/5 text-[var(--text-primary)] font-medium dark:bg-white/10" : ""} ${className || ""}`}
         >
             <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
                 {isSelected && (
