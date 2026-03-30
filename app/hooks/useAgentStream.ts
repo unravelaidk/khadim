@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { Message, ThinkingStepData, AgentConfig, PendingQuestion } from "../types/chat";
 
 interface UseAgentStreamProps {
@@ -13,6 +13,19 @@ interface UseAgentStreamProps {
   chatId: string | null;
 }
 
+interface SSEEvent {
+  type: string;
+  id?: number;
+  [key: string]: unknown;
+}
+
+interface StreamState {
+  steps: ThinkingStepData[];
+  streamedText: string;
+  isDone: boolean;
+  lastEventId: number;
+}
+
 export function useAgentStream({
   setMessages,
   setSandboxId,
@@ -22,200 +35,256 @@ export function useAgentStream({
   setPendingBuildDelegation,
   setIsTyping,
   setIsProcessing,
-  chatId
+  chatId,
 }: UseAgentStreamProps) {
-  const updateAssistantMessage = (
-    assistantMessageId: string,
-    updater: (message: Message) => Message
-  ) => {
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === assistantMessageId ? updater(msg) : msg))
-    );
-  };
+  const updateAssistantMessage = useCallback(
+    (assistantMessageId: string, updater: (message: Message) => Message) => {
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === assistantMessageId ? updater(msg) : msg))
+      );
+    },
+    [setMessages]
+  );
 
-  
-  const processStream = async (
-    response: Response, 
-    assistantMessageId: string,
-    existingSteps: ThinkingStepData[] = []
-  ) => {
-    if (!response.body) throw new Error("No response body");
+  const parseSSELine = useCallback((line: string): { id?: string; event?: string; data?: string } | null => {
+    if (line.startsWith("id:")) {
+      return { id: line.slice(3).trim() };
+    }
+    if (line.startsWith("event:")) {
+      return { event: line.slice(6).trim() };
+    }
+    if (line.startsWith("data:")) {
+      return { data: line.slice(5).trim() };
+    }
+    if (line.startsWith(":")) {
+      return { data: line.slice(1).trim() };
+    }
+    return null;
+  }, []);
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let streamedText = "";
-    
-    // Initialize steps with any existing ones (for re-connections or continuations)
-    // We use a local mutable array for accumulating, but we MUST trigger immutable 
-    // updates for React to see them
-    const steps: ThinkingStepData[] = [...existingSteps];
-
+  const parseSSEEvent = useCallback((rawData: string): SSEEvent | null => {
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      return JSON.parse(rawData) as SSEEvent;
+    } catch {
+      return null;
+    }
+  }, []);
 
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+  const processStream = useCallback(
+    async (
+      response: Response,
+      assistantMessageId: string,
+      existingSteps: ThinkingStepData[] = []
+    ) => {
+      if (!response.body) throw new Error("No response body");
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const event = JSON.parse(line.slice(6));
-              
-              // Handle different event types
-              if (event.type === "step_start") {
-                // Prevent duplicates on reconnection
-                if (!steps.find(s => s.id === event.id)) {
-                  steps.push({
-                    id: event.id,
-                    title: event.title,
-                    status: "running",
-                    content: "",
-                    tool: event.tool,
-                    // File info from write_file tool - check both direct props and args
-                    filename: event.filename || event.args?.path,
-                    fileContent: event.fileContent || event.args?.content,
-                  });
+      const state: StreamState = {
+        steps: [...existingSteps],
+        streamedText: "",
+        isDone: false,
+        lastEventId: 0,
+      };
+
+      const updateMessage = () => {
+        updateAssistantMessage(assistantMessageId, (msg) => ({
+          ...msg,
+          content: state.streamedText,
+          thinkingSteps: state.steps.map((s) => ({ ...s })),
+        }));
+      };
+
+      const processEvent = (event: SSEEvent) => {
+        if (event.type === "step_start") {
+          const stepId = String(event.id);
+          if (!state.steps.find((s) => s.id === stepId)) {
+            state.steps.push({
+              id: stepId,
+              title: event.title as string,
+              status: "running",
+              content: "",
+              tool: event.tool as ThinkingStepData["tool"],
+              filename: (event.filename || (event.args as { path?: string })?.path) as ThinkingStepData["filename"],
+              fileContent: (event.fileContent || (event.args as { content?: string })?.content) as ThinkingStepData["fileContent"],
+            });
+            updateMessage();
+          }
+        } else if (event.type === "step_update") {
+          const stepId = String(event.id);
+          const stepIndex = state.steps.findIndex((s) => s.id === stepId);
+          if (stepIndex !== -1 && event.content) {
+            state.steps[stepIndex] = { ...state.steps[stepIndex], content: event.content as string };
+            updateMessage();
+          }
+        } else if (event.type === "step_complete") {
+          const stepId = String(event.id);
+          const stepIndex = state.steps.findIndex((s) => s.id === stepId);
+          if (stepIndex !== -1) {
+            state.steps[stepIndex] = {
+              ...state.steps[stepIndex],
+              status: "complete",
+              result: (event.result ?? state.steps[stepIndex].result) as ThinkingStepData["result"],
+              filename: state.steps[stepIndex].filename || (event.filename as ThinkingStepData["filename"]),
+              fileContent: state.steps[stepIndex].fileContent || (event.fileContent as ThinkingStepData["fileContent"]),
+            };
+            updateMessage();
+          }
+        } else if (event.type === "text_delta") {
+          state.streamedText += event.content as string;
+          updateMessage();
+        } else if (event.type === "sandbox_info") {
+          if (event.sandboxId) setSandboxId(event.sandboxId as string);
+        } else if (event.type === "job_created") {
+          if (event.jobId) setJobId(String(event.jobId));
+        } else if (event.type === "agent_mode") {
+          setActiveAgent({ mode: event.mode as "plan" | "build", name: event.name as string });
+        } else if (event.type === "slide_content") {
+          const slideContent = event.fileContent as string | undefined;
+          if (slideContent) {
+            updateAssistantMessage(assistantMessageId, (msg) => ({
+              ...msg,
+              fileContent: slideContent,
+            }));
+          }
+        } else if (event.type === "file_written") {
+          const filename = typeof event.filename === "string" ? event.filename : undefined;
+          const fileContent = typeof event.content === "string" ? event.content : undefined;
+          if (filename === "index.html" && fileContent?.includes('<script id="slide-data"')) {
+            updateAssistantMessage(assistantMessageId, (msg) => ({
+              ...msg,
+              fileContent,
+            }));
+          }
+        } else if (event.type === "done") {
+          state.streamedText = (event.content ?? state.streamedText) as string;
+          state.isDone = true;
+          setActiveAgent(null);
+          setJobId(null);
+
+          let fileContent: string | undefined;
+          const indexHtmlStep = state.steps.find(
+            (s) => s.tool === "write_file" && s.filename === "index.html" && s.fileContent
+          );
+          if (indexHtmlStep?.fileContent) {
+            const isSlideContent = indexHtmlStep.fileContent.includes('<script id="slide-data"');
+            if (isSlideContent || event.previewUrl) {
+              fileContent = indexHtmlStep.fileContent;
+            }
+          }
+
+          const msgPreviewUrl = event.previewUrl as string | undefined;
+          updateAssistantMessage(assistantMessageId, (msg) => ({
+            ...msg,
+            content: state.streamedText,
+            thinkingSteps: state.steps.map((s) => ({ ...s })),
+            previewUrl: msgPreviewUrl,
+            fileContent: fileContent || msg.fileContent,
+          }));
+        } else if (event.type === "ask_user") {
+          setPendingQuestion({
+            question: event.question as string,
+            options: event.options as PendingQuestion["options"],
+            context: event.context as string,
+            threadId: event.threadId as string,
+          });
+          setIsTyping(false);
+          updateAssistantMessage(assistantMessageId, (msg) => ({
+            ...msg,
+            content: `I have a question for you...`,
+            thinkingSteps: state.steps.map((s) => ({ ...s })),
+          }));
+        } else if (event.type === "delegate_build") {
+          const planInfo = {
+            plan: event.plan as string,
+            context: event.context as string,
+          };
+
+          updateAssistantMessage(assistantMessageId, (msg) => ({
+            ...msg,
+            content: `Plan approved! The Build agent will now execute...`,
+            thinkingSteps: state.steps.map((s) => ({ ...s })),
+          }));
+
+          const buildPrompt = `Execute this approved plan:\n\n${planInfo.plan}${planInfo.context ? `\n\nContext: ${planInfo.context}` : ""}`;
+          setPendingBuildDelegation(buildPrompt);
+        } else if (event.type === "error") {
+          setJobId(null);
+          state.isDone = true;
+          console.error("[SSE] Received error event:", event.message);
+        }
+      };
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+
+            const parsed = parseSSELine(line);
+            if (!parsed) continue;
+
+            if (parsed.data !== undefined) {
+              const event = parseSSEEvent(parsed.data);
+              if (event) {
+                try {
+                  processEvent(event);
+                } catch (e) {
+                  console.error("[SSE] Error processing event:", e);
                 }
-              } else if (event.type === "step_update") {
-                // IMMUTABLE UPDATE: Replace the step object at the specific index
-                const stepIndex = steps.findIndex(s => s.id === event.id);
-                if (stepIndex !== -1 && event.content) {
-                  steps[stepIndex] = { ...steps[stepIndex], content: event.content };
-                }
-              } else if (event.type === "step_complete") {
-                // IMMUTABLE UPDATE
-                const stepIndex = steps.findIndex(s => s.id === event.id);
-                if (stepIndex !== -1) {
-                  steps[stepIndex] = { 
-                    ...steps[stepIndex], 
-                    status: "complete", 
-                    result: event.result ?? steps[stepIndex].result,
-                    // Also include file info on complete (for cases where step_start didn't have it)
-                    filename: steps[stepIndex].filename || event.filename,
-                    fileContent: steps[stepIndex].fileContent || event.fileContent,
-                  };
-                }
-              } else if (event.type === "text_delta") {
-                streamedText += event.content;
-              } else if (event.type === "sandbox_info") {
-                if (event.sandboxId) setSandboxId(event.sandboxId);
-              } else if (event.type === "job_created") {
-                if (event.jobId) setJobId(event.jobId as string);
-              } else if (event.type === "agent_mode") {
-                setActiveAgent(event as { mode: "plan" | "build"; name: string });
-              } else if (event.type === "slide_content") {
-                // Capture slide file content for real-time preview
-                const slideContent = event.fileContent as string | undefined;
-                if (slideContent) {
-                  updateAssistantMessage(assistantMessageId, (msg) => ({
-                    ...msg,
-                    fileContent: slideContent,
-                  }));
-                }
-              } else if (event.type === "file_written") {
-                const filename = typeof event.filename === "string" ? event.filename : undefined;
-                const fileContent = typeof event.content === "string" ? event.content : undefined;
-                if (filename === "index.html" && fileContent?.includes('<script id="slide-data"')) {
-                  updateAssistantMessage(assistantMessageId, (msg) => ({
-                    ...msg,
-                    fileContent,
-                  }));
-                }
-              } else if (event.type === "done") {
-                streamedText = event.content ?? streamedText;
-                setActiveAgent(null);
-                setJobId(null);
-                
-                // Extract fileContent from write_file steps (for slides preview)
-                let fileContent: string | undefined;
-                const indexHtmlStep = steps.find(
-                  s => s.tool === "write_file" && 
-                       s.filename === "index.html" && 
-                       s.fileContent
-                );
-                if (indexHtmlStep?.fileContent) {
-                  // Check if it's slide content or has a previewUrl
-                  const isSlideContent = indexHtmlStep.fileContent.includes('<script id="slide-data"');
-                  if (isSlideContent || event.previewUrl) {
-                    fileContent = indexHtmlStep.fileContent;
-                  }
-                }
-                
-                // Final update with all data
-                // IMPORTANT: Preserve any fileContent already set by slide_content event
-                const msgPreviewUrl = event.previewUrl as string | undefined;
-                updateAssistantMessage(assistantMessageId, (msg) => ({
-                  ...msg,
-                  content: streamedText,
-                  thinkingSteps: [...steps],
-                  previewUrl: msgPreviewUrl,
-                  fileContent: fileContent || msg.fileContent,
-                }));
-                continue;
-              } else if (event.type === "ask_user") {
-                setPendingQuestion({
-                  question: event.question,
-                  options: event.options,
-                  context: event.context,
-                  threadId: event.threadId,
-                });
-                setIsTyping(false);
-                updateAssistantMessage(assistantMessageId, (msg) => ({
-                  ...msg,
-                  content: `🤔 I have a question for you...`,
-                  thinkingSteps: [...steps],
-                }));
-              } else if (event.type === "delegate_build") {
-                const planInfo = {
-                  plan: event.plan as string,
-                  context: event.context as string,
-                };
-                
-                updateAssistantMessage(assistantMessageId, (msg) => ({
-                  ...msg,
-                  content: `✅ Plan approved! The Build agent will now execute...`,
-                  thinkingSteps: [...steps],
-                }));
-                
-                const buildPrompt = `Execute this approved plan:\n\n${planInfo.plan}${planInfo.context ? `\n\nContext: ${planInfo.context}` : ""}`;
-                setPendingBuildDelegation(buildPrompt);
-              } else if (event.type === "error") {
-                setJobId(null);
-                throw new Error(event.message);
               }
-
-              // Update message progress in real-time
-              // We deep clone steps to ensure React detects the change (fixing the rendering issue)
-              const clonedSteps = steps.map(s => ({ ...s }));
-              
-              updateAssistantMessage(assistantMessageId, (msg) => ({
-                ...msg,
-                content: streamedText,
-                thinkingSteps: clonedSteps,
-              }));
-            } catch (e) {
-              console.error("Error parsing SSE event:", e);
             }
           }
         }
+
+        if (!state.isDone) {
+          console.warn("[SSE] Stream ended without done event, marking steps as complete");
+          for (const step of state.steps) {
+            if (step.status === "running") {
+              step.status = "complete";
+            }
+          }
+          updateAssistantMessage(assistantMessageId, (msg) => ({
+            ...msg,
+            content: state.streamedText,
+            thinkingSteps: state.steps.map((s) => ({ ...s })),
+          }));
+        }
+      } catch (error) {
+        if (error instanceof Error && (error.name === "AbortError" || error.message.includes("lock"))) {
+          return;
+        }
+        console.error("[SSE] Stream processing error:", error);
+        throw error;
+      } finally {
+        setIsTyping(false);
+        setIsProcessing(false);
       }
-    } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("lock"))) {
-        // Stream aborted, exit cleanly
-        return;
-      }
-      console.error("Stream processing error:", error);
-      throw error;
-    } finally {
-      setIsTyping(false);
-      setIsProcessing(false);
-    }
-  };
+    },
+    [
+      updateAssistantMessage,
+      setSandboxId,
+      setJobId,
+      setActiveAgent,
+      setPendingQuestion,
+      setPendingBuildDelegation,
+      setIsTyping,
+      setIsProcessing,
+      parseSSELine,
+      parseSSEEvent,
+    ]
+  );
 
   return { processStream };
 }

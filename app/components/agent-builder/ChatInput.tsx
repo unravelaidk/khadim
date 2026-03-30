@@ -10,7 +10,6 @@ interface ChatInputProps {
   onSend: () => void;
   onStop?: () => void;
   isProcessing?: boolean;
-  activeAgent?: { mode: "plan" | "build"; name: string } | null;
   badges?: Array<{ label: string; icon: ReactNode; prompt?: string }>;
   onRemoveBadge?: (label: string) => void;
   isCompact?: boolean;
@@ -30,7 +29,6 @@ export function ChatInput({
   onSend,
   onStop,
   isProcessing = false,
-  activeAgent,
   badges = [],
   onRemoveBadge,
   isCompact = false,
@@ -73,17 +71,6 @@ export function ChatInput({
   return (
     <div className={containerClasses}>
       <div className={`mx-auto ${isCompact ? "max-w-xl" : "max-w-5xl"}`}>
-        {activeAgent && isProcessing && (
-          <div className="mb-2 flex justify-center">
-            <div className={`flex items-center gap-2 rounded-full glass-panel px-4 py-1.5 text-xs font-medium ${activeAgent.mode === "plan"
-                ? "text-[var(--text-secondary)]"
-                : "text-[var(--text-primary)]"
-              }`}>
-              {activeAgent.mode === "plan" ? "🧠" : "🔨"} {activeAgent.name} Agent Active
-            </div>
-          </div>
-        )}
-        
         {badges.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-3 px-2">
             {badges.map((badge, index) => (

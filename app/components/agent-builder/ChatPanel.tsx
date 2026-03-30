@@ -20,7 +20,6 @@ interface ChatPanelProps {
   onSend: () => void;
   onStop: () => void;
   isProcessing: boolean;
-  activeAgent: { mode: "plan" | "build"; name: string } | null;
   isInitialState: boolean;
   activeBadges: ActiveBadge[];
   removeBadge: (label: string) => void;
@@ -53,7 +52,6 @@ export function ChatPanel({
   onSend,
   onStop,
   isProcessing,
-  activeAgent,
   isInitialState,
   activeBadges,
   removeBadge,
@@ -202,7 +200,6 @@ export function ChatPanel({
               onSend={onSend}
               onStop={onStop}
               isProcessing={isProcessing}
-              activeAgent={activeAgent}
               isCompact={false}
               position="relative"
               availableModels={availableModels}
