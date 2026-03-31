@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Message } from "../../types/chat";
 import { ThinkingSteps } from "./ThinkingStep";
 import type { ThinkingStepData } from "../../types/chat";
@@ -10,7 +11,7 @@ interface ChatMessageProps {
   workspaceId?: string | null;
 }
 
-export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
+function ChatMessageComponent({ message, workspaceId }: ChatMessageProps) {
   const isUser = message.role === "user";
   const timestamp = message.timestamp instanceof Date
     ? message.timestamp
@@ -40,7 +41,6 @@ export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
 
   return (
     <div className={`animate-in fade-in slide-in-from-bottom-2 flex gap-2.5 duration-300 md:gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {/* Assistant avatar — black circle with accent icon */}
       {!isUser && (
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#10150a] shadow-[var(--shadow-glass-sm)] md:h-8 md:w-8">
           <LuBot className="w-3.5 h-3.5 md:w-4 md:h-4 text-[var(--text-inverse)]" />
@@ -98,11 +98,9 @@ export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
               />
             </div>
           )}
-
         </div>
       </div>
 
-      {/* User avatar — black circle with white icon */}
       {isUser && (
         <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-xl bg-[#10150a] border border-black/80 flex items-center justify-center shadow-[var(--shadow-glass-sm)]">
           <LuUser className="w-3.5 h-3.5 md:w-4 md:h-4 text-[var(--text-inverse)]" />
@@ -111,3 +109,5 @@ export function ChatMessage({ message, workspaceId }: ChatMessageProps) {
     </div>
   );
 }
+
+export const ChatMessage = memo(ChatMessageComponent);
