@@ -6,7 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, Slide } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import type { Route } from "./+types/root";
@@ -25,7 +25,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <ToastContainer />
+        <ToastContainer
+          position="bottom-right"
+          transition={Slide}
+          autoClose={4000}
+          hideProgressBar={false}
+          closeOnClick
+          pauseOnHover
+          draggable
+          theme="colored"
+          toastClassName="gb-toast-wrapper"
+        />
         <ScrollRestoration />
         <Scripts />
       </body>
