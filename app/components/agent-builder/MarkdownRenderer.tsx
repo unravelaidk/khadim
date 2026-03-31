@@ -30,50 +30,52 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
     setTimeout(() => setCopied(false), COPY_RESET_DELAY);
   };
 
-  if (!inline && (match || codeString.includes("\n"))) {
+if (!inline && (match || codeString.includes("\n"))) {
     return (
-      <div className="relative group my-3">
-        <div className="absolute top-0 right-0 flex items-center gap-2 px-3 py-1.5 text-xs">
-          {language && <span className="text-gray-400 uppercase font-medium">{language}</span>}
-          <button
-            onClick={handleCopy}
-            className="text-gray-400 transition-colors hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
-            title="Copy code"
+      <div className="relative group my-2 md:my-3 -mx-3 md:mx-0">
+        <div className="overflow-x-auto scrollbar-thin rounded-lg" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="absolute top-0 right-0 flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs z-10">
+            {language && <span className="text-gray-400 uppercase font-medium">{language}</span>}
+            <button
+              onClick={handleCopy}
+              className="text-gray-400 transition-colors hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
+              title="Copy code"
+            >
+              {copied ? (
+                <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <SyntaxHighlighter
+            style={oneDark as any}
+            language={language || "text"}
+            PreTag="div"
+            customStyle={{
+              margin: 0,
+              borderRadius: "0.5rem",
+              fontSize: "clamp(0.65rem, 2vw, 0.875rem)",
+              padding: "clamp(0.5rem, 2vw, 1rem)",
+              paddingTop: "clamp(1.25rem, 3vw, 2rem)",
+              fontFamily: "var(--font-mono)",
+            }}
+            {...props}
           >
-            {copied ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            )}
-          </button>
+            {codeString}
+          </SyntaxHighlighter>
         </div>
-        <SyntaxHighlighter
-          style={oneDark as any}
-          language={language || "text"}
-          PreTag="div"
-          customStyle={{
-            margin: 0,
-            borderRadius: "0.75rem",
-            fontSize: "0.875rem",
-            padding: "1rem",
-            paddingTop: "2rem",
-            fontFamily: "var(--font-mono)",
-          }}
-          {...props}
-        >
-          {codeString}
-        </SyntaxHighlighter>
       </div>
     );
   }
 
   return (
     <code
-      className="bg-[var(--surface-card)] border border-[var(--glass-border)] px-1.5 py-0.5 rounded-md font-mono text-[0.9em] text-[var(--text-primary)]"
+      className="bg-[var(--surface-card)] border border-[var(--glass-border)] px-1 py-0.5 md:px-1.5 rounded-md font-mono text-[0.7rem] md:text-[0.9em] text-[var(--text-primary)] break-words"
       {...props}
     >
       {children}
@@ -89,15 +91,15 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
         components={{
           code: CodeBlock as any,
           h1: ({ children }) => (
-            <h1 className="text-xl font-bold mt-6 mb-3 text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
+            <h1 className="text-base md:text-xl font-bold mt-3 md:mt-6 mb-2 md:mb-3 text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-lg font-semibold mt-5 mb-2 text-[var(--text-primary)]">{children}</h2>
+            <h2 className="text-sm md:text-lg font-semibold mt-2 md:mt-5 mb-1.5 md:mb-2 text-[var(--text-primary)]">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-base font-semibold mt-4 mb-2 text-[var(--text-primary)]">{children}</h3>
+            <h3 className="text-xs md:text-base font-semibold mt-2 md:mt-4 mb-1.5 md:mb-2 text-[var(--text-primary)]">{children}</h3>
           ),
           p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
           ul: ({ children }) => (
@@ -123,8 +125,8 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
             </blockquote>
           ),
           table: ({ children }) => (
-            <div className="overflow-x-auto my-4">
-              <table className="min-w-full border-collapse border border-[var(--glass-border)] rounded-xl overflow-hidden">
+            <div className="overflow-x-auto my-2 md:my-4 -mx-3 md:mx-0 px-3 md:px-0" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <table className="border-collapse border border-[var(--glass-border)] rounded-xl overflow-hidden text-xs md:text-sm">
                 {children}
               </table>
             </div>
@@ -133,12 +135,14 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
             <thead className="bg-[var(--glass-bg)]">{children}</thead>
           ),
           th: ({ children }) => (
-            <th className="border border-[var(--glass-border)] px-3 py-2 text-left font-semibold text-sm">
+            <th className="border border-[var(--glass-border)] px-2 py-1.5 md:px-3 md:py-2 text-left font-semibold text-xs md:text-sm whitespace-nowrap">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border border-[var(--glass-border)] px-3 py-2 text-sm">{children}</td>
+            <td className="border border-[var(--glass-border)] px-2 py-1.5 md:px-3 md:py-2 text-xs md:text-sm whitespace-normal">
+              {children}
+            </td>
           ),
           hr: () => <hr className="my-6 border-t border-[var(--glass-border)]" />,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,

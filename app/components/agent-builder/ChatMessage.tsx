@@ -47,14 +47,14 @@ function ChatMessageComponent({ message, workspaceId }: ChatMessageProps) {
         </div>
       )}
 
-      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[92%] md:max-w-[80%]`}>
+      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[92%] md:max-w-[80%] min-w-0 w-full`}>
         <span className={`mb-1 flex items-center gap-1 px-1 text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)] md:text-[10px]`}>
           {isUser ? "You" : "Khadim"}
           {timeLabel && <span style={{ opacity: 0.7 }}>{timeLabel}</span>}
         </span>
 
         <div
-          className={`rounded-2xl px-4 py-3 transition-all duration-200 md:px-5 md:py-3.5 ${
+          className={`rounded-2xl px-4 py-3 transition-all duration-200 md:px-5 md:py-3.5 overflow-hidden ${
             isUser
               ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
               : "glass-card-static"

@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile, LuCircleDot } from "react-icons/lu";
 import { FileEditorModal } from "./FileEditorModal";
 import type { ThinkingStepData } from "../../types/chat";
@@ -144,11 +143,15 @@ export function ThinkingSteps({ steps }: ThinkingStepsProps) {
   const completedCount = steps.filter((s) => s.status === "complete").length;
   const isAllComplete = completedCount === steps.length;
   const hasRunning = steps.some((s) => s.status === "running");
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
     <div className="rounded-2xl glass-card-static overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-[var(--glass-border)]">
+      <div
+        className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-[var(--glass-border)] cursor-pointer hover:bg-[var(--glass-bg)] transition-colors"
+        onClick={() => !hasRunning && setIsCollapsed(!isCollapsed)}
+      >
         <div className={`w-2 h-2 rounded-full ${
           hasRunning ? "bg-[#10150a] animate-pulse" :
           isAllComplete ? "bg-emerald-500" :
@@ -157,16 +160,23 @@ export function ThinkingSteps({ steps }: ThinkingStepsProps) {
         <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
           {hasRunning ? "Thinking" : isAllComplete ? "Completed" : "Reasoning"}
         </span>
-        <span className="ml-auto text-xs text-[var(--text-muted)] font-medium tabular-nums">
+        <span className="text-xs text-[var(--text-muted)] font-medium tabular-nums">
           {completedCount}/{steps.length}
         </span>
+        {!hasRunning && (
+          <div className="ml-auto text-[var(--text-muted)] transition-transform duration-200">
+            {isCollapsed ? <LuChevronRight className="w-4 h-4" /> : <LuChevronDown className="w-4 h-4" />}
+          </div>
+        )}
       </div>
 
       {/* Steps */}
-      <div className="p-2 space-y-0.5">
-        {steps.map((step, index) => (
-          <ThinkingStep key={step.id} step={step} index={index} />
-        ))}
+      <div className={`transition-all duration-300 ease-out ${isCollapsed ? "max-h-0 overflow-hidden" : "max-h-[2000px] opacity-100"}`}>
+        <div className="p-2 space-y-0.5">
+          {steps.map((step, index) => (
+            <ThinkingStep key={step.id} step={step} index={index} />
+          ))}
+        </div>
       </div>
     </div>
   );

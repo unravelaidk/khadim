@@ -275,6 +275,22 @@ html, body {
   display: none;
 }
 
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
 /* ─── Toast Styles ─────────────────────────────────────────────────── */
 .Toastify__toast-container {
   z-index: 9999;
@@ -503,6 +519,53 @@ html.dark .prose-gb pre {
   border-collapse: collapse;
   margin: 0.75em 0;
   font-size: 0.875em;
+}
+
+.mobile-markdown,
+.markdown-content {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-content table,
+.markdown-content th,
+.markdown-content td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* Mobile markdown adjustments */
+@media (max-width: 640px) {
+  .markdown-content {
+    font-size: 0.8rem;
+  }
+
+  .markdown-content pre {
+    font-size: 0.65rem !important;
+  }
+
+  .markdown-content code {
+    font-size: 0.7rem !important;
+  }
+
+  .markdown-content table {
+    font-size: 0.7rem;
+  }
+
+  .markdown-content ul,
+  .markdown-content ol {
+    padding-left: 1em;
+    font-size: 0.8rem;
+  }
+
+  .markdown-content p {
+    font-size: 0.8rem;
+  }
+
+  .markdown-content blockquote {
+    font-size: 0.75rem;
+    padding-left: 0.75em;
+  }
 }
 
 .prose-gb th,
