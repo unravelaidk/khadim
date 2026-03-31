@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { LuBrain, LuChevronDown, LuSearch, LuServer } from "react-icons/lu";
+import { getModelIconUrl } from "../../assets/model-icons";
 
-export type ModelProvider = "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama";
+export enum ModelSelectorVariant {
+  Switcher = "switcher",
+  Picker = "picker",
+}
+
+export type ModelProvider = "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama" | "xai" | "groq" | "cerebras" | "mistral" | "minimax" | "zai" | "amazon-bedrock" | "azure-openai-responses" | "github-copilot" | "huggingface" | "vercel-ai-gateway" | "opencode" | "opencode-go" | "kimi-coding";
 
 export interface ModelOption {
   id: string;
@@ -19,6 +25,9 @@ interface ModelSelectorProps {
   isUpdating?: boolean;
   className?: string;
   direction?: "up" | "down";
+  variant?: ModelSelectorVariant;
+  placeholder?: string;
+  onOpen?: () => void;
 }
 
 type ProviderMeta = {
@@ -26,38 +35,29 @@ type ProviderMeta = {
 };
 
 const PROVIDER_META: Record<ModelProvider, ProviderMeta> = {
-  openai: {
-    label: "OpenAI",
-  },
-  anthropic: {
-    label: "Anthropic",
-  },
-  "openai-codex": {
-    label: "Codex",
-  },
-  openrouter: {
-    label: "OpenRouter",
-  },
-  ollama: {
-    label: "Ollama",
-  },
+  openai: { label: "OpenAI" },
+  anthropic: { label: "Anthropic" },
+  "openai-codex": { label: "Codex" },
+  openrouter: { label: "OpenRouter" },
+  ollama: { label: "Ollama" },
+  xai: { label: "xAI" },
+  groq: { label: "Groq" },
+  cerebras: { label: "Cerebras" },
+  mistral: { label: "Mistral" },
+  minimax: { label: "MiniMax" },
+  zai: { label: "Z.ai" },
+  "amazon-bedrock": { label: "Bedrock" },
+  "azure-openai-responses": { label: "Azure OpenAI" },
+  "github-copilot": { label: "Copilot" },
+  huggingface: { label: "HuggingFace" },
+  "vercel-ai-gateway": { label: "Vercel" },
+  opencode: { label: "OpenCode" },
+  "opencode-go": { label: "OpenCode Go" },
+  "kimi-coding": { label: "Kimi" },
 };
 
 function getProviderMeta(provider: ModelProvider): ProviderMeta {
   return PROVIDER_META[provider] || PROVIDER_META.openai;
-}
-
-function getLobeIconUrl(id: string, type: "mono" | "color" = "color") {
-  const suffix = type === "mono" ? "" : `-${type}`;
-  return `https://unpkg.com/@lobehub/icons-static-svg@latest/icons/${id.toLowerCase()}${suffix}.svg`;
-}
-
-function getIconUrl(id: string, type: "mono" | "color" = "color") {
-  if (id === "zai-brand") {
-    return "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/zai.png";
-  }
-
-  return getLobeIconUrl(id, type);
 }
 
 function normalizeIconSlug(value: string) {
@@ -143,6 +143,7 @@ function resolveIconSlug(value: string) {
 
 const MODEL_ICON_RULES: Array<{ icon: string; patterns: RegExp[] }> = [
   { icon: "ai21", patterns: [/ai21/i, /jamba/i] },
+  { icon: "aionlabs", patterns: [/aionlabs/i] },
   { icon: "claude", patterns: [/claude/i] },
   { icon: "anthropic", patterns: [/anthropic/i] },
   { icon: "gemini", patterns: [/gemini/i] },
@@ -210,16 +211,16 @@ function getModelIconCandidates(model: ModelOption): string[] {
   return Array.from(candidates);
 }
 
+export function getResolvedModelIconUrl(modelName: string, modelId: string, provider: ModelProvider): string | null {
+  const candidates = getModelIconCandidates({ id: modelId, name: modelName, provider, model: modelId });
+  return candidates.map((slug) => getModelIconUrl(slug)).find((url): url is string => url !== null) || null;
+}
+
 function ModelBadgeIcon({ model, className = "", invert = false }: { model: ModelOption; className?: string; invert?: boolean }) {
   const iconCandidates = getModelIconCandidates(model);
-  const [iconIndex, setIconIndex] = useState(0);
-  const [useLocalFallback, setUseLocalFallback] = useState(false);
-  const src = getIconUrl(iconCandidates[Math.min(iconIndex, iconCandidates.length - 1)] || getProviderIconId(model.provider), "color");
-
-  useEffect(() => {
-    setIconIndex(0);
-    setUseLocalFallback(false);
-  }, [model.id, model.model, model.name, model.provider]);
+  const localIcon = iconCandidates
+    .map((slug) => getModelIconUrl(slug))
+    .find((url): url is string => url !== null) || null;
 
   return (
     <span
@@ -229,28 +230,18 @@ function ModelBadgeIcon({ model, className = "", invert = false }: { model: Mode
           : "bg-black/[0.04] text-black ring-1 ring-black/10 group-hover/model-item:bg-white group-hover/model-item:text-black"
       } ${className}`}
     >
-      {useLocalFallback ? (
-        <span className="inline-flex h-[18px] w-[18px] items-center justify-center text-black">
-          <ProviderFallbackIcon provider={model.provider} />
-        </span>
-      ) : (
+      {localIcon ? (
         <img
           alt=""
           className="h-[18px] w-[18px] shrink-0 object-contain"
           height={18}
-          onError={() => {
-            setIconIndex((current) => {
-              if (current < iconCandidates.length - 1) {
-                return current + 1;
-              }
-
-              setUseLocalFallback(true);
-              return current;
-            });
-          }}
-          src={src}
+          src={localIcon}
           width={18}
         />
+      ) : (
+        <span className="inline-flex h-[18px] w-[18px] items-center justify-center text-black">
+          <ProviderFallbackIcon provider={model.provider} />
+        </span>
       )}
       <span className="sr-only">{model.name}</span>
     </span>
@@ -265,6 +256,9 @@ export function ModelSelector({
   isUpdating = false,
   className = "",
   direction = "down",
+  variant = ModelSelectorVariant.Switcher,
+  placeholder = "Select model",
+  onOpen,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -303,6 +297,8 @@ export function ModelSelector({
     );
   }, [models, search]);
 
+  const isPicker = variant === ModelSelectorVariant.Picker;
+
   if (isLoading) {
     return (
       <div className={`inline-flex items-center gap-2 rounded-full glass-panel px-3 py-2 text-xs text-[var(--text-muted)] ${className}`}>
@@ -312,7 +308,7 @@ export function ModelSelector({
     );
   }
 
-  if (models.length === 0) {
+  if (models.length === 0 && !isPicker) {
     return (
       <div className={`inline-flex items-center gap-2 rounded-full glass-panel px-3 py-2 text-xs text-[var(--text-muted)] ${className}`}>
         No models
@@ -321,7 +317,7 @@ export function ModelSelector({
   }
 
   return (
-    <div ref={wrapperRef} className={`relative ${className}`}>
+    <div ref={wrapperRef} className={`relative min-w-0 ${className}`}>
       <button
         type="button"
         onClick={() => {
@@ -329,22 +325,29 @@ export function ModelSelector({
             const next = !prev;
             if (next) {
               setSearch("");
+              onOpen?.();
               requestAnimationFrame(() => searchRef.current?.focus());
             }
             return next;
           });
         }}
-        className="group/model-trigger inline-flex h-10 w-full items-center justify-between gap-2 rounded-full glass-panel px-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 px-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)] ${
+          isPicker
+            ? "rounded-xl glass-input"
+            : "rounded-full glass-panel"
+        }`}
       >
         <span className="inline-flex min-w-0 items-center gap-2">
-          {selectedModel ? <ModelBadgeIcon className="h-6 w-6 shrink-0" model={selectedModel} /> : null}
-          <span className="truncate">{selectedModel?.name || "Select model"}</span>
+          {!isPicker && selectedModel ? <ModelBadgeIcon className="h-6 w-6 shrink-0" model={selectedModel} /> : null}
+          <span className={`min-w-0 truncate ${!selectedModel ? "text-[var(--text-muted)]" : ""}`}>
+            {selectedModel?.name || placeholder}
+          </span>
         </span>
         <LuChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen ? (
-        <div className={`absolute right-0 z-50 w-[min(24rem,90vw)] overflow-hidden rounded-2xl glass-panel-strong shadow-[var(--shadow-glass-lg)] ${direction === "up" ? "bottom-full mb-2" : "mt-2"}`}>
+        <div className={`absolute left-0 z-[100] w-full max-w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl glass-panel-strong shadow-[var(--shadow-glass-lg)] ${direction === "up" ? "bottom-full mb-2" : "mt-2"}`}>
           <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
             <LuSearch className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
             <input
@@ -374,16 +377,18 @@ export function ModelSelector({
                     setSearch("");
                     void onSelectModel(model.id);
                   }}
-                    className={`group/model-item mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition-all last:mb-0 ${
-                      isSelected
-                        ? "border-[#10150a] bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
-                        : "border-[var(--glass-border)] bg-[var(--glass-bg)] text-[var(--text-primary)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--glass-bg-strong)]"
-                    } ${isUpdating ? "cursor-wait opacity-70" : ""}`}
-                  >
+                  className={`group/model-item mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition-all last:mb-0 ${
+                    isSelected
+                      ? "border-[#10150a] bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
+                      : "border-[var(--glass-border)] bg-[var(--glass-bg)] text-[var(--text-primary)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--glass-bg-strong)]"
+                  } ${isUpdating ? "cursor-wait opacity-70" : ""}`}
+                >
                   <span className="inline-flex min-w-0 items-center gap-2.5">
-                    <span className="shrink-0">
-                      <ModelBadgeIcon className="h-7 w-7" model={model} />
-                    </span>
+                    {!isPicker && (
+                      <span className="shrink-0">
+                        <ModelBadgeIcon className="h-7 w-7" invert={isSelected} model={model} />
+                      </span>
+                    )}
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{model.name}</span>
                       <span className={`block truncate text-xs ${isSelected ? "text-[var(--text-inverse)] opacity-75" : "text-[var(--text-muted)] group-hover/model-item:text-[var(--text-secondary)]"}`}>

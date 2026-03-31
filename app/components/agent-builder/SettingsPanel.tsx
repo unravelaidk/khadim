@@ -1,477 +1,785 @@
-import { useEffect, useMemo, useState } from "react";
-import { showError, showSuccess } from "../../lib/toast";
-import { LuBrain, LuGlobe, LuBot, LuServer, LuSearch, LuCheck, LuCodeXml } from "react-icons/lu";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { showSuccess } from "../../lib/toast";
+import { LuPlus, LuEye, LuEyeOff, LuX } from "react-icons/lu";
+import { ModelSelector, ModelSelectorVariant, getResolvedModelIconUrl } from "./ModelSelector";
+import type { ModelOption } from "./ModelSelector";
+import { ProviderIcon } from "./ProviderIcon";
+import { ModelCard } from "./ModelCard";
+import {
+  useModelSettings,
+  useDiscoverModels,
+  EMPTY_FORM,
+  type ProviderType,
+  type ModelConfig,
+} from "../../hooks/useModelSettings";
+import { useCodexAuth } from "../../hooks/useCodexAuth";
 
-type ProviderType = "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama";
-
-interface ModelConfig {
-  id: string;
+interface FormData {
   name: string;
   provider: ProviderType;
   model: string;
-  baseUrl: string | null;
-  temperature: string | null;
-  isDefault: boolean | null;
-  isActive: boolean | null;
+  apiKey: string;
+  baseUrl: string;
+  temperature: string;
 }
 
-interface ProviderOption {
-  type: ProviderType;
-  name: string;
-  needsBaseUrl: boolean;
-}
-
-interface DiscoveredModel {
-  id: string;
-  name: string;
-}
-
-interface ApiData {
-  models?: ModelConfig[];
-  providers?: ProviderOption[];
-  oauth?: {
-    openaiCodexConnected?: boolean;
-  };
-  session?: {
-    sessionId: string;
-    authUrl: string;
-  };
-  success?: boolean;
-  error?: string;
-}
-
-interface DiscoverApiData {
-  success?: boolean;
-  models?: DiscoveredModel[];
-  error?: string;
-}
-
-interface CodexAuthStatusApiData {
-  success?: boolean;
-  error?: string;
-  oauth?: {
-    openaiCodexConnected?: boolean;
-  };
-  session?: {
-    status: "pending" | "connected" | "failed";
-    error: string | null;
-    authUrl: string | null;
-  };
-}
-
-const EMPTY_FORM = {
+const DEFAULT_EDIT_FORM: FormData = {
   name: "",
   provider: "openai" as ProviderType,
   model: "",
-  apiKey: "",
   baseUrl: "",
   temperature: "0.2",
+  apiKey: "",
 };
 
+const inputClass =
+  "w-full rounded-xl glass-input px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--glass-border-strong)] transition-all";
+
+function buildModelOptions(
+  discoveredModels: Array<{ id: string; name: string; provider: ProviderType; model: string }>,
+  configuredModels: ModelConfig[],
+  provider: ProviderType
+): ModelOption[] {
+  const discovered = new Set(discoveredModels.map((m) => m.id));
+  const configured = configuredModels
+    .filter((m) => m.provider === provider)
+    .map((m) => ({
+      id: m.model,
+      name: m.name,
+      provider: m.provider as ModelOption["provider"],
+      model: m.model,
+      baseUrl: m.baseUrl || "",
+      temperature: m.temperature || "0.2",
+      isConfigured: true,
+    }))
+    .filter((m) => !discovered.has(m.model));
+  return [...discoveredModels, ...configured];
+}
+
 export function SettingsPanel() {
-  const [models, setModels] = useState<ModelConfig[]>([]);
-  const [providers, setProviders] = useState<ProviderOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
-  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
-  const [codexConnected, setCodexConnected] = useState(false);
-  const [codexConnecting, setCodexConnecting] = useState(false);
-  const [codexSessionId, setCodexSessionId] = useState<string | null>(null);
-  const [codexAuthUrl, setCodexAuthUrl] = useState<string | null>(null);
+  const {
+    models,
+    providers,
+    loading,
+    saving,
+    activeModel,
+    createModel,
+    updateModel,
+    setActiveModel,
+    setDefaultModel,
+    deleteModel,
+  } = useModelSettings();
+
+  const codexAuth = useCodexAuth();
+  const discoverModels = useDiscoverModels();
+  const editDiscoverModels = useDiscoverModels();
+
+  const [form, setForm] = useState<FormData>(EMPTY_FORM as FormData);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState<FormData>(DEFAULT_EDIT_FORM);
   const [manualCode, setManualCode] = useState("");
   const [submittingManualCode, setSubmittingManualCode] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
 
   const providerInfo = useMemo(
     () => providers.find((provider) => provider.type === form.provider),
     [providers, form.provider]
   );
 
-  const fetchSettings = async () => {
-    setLoading(true);
-    try {
-      const [modelsRes, providersRes] = await Promise.all([
-        fetch("/api/models"),
-        fetch("/api/models?action=providers"),
-      ]);
-      const modelsData = (await modelsRes.json()) as ApiData;
-      const providersData = (await providersRes.json()) as ApiData;
-      setModels(modelsData.models ?? []);
-      setProviders(providersData.providers ?? []);
-      setCodexConnected(Boolean(providersData.oauth?.openaiCodexConnected));
-    } catch (error) {
-      console.error("Failed to load model settings", error);
-      showError("Failed to load model settings");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const providerModelOptions = useMemo(
+    () => buildModelOptions(discoverModels.discoveredModels, models, form.provider),
+    [discoverModels.discoveredModels, models, form.provider]
+  );
 
-  useEffect(() => { fetchSettings(); }, []);
-
-  const submitIntent = async (intent: string, data: Record<string, string>) => {
-    const body = new FormData();
-    body.append("intent", intent);
-    for (const [key, value] of Object.entries(data)) body.append(key, value);
-    const response = await fetch("/api/models", { method: "POST", body });
-    const payload = (await response.json()) as ApiData;
-    if (!response.ok) throw new Error(payload.error || "Request failed");
-    return payload;
-  };
-
-  const discoverModels = async () => {
-    setDiscovering(true);
-    setDiscoverError(null);
-    try {
-      const payload = (await submitIntent("discover", {
-        provider: form.provider, apiKey: form.apiKey, baseUrl: form.baseUrl,
-      })) as DiscoverApiData;
-      setDiscoveredModels(payload.models ?? []);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to fetch provider models";
-      setDiscoverError(message);
-      setDiscoveredModels([]);
-    } finally {
-      setDiscovering(false);
-    }
-  };
+  const editProviderModelOptions = useMemo(
+    () => buildModelOptions(editDiscoverModels.discoveredModels, models, editForm.provider),
+    [editDiscoverModels.discoveredModels, models, editForm.provider]
+  );
 
   useEffect(() => {
-    const timeout = setTimeout(() => { discoverModels(); }, 250);
-    return () => clearTimeout(timeout);
+    discoverModels.reset();
+    if (form.apiKey.trim().length > 0) {
+      const timeout = setTimeout(() => {
+        void discoverModels.discover(form.provider, form.apiKey, form.baseUrl);
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
   }, [form.provider, form.apiKey, form.baseUrl]);
 
   useEffect(() => {
-    if (!codexSessionId) return;
-    const intervalId = window.setInterval(async () => {
-      try {
-        const response = await fetch(`/api/models?action=codexAuthStatus&sessionId=${encodeURIComponent(codexSessionId)}`);
-        const payload = (await response.json()) as CodexAuthStatusApiData;
-        if (!response.ok) throw new Error(payload.error || "Failed to check Codex connection status");
-        setCodexConnected(Boolean(payload.oauth?.openaiCodexConnected));
-        setCodexAuthUrl(payload.session?.authUrl ?? null);
-        if (payload.session?.status === "connected") {
-          setCodexConnecting(false); setCodexSessionId(null); setManualCode("");
-          showSuccess("Codex subscription connected");
-          await fetchSettings();
-        }
-        if (payload.session?.status === "failed") {
-          setCodexConnecting(false); setCodexSessionId(null);
-          showError(payload.session.error || "Failed to connect Codex");
-        }
-      } catch (error) {
-        setCodexConnecting(false); setCodexSessionId(null);
-        showError(error instanceof Error ? error.message : "Failed to check Codex status");
-      }
-    }, 1500);
-    return () => window.clearInterval(intervalId);
-  }, [codexSessionId]);
-
-  const handleStartCodexAuth = async () => {
-    setCodexConnecting(true);
-    try {
-      const payload = await submitIntent("codexAuthStart", {});
-      const session = payload.session;
-      if (!session?.sessionId || !session.authUrl) throw new Error("Failed to start Codex login");
-      setCodexSessionId(session.sessionId);
-      setCodexAuthUrl(session.authUrl);
-      window.open(session.authUrl, "_blank", "noopener,noreferrer");
-      showSuccess("Opened Codex login in a new tab");
-    } catch (error) {
-      setCodexConnecting(false);
-      showError(error instanceof Error ? error.message : "Failed to start Codex login");
+    if (!editModalOpen) return;
+    editDiscoverModels.reset();
+    if (editForm.apiKey.trim().length > 0) {
+      const timeout = setTimeout(() => {
+        void editDiscoverModels.discover(editForm.provider, editForm.apiKey, editForm.baseUrl);
+      }, 300);
+      return () => clearTimeout(timeout);
     }
-  };
+  }, [editModalOpen, editForm.provider, editForm.apiKey, editForm.baseUrl]);
 
-  const handleSubmitManualCode = async () => {
-    if (!codexSessionId || !manualCode.trim()) return;
+  const handleCreateModel = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const success = await createModel({
+        name: form.name,
+        provider: form.provider,
+        model: form.model,
+        apiKey: form.apiKey,
+        baseUrl: form.baseUrl,
+        temperature: form.temperature,
+        isDefault: "false",
+        isActive: "true",
+      });
+      if (success) {
+        setForm(EMPTY_FORM as FormData);
+        showSuccess("Model added");
+      }
+    },
+    [form, createModel]
+  );
+
+  const handleUpdateModel = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!editingId) return;
+      const success = await updateModel(editingId, {
+        name: editForm.name,
+        provider: editForm.provider,
+        model: editForm.model,
+        baseUrl: editForm.baseUrl,
+        temperature: editForm.temperature,
+        isDefault: "false",
+        isActive: "true",
+      });
+      if (success) {
+        handleCancelEdit();
+        showSuccess("Model updated");
+      }
+    },
+    [editingId, editForm, updateModel]
+  );
+
+  const handleSetActive = useCallback(
+    async (id: string) => {
+      const success = await setActiveModel(id);
+      if (success) {
+        showSuccess("Active model updated");
+      }
+    },
+    [setActiveModel]
+  );
+
+  const handleSetDefault = useCallback(
+    async (id: string) => {
+      const success = await setDefaultModel(id);
+      if (success) {
+        showSuccess("Default model updated");
+      }
+    },
+    [setDefaultModel]
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const success = await deleteModel(id);
+      if (success) {
+        showSuccess("Model removed");
+      }
+    },
+    [deleteModel]
+  );
+
+  const handleEditModel = useCallback((model: ModelConfig) => {
+    setEditForm({
+      name: model.name,
+      provider: model.provider,
+      model: model.model,
+      baseUrl: model.baseUrl || "",
+      temperature: model.temperature || "0.2",
+      apiKey: "",
+    });
+    setEditingId(model.id);
+    setEditModalOpen(true);
+    editDiscoverModels.reset();
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditForm(DEFAULT_EDIT_FORM);
+    setEditingId(null);
+    setEditModalOpen(false);
+    editDiscoverModels.reset();
+  }, []);
+
+  const handleSelectDiscoveredModel = useCallback((modelId: string) => {
+    const found = providerModelOptions.find((m) => m.id === modelId);
+    if (found) {
+      setForm((prev) => ({
+        ...prev,
+        model: found.model,
+        name: found.name,
+        baseUrl: "baseUrl" in found ? (found.baseUrl as string) : "",
+        temperature: "temperature" in found ? (found.temperature as string) : "0.2",
+      }));
+    }
+  }, [providerModelOptions]);
+
+  const handleSelectEditDiscoveredModel = useCallback((modelId: string) => {
+    const found = editProviderModelOptions.find((m) => m.id === modelId);
+    if (found) {
+      setEditForm((prev) => ({
+        ...prev,
+        model: found.model,
+        name: found.name,
+      }));
+    }
+  }, [editProviderModelOptions]);
+
+  const handleSubmitManualCode = useCallback(async () => {
+    if (!codexAuth.sessionId || !manualCode.trim()) return;
     setSubmittingManualCode(true);
     try {
-      await submitIntent("codexAuthComplete", { sessionId: codexSessionId, code: manualCode.trim() });
-      showSuccess("Authorization code submitted");
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "Failed to submit authorization code");
+      const success = await codexAuth.submitManualCode(manualCode.trim());
+      if (success) {
+        setManualCode("");
+      }
     } finally {
       setSubmittingManualCode(false);
     }
-  };
-
-  const handleCreateModel = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await submitIntent("create", {
-        name: form.name, provider: form.provider, model: form.model,
-        apiKey: form.apiKey, baseUrl: form.baseUrl, temperature: form.temperature,
-        isDefault: "false", isActive: "true",
-      });
-      setForm(EMPTY_FORM);
-      await fetchSettings();
-      showSuccess("Model added");
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "Failed to add model");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSetActive = async (id: string) => {
-    try { await submitIntent("setActive", { id }); await fetchSettings(); showSuccess("Active model updated"); }
-    catch (error) { showError(error instanceof Error ? error.message : "Failed to set active model"); }
-  };
-  const handleSetDefault = async (id: string) => {
-    try { await submitIntent("setDefault", { id }); await fetchSettings(); showSuccess("Default model updated"); }
-    catch (error) { showError(error instanceof Error ? error.message : "Failed to set default model"); }
-  };
-  const handleDelete = async (id: string) => {
-    try { await submitIntent("delete", { id }); await fetchSettings(); showSuccess("Model removed"); }
-    catch (error) { showError(error instanceof Error ? error.message : "Failed to delete model"); }
-  };
-
-  const applyDiscoveredModel = (modelId: string) => {
-    const selected = discoveredModels.find((item) => item.id === modelId);
-    if (!selected) return;
-    setForm((previous) => ({ ...previous, model: selected.id, name: previous.name || selected.name }));
-  };
-
-  const filteredDiscoveredModels = useMemo(() => {
-    const q = form.model.trim().toLowerCase();
-    const base = q
-      ? discoveredModels.filter((item) => item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q))
-      : discoveredModels;
-    return base.slice(0, 14);
-  }, [discoveredModels, form.model]);
-
-  const providerIcon = (provider: ProviderType) => {
-    switch (provider) {
-      case "openai": return <LuBrain className="h-4 w-4" />;
-      case "anthropic": return <LuBot className="h-4 w-4" />;
-      case "openai-codex": return <LuCodeXml className="h-4 w-4" />;
-      case "openrouter": return <LuGlobe className="h-4 w-4" />;
-      case "ollama": return <LuServer className="h-4 w-4" />;
-      default: return <LuBrain className="h-4 w-4" />;
-    }
-  };
-
-  const inputClass = "rounded-2xl glass-input px-4 py-2.5 text-sm text-[var(--text-primary)]";
+  }, [codexAuth, manualCode]);
 
   return (
-    <section className="flex-1 overflow-y-auto p-5 md:p-9">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-7">
-        {/* Header card */}
-        <div className="rounded-[1.75rem] glass-card-static p-6">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Model Settings</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            Select the LLM provider and model your agent should use.
-          </p>
-        </div>
+    <section className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+      <div className="mx-auto w-full max-w-4xl space-y-6">
+        <HeaderSection activeModel={activeModel} />
 
-        {/* Add model form */}
-        <form onSubmit={handleCreateModel} className="rounded-[1.75rem] glass-card-static p-6">
-          <h3 className="text-base font-semibold text-[var(--text-primary)]">Add Model</h3>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">
-            Models are fetched automatically when provider, key, or base URL changes.
-          </p>
+        <AddModelForm
+          form={form}
+          setForm={setForm}
+          providers={providers}
+          providerInfo={providerInfo}
+          providerModelOptions={providerModelOptions}
+          discoverModels={discoverModels}
+          saving={saving}
+          showApiKey={showApiKey}
+          setShowApiKey={setShowApiKey}
+          onSubmit={handleCreateModel}
+          onSelectModel={handleSelectDiscoveredModel}
+          codexAuth={codexAuth}
+          manualCode={manualCode}
+          setManualCode={setManualCode}
+          submittingManualCode={submittingManualCode}
+          onSubmitManualCode={handleSubmitManualCode}
+        />
 
-          {form.provider === "openai-codex" && (
-            <div className="mt-3 rounded-2xl glass-panel p-4 md:col-span-2">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">ChatGPT Plus or Pro</p>
-                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                    Connect your Codex subscription once, then add any supported Codex model.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full glass-panel px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                    {codexConnected ? "Connected" : codexConnecting ? "Waiting for login" : "Not connected"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleStartCodexAuth}
-                    disabled={codexConnecting}
-                    className="rounded-xl btn-glass px-3 py-2 text-xs font-medium disabled:opacity-60"
-                  >
-                    {codexConnected ? "Reconnect" : codexConnecting ? "Connecting..." : "Connect Codex"}
-                  </button>
-                </div>
-              </div>
-              {codexAuthUrl && (
-                <div className="mt-3 space-y-2">
-                  <a href={codexAuthUrl} target="_blank" rel="noreferrer" className="inline-flex text-xs text-[var(--text-primary)] underline underline-offset-2">
-                    Open login page again
-                  </a>
-                  <div className="flex flex-col gap-2 md:flex-row">
-                    <input value={manualCode} onChange={(e) => setManualCode(e.target.value)}
-                      className={`flex-1 ${inputClass}`}
-                      placeholder="Paste the redirect URL or authorization code" />
-                    <button type="button" onClick={handleSubmitManualCode}
-                      disabled={!codexSessionId || !manualCode.trim() || submittingManualCode}
-                      className="rounded-xl btn-glass px-3 py-2 text-xs font-medium disabled:opacity-60">
-                      {submittingManualCode ? "Submitting..." : "Submit code"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        <ConfiguredModelsSection
+          loading={loading}
+          models={models}
+          onSetActive={handleSetActive}
+          onSetDefault={handleSetDefault}
+          onEdit={handleEditModel}
+          onDelete={handleDelete}
+        />
 
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <input required value={form.name}
-              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-              className={inputClass} placeholder="Display name" />
-
-            <div className="rounded-2xl glass-panel p-1">
-              <div className="grid grid-cols-2 gap-1">
-                {providers.map((provider) => {
-                  const isActive = form.provider === provider.type;
-                  return (
-                    <button key={provider.type} type="button"
-                      onClick={() => setForm((p) => ({ ...p, provider: provider.type }))}
-                      className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all ${
-                        isActive
-                          ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
-                          : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
-                      }`}>
-                      {providerIcon(provider.type)}
-                      <span className="truncate">{provider.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex items-center rounded-2xl glass-panel px-4 py-2.5 text-sm text-[var(--text-secondary)]">
-              {discovering ? "Fetching provider models..." : `Detected ${discoveredModels.length} models`}
-            </div>
-
-            <input required value={form.model}
-              onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
-              className={inputClass} placeholder="Model id (example: gpt-4o-mini)" />
-
-            <input value={form.temperature}
-              onChange={(e) => setForm((p) => ({ ...p, temperature: e.target.value }))}
-              className={inputClass} placeholder="Temperature" />
-
-            <input value={form.apiKey}
-              onChange={(e) => setForm((p) => ({ ...p, apiKey: e.target.value }))}
-              className={`${inputClass} md:col-span-2`}
-              placeholder={form.provider === "openai-codex"
-                ? "API key optional if auth.json or OPENAI_CODEX_API_KEY is available"
-                : "API key (optional if server env provides it)"} />
-
-            {providerInfo?.needsBaseUrl && (
-              <input value={form.baseUrl}
-                onChange={(e) => setForm((p) => ({ ...p, baseUrl: e.target.value }))}
-                className={`${inputClass} md:col-span-2`} placeholder="Base URL" />
-            )}
-
-            {discoverError && (
-              <p className="text-xs text-[var(--text-secondary)] md:col-span-2">{discoverError}</p>
-            )}
-
-            {discoveredModels.length > 0 && (
-              <div className="md:col-span-2 rounded-2xl glass-panel p-2.5">
-                <div className="mb-2 flex items-center gap-2 px-2 pt-1 text-xs font-medium text-[var(--text-secondary)]">
-                  <LuSearch className="h-3.5 w-3.5" />
-                  Available provider models
-                </div>
-                <div className="max-h-56 space-y-1 overflow-y-auto p-1">
-                  {filteredDiscoveredModels.length === 0 ? (
-                    <div className="rounded-xl px-2 py-2 text-xs text-[var(--text-secondary)]">
-                      No matches for &ldquo;{form.model}&rdquo;.
-                    </div>
-                  ) : (
-                    filteredDiscoveredModels.map((item) => {
-                      const selected = form.model === item.id;
-                      return (
-                        <button key={item.id} type="button"
-                          onClick={() => applyDiscoveredModel(item.id)}
-                          className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-left transition-all ${
-                            selected
-                              ? "border-[#10150a] bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
-                              : "border-transparent hover:border-[var(--glass-border)] hover:bg-[var(--glass-bg)]"
-                          }`}>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{item.name}</p>
-                            <p className="truncate text-xs opacity-70">{item.id}</p>
-                          </div>
-                          {selected && <LuCheck className="h-4 w-4" />}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <button disabled={saving} type="submit"
-            className="mt-4 rounded-xl bg-[#10150a] px-5 py-2.5 text-sm font-semibold text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[#1c2214] hover:shadow-[var(--shadow-glass-md)] disabled:opacity-60">
-            {saving ? "Saving..." : "Add model"}
-          </button>
-        </form>
-
-        {/* Configured models */}
-        <div className="rounded-[1.75rem] glass-card-static p-6">
-          <h3 className="text-base font-semibold text-[var(--text-primary)]">Configured Models</h3>
-
-          {loading ? (
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">Loading models...</p>
-          ) : models.length === 0 ? (
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">No models configured yet.</p>
-          ) : (
-            <div className="mt-3 space-y-3">
-              {models.map((model) => (
-                <article key={model.id} className="rounded-2xl glass-panel p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#10150a]">
-                          {providerIcon(model.provider)}
-                        </div>
-                        <p className="font-medium text-[var(--text-primary)]">{model.name}</p>
-                      </div>
-                      <p className="mt-1 ml-8 text-sm text-[var(--text-secondary)]">
-                        {model.provider} — {model.model}
-                      </p>
-                      <div className="mt-2 ml-8 flex gap-2">
-                        {model.isActive && (
-                          <span className="rounded-full bg-[#10150a] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">Active</span>
-                        )}
-                        {model.isDefault && (
-                          <span className="rounded-full bg-[#10150a] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">Default</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {!model.isActive && (
-                        <button onClick={() => handleSetActive(model.id)} type="button"
-                          className="rounded-xl btn-glass px-3 py-1.5 text-xs font-medium">
-                          Set Active
-                        </button>
-                      )}
-                      {!model.isDefault && (
-                        <button onClick={() => handleSetDefault(model.id)} type="button"
-                          className="rounded-xl btn-glass px-3 py-1.5 text-xs font-medium">
-                          Set Default
-                        </button>
-                      )}
-                      <button onClick={() => handleDelete(model.id)} type="button"
-                        className="rounded-xl btn-glass px-3 py-1.5 text-xs font-medium text-red-500 hover:text-red-600">
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
+        {editModalOpen && (
+          <EditModelModal
+            editForm={editForm}
+            setEditForm={setEditForm}
+            providers={providers}
+            editProviderModelOptions={editProviderModelOptions}
+            editDiscoverModels={editDiscoverModels}
+            saving={saving}
+            onSubmit={handleUpdateModel}
+            onCancel={handleCancelEdit}
+            onSelectModel={handleSelectEditDiscoveredModel}
+          />
+        )}
       </div>
     </section>
+  );
+}
+
+function HeaderSection({ activeModel }: { activeModel: ModelConfig | undefined }) {
+  return (
+    <div className="rounded-2xl glass-card-static p-5">
+      <h2 className="text-lg font-semibold text-[var(--text-primary)]">Model Settings</h2>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">
+        Configure AI providers and models for your agent.
+      </p>
+      {activeModel && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl glass-panel px-3 py-2 text-xs">
+          <span className="text-[var(--text-muted)]">Currently using:</span>
+          <span className="font-medium text-[var(--text-primary)]">{activeModel.name}</span>
+          <span className="text-[var(--text-muted)]">({activeModel.provider} / {activeModel.model})</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderSelector({
+  providers,
+  selectedProvider,
+  onSelect,
+}: {
+  providers: Array<{ type: ProviderType; name: string }>;
+  selectedProvider: ProviderType;
+  onSelect: (provider: ProviderType) => void;
+}) {
+  return (
+    <div className="rounded-xl glass-panel p-1.5">
+      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4">
+        {providers.map((provider) => {
+          const isActive = selectedProvider === provider.type;
+          return (
+            <button
+              key={provider.type}
+              type="button"
+              onClick={() => onSelect(provider.type)}
+              className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all ${
+                isActive
+                  ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                  isActive ? "bg-gradient-to-br from-white/90 to-white/60 shadow-sm" : "bg-[var(--glass-bg-strong)]"
+                }`}
+              >
+                <ProviderIcon provider={provider.type} />
+              </span>
+              <span className="truncate">{provider.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CodexOAuthSection({
+  codexAuth,
+  manualCode,
+  setManualCode,
+  submittingManualCode,
+  onSubmitManualCode,
+}: {
+  codexAuth: ReturnType<typeof useCodexAuth>;
+  manualCode: string;
+  setManualCode: (code: string) => void;
+  submittingManualCode: boolean;
+  onSubmitManualCode: () => void;
+}) {
+  const isConnected = codexAuth.isConnected;
+  const isConnecting = codexAuth.isConnecting;
+
+  return (
+    <div className="mt-4 rounded-xl glass-panel p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-[var(--text-primary)]">ChatGPT Plus or Pro</p>
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+            Connect your Codex subscription once, then add any supported Codex model.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              isConnected
+                ? "bg-emerald-500/20 text-emerald-400"
+                : isConnecting
+                  ? "bg-amber-500/20 text-amber-400"
+                  : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"
+            }`}
+          >
+            {isConnected ? "Connected" : isConnecting ? "Waiting..." : "Not connected"}
+          </span>
+          <button
+            type="button"
+            onClick={() => void codexAuth.startAuth()}
+            disabled={isConnecting}
+            className="rounded-lg btn-glass px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+          >
+            {isConnected ? "Reconnect" : isConnecting ? "Connecting..." : "Connect"}
+          </button>
+        </div>
+      </div>
+      {codexAuth.authUrl && (
+        <div className="mt-3 space-y-2">
+          <a
+            href={codexAuth.authUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex text-xs text-[var(--accent)] underline underline-offset-2"
+          >
+            Open login page again
+          </a>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              className={inputClass}
+              placeholder="Paste the redirect URL or authorization code"
+            />
+            <button
+              type="button"
+              onClick={() => void onSubmitManualCode()}
+              disabled={!codexAuth.sessionId || !manualCode.trim() || submittingManualCode}
+              className="rounded-lg btn-glass px-3 py-2 text-xs font-medium disabled:opacity-60 whitespace-nowrap"
+            >
+              {submittingManualCode ? "Submitting..." : "Submit code"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddModelForm({
+  form,
+  setForm,
+  providers,
+  providerInfo,
+  providerModelOptions,
+  discoverModels,
+  saving,
+  showApiKey,
+  setShowApiKey,
+  onSubmit,
+  onSelectModel,
+  codexAuth,
+  manualCode,
+  setManualCode,
+  submittingManualCode,
+  onSubmitManualCode,
+}: {
+  form: FormData;
+  setForm: React.Dispatch<React.SetStateAction<FormData>>;
+  providers: Array<{ type: ProviderType; name: string; needsBaseUrl: boolean }>;
+  providerInfo: { type: ProviderType; name: string; needsBaseUrl: boolean } | undefined;
+  providerModelOptions: ModelOption[];
+  discoverModels: ReturnType<typeof useDiscoverModels>;
+  saving: boolean;
+  showApiKey: boolean;
+  setShowApiKey: (show: boolean) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSelectModel: (modelId: string) => void;
+  codexAuth: ReturnType<typeof useCodexAuth>;
+  manualCode: string;
+  setManualCode: (code: string) => void;
+  submittingManualCode: boolean;
+  onSubmitManualCode: () => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="relative rounded-2xl glass-card-static p-5" style={{ zIndex: 60 }}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-[var(--text-primary)]">Add Model</h3>
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+            Pick a provider, enter your API key, and select a model.
+          </p>
+        </div>
+      </div>
+
+      {form.provider === "openai-codex" && (
+        <CodexOAuthSection
+          codexAuth={codexAuth}
+          manualCode={manualCode}
+          setManualCode={setManualCode}
+          submittingManualCode={submittingManualCode}
+          onSubmitManualCode={onSubmitManualCode}
+        />
+      )}
+
+      <div className="mt-4 space-y-3">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Provider</label>
+          <ProviderSelector
+            providers={providers}
+            selectedProvider={form.provider}
+            onSelect={(provider) => {
+              setForm((prev) => ({ ...prev, provider, model: "", baseUrl: "" }));
+              discoverModels.reset();
+            }}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
+            API Key {form.provider === "openai-codex" ? "(optional if connected)" : ""}
+          </label>
+          <div className="relative">
+            <input
+              type={showApiKey ? "text" : "password"}
+              value={form.apiKey}
+              onChange={(e) => setForm((prev) => ({ ...prev, apiKey: e.target.value }))}
+              className={`${inputClass} pr-10`}
+              placeholder="sk-..."
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              {showApiKey ? <LuEyeOff className="h-4 w-4" /> : <LuEye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {providerInfo?.needsBaseUrl && (
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Base URL</label>
+            <input
+              value={form.baseUrl}
+              onChange={(e) => setForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
+              className={inputClass}
+              placeholder="https://api.example.com/v1"
+            />
+          </div>
+        )}
+
+        <div className="relative z-50">
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Model</label>
+          <ModelSelector
+            models={providerModelOptions}
+            selectedModelId={form.model || null}
+            onSelectModel={onSelectModel}
+            isLoading={discoverModels.discovering}
+            className="w-full"
+            direction="down"
+            variant={ModelSelectorVariant.Picker}
+            onOpen={() => {
+              if (form.apiKey.trim().length > 0 && discoverModels.discoveredModels.length === 0 && !discoverModels.discovering) {
+                void discoverModels.discover(form.provider, form.apiKey, form.baseUrl);
+              }
+            }}
+            placeholder={
+              discoverModels.discovering
+                ? "Fetching models..."
+                : discoverModels.error
+                  ? "Error fetching models"
+                  : form.apiKey.trim().length > 0
+                    ? "Select a model..."
+                    : "Enter API key to browse models"
+            }
+          />
+          {discoverModels.error && <p className="mt-1.5 text-xs text-red-400">{discoverModels.error}</p>}
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Display Name</label>
+          <input
+            required
+            value={form.name}
+            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+            className={inputClass}
+            placeholder="My Model"
+          />
+        </div>
+
+        <div className="sm:w-1/2">
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Temperature</label>
+          <input
+            value={form.temperature}
+            onChange={(e) => setForm((prev) => ({ ...prev, temperature: e.target.value }))}
+            className={inputClass}
+            placeholder="0.2"
+            type="number"
+            step="0.1"
+            min="0"
+            max="2"
+          />
+        </div>
+      </div>
+
+      <button
+        disabled={saving || !form.model.trim() || !form.name.trim()}
+        type="submit"
+        className="mt-5 flex items-center gap-2 rounded-xl bg-[#10150a] px-5 py-2.5 text-sm font-semibold text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[#1c2214] disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <LuPlus className="h-4 w-4" />
+        {saving ? "Saving..." : "Add Model"}
+      </button>
+    </form>
+  );
+}
+
+function ConfiguredModelsSection({
+  loading,
+  models,
+  onSetActive,
+  onSetDefault,
+  onEdit,
+  onDelete,
+}: {
+  loading: boolean;
+  models: ModelConfig[];
+  onSetActive: (id: string) => void;
+  onSetDefault: (id: string) => void;
+  onEdit: (model: ModelConfig) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="relative rounded-2xl glass-card-static p-5" style={{ zIndex: 10 }}>
+      <h3 className="text-base font-semibold text-[var(--text-primary)]">Configured Models</h3>
+
+      {loading ? (
+        <p className="mt-3 text-sm text-[var(--text-muted)]">Loading...</p>
+      ) : models.length === 0 ? (
+        <p className="mt-3 text-sm text-[var(--text-muted)]">No models configured yet. Add one above.</p>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {models.map((model) => (
+            <ModelCard
+              key={model.id}
+              model={model}
+              onSetActive={onSetActive}
+              onSetDefault={onSetDefault}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditModelModal({
+  editForm,
+  setEditForm,
+  providers,
+  editProviderModelOptions,
+  editDiscoverModels,
+  saving,
+  onSubmit,
+  onCancel,
+  onSelectModel,
+}: {
+  editForm: FormData;
+  setEditForm: React.Dispatch<React.SetStateAction<FormData>>;
+  providers: Array<{ type: ProviderType; name: string }>;
+  editProviderModelOptions: ModelOption[];
+  editDiscoverModels: ReturnType<typeof useDiscoverModels>;
+  saving: boolean;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+  onSelectModel: (modelId: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-lg rounded-2xl glass-panel-strong p-6 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="text-base font-semibold text-[var(--text-primary)]">Edit Model</h3>
+            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">Update the model configuration</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <LuX className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Provider</label>
+            <ProviderSelector
+              providers={providers}
+              selectedProvider={editForm.provider}
+              onSelect={(provider) => setEditForm((prev) => ({ ...prev, provider }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Model</label>
+            <ModelSelector
+              models={editProviderModelOptions}
+              selectedModelId={editForm.model || null}
+              onSelectModel={onSelectModel}
+              isLoading={editDiscoverModels.discovering}
+              className="w-full"
+              direction="down"
+              variant={ModelSelectorVariant.Picker}
+              onOpen={() => {
+                if (editForm.apiKey.trim().length > 0 && editDiscoverModels.discoveredModels.length === 0 && !editDiscoverModels.discovering) {
+                  void editDiscoverModels.discover(editForm.provider, editForm.apiKey, editForm.baseUrl);
+                }
+              }}
+              placeholder={
+                editDiscoverModels.discovering
+                  ? "Fetching models..."
+                  : editDiscoverModels.error
+                    ? "Error fetching models"
+                    : editForm.apiKey.trim().length > 0
+                      ? "Select a model..."
+                      : "Enter API key to browse models"
+              }
+            />
+            {editDiscoverModels.error && <p className="mt-1.5 text-xs text-red-400">{editDiscoverModels.error}</p>}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Display Name</label>
+            <input
+              required
+              value={editForm.name}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+              className={inputClass}
+              placeholder="My Model"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Base URL</label>
+            <input
+              value={editForm.baseUrl}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
+              className={inputClass}
+              placeholder="https://api.example.com/v1"
+            />
+          </div>
+
+          <div className="sm:w-1/2">
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Temperature</label>
+            <input
+              value={editForm.temperature}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, temperature: e.target.value }))}
+              className={inputClass}
+              placeholder="0.2"
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 rounded-xl glass-panel px-5 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:bg-[var(--glass-bg-strong)]"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={saving || !editForm.model.trim() || !editForm.name.trim()}
+              type="submit"
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-[#10150a] px-5 py-2.5 text-sm font-semibold text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[#1c2214] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? "Saving..." : "Update Model"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

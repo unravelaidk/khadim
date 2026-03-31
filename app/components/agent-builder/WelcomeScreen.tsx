@@ -290,7 +290,7 @@ export function WelcomeScreen({
         </div>
       </div>
 
-      <div className="group relative mx-auto flex w-full max-w-[96vw] flex-col rounded-3xl glass-panel-strong transition-all duration-300 sm:max-w-none">
+      <div className="group relative z-50 mx-auto flex w-full max-w-[96vw] flex-col rounded-3xl glass-panel-strong transition-all duration-300 sm:max-w-none">
 
         <div className="flex items-center justify-between rounded-t-3xl border-b border-[var(--glass-border)] px-4 py-3 sm:px-6 md:px-8">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
@@ -321,7 +321,7 @@ export function WelcomeScreen({
               onSelectModel={onSelectModel}
               isLoading={isModelLoading}
               isUpdating={isModelUpdating}
-              className="w-64"
+              className="w-40 sm:w-56 md:w-64"
               direction="down"
             />
             <div className="hidden text-xs text-[var(--text-muted)] md:block">Shift + Enter for new line</div>

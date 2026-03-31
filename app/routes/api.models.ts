@@ -20,7 +20,12 @@ import {
 
 const modelSchema = z.object({
   name: z.string().min(1),
-  provider: z.enum(["openai", "anthropic", "openai-codex", "openrouter", "ollama"]),
+  provider: z.enum([
+    "openai", "anthropic", "openai-codex", "openrouter", "ollama",
+    "xai", "groq", "cerebras", "mistral", "minimax", "zai",
+    "amazon-bedrock", "azure-openai-responses", "github-copilot",
+    "huggingface", "vercel-ai-gateway", "opencode", "opencode-go", "kimi-coding",
+  ]),
   model: z.string().min(1),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
@@ -164,7 +169,7 @@ export async function action({ request }: ActionFunctionArgs) {
         }
 
         const models = await discoverProviderModels({
-          provider: provider as "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama",
+          provider: formData.get("provider") as Parameters<typeof discoverProviderModels>[0]["provider"],
           apiKey: formData.get("apiKey")?.toString() || undefined,
           baseUrl: formData.get("baseUrl")?.toString() || undefined,
         });
