@@ -6,13 +6,13 @@ import { getActiveModel } from "../agent/model-manager";
 import {
   createJob,
   getJob,
-  getJobByChatId,
+  getJobsByChatId,
 } from "../lib/job-manager";
 import type { AgentJob } from "../types/agent";
 import { createId } from "@paralleldrive/cuid2";
 import { decoratePromptWithBadges } from "../lib/badges";
 import { loadChatHistory } from "../lib/chat-history";
-import { createExistingJobStream, createNewJobStream } from "../agent/stream-utils";
+import { startJob } from "../agent/stream-utils";
 
 function isJobVisibleToSession(job: AgentJob, chatId?: string | null, sessionId?: string) {
   if (chatId && job.chatId !== chatId) return false;
@@ -20,34 +20,30 @@ function isJobVisibleToSession(job: AgentJob, chatId?: string | null, sessionId?
   return true;
 }
 
-// GET /api/agent?jobId=xxx - Subscribe to existing job updates
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const jobId = url.searchParams.get("jobId");
   const chatId = url.searchParams.get("chatId");
   const sessionId = url.searchParams.get("sessionId") || undefined;
 
-  // Find job by ID or chatId
-  let job: AgentJob | null = null;
   if (jobId) {
-    job = await getJob(jobId);
-  } else if (chatId) {
-    job = await getJobByChatId(chatId, sessionId);
+    const job = await getJob(jobId);
+    if (!job || !isJobVisibleToSession(job, chatId, sessionId)) {
+      return new Response(JSON.stringify({ error: "No active job found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return Response.json({ job });
   }
 
-  if (job && !isJobVisibleToSession(job, chatId, sessionId)) {
-    job = null;
+  if (!chatId) {
+    return Response.json({ jobs: [] });
   }
 
-  if (!job) {
-    return new Response(JSON.stringify({ error: "No active job found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Use utility to create stream
-  return createExistingJobStream(job, request);
+  const jobs = await getJobsByChatId(chatId, sessionId);
+  return Response.json({ jobs });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -96,36 +92,35 @@ export async function action({ request }: ActionFunctionArgs) {
     });
   }
 
-  // Create a job ID
   const jobId = createId();
-  
-  // Create job in Redis
-  await createJob(jobId, chatId || "default", sessionId);
+  const resolvedChatId = chatId || "default";
+
+  await createJob(jobId, resolvedChatId, sessionId);
 
   // Get agent configuration
   const agentConfig = getAgentConfig(agentMode);
 
-  // Load Skills and History
   const skillsContent = await loadSkills();
   const history = chatId ? await loadChatHistory(chatId) : [];
 
-  // Use utility to create steam and start backend job
-  return createNewJobStream(
+  startJob(jobId, {
     jobId,
-    chatId || "default",
+    chatId: resolvedChatId,
+    sessionId,
+    prompt,
     agentMode,
-    agentConfig.name,
-    {
-      jobId,
-      chatId: chatId || "default",
-      prompt,
-      agentMode,
-      agentConfig,
-      skillsContent,
-      history,
-      existingSandboxId,
-      // abortSignal is attached inside createNewJobStream
-    },
-    request
-  );
+    agentConfig,
+    skillsContent,
+    history,
+    existingSandboxId,
+  });
+
+  return Response.json({
+    ok: true,
+    jobId,
+    chatId: resolvedChatId,
+    sessionId,
+    agentMode,
+    agentName: agentConfig.name,
+  });
 }

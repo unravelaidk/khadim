@@ -1,5 +1,5 @@
 import { createCodeExecutionClient, type RemoteSandbox } from "@khadim/codeexecution-client";
-import { getJobByChatId } from "../lib/job-manager";
+import { getJobsByChatId } from "../lib/job-manager";
 import type { SandboxInstance } from "./tools";
 
 const SANDBOX_GRACE_MS = 5 * 60 * 1000;
@@ -98,19 +98,19 @@ export function scheduleSandboxCleanup(
   sandboxId: string,
   options?: {
     graceMs?: number;
-    getJobByChatIdFn?: typeof getJobByChatId;
+    getJobsByChatIdFn?: typeof getJobsByChatId;
     sandboxProvider?: SandboxProvider;
   }
 ): void {
   const graceMs = options?.graceMs ?? SANDBOX_GRACE_MS;
-  const getJob = options?.getJobByChatIdFn ?? getJobByChatId;
+  const getJobs = options?.getJobsByChatIdFn ?? getJobsByChatId;
   const sandboxProvider = options?.sandboxProvider ?? RemoteSandboxProvider;
 
   setTimeout(() => {
     void (async () => {
       try {
-        const activeJob = await getJob(chatId);
-        if (activeJob && activeJob.status === "running") {
+        const activeJobs = await getJobs(chatId);
+        if (activeJobs.length > 0) {
           return;
         }
         const sandbox = await sandboxProvider.connect({ id: sandboxId });

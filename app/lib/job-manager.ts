@@ -28,6 +28,7 @@ export type { AgentJob, AgentJobStep, JobEvent };
 
 // In-memory subscribers (process-local, for SSE connections)
 const localSubscribers = new Map<string, Set<(event: JobEvent) => void>>();
+const sessionSubscribers = new Map<string, Set<(event: JobEvent) => void>>();
 
 function getActiveSessionJobsKey(chatId: string, sessionId: string) {
   return `${ACTIVE_SESSION_JOBS_PREFIX}${chatId}:${sessionId}`;
@@ -94,6 +95,57 @@ export async function getJobByChatId(chatId: string, sessionId?: string): Promis
   return null;
 }
 
+export async function getJobsByChatId(chatId: string, sessionId?: string): Promise<AgentJob[]> {
+  if (sessionId) {
+    const jobIds = await redis.zrevrange(getActiveSessionJobsKey(chatId, sessionId), 0, 19);
+    const jobs: AgentJob[] = [];
+
+    for (const jobId of jobIds) {
+      const job = await getJob(jobId);
+      if (job?.chatId === chatId && job.sessionId === sessionId && job.status === "running") {
+        jobs.push(job);
+        continue;
+      }
+
+      await redis.zrem(getActiveSessionJobsKey(chatId, sessionId), jobId);
+    }
+
+    return jobs;
+  }
+
+  const keys = await redis.keys(JOB_PREFIX + "*");
+  const jobs: AgentJob[] = [];
+
+  for (const key of keys) {
+    const data = await redis.get(key);
+    if (!data) continue;
+
+    const job = JSON.parse(data) as AgentJob;
+    if (job.chatId === chatId && job.status === "running") {
+      jobs.push(job);
+    }
+  }
+
+  return jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getActiveJobsBySession(sessionId: string): Promise<AgentJob[]> {
+  const keys = await redis.keys(JOB_PREFIX + "*");
+  const jobs: AgentJob[] = [];
+
+  for (const key of keys) {
+    const data = await redis.get(key);
+    if (!data) continue;
+
+    const job = JSON.parse(data) as AgentJob;
+    if (job.sessionId === sessionId && job.status === "running") {
+      jobs.push(job);
+    }
+  }
+
+  return jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export async function updateJob(id: string, updates: Partial<AgentJob>): Promise<void> {
   const job = await getJob(id);
   if (job) {
@@ -145,7 +197,13 @@ export async function completeJob(
     await touchActiveJob(job);
     
     // Broadcast completion to local subscribers
-    broadcast(id, { type: "done", data: { content: finalContent, previewUrl } });
+    broadcast(id, {
+      type: "done",
+      data: { content: finalContent, previewUrl },
+      jobId: job.id,
+      chatId: job.chatId,
+      sessionId: job.sessionId,
+    });
     console.log(`[JobManager] Job ${id} completed`);
   }
 }
@@ -159,7 +217,13 @@ export async function failJob(id: string, error: string): Promise<void> {
     await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
     await touchActiveJob(job);
     
-    broadcast(id, { type: "error", data: { message: error } });
+    broadcast(id, {
+      type: "error",
+      data: { message: error },
+      jobId: job.id,
+      chatId: job.chatId,
+      sessionId: job.sessionId,
+    });
     console.log(`[JobManager] Job ${id} failed: ${error}`);
   }
 }
@@ -173,7 +237,13 @@ export async function cancelJob(id: string): Promise<void> {
     await touchActiveJob(job);
     
     // Broadcast cancellation (as error type 'cancelled' for now to fit existing frontend)
-    broadcast(id, { type: "error", data: { message: "Cancelled by user" } });
+    broadcast(id, {
+      type: "error",
+      data: { message: "Cancelled by user" },
+      jobId: job.id,
+      chatId: job.chatId,
+      sessionId: job.sessionId,
+    });
     console.log(`[JobManager] Job ${id} cancelled`);
   }
 }
@@ -200,6 +270,29 @@ export function subscribe(
   };
 }
 
+export function subscribeToSession(
+  sessionId: string,
+  callback: (event: JobEvent) => void
+): () => void {
+  if (!sessionSubscribers.has(sessionId)) {
+    sessionSubscribers.set(sessionId, new Set());
+  }
+
+  sessionSubscribers.get(sessionId)!.add(callback);
+  console.log(`[JobManager] Subscribed to session ${sessionId}`);
+
+  return () => {
+    const subscribers = sessionSubscribers.get(sessionId);
+    if (subscribers) {
+      subscribers.delete(callback);
+      if (subscribers.size === 0) {
+        sessionSubscribers.delete(sessionId);
+      }
+    }
+    console.log(`[JobManager] Unsubscribed from session ${sessionId}`);
+  };
+}
+
 export function broadcast(jobId: string, event: JobEvent): void {
   const subscribers = localSubscribers.get(jobId);
   if (subscribers && subscribers.size > 0) {
@@ -210,6 +303,21 @@ export function broadcast(jobId: string, event: JobEvent): void {
       } catch (e) {
         console.error(`[JobManager] Subscriber error:`, e);
         subscribers.delete(callback);
+      }
+    }
+  }
+
+  const sessionListeners = sessionSubscribers.get(event.sessionId);
+  if (sessionListeners && sessionListeners.size > 0) {
+    console.log(
+      `[JobManager] Broadcasting ${event.type} to ${sessionListeners.size} session subscribers for ${event.sessionId}`
+    );
+    for (const callback of Array.from(sessionListeners)) {
+      try {
+        callback(event);
+      } catch (e) {
+        console.error(`[JobManager] Session subscriber error:`, e);
+        sessionListeners.delete(callback);
       }
     }
   }

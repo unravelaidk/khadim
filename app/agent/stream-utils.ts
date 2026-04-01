@@ -1,6 +1,6 @@
-import { formatSseEvent, getSseHeaders, resetEventId, formatSseComment } from "../lib/sse";
-import { subscribe } from "../lib/job-manager";
-import type { AgentJob } from "../types/agent";
+import { createSseEventFormatter, formatSseComment, getSseHeaders } from "../lib/sse";
+import { getActiveJobsBySession, subscribe, subscribeToSession } from "../lib/job-manager";
+import type { AgentJob, JobEvent } from "../types/agent";
 import { registerJobAbortController, unregisterJobAbortController } from "../lib/job-cancel";
 import { runAgentJob, type JobRunnerOptions } from "./job-runner";
 
@@ -12,26 +12,39 @@ interface StreamController {
   encoder: TextEncoder;
   heartbeatTimer: NodeJS.Timeout | null;
   lastActivity: number;
+  formatEvent: ReturnType<typeof createSseEventFormatter>["formatEvent"];
 }
 
 function createStreamController(controller: ReadableStreamDefaultController): StreamController {
+  const formatter = createSseEventFormatter();
+
   return {
     controller,
     encoder: new TextEncoder(),
     heartbeatTimer: null,
     lastActivity: Date.now(),
+    formatEvent: formatter.formatEvent,
   };
 }
 
 function sendEvent(stream: StreamController, type: string, data: Record<string, unknown>): void {
   try {
-    const encoded = stream.encoder.encode(formatSseEvent(type, data));
+    const encoded = stream.encoder.encode(stream.formatEvent(type, data, { eventType: "message" }));
     stream.controller.enqueue(encoded);
     stream.lastActivity = Date.now();
   } catch (e) {
     console.warn("[Stream] Client disconnected");
     throw e;
   }
+}
+
+function sendJobEvent(stream: StreamController, event: JobEvent): void {
+  sendEvent(stream, event.type, {
+    jobId: event.jobId,
+    chatId: event.chatId,
+    sessionId: event.sessionId,
+    ...event.data,
+  });
 }
 
 function startHeartbeat(stream: StreamController): void {
@@ -45,6 +58,7 @@ function startHeartbeat(stream: StreamController): void {
       } catch {}
       return;
     }
+
     try {
       stream.controller.enqueue(stream.encoder.encode(formatSseComment(`heartbeat ${new Date().toISOString()}`)));
     } catch {
@@ -60,55 +74,43 @@ function cleanupStream(stream: StreamController): void {
   }
 }
 
-export function createExistingJobStream(job: AgentJob, request: Request): Response {
-  resetEventId();
+function streamJobSnapshot(send: (type: string, data: Record<string, unknown>) => void, job: AgentJob) {
+  send("job_snapshot", {
+    jobId: job.id,
+    chatId: job.chatId,
+    sessionId: job.sessionId,
+    status: job.status,
+    steps: job.steps,
+    finalContent: job.finalContent,
+    previewUrl: job.previewUrl,
+    sandboxId: job.sandboxId,
+    error: job.error,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  });
+}
 
+export function createExistingJobStream(job: AgentJob, request: Request): Response {
   const stream = new ReadableStream({
     start(controller) {
       const streamCtrl = createStreamController(controller);
-      const encoder = streamCtrl.encoder;
       const send = (type: string, data: Record<string, unknown>) => sendEvent(streamCtrl, type, data);
 
       const cleanup = () => {
         cleanupStream(streamCtrl);
-        try { controller.close(); } catch {}
-      };
-
-      const handleDisconnect = () => {
-        console.log("[Stream] Client disconnected from existing job stream");
-        cleanup();
+        try {
+          controller.close();
+        } catch {}
       };
 
       try {
         startHeartbeat(streamCtrl);
-
-        send("connected", { jobId: job.id });
-
-        for (const step of job.steps) {
-          send("step_start", { id: step.id, title: step.title });
-          if (step.content) {
-            send("step_update", { id: step.id, content: step.content });
-          }
-          if (step.status === "complete") {
-            send("step_complete", { id: step.id, result: step.result });
-          }
-        }
-
-        if (job.status === "completed") {
-          send("done", { content: job.finalContent, previewUrl: job.previewUrl });
-          cleanup();
-          return;
-        }
-
-        if (job.status === "error") {
-          send("error", { message: job.error });
-          cleanup();
-          return;
-        }
+        send("connected", { jobId: job.id, chatId: job.chatId, sessionId: job.sessionId });
+        streamJobSnapshot(send, job);
 
         const unsubscribe = subscribe(job.id, (event) => {
           try {
-            send(event.type, event.data as Record<string, unknown>);
+            sendJobEvent(streamCtrl, event);
             if (event.type === "done" || event.type === "error") {
               cleanup();
             }
@@ -119,96 +121,73 @@ export function createExistingJobStream(job: AgentJob, request: Request): Respon
 
         request.signal.addEventListener("abort", () => {
           unsubscribe();
-          handleDisconnect();
+          cleanup();
         });
       } catch (e) {
         console.error("[Stream] Error in existing job stream:", e);
         cleanup();
       }
     },
-    cancel() {
-      console.log("[Stream] Stream cancelled");
-    },
   });
 
-  return new Response(stream, {
-    headers: getSseHeaders(),
-  });
+  return new Response(stream, { headers: getSseHeaders() });
 }
 
-export function createNewJobStream(
-  jobId: string,
-  chatId: string,
-  agentMode: string,
-  agentName: string,
-  runnerOptions: JobRunnerOptions,
-  request: Request
-): Response {
-  resetEventId();
-
+export function createSessionStream(sessionId: string, request: Request): Response {
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const streamCtrl = createStreamController(controller);
       const send = (type: string, data: Record<string, unknown>) => sendEvent(streamCtrl, type, data);
 
       const cleanup = () => {
         cleanupStream(streamCtrl);
-        try { controller.close(); } catch {}
-      };
-
-      const handleDisconnect = () => {
-        console.log("[Stream] Client disconnected from new job stream");
-        cleanup();
+        try {
+          controller.close();
+        } catch {}
       };
 
       try {
         startHeartbeat(streamCtrl);
+        send("session_connected", { sessionId });
 
-        send("connected", { jobId, chatId });
-        send("job_created", { jobId, chatId });
-        send("agent_mode", { mode: agentMode, name: agentName });
+        const activeJobs = await getActiveJobsBySession(sessionId);
+        for (const job of activeJobs) {
+          streamJobSnapshot(send, job);
+        }
 
-        const unsubscribe = subscribe(jobId, (event) => {
+        const unsubscribe = subscribeToSession(sessionId, (event) => {
           try {
-            send(event.type, event.data || {});
-            if (event.type === "done" || event.type === "error") {
-              cleanup();
-            }
+            sendJobEvent(streamCtrl, event);
           } catch {
             cleanup();
           }
         });
 
-        const jobAbortController = new AbortController();
-        registerJobAbortController(jobId, jobAbortController);
-
-        const optionsWithSignal = { ...runnerOptions, abortSignal: jobAbortController.signal };
-
-        runAgentJob(optionsWithSignal).catch((error) => {
-          console.error("[Stream] Background agent error:", error);
-          try {
-            send("error", { message: "Internal agent error" });
-          } catch {}
-          cleanup();
-        }).finally(() => {
-          unregisterJobAbortController(jobId);
-        });
-
         request.signal.addEventListener("abort", () => {
           unsubscribe();
-          handleDisconnect();
+          cleanup();
         });
       } catch (e) {
-        console.error("[Stream] Error in new job stream:", e);
+        console.error("[Stream] Error in session stream:", e);
         cleanup();
       }
     },
-    cancel() {
-      console.log("[Stream] Stream cancelled");
-    },
   });
 
-  return new Response(stream, {
-    headers: getSseHeaders(),
-  });
+  return new Response(stream, { headers: getSseHeaders() });
+}
+
+export function startJob(jobId: string, runnerOptions: JobRunnerOptions): void {
+  const jobAbortController = new AbortController();
+  registerJobAbortController(jobId, jobAbortController);
+
+  const optionsWithSignal = { ...runnerOptions, abortSignal: jobAbortController.signal };
+
+  runAgentJob(optionsWithSignal)
+    .catch((error) => {
+      console.error("[Stream] Background agent error:", error);
+    })
+    .finally(() => {
+      unregisterJobAbortController(jobId);
+    });
 }
