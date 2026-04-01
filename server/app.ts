@@ -1,6 +1,8 @@
 import "react-router";
 import { createRequestHandler } from "@react-router/express";
 import express from "express";
+import { agentRpcRequestListener } from "../app/lib/agent-rpc-hono";
+export { injectAgentWebSocket } from "../app/lib/agent-ws";
 
 declare module "react-router" {
   interface AppLoadContext {
@@ -9,6 +11,10 @@ declare module "react-router" {
 }
 
 export const app = express();
+
+app.use("/api/rpc", (req, res) => {
+  void agentRpcRequestListener(req, res);
+});
 
 app.use(
   createRequestHandler({
