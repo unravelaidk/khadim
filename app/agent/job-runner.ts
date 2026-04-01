@@ -53,6 +53,7 @@ function formatAvailableTools(tools: Array<{ name: string; description?: string 
 export interface RunAgentJobParams {
   jobId: string;
   chatId: string;
+  sessionId: string;
   prompt: string;
   agentMode: AgentMode;
   agentConfig: AgentConfig;
@@ -69,6 +70,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   const {
     jobId,
     chatId,
+    sessionId,
     prompt,
     agentMode,
     agentConfig,
@@ -83,6 +85,10 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   let previewUrl: string | null = null;
   let sandboxId: string | null = null;
   let sandboxInitPromise: Promise<void> | null = null;
+
+  const broadcastJobEvent = async (type: string, data: Record<string, unknown>) => {
+    broadcast(jobId, { type, data, jobId, chatId, sessionId });
+  };
 
   const formatSandboxInitError = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -103,7 +109,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     sandboxInitPromise = (async () => {
       const sandboxStepId = "sandbox";
       await addStep(jobId, { id: sandboxStepId, title: "Initializing sandbox...", status: "running" });
-      await broadcast(jobId, { type: "step_start", data: { id: sandboxStepId, title: "Initializing sandbox..." } });
+      await broadcastJobEvent("step_start", { id: sandboxStepId, title: "Initializing sandbox..." });
 
       try {
         const sandboxResult = await ensureSandbox(existingSandboxId);
@@ -144,14 +150,14 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
         }
 
         await updateStep(jobId, sandboxStepId, { status: "complete", result });
-        await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result } });
-        await broadcast(jobId, { type: "sandbox_info", data: { sandboxId } });
+        await broadcastJobEvent("step_complete", { id: sandboxStepId, result });
+        await broadcastJobEvent("sandbox_info", { sandboxId });
       } catch (error) {
         const message = formatSandboxInitError(error);
         sandbox = null;
         sandboxId = null;
         await updateStep(jobId, sandboxStepId, { status: "error", result: message });
-        await broadcast(jobId, { type: "step_complete", data: { id: sandboxStepId, result: message } });
+        await broadcastJobEvent("step_complete", { id: sandboxStepId, result: message });
         sandboxInitPromise = null;
         throw new Error(message);
       }
@@ -164,7 +170,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   try {
     // Create broadcast helper for tools that need it
     const broadcastForTools = async (event: { type: string; data: any }) => {
-      await broadcast(jobId, event);
+      await broadcastJobEvent(event.type, event.data ?? {});
     };
 
     const allTools: any[] = [
@@ -376,7 +382,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         const step: AgentJobStep = { id: currentThinkingId, title: stepTitle, status: "running" };
         collectedSteps.push(step);
         await addStep(jobId, step);
-        await broadcast(jobId, { type: "step_start", data: { id: currentThinkingId, title: stepTitle } });
+        await broadcastJobEvent("step_start", { id: currentThinkingId, title: stepTitle });
       }
       else if (eventType === "on_chat_model_stream") {
         const chunk = data?.chunk;
@@ -384,10 +390,10 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           const text = typeof chunk.content === "string" ? chunk.content : "";
           if (text) {
             thinkingContent += text;
-            const displayContent = thinkingContent.length > 300
-              ? thinkingContent.slice(0, 300) + "..."
-              : thinkingContent;
-            await broadcast(jobId, { type: "step_update", data: { id: currentThinkingId, content: displayContent } });
+              const displayContent = thinkingContent.length > 300
+                ? thinkingContent.slice(0, 300) + "..."
+                : thinkingContent;
+              await broadcastJobEvent("step_update", { id: currentThinkingId, content: displayContent });
           }
         }
       }
@@ -395,14 +401,14 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         const text = typeof data?.content === "string" ? data.content : "";
         if (text) {
           finalContent += text;
-          await broadcast(jobId, { type: "text_delta", data: { content: text } });
+          await broadcastJobEvent("text_delta", { content: text });
         }
       }
       else if (eventType === "on_chat_model_end") {
         if (currentThinkingId) {
           const resultPreview = thinkingContent.slice(0, 100) + (thinkingContent.length > 100 ? "..." : "");
           await updateStep(jobId, currentThinkingId, { status: "complete", content: thinkingContent, result: resultPreview });
-          await broadcast(jobId, { type: "step_complete", data: { id: currentThinkingId, result: resultPreview } });
+          await broadcastJobEvent("step_complete", { id: currentThinkingId, result: resultPreview });
           
           const step = collectedSteps.find(s => s.id === currentThinkingId);
           if (step) {
@@ -443,17 +449,13 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         const step: AgentJobStep = { id: stepId, title, status: "running", tool: toolName };
         collectedSteps.push(step);
         await addStep(jobId, step);
-        await broadcast(jobId, { 
-          type: "step_start", 
-          data: { 
-            id: stepId, 
-            title, 
-            tool: toolName, 
-            args: toolArgs,
-            // Include file info for write_file tool
-            filename: filePath,
-            fileContent: fileContent,
-          } 
+        await broadcastJobEvent("step_start", {
+          id: stepId,
+          title,
+          tool: toolName,
+          args: toolArgs,
+          filename: filePath,
+          fileContent,
         });
       }
       else if (eventType === "on_tool_end") {
@@ -469,17 +471,14 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
               : lastPlanOutput
                 ? `Plan:\n${lastPlanOutput}`
                 : "";
-            await broadcast(jobId, {
-              type: "ask_user",
-              data: {
-                question: parsed.question,
-                options: parsed.options,
-                context: enrichedContext,
-                threadId: chatId,
-              },
+            await broadcastJobEvent("ask_user", {
+              question: parsed.question,
+              options: parsed.options,
+              context: enrichedContext,
+              threadId: chatId,
             });
             await updateStep(jobId, stepId, { status: "complete", result: `❓ Asking: ${parsed.question}` });
-            await broadcast(jobId, { type: "step_complete", data: { id: stepId, result: `❓ Asking: ${parsed.question}` } });
+            await broadcastJobEvent("step_complete", { id: stepId, result: `❓ Asking: ${parsed.question}` });
           }
         }
 
@@ -497,15 +496,12 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         
         // Include file info in step_complete for write_file tool
         const fileInfo = pendingFileWrites.get(stepId);
-        await broadcast(jobId, { 
-          type: "step_complete", 
-          data: { 
-            id: stepId, 
-            result: stepResult,
-            tool: toolName,
-            filename: fileInfo?.path,
-            fileContent: fileInfo?.content,
-          } 
+        await broadcastJobEvent("step_complete", {
+          id: stepId,
+          result: stepResult,
+          tool: toolName,
+          filename: fileInfo?.path,
+          fileContent: fileInfo?.content,
         });
         
         // Clean up tracked file write
@@ -550,10 +546,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     }
 
     if (slideFileContent) {
-      await broadcast(jobId, { 
-        type: "slide_content", 
-        data: { fileContent: slideFileContent } 
-      });
+      await broadcastJobEvent("slide_content", { fileContent: slideFileContent });
     }
 
     await completeJob(jobId, finalContent, previewUrl);

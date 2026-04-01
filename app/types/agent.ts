@@ -5,6 +5,8 @@ export interface AgentJobStep {
   content?: string;
   result?: string;
   tool?: string;
+  filename?: string;
+  fileContent?: string;
 }
 
 export interface AgentJob {
@@ -24,4 +26,7 @@ export interface AgentJob {
 export interface JobEvent {
   type: string;
   data: Record<string, unknown>;
+  jobId: string;
+  chatId: string;
+  sessionId: string;
 }

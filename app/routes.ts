@@ -6,6 +6,7 @@ export default [
   route("workspace/:workspaceId", "routes/workspace.$workspaceId.tsx"),
   route("agent/:chatId", "routes/agent.$chatId.tsx"),
   route("api/agent", "routes/api.agent.ts"),
+  route("api/agent/stream", "routes/api.agent.stream.ts"),
   route("api/agent/stop", "routes/api.agent.stop.ts"),
   route("api/workspaces", "routes/api.workspaces.ts"),
   route("api/workspaces/:id", "routes/api.workspaces.$id.ts"),

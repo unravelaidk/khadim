@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs } from "react-router";
-import { cancelJob, getJob, getJobByChatId } from "../lib/job-manager";
+import { cancelJob, getJob } from "../lib/job-manager";
 import { abortJob } from "../lib/job-cancel";
 
 function isJobVisibleToSession(
@@ -25,12 +25,14 @@ export async function action({ request }: ActionFunctionArgs) {
   const chatId = formData.get("chatId")?.toString() || null;
   const sessionId = formData.get("sessionId")?.toString() || undefined;
 
-  let job = null;
-  if (jobId) {
-    job = await getJob(jobId);
-  } else if (chatId) {
-    job = await getJobByChatId(chatId, sessionId);
+  if (!jobId) {
+    return new Response(JSON.stringify({ error: "jobId is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
+
+  let job = await getJob(jobId);
 
   if (job && !isJobVisibleToSession(job, chatId, sessionId)) {
     job = null;

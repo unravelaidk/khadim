@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { asc, desc, eq } from "drizzle-orm";
 import { db, chats, workspaceFiles, workspaces } from "../lib/db";
-import { getJobByChatId } from "../lib/job-manager";
+import { getJobsByChatId } from "../lib/job-manager";
 import { getAgentProfile } from "../lib/agent-profiles";
 
 export async function loader({ params }: LoaderFunctionArgs) {
@@ -20,10 +20,10 @@ export async function loader({ params }: LoaderFunctionArgs) {
 
   const chatsWithActivity = await Promise.all(
     workspaceChats.map(async (chat) => {
-      const activeJob = await getJobByChatId(chat.id);
+      const activeJobs = await getJobsByChatId(chat.id);
       return {
         ...chat,
-        isActive: Boolean(activeJob && activeJob.status === "running"),
+        isActive: activeJobs.length > 0,
         activeAgentId: workspace.agentId,
       };
     })

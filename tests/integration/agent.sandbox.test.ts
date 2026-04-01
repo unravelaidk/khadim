@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../../app/lib/job-manager", () => ({
-  getJobByChatId: vi.fn(),
+  getJobsByChatId: vi.fn(),
 }));
 
 const sandboxModule = await import("../../app/agent/sandbox");
@@ -32,9 +32,8 @@ describe("ensureSandbox", () => {
     expect(result.reconnected).toBe(false);
   });
 
-  it("reconnects and extends lifetime when possible", async () => {
-    const extendLifetime = vi.fn().mockResolvedValue(undefined);
-    const sandboxInstance = createMockSandbox({ extendLifetime });
+  it("reconnects when an existing sandbox is available", async () => {
+    const sandboxInstance = createMockSandbox();
     const sandboxProvider = {
       create: vi.fn(),
       connect: vi.fn().mockResolvedValue(sandboxInstance),
@@ -43,7 +42,6 @@ describe("ensureSandbox", () => {
     const result = await ensureSandbox("existing-id", sandboxProvider as any);
 
     expect(sandboxProvider.connect).toHaveBeenCalledWith({ id: "existing-id" });
-    expect(extendLifetime).toHaveBeenCalledWith("5m");
     expect(result.reconnected).toBe(true);
   });
 
@@ -80,13 +78,13 @@ describe("scheduleSandboxCleanup", () => {
     const sandboxProvider = {
       connect: vi.fn().mockResolvedValue(createMockSandbox({ kill })),
     };
-    const getJob = vi.fn().mockResolvedValue(null);
+    const getJobs = vi.fn().mockResolvedValue([]);
 
-    scheduleSandboxCleanup("chat-1", "sandbox-1", { graceMs: 10, getJobByChatIdFn: getJob, sandboxProvider: sandboxProvider as any });
+    scheduleSandboxCleanup("chat-1", "sandbox-1", { graceMs: 10, getJobsByChatIdFn: getJobs, sandboxProvider: sandboxProvider as any });
 
     await vi.runAllTimersAsync();
 
-    expect(getJob).toHaveBeenCalledWith("chat-1");
+    expect(getJobs).toHaveBeenCalledWith("chat-1");
     expect(sandboxProvider.connect).toHaveBeenCalledWith({ id: "sandbox-1" });
     expect(kill).toHaveBeenCalledOnce();
     logSpy.mockRestore();
@@ -97,9 +95,9 @@ describe("scheduleSandboxCleanup", () => {
     const sandboxProvider = {
       connect: vi.fn().mockResolvedValue(createMockSandbox({ kill })),
     };
-    const getJob = vi.fn().mockResolvedValue({ status: "running" });
+    const getJobs = vi.fn().mockResolvedValue([{ status: "running" }]);
 
-    scheduleSandboxCleanup("chat-1", "sandbox-1", { graceMs: 10, getJobByChatIdFn: getJob, sandboxProvider: sandboxProvider as any });
+    scheduleSandboxCleanup("chat-1", "sandbox-1", { graceMs: 10, getJobsByChatIdFn: getJobs, sandboxProvider: sandboxProvider as any });
 
     await vi.runAllTimersAsync();
 
