@@ -9,9 +9,10 @@ import { LuUser, LuBot, LuPresentation } from "react-icons/lu";
 interface ChatMessageProps {
   message: Message;
   workspaceId?: string | null;
+  onOpenFile?: (info: { filename: string; content: string }) => void;
 }
 
-function ChatMessageComponent({ message, workspaceId }: ChatMessageProps) {
+function ChatMessageComponent({ message, workspaceId, onOpenFile }: ChatMessageProps) {
   const isUser = message.role === "user";
   const timestamp = message.timestamp instanceof Date
     ? message.timestamp
@@ -62,7 +63,7 @@ function ChatMessageComponent({ message, workspaceId }: ChatMessageProps) {
         >
           {!isUser && hasSteps && (
             <div className={`${hasContent ? "mb-4" : ""}`}>
-              <ThinkingSteps steps={steps} />
+              <ThinkingSteps steps={steps} onOpenFile={onOpenFile} />
             </div>
           )}
 

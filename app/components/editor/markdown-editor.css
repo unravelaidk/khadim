@@ -1,0 +1,290 @@
+/* ── Tiptap Markdown Editor ─────────────────────────────────────────── */
+
+.md-editor-content {
+  padding: 1.5rem;
+  min-height: 100%;
+  outline: none;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--text-primary);
+}
+
+/* ── Placeholder ───────────────────────────────────────────────────── */
+
+.md-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-muted);
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* ── Headings ──────────────────────────────────────────────────────── */
+
+.md-editor-content h1 {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.md-editor-content h2 {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.3;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.md-editor-content h3 {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.md-editor-content h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.md-editor-content h1:first-child,
+.md-editor-content h2:first-child,
+.md-editor-content h3:first-child,
+.md-editor-content h4:first-child {
+  margin-top: 0;
+}
+
+/* ── Paragraphs ────────────────────────────────────────────────────── */
+
+.md-editor-content p {
+  margin-bottom: 0.75em;
+}
+
+.md-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Links ─────────────────────────────────────────────────────────── */
+
+.md-editor-content .editor-link {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--glass-border-strong);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  transition: text-decoration-color 0.15s ease;
+  cursor: pointer;
+}
+
+.md-editor-content .editor-link:hover {
+  text-decoration-color: var(--text-primary);
+}
+
+/* ── Inline code ───────────────────────────────────────────────────── */
+
+.md-editor-content code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 0.15em 0.4em;
+  color: var(--text-primary);
+}
+
+/* ── Code blocks ───────────────────────────────────────────────────── */
+
+.md-editor-content pre {
+  background: #0f1409;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  box-shadow: var(--shadow-glass-sm);
+}
+
+html.dark .md-editor-content pre {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.md-editor-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  color: #e4ebd6;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* ── Blockquotes ───────────────────────────────────────────────────── */
+
+.md-editor-content blockquote {
+  border-left: 3px solid var(--text-primary);
+  margin: 1rem 0;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  color: var(--text-secondary);
+}
+
+.md-editor-content blockquote p {
+  font-style: italic;
+}
+
+/* ── Lists ─────────────────────────────────────────────────────────── */
+
+.md-editor-content ul {
+  list-style: disc;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.md-editor-content ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.md-editor-content li {
+  margin: 0.25em 0;
+}
+
+.md-editor-content li p {
+  margin-bottom: 0.25em;
+}
+
+/* ── Task lists ────────────────────────────────────────────────────── */
+
+.md-editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.md-editor-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.md-editor-content ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--glass-border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  background: var(--input-bg);
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: var(--text-inverse);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.md-editor-content ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* ── Horizontal rule ───────────────────────────────────────────────── */
+
+.md-editor-content hr {
+  border: none;
+  border-top: 1px solid var(--glass-border);
+  margin: 2rem 0;
+}
+
+/* ── Images ────────────────────────────────────────────────────────── */
+
+.md-editor-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 1rem 0;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm);
+}
+
+.md-editor-content img.ProseMirror-selectednode {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+/* ── Highlight ─────────────────────────────────────────────────────── */
+
+.md-editor-content mark {
+  background: rgba(229, 255, 0, 0.28);
+  border-radius: 3px;
+  padding: 0.1em 0.2em;
+  color: inherit;
+}
+
+/* ── Tables (from paste) ───────────────────────────────────────────── */
+
+.md-editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.875em;
+}
+
+.md-editor-content th,
+.md-editor-content td {
+  border: 1px solid var(--glass-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.md-editor-content th {
+  background: var(--surface-card);
+  font-weight: 600;
+}
+
+/* ── Selection ─────────────────────────────────────────────────────── */
+
+.md-editor-content ::selection {
+  background: rgba(16, 21, 10, 0.15);
+}
+
+html.dark .md-editor-content ::selection {
+  background: rgba(237, 243, 222, 0.2);
+}
+
+/* ── ProseMirror gapcursor ─────────────────────────────────────────── */
+
+.md-editor-content .ProseMirror-gapcursor::after {
+  border-top-color: var(--text-primary);
+}

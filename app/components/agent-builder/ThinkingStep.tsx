@@ -1,17 +1,16 @@
 import { useState, useEffect } from "react";
 import { LuCheck, LuChevronDown, LuChevronRight, LuLoader, LuFile, LuCircleDot } from "react-icons/lu";
-import { FileEditorModal } from "./FileEditorModal";
 import type { ThinkingStepData } from "../../types/chat";
 
 interface ThinkingStepProps {
   step: ThinkingStepData;
   depth?: number;
   index?: number;
+  onOpenFile?: (info: { filename: string; content: string }) => void;
 }
 
-export function ThinkingStep({ step, depth = 0, index = 0 }: ThinkingStepProps) {
+export function ThinkingStep({ step, depth = 0, index = 0, onOpenFile }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
-  const [showFileEditor, setShowFileEditor] = useState(false);
 
   useEffect(() => {
     if (step.status === "running") {
@@ -37,7 +36,7 @@ export function ThinkingStep({ step, depth = 0, index = 0 }: ThinkingStepProps) 
         } ${step.status === "running" ? "bg-[var(--glass-bg)]" : ""}`}
         onClick={() => {
           if (isFileStep) {
-            setShowFileEditor(true);
+            onOpenFile?.({ filename: step.filename!, content: step.fileContent! });
           } else if (isExpandable) {
             setIsExpanded(!isExpanded);
           }
@@ -114,30 +113,22 @@ export function ThinkingStep({ step, depth = 0, index = 0 }: ThinkingStepProps) 
           {hasChildren && (
             <div className="mt-2 space-y-0.5">
               {step.children!.map((child, idx) => (
-                <ThinkingStep key={child.id} step={child} depth={depth + 1} index={idx} />
+                <ThinkingStep key={child.id} step={child} depth={depth + 1} index={idx} onOpenFile={onOpenFile} />
               ))}
             </div>
           )}
         </div>
       </div>
-
-      {isFileStep && (
-        <FileEditorModal
-          isOpen={showFileEditor}
-          onClose={() => setShowFileEditor(false)}
-          filename={step.filename!}
-          content={step.fileContent!}
-        />
-      )}
     </div>
   );
 }
 
 interface ThinkingStepsProps {
   steps: ThinkingStepData[];
+  onOpenFile?: (info: { filename: string; content: string }) => void;
 }
 
-export function ThinkingSteps({ steps }: ThinkingStepsProps) {
+export function ThinkingSteps({ steps, onOpenFile }: ThinkingStepsProps) {
   if (steps.length === 0) return null;
 
   const completedCount = steps.filter((s) => s.status === "complete").length;
@@ -174,7 +165,7 @@ export function ThinkingSteps({ steps }: ThinkingStepsProps) {
       <div className={`transition-all duration-300 ease-out ${isCollapsed ? "max-h-0 overflow-hidden" : "max-h-[2000px] opacity-100"}`}>
         <div className="p-2 space-y-0.5">
           {steps.map((step, index) => (
-            <ThinkingStep key={step.id} step={step} index={index} />
+            <ThinkingStep key={step.id} step={step} index={index} onOpenFile={onOpenFile} />
           ))}
         </div>
       </div>
