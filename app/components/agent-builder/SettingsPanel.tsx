@@ -249,7 +249,7 @@ export function SettingsPanel() {
   }, [codexAuth, manualCode]);
 
   return (
-    <section className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+    <section className="flex-1 overflow-y-auto px-4 pb-4 pt-16 md:px-6 md:pb-6 md:pt-16 lg:px-8 lg:pb-8 lg:pt-8">
       <div className="mx-auto w-full max-w-4xl space-y-6">
         <HeaderSection activeModel={activeModel} />
 

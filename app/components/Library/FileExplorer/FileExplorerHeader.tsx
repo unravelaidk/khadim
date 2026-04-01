@@ -1,3 +1,5 @@
+import { LuArrowLeft, LuExternalLink, LuFolder } from "react-icons/lu";
+
 interface FileExplorerHeaderProps {
   workspaceName: string;
   workspaceId: string;
@@ -7,35 +9,34 @@ interface FileExplorerHeaderProps {
 
 export function FileExplorerHeader({ workspaceName, workspaceId, onBack, onLoad }: FileExplorerHeaderProps) {
   return (
-    <header className="mb-6 flex items-center justify-between pb-4">
-      <div className="flex items-center gap-4">
+    <header className="mb-5 flex items-center justify-between">
+      <div className="flex items-center gap-3">
         <button 
           onClick={onBack}
-          className="w-10 h-10 rounded-xl bg-gb-bg-card border border-gb-border flex items-center justify-center hover:bg-white hover:shadow-gb-sm transition-all text-gb-text-secondary"
+          className="flex items-center justify-center w-9 h-9 rounded-xl btn-glass transition-all hover:shadow-[var(--shadow-glass-sm)]"
+          title="Back to library"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
+          <LuArrowLeft className="w-4 h-4" />
         </button>
+        <div className="w-9 h-9 rounded-xl bg-[var(--glass-bg-strong)] border border-[var(--glass-border)] flex items-center justify-center">
+          <LuFolder className="w-5 h-5 text-[#5BA0D0]" />
+        </div>
         <div>
-          <h1 className="text-2xl font-sans font-semibold text-gb-text flex items-center gap-3">
-            <span className="text-2xl opacity-80">💾</span>
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
             {workspaceName}
           </h1>
-          <p className="font-sans text-gb-text-muted text-xs mt-0.5">
-            Workspace ID: {workspaceId}
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+            {workspaceId}
           </p>
         </div>
       </div>
       
       <button
         onClick={onLoad}
-        className="bg-gb-text text-gb-text-inverse px-5 py-2.5 rounded-xl font-sans font-medium hover:opacity-90 transition-opacity flex items-center gap-2 shadow-gb-sm hover:shadow-gb-md"
+        className="btn-ink rounded-xl px-4 py-2 text-sm font-semibold flex items-center gap-2"
       >
         <span>Open Workspace</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
+        <LuExternalLink className="w-3.5 h-3.5" />
       </button>
     </header>
   );

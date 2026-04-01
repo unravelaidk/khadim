@@ -81,14 +81,14 @@ export function LibraryView({ workspaces: initialWorkspaces, onSelectWorkspace }
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden bg-gb-bg/30 p-6 md:p-9">
-      <header className="mb-8 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="mt-1 px-1 text-sm text-gb-text-muted">
-              Manage and access your archived project workspaces.
-            </p>
-          </div>
+    <div className="flex h-full flex-1 flex-col overflow-hidden p-4 md:p-6 lg:p-8">
+      <header className="mb-6 space-y-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)] font-semibold mb-2">Library</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] mb-1">Your workspaces</h1>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Manage and access your project workspaces.
+          </p>
         </div>
 
         <LibraryToolbar 
@@ -104,10 +104,10 @@ export function LibraryView({ workspaces: initialWorkspaces, onSelectWorkspace }
       </header>
       
       <ScrollArea className="flex-1 -mr-4 pr-4">
-        <div className={`pb-20 pt-8 ${
+        <div className={`pb-20 pt-4 ${
           viewMode === "grid" 
-            ? "grid grid-cols-1 gap-7 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
-            : "flex flex-col gap-2"
+            ? "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
+            : "flex flex-col gap-0.5"
         }`}>
           {filteredWorkspaces.map((workspace) => (
             <LibraryItem
@@ -119,25 +119,13 @@ export function LibraryView({ workspaces: initialWorkspaces, onSelectWorkspace }
             />
           ))}
           
-          {/* Empty State / Slots */}
           {filteredWorkspaces.length === 0 && (
-             <div className="col-span-full flex flex-col items-center justify-center py-20 text-gb-text-muted opacity-60">
-               <span className="text-4xl mb-4">🔍</span>
-               <p>No workspaces found matching filters</p>
+             <div className="col-span-full flex flex-col items-center justify-center py-20 text-[var(--text-muted)]">
+               <svg className="w-10 h-10 mb-3 opacity-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+               <p className="text-sm font-medium">No workspaces found</p>
+               <p className="text-xs mt-1 opacity-60">Try adjusting your filters</p>
              </div>
           )}
-
-          {/* Aesthetic Empty Slots - Only in Grid View and Clean State */}
-          {viewMode === "grid" && searchQuery === "" && !showFavorites && Array.from({ length: Math.max(0, 8 - filteredWorkspaces.length) }).map((_, i) => (
-            <div
-              key={`empty-${i}`}
-              className="border border-gb-border border-dashed rounded-xl h-40 flex items-center justify-center opacity-30"
-            >
-              <span className="font-sans text-gb-text-muted text-xs font-medium">
-                [EMPTY SLOT]
-              </span>
-            </div>
-          ))}
         </div>
       </ScrollArea>
     </div>

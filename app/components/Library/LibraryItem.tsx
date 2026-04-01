@@ -1,7 +1,7 @@
-import { formatRetroDate } from "../workspace/workspace-types";
 import type { Workspace } from "../workspace/workspace-types";
 import { countFiles } from "../workspace/workspace-types";
 import { DropdownRoot, DropdownTrigger, DropdownContent, DropdownItem } from "../ui/dropdown-menu";
+import { LuFolder, LuMoreVertical, LuStar, LuTrash2, LuClock } from "react-icons/lu";
 
 interface LibraryItemProps {
   workspace: Workspace;
@@ -10,32 +10,38 @@ interface LibraryItemProps {
   onToggleFavorite?: () => void;
 }
 
+function formatRelativeDate(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays < 1) return "Today";
+  if (diffDays < 2) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export function LibraryItem({ workspace, onClick, viewMode = "grid", onToggleFavorite }: LibraryItemProps) {
   const fileCount = countFiles(workspace.files);
 
-  const MenuOverlay = () => (
-    <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
+  const ContextMenu = ({ align = "end" as const }) => (
+    <div onClick={(e) => e.stopPropagation()}>
       <DropdownRoot>
-        <DropdownTrigger className="p-1.5 rounded-md hover:bg-gb-bg-subtle/80 text-gb-text-muted hover:text-gb-text transition-colors">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        <DropdownTrigger className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors">
+          <LuMoreVertical className="w-4 h-4" />
         </DropdownTrigger>
-        <DropdownContent align="end">
-            <DropdownItem onClick={onToggleFavorite}>
-                <span className="flex items-center gap-2">
-                    {workspace.isFavorite ? (
-                         <>
-                            <svg width="14" height="14" className="text-yellow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            Unfavorite
-                         </>
-                    ) : (
-                         <>
-                            <svg width="14" height="14" className="text-yellow-500" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                            Add to Favorites
-                         </>
-                    )}
-                </span>
-            </DropdownItem>
-            <DropdownItem className="text-red-600 hover:text-red-700">Delete</DropdownItem>
+        <DropdownContent align={align}>
+          <DropdownItem onClick={onToggleFavorite}>
+            <span className="flex items-center gap-2">
+              <LuStar className={`w-3.5 h-3.5 ${workspace.isFavorite ? "text-amber-500 fill-amber-500" : ""}`} />
+              {workspace.isFavorite ? "Remove favorite" : "Add to favorites"}
+            </span>
+          </DropdownItem>
+          <DropdownItem className="text-red-500 hover:text-red-600">
+            <span className="flex items-center gap-2">
+              <LuTrash2 className="w-3.5 h-3.5" />
+              Delete
+            </span>
+          </DropdownItem>
         </DropdownContent>
       </DropdownRoot>
     </div>
@@ -43,96 +49,62 @@ export function LibraryItem({ workspace, onClick, viewMode = "grid", onToggleFav
 
   if (viewMode === "list") {
     return (
-      <div className="relative group/item">
-          <button
-            onClick={onClick}
-            className="group flex items-center gap-4 p-3 w-full bg-gb-bg-card border border-gb-border rounded-lg shadow-sm hover:shadow-md hover:bg-white transition-all duration-200"
-          >
-            <div className="w-10 h-10 rounded-lg bg-gb-bg-subtle flex items-center justify-center text-xl shrink-0">
-              💾
-            </div>
-            
-            <div className="flex-1 text-left">
-              <h3 className="font-sans font-semibold text-sm text-gb-text transition-colors">
-                {workspace.name}
-              </h3>
-              <p className="text-[10px] text-gb-text-muted font-mono mt-0.5">
-                ID: {workspace.id}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs text-gb-text-secondary mr-8">
-              {workspace.isFavorite && (
-                <span className="text-yellow-500" title="Favorite">★</span>
-              )}
-              <span className="font-mono">{fileCount} files</span>
-              <span className="tabular-nums">{formatRetroDate(workspace.createdAt)}</span>
-            </div>
-          </button>
-          
-          <div className="absolute top-1/2 -translate-y-1/2 right-3">
-             {/* Reusing menu trigger logic usually, but here just inline for list pos */}
-              <DropdownRoot>
-                <DropdownTrigger className="p-1.5 rounded-md hover:bg-gb-bg-subtle text-gb-text-muted hover:text-gb-text transition-colors">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-                </DropdownTrigger>
-                <DropdownContent align="end">
-                    <DropdownItem onClick={onToggleFavorite}>
-                        <span className="flex items-center gap-2">
-                             {workspace.isFavorite ? 'Unfavorite' : 'Add to Favorites'}
-                        </span>
-                    </DropdownItem>
-                    <DropdownItem className="text-red-600">Delete</DropdownItem>
-                </DropdownContent>
-              </DropdownRoot>
+      <div className="group relative flex items-center">
+        <button
+          onClick={onClick}
+          className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-[var(--glass-bg-strong)]"
+        >
+          <div className="w-9 h-9 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] flex items-center justify-center shrink-0">
+            <LuFolder className="w-4 h-4 text-[#5BA0D0]" />
           </div>
+          <div className="flex-1 text-left min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-[var(--text-primary)] truncate">{workspace.name}</h3>
+              {workspace.isFavorite && <LuStar className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />}
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">{fileCount} files</p>
+          </div>
+          <span className="text-[12px] text-[var(--text-muted)] tabular-nums mr-8 hidden sm:block">
+            {formatRelativeDate(workspace.createdAt)}
+          </span>
+        </button>
+        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+          <ContextMenu />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="relative group/card">
-        <MenuOverlay />
-        <button
-          onClick={onClick}
-          className="w-full group relative flex flex-col items-start p-5 bg-gb-bg-card border border-gb-border rounded-xl shadow-gb-sm hover:shadow-gb-md hover:-translate-y-0.5 transition-all duration-200 text-left"
-        >
-          {/* Tape Label Effect */}
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-28 h-5 bg-yellow-50 border border-gb-border-medium/60 rounded-full shadow-sm flex items-center justify-center z-10">
-            <span className="text-[9px] font-sans font-medium text-gb-text-secondary uppercase tracking-widest">
-              DATA CASSETTE
-            </span>
+    <div className="group relative">
+      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        <ContextMenu />
+      </div>
+      <button
+        onClick={onClick}
+        className="w-full glass-card rounded-2xl p-5 text-left"
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div className="w-10 h-10 rounded-xl bg-[var(--glass-bg-strong)] border border-[var(--glass-border)] flex items-center justify-center">
+            <LuFolder className="w-5 h-5 text-[#5BA0D0]" />
           </div>
+          <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+            {workspace.isFavorite && <LuStar className="w-3 h-3 text-amber-400 fill-amber-400" />}
+            <LuClock className="w-3 h-3" />
+            <span>{formatRelativeDate(workspace.createdAt)}</span>
+          </div>
+        </div>
 
-          <div className="mt-2 w-full">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-8 h-8 rounded-lg bg-gb-bg-subtle flex items-center justify-center text-lg">
-                 💾
-              </div>
-              <div className="flex items-center gap-2 pr-6">
-                {workspace.isFavorite && (
-                  <span className="text-yellow-400 text-xs">★</span>
-                )}
-                <span className="font-sans text-[10px] font-medium text-gb-text-muted">
-                  {formatRetroDate(workspace.createdAt)}
-                </span>
-              </div>
-            </div>
-            
-            <h3 className="font-sans font-semibold text-base text-gb-text mb-1 line-clamp-1 w-full transition-colors">
-              {workspace.name}
-            </h3>
-            
-            <div className="flex items-center gap-2 mt-3">
-              <span className="px-2 py-0.5 bg-gb-bg-subtle border border-gb-border-medium/30 rounded-md text-gb-text-secondary text-[10px] font-medium font-mono">
-                {fileCount} FILES
-              </span>
-              <span className="px-2 py-0.5 rounded-md text-gb-text-muted text-[10px] uppercase font-mono tracking-tight">
-                ID: {workspace.id.slice(0, 6)}
-              </span>
-            </div>
-          </div>
-        </button>
+        <h3 className="text-base font-semibold text-[var(--text-primary)] leading-snug line-clamp-2 mb-3">
+          {workspace.name}
+        </h3>
+
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-muted)] text-[10px] font-medium tabular-nums">
+            {fileCount} file{fileCount !== 1 ? "s" : ""}
+          </span>
+        </div>
+      </button>
     </div>
   );
 }
