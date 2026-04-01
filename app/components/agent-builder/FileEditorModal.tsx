@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { LuX, LuDownload, LuCopy, LuCheck, LuFile, LuSave, LuFileText } from "react-icons/lu";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 const MarkdownEditor = lazy(() => import("../editor/MarkdownEditor"));
 

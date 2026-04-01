@@ -103,7 +103,7 @@ export function ChatInput({
               onClick={() => onToggleWebBrowsing(!webBrowsingEnabled)}
               className={`inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium transition-all ${
                 webBrowsingEnabled
-                  ? "btn-accent"
+                  ? "btn-ink"
                   : "btn-glass"
               }`}
             >
@@ -143,7 +143,7 @@ export function ChatInput({
           {isProcessing ? (
             <button
               onClick={onStop}
-              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full btn-accent transition-all hover:scale-105 md:h-11 md:w-11"
+              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full btn-ink transition-all hover:scale-105 md:h-11 md:w-11"
               title="Stop generation"
               aria-label="Stop generation"
             >

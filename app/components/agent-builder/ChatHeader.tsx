@@ -6,12 +6,14 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
   return (
-    <button
-      onClick={onOpenSidebar}
-      className="fixed top-4 left-4 z-50 lg:hidden inline-flex h-11 w-11 items-center justify-center rounded-2xl glass-panel text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] transition-all duration-200 hover:bg-[var(--glass-bg-strong)] border border-[var(--glass-border)]"
-      aria-label="Open Menu"
-    >
-      <LuMenu className="w-5 h-5" />
-    </button>
+    <div className="lg:hidden flex items-center px-4 pt-4 pb-1">
+      <button
+        onClick={onOpenSidebar}
+        className="inline-flex h-10 w-10 items-center justify-center rounded-xl glass-panel text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] transition-all duration-200 hover:bg-[var(--glass-bg-strong)] border border-[var(--glass-border)]"
+        aria-label="Open Menu"
+      >
+        <LuMenu className="w-5 h-5" />
+      </button>
+    </div>
   );
 }

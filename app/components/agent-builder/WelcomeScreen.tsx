@@ -304,7 +304,7 @@ export function WelcomeScreen({
                 onClick={() => onToggleWebBrowsing(!webBrowsingEnabled)}
                 className={`inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium transition-all ${
                   webBrowsingEnabled
-                    ? "btn-accent"
+                    ? "btn-ink"
                     : "btn-glass"
                 }`}
               >
@@ -467,7 +467,7 @@ export function WelcomeScreen({
                 onClick={() => handleQuickActionSelect(slidesBadge)}
                 className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                   isQuickActionActive(slidesBadge.label)
-                    ? "btn-accent"
+                    ? "btn-ink"
                     : "btn-glass"
                 }`}
                 title={slidesBadge.label}
@@ -480,7 +480,7 @@ export function WelcomeScreen({
               type="button"
               onClick={handleSend}
               disabled={!input.trim() && attachedFiles.length === 0}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-full btn-accent transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
+              className="inline-flex h-12 w-12 items-center justify-center rounded-full btn-ink transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
               aria-label="Send prompt"
             >
               <LuSend className="h-5 w-5" />
