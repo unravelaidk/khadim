@@ -17,6 +17,7 @@ export interface AgentJob {
   steps: AgentJobStep[];
   finalContent: string;
   previewUrl: string | null;
+  fileContent?: string;
   sandboxId: string | null;
   error: string | null;
   createdAt: string;
@@ -29,4 +30,14 @@ export interface JobEvent {
   jobId: string;
   chatId: string;
   sessionId: string;
+  eventId?: string;
+  sequence?: number;
+}
+
+export interface SessionStreamSnapshot {
+  sessionId: string;
+  snapshotEventId?: string;
+  snapshotSequence?: number;
+  jobs: AgentJob[];
+  updatedAt: string;
 }

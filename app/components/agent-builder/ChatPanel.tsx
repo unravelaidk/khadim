@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatInterface } from "./ChatInterface";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -8,9 +8,11 @@ import type { ActiveBadge } from "./hooks/useAgentBuilder";
 import type { AttachedFile } from "./WelcomeScreen";
 import type { ModelOption } from "./ModelSelector";
 import type { Message, PendingQuestion } from "../../types/chat";
+import type { SlideRuntimeView } from "./hooks/agent-session-state";
 
 interface ChatPanelProps {
   messages: Message[];
+  slideState: SlideRuntimeView | null;
   pendingQuestion: PendingQuestion | null;
   onAnswerQuestion: (answer: string) => void;
   onCancelQuestion: () => void;
@@ -43,6 +45,7 @@ interface ChatPanelProps {
 
 export function ChatPanel({
   messages,
+  slideState,
   pendingQuestion,
   onAnswerQuestion,
   onCancelQuestion,
@@ -72,46 +75,6 @@ export function ChatPanel({
   webBrowsingEnabled,
   onToggleWebBrowsing,
 }: ChatPanelProps) {
-  // Derive latest slide artifact + building state from messages
-  const slideState = useMemo(() => {
-    let latestContent: string | null = null;
-    let isStreaming = false;
-    let isBuilding = false;
-
-    // Find latest slide content from any assistant message
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg.role === "assistant" && msg.fileContent?.includes('<script id="slide-data"')) {
-        latestContent = msg.fileContent;
-        isStreaming = (msg.thinkingSteps || []).some(s => s.status === "running");
-        break;
-      }
-    }
-
-    // Check if the agent is actively working on more slides
-    const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
-    if (lastAssistant) {
-      const hasRunningSteps = (lastAssistant.thinkingSteps || []).some(s => s.status === "running");
-      if (hasRunningSteps) {
-        const hasSlideToolRunning = (lastAssistant.thinkingSteps || []).some(
-          s => s.status === "running" && (s.tool === "write_slides" || (s.tool === "write_file" && s.filename === "index.html"))
-        );
-        if (hasSlideToolRunning || latestContent) {
-          // Agent has running steps and we have existing slides = building more
-          isBuilding = true;
-        }
-      }
-    }
-
-    // If agent is processing and we already have slides, it's likely adding more
-    if (isProcessing && latestContent) {
-      isBuilding = true;
-    }
-
-    if (!latestContent && !isBuilding) return null;
-    return { content: latestContent, isStreaming, isBuilding };
-  }, [messages, isProcessing]);
-
   const [slideMinimized, setSlideMinimized] = useState(false);
 
   return (

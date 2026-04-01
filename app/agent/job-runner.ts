@@ -1,6 +1,9 @@
 import type { Message, Model } from "@mariozechner/pi-ai";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { createOrchestrator } from "./orchestrator";
+import { generateHTMLFromSlides } from "../components/SlidesPreview/utils";
+import { getThemeById } from "../components/agent-builder/slideTemplates";
+import type { SlideData } from "../types/slides";
 import {
   createPlanTool,
   createUpdateTodoTool,
@@ -36,6 +39,7 @@ import { filterToolsForAgent, getAgentConfig } from "./agents";
 import type { AgentMode } from "./router";
 import { db, messages, chats, artifacts, workspaceFiles } from "../lib/db";
 import { getActiveModel, createModelInstance } from "./model-manager";
+import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 
 type AgentConfig = ReturnType<typeof getAgentConfig>;
 type SandboxType = Awaited<ReturnType<typeof ensureSandbox>>['sandbox'];
@@ -65,6 +69,78 @@ export interface RunAgentJobParams {
 }
 
 export type JobRunnerOptions = RunAgentJobParams;
+
+const SLIDE_REQUEST_TIMEOUT_MS = 12000;
+
+function isSlideRequest(prompt: string): boolean {
+  return /\b(slides?|presentation|deck|ppt|pitch deck)\b/i.test(prompt);
+}
+
+function inferThemeFromPrompt(prompt: string): string {
+  const normalized = prompt.toLowerCase();
+  for (const themeId of ["minimalist", "paper", "noir", "brass", "cobalt", "emerald", "midnight"]) {
+    if (normalized.includes(themeId)) {
+      return themeId;
+    }
+  }
+  return "brass";
+}
+
+function derivePresentationTitle(prompt: string): string {
+  const cleaned = prompt
+    .replace(/^\[user context\/selected features:[^\]]+\]\s*/i, "")
+    .replace(/^(build|create|make|write|design)\s+/i, "")
+    .replace(/\b(slides?|presentation|deck|ppt)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) {
+    return "Presentation";
+  }
+
+  return cleaned
+    .split(" ")
+    .slice(0, 7)
+    .join(" ")
+    .replace(/(^\w|\s\w)/g, (match) => match.toUpperCase());
+}
+
+function buildFallbackSlides(prompt: string): { title: string; themeId: string; slides: SlideData[] } {
+  const title = derivePresentationTitle(prompt);
+  const themeId = inferThemeFromPrompt(prompt);
+  const isLaunch = /\b(product launch|launch plan|go-to-market|gtm)\b/i.test(prompt);
+
+  const slides: SlideData[] = isLaunch
+    ? [
+        { id: 1, type: "title", title, subtitle: "Launch plan presentation" },
+        { id: 2, type: "content", title: "Launch Objectives", bullets: ["Drive awareness in target segment", "Convert early demand into qualified pipeline", "Align launch narrative across teams"] },
+        { id: 3, type: "twoColumn", title: "Owners & Workstreams", leftTitle: "Core Owners", leftBullets: ["Product marketing", "Growth lead", "Sales enablement"], rightTitle: "Dependencies", rightBullets: ["Creative assets", "Pricing approval", "Partner coordination"] },
+        { id: 4, type: "content", title: "Launch Channels", bullets: ["Email and lifecycle campaigns", "Product website and landing page", "Social, community, and partner amplification", "Sales collateral and demos"] },
+        { id: 5, type: "comparison", title: "Week-by-Week Execution", leftLabel: "Weeks 1-2", leftItems: ["Finalize positioning", "Lock messaging and assets", "Train internal teams"], rightLabel: "Weeks 3-4", rightItems: ["Launch campaigns", "Track performance daily", "Iterate based on signal"] },
+        { id: 6, type: "content", title: "Risks & Mitigations", bullets: ["Creative delay -> pre-approve fallback assets", "Weak conversion -> tighten CTA and landing page", "Messaging drift -> single-source launch brief"] },
+        { id: 7, type: "accent", title: "Success Metrics", subtitle: "Pipeline, adoption, and velocity" },
+        { id: 8, type: "title", title: "Ready To Launch", subtitle: "Clear owners. Tight timeline. Measurable outcomes." },
+      ]
+    : [
+        { id: 1, type: "title", title, subtitle: "Presentation draft" },
+        { id: 2, type: "content", title: "Executive Summary", bullets: ["Core objective", "Audience and context", "Desired outcome"] },
+        { id: 3, type: "section", title: "Key Story" },
+        { id: 4, type: "content", title: "Main Points", bullets: ["Priority insight 1", "Priority insight 2", "Priority insight 3"] },
+        { id: 5, type: "twoColumn", title: "Approach", leftTitle: "What", leftBullets: ["Strategy", "Scope"], rightTitle: "How", rightBullets: ["Execution", "Measurement"] },
+        { id: 6, type: "comparison", title: "Risks & Opportunities", leftLabel: "Risks", leftItems: ["Constraint 1", "Constraint 2"], rightLabel: "Opportunities", rightItems: ["Upside 1", "Upside 2"] },
+        { id: 7, type: "accent", title: "Recommendation", subtitle: "Decisive next step" },
+        { id: 8, type: "title", title: "Next Steps", subtitle: "Questions and discussion" },
+      ];
+
+  return { title, themeId, slides };
+}
+
+async function persistSlideDeck(chatId: string, content: string): Promise<void> {
+  const filename = "index.html";
+  await db.delete(artifacts).where(and(eq(artifacts.chatId, chatId), eq(artifacts.filename, filename)));
+  await db.insert(artifacts).values({ chatId, filename, content });
+  await syncWorkspaceFileForChat(chatId, filename, content);
+}
 
 export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   const {
@@ -317,6 +393,14 @@ CRITICAL: The 'create_web_app' tool REQUIRES the 'type' parameter.
 === SLIDE PRESENTATIONS (NO SANDBOX NEEDED!) ===
 For slides/presentations, use the 'write_slides' tool - this does NOT require a sandbox!
 
+CRITICAL SLIDE RULES:
+- For any request to create slides, a deck, a presentation, or a PPT, your FIRST meaningful action must be a tool call.
+- Do NOT write a conversational preamble like "I'll create the slides" before calling tools.
+- If the user already provided a theme or enough direction, call 'write_slides' immediately.
+- Prefer creating the full first draft of the deck in a single 'write_slides' call, then refine with additional 'write_slides' calls only if needed.
+- Only ask follow-up questions if essential information is truly missing.
+- Never use 'write_file' for slide decks. Always use 'write_slides'.
+
 The HTML MUST contain a <script id="slide-data" type="application/json"> tag:
 
 <script id="slide-data" type="application/json">
@@ -331,7 +415,8 @@ Slide types: "title", "content", "accent", "image", "quote", "twoColumn".
 When user asks for slides/presentation/ppt:
 1. Use 'write_slides' tool with the HTML content (NOT write_file!)
 2. DO NOT call expose_preview - slides render natively
-3. Generate ONE slide at a time, adding to the presentation incrementally
+3. Produce the first complete deck draft immediately
+4. If you refine, overwrite the deck with another 'write_slides' call
 
 === SANDBOX LIFECYCLE ===
 The sandbox will timeout automatically.
@@ -356,22 +441,67 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     let thinkingStepCounter = 0;
     let currentThinkingId = "";
     let thinkingContent = "";
-    let finalContent = "";
-    let lastPlanOutput = "";
+  let finalContent = "";
+  let lastPlanOutput = "";
+  let toolStarted = false;
+  let slideFallbackApplied = false;
 
-    const collectedSteps: AgentJobStep[] = [];
+  const collectedSteps: AgentJobStep[] = [];
     
     // Track file writes for real-time display
     const pendingFileWrites = new Map<string, { path: string; content: string }>();
 
-    const eventStream = app.streamEvents(inputs, { signal: abortSignal });
+    const runnerAbortController = new AbortController();
+    const abortRunner = () => runnerAbortController.abort();
+    abortSignal?.addEventListener("abort", abortRunner, { once: true });
 
-    for await (const event of eventStream) {
+    const eventStream = app.streamEvents(inputs, { signal: runnerAbortController.signal });
+    const eventIterator = eventStream[Symbol.asyncIterator]();
+
+    while (true) {
+      const nextEvent = await Promise.race([
+        eventIterator.next(),
+        new Promise<IteratorResult<any>>((resolve) => {
+          if (!isSlideRequest(prompt) || toolStarted || slideFallbackApplied) {
+            return;
+          }
+
+          const timeoutId = setTimeout(() => {
+            resolve({ value: { event: "__slide_timeout__" }, done: false });
+          }, SLIDE_REQUEST_TIMEOUT_MS);
+
+          runnerAbortController.signal.addEventListener("abort", () => clearTimeout(timeoutId), { once: true });
+        }),
+      ]);
+
+      if (nextEvent.done) {
+        break;
+      }
+
+      const event = nextEvent.value;
       if (abortSignal?.aborted) {
         throw new Error("AbortError");
       }
 
       const { event: eventType, name, data } = event as { event: string; name?: string; data?: any };
+
+      if (eventType === "__slide_timeout__") {
+        const fallback = buildFallbackSlides(prompt);
+        const html = generateHTMLFromSlides(fallback.slides, fallback.title, getThemeById(fallback.themeId));
+        if (currentThinkingId) {
+          // Slides can get stuck in model reasoning without ever reaching write_slides.
+          const fallbackResult = "Timed out waiting for slide tool call, generated fallback deck.";
+          await updateStep(jobId, currentThinkingId, { status: "complete", content: thinkingContent, result: fallbackResult });
+          await broadcastJobEvent("step_complete", { id: currentThinkingId, result: fallbackResult });
+        }
+        await persistSlideDeck(chatId, html);
+        await broadcastJobEvent("slide_content", { fileContent: html, theme: fallback.themeId });
+        await broadcastJobEvent("file_written", { filename: "index.html", content: html, isSlide: true });
+        finalContent = `Created a presentation draft in the ${fallback.themeId} theme.`;
+        slideFallbackApplied = true;
+        runnerAbortController.abort();
+        break;
+      }
 
       if (eventType === "on_chat_model_start") {
         thinkingStepCounter++;
@@ -419,6 +549,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         }
       }
       else if (eventType === "on_tool_start") {
+        toolStarted = true;
         stepCounter++;
         const toolName = name || "Tool";
         const toolArgs = (data?.input || {}) as Record<string, unknown>;
@@ -532,6 +663,8 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         }
       }
     }
+
+    abortSignal?.removeEventListener("abort", abortRunner);
 
     let slideFileContent: string | undefined;
     try {

@@ -8,6 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@hono/node-server':
+        specifier: ^1.19.12
+        version: 1.19.12(hono@4.12.9)
+      '@hono/node-ws':
+        specifier: ^1.3.0
+        version: 1.3.0(@hono/node-server@1.19.12(hono@4.12.9))(hono@4.12.9)
+      '@hono/zod-validator':
+        specifier: ^0.7.6
+        version: 0.7.6(hono@4.12.9)(zod@4.3.4)
       '@khadim/codeexecution-client':
         specifier: workspace:*
         version: link:packages/codeexecution-client
@@ -19,13 +28,13 @@ importers:
         version: 1.4.1
       '@mariozechner/pi-agent-core':
         specifier: ^0.63.1
-        version: 0.63.1(ws@8.18.3)(zod@4.3.4)
+        version: 0.63.1(ws@8.20.0)(zod@4.3.4)
       '@mariozechner/pi-ai':
         specifier: ^0.63.1
-        version: 0.63.1(ws@8.18.3)(zod@4.3.4)
+        version: 0.63.1(ws@8.20.0)(zod@4.3.4)
       '@mariozechner/pi-web-ui':
         specifier: ^0.63.1
-        version: 0.63.1(@mariozechner/mini-lit@0.2.1(lit@3.3.2)(tailwindcss@4.1.18))(lit@3.3.2)(ws@8.18.3)(zod@4.3.4)
+        version: 0.63.1(@mariozechner/mini-lit@0.2.1(lit@3.3.2)(tailwindcss@4.1.18))(lit@3.3.2)(ws@8.20.0)(zod@4.3.4)
       '@paralleldrive/cuid2':
         specifier: ^3.0.6
         version: 3.0.6
@@ -104,6 +113,9 @@ importers:
       express:
         specifier: ^5.1.0
         version: 5.2.1
+      hono:
+        specifier: ^4.12.9
+        version: 4.12.9
       html2canvas:
         specifier: ^1.4.1
         version: 1.4.1
@@ -155,6 +167,9 @@ importers:
       tiptap-markdown:
         specifier: ^0.9.0
         version: 0.9.0(@tiptap/core@3.22.0(@tiptap/pm@3.22.0))
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
       zod:
         specifier: ^4.3.4
         version: 4.3.4
@@ -186,6 +201,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.7)
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       cross-env:
         specifier: ^10.0.0
         version: 10.1.0
@@ -1142,6 +1160,25 @@ packages:
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
+
+  '@hono/node-server@1.19.12':
+    resolution: {integrity: sha512-txsUW4SQ1iilgE0l9/e9VQWmELXifEFvmdA1j6WFh/aFPj99hIntrSsq/if0UWyGVkmrRPKA1wCeP+UCr1B9Uw==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      hono: ^4
+
+  '@hono/node-ws@1.3.0':
+    resolution: {integrity: sha512-ju25YbbvLuXdqBCmLZLqnNYu1nbHIQjoyUqA8ApZOeL1k4skuiTcw5SW77/5SUYo2Xi2NVBJoVlfQurnKEp03Q==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      '@hono/node-server': ^1.19.2
+      hono: ^4.6.0
+
+  '@hono/zod-validator@0.7.6':
+    resolution: {integrity: sha512-Io1B6d011Gj1KknV4rXYz4le5+5EubcWEU/speUjuw9XMMIaP3n78yXLhjd2A3PXaXaUwEAluOiAyLqhBEJgsw==}
+    peerDependencies:
+      hono: '>=3.9.0'
+      zod: ^3.25.0 || ^4.0.0
 
   '@hyzyla/pdfium@2.1.12':
     resolution: {integrity: sha512-2ezbrJk9V4foB3+U+eQ7234spsHmrufPU+9EV2cVZCnhTLLfelPz7wWshO0HjUNtcECNBaAfEzrdaQZOigkW+A==}
@@ -2548,6 +2585,9 @@ packages:
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
 
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
 
@@ -3370,6 +3410,10 @@ packages:
 
   highlightjs-vue@1.0.0:
     resolution: {integrity: sha512-PDEfEF102G23vHmPhLyPboFCD+BkMGu+GuJe2d9/eH4FsCwvgBpnc9n0pGE+ffKdph38s6foEZiEjdgHdzp+IA==}
+
+  hono@4.12.9:
+    resolution: {integrity: sha512-wy3T8Zm2bsEvxKZM5w21VdHDDcwVS1yUFFY6i8UobSsKfFceT7TOwhbhfKsDyx7tYQlmRM5FLpIuYvNFyjctiA==}
+    engines: {node: '>=16.9.0'}
 
   html-parse-string@0.0.9:
     resolution: {integrity: sha512-wyGnsOolHbNrcb8N6bdJF4EHyzd3zVGCb9/mBxeNjAYBDOZqD7YkqLBz7kXtdgHwNnV8lN/BpSDpsI1zm8Sd8g==}
@@ -4862,8 +4906,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.18.3:
-    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+  ws@8.20.0:
+    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -5808,11 +5852,29 @@ snapshots:
       google-auth-library: 10.6.2
       p-retry: 4.6.2
       protobufjs: 7.5.4
-      ws: 8.18.3
+      ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@hono/node-server@1.19.12(hono@4.12.9)':
+    dependencies:
+      hono: 4.12.9
+
+  '@hono/node-ws@1.3.0(@hono/node-server@1.19.12(hono@4.12.9))(hono@4.12.9)':
+    dependencies:
+      '@hono/node-server': 1.19.12(hono@4.12.9)
+      hono: 4.12.9
+      ws: 8.20.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@hono/zod-validator@0.7.6(hono@4.12.9)(zod@4.3.4)':
+    dependencies:
+      hono: 4.12.9
+      zod: 4.3.4
 
   '@hyzyla/pdfium@2.1.12': {}
 
@@ -5962,7 +6024,7 @@ snapshots:
 
   '@lmstudio/lms-isomorphic@0.4.6':
     dependencies:
-      ws: 8.18.3
+      ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -5995,9 +6057,9 @@ snapshots:
     transitivePeerDependencies:
       - tailwindcss
 
-  '@mariozechner/pi-agent-core@0.63.1(ws@8.18.3)(zod@4.3.4)':
+  '@mariozechner/pi-agent-core@0.63.1(ws@8.20.0)(zod@4.3.4)':
     dependencies:
-      '@mariozechner/pi-ai': 0.63.1(ws@8.18.3)(zod@4.3.4)
+      '@mariozechner/pi-ai': 0.63.1(ws@8.20.0)(zod@4.3.4)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -6007,7 +6069,7 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.63.1(ws@8.18.3)(zod@4.3.4)':
+  '@mariozechner/pi-ai@0.63.1(ws@8.20.0)(zod@4.3.4)':
     dependencies:
       '@anthropic-ai/sdk': 0.73.0(zod@4.3.4)
       '@aws-sdk/client-bedrock-runtime': 3.1019.0
@@ -6017,7 +6079,7 @@ snapshots:
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       chalk: 5.6.2
-      openai: 6.26.0(ws@8.18.3)(zod@4.3.4)
+      openai: 6.26.0(ws@8.20.0)(zod@4.3.4)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       undici: 7.24.6
@@ -6041,11 +6103,11 @@ snapshots:
     optionalDependencies:
       koffi: 2.15.2
 
-  '@mariozechner/pi-web-ui@0.63.1(@mariozechner/mini-lit@0.2.1(lit@3.3.2)(tailwindcss@4.1.18))(lit@3.3.2)(ws@8.18.3)(zod@4.3.4)':
+  '@mariozechner/pi-web-ui@0.63.1(@mariozechner/mini-lit@0.2.1(lit@3.3.2)(tailwindcss@4.1.18))(lit@3.3.2)(ws@8.20.0)(zod@4.3.4)':
     dependencies:
       '@lmstudio/sdk': 1.5.0
       '@mariozechner/mini-lit': 0.2.1(lit@3.3.2)(tailwindcss@4.1.18)
-      '@mariozechner/pi-ai': 0.63.1(ws@8.18.3)(zod@4.3.4)
+      '@mariozechner/pi-ai': 0.63.1(ws@8.20.0)(zod@4.3.4)
       '@mariozechner/pi-tui': 0.63.1
       docx-preview: 0.3.7
       jszip: 3.10.1
@@ -6065,7 +6127,7 @@ snapshots:
 
   '@mistralai/mistralai@1.14.1':
     dependencies:
-      ws: 8.18.3
+      ws: 8.20.0
       zod: 4.3.4
       zod-to-json-schema: 3.25.2(zod@4.3.4)
     transitivePeerDependencies:
@@ -7299,6 +7361,10 @@ snapshots:
 
   '@types/use-sync-external-store@0.0.6': {}
 
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.19.3
+
   '@ungap/structured-clone@1.3.0': {}
 
   '@vitest/expect@1.6.1':
@@ -8162,6 +8228,8 @@ snapshots:
 
   highlightjs-vue@1.0.0: {}
 
+  hono@4.12.9: {}
+
   html-parse-string@0.0.9: {}
 
   html-url-attributes@3.0.1: {}
@@ -8923,9 +8991,9 @@ snapshots:
     dependencies:
       mimic-fn: 4.0.0
 
-  openai@6.26.0(ws@8.18.3)(zod@4.3.4):
+  openai@6.26.0(ws@8.20.0)(zod@4.3.4):
     optionalDependencies:
-      ws: 8.18.3
+      ws: 8.20.0
       zod: 4.3.4
 
   opencollective-postinstall@2.0.3: {}
@@ -9963,7 +10031,7 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.18.3: {}
+  ws@8.20.0: {}
 
   xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz: {}
 

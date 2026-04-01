@@ -1,6 +1,16 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["server.ts", "vite.config.ts"],
+  "include": [
+    "server.ts",
+    "vite.config.ts",
+    "app/lib/agent-ws.ts",
+    "app/lib/hono-node-ws.ts",
+    "app/agent/session-stream.ts",
+    "app/lib/job-manager.ts",
+    "app/lib/db/index.ts",
+    "app/lib/db/schema.ts",
+    "app/types/agent.ts"
+  ],
   "compilerOptions": {
     "composite": true,
     "strict": true,

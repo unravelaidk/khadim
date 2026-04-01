@@ -1,11 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
+import { hc } from "hono/client";
 import { useNavigate } from "react-router";
 import type { AgentConfig, Message, PendingQuestion, ThinkingStepData } from "../../../types/chat";
 import type { SlideTemplate, SlideTheme } from "../../../types/slides";
 import type { AttachedFile } from "../WelcomeScreen";
 import type { ModelOption } from "../ModelSelector";
 import { agentMessages, showError } from "../../../lib/toast";
+import { callAgentRpc } from "../../../lib/agent-rpc-client";
+import type { AgentWsAppType } from "../../../lib/agent-ws";
+import {
+  appendMessages,
+  applyJobSnapshot,
+  applyLoadedChat,
+  applySessionSnapshot,
+  applyStreamEvent as applySessionStreamEvent,
+  bindJobToMessage,
+  createEmptyAgentSessionState,
+  DRAFT_CHAT_KEY,
+  getChatStateKey,
+  registerPendingAssistantMessage,
+  replaceChatKey,
+  resetDraftChat,
+  resolvePendingAssistantMessage,
+  selectChatRuntime,
+  selectSlideRuntime,
+  setChatMeta,
+  setJobActive,
+  updateMessageById,
+  type ActiveAgentState,
+  type JobSnapshot,
+  type SessionSnapshotEvent,
+  type StreamEvent,
+  type AgentSessionState,
+} from "./agent-session-state";
 
 export type ActiveBadge = {
   label: string;
@@ -24,6 +52,7 @@ interface UseAgentBuilderOptions {
 
 export interface AgentBuilderState {
   messages: Message[];
+  slideState: { content: string | null; isStreaming: boolean; isBuilding: boolean } | null;
   input: string;
   isTyping: boolean;
   agentConfig: AgentConfig | null;
@@ -83,56 +112,8 @@ interface ModelsApiResponse {
   error?: string;
 }
 
-type ActiveAgentState = { mode: "plan" | "build"; name: string } | null;
-
-interface StreamEvent {
-  type: string;
-  jobId?: string;
-  chatId?: string;
-  sessionId?: string;
-  id?: number | string;
-  [key: string]: unknown;
-}
-
-interface JobSnapshot {
-  id: string;
-  chatId: string;
-  sessionId: string;
-  status: "running" | "completed" | "error" | "cancelled";
-  steps: Message["thinkingSteps"];
-  finalContent: string;
-  previewUrl: string | null;
-  sandboxId: string | null;
-  error: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface ChatRuntimeState {
-  messages: Message[];
-  sandboxId: string | null;
-  activeJobIds: string[];
-  pendingQuestion: PendingQuestion | null;
-  activeAgent: ActiveAgentState;
-}
-
-const DRAFT_CHAT_KEY = "__draft__";
-
-function createEmptyChatRuntime(): ChatRuntimeState {
-  return {
-    messages: [],
-    sandboxId: null,
-    activeJobIds: [],
-    pendingQuestion: null,
-    activeAgent: null,
-  };
-}
-
-function getChatStateKey(chatId: string | null | undefined): string {
-  return chatId || DRAFT_CHAT_KEY;
-}
-
 export function useAgentBuilder({ initialChatId, initialView = "chat", initialWorkspaceId = null }: UseAgentBuilderOptions) {
+  const wsClient = typeof window === "undefined" ? null : hc<AgentWsAppType>(window.location.origin);
   const getClientSessionId = () => {
     if (typeof window === "undefined") return "default";
 
@@ -146,7 +127,7 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   };
 
   const navigate = useNavigate();
-  const [chatStates, setChatStates] = useState<Record<string, ChatRuntimeState>>({});
+  const [sessionState, setSessionState] = useState<AgentSessionState>(createEmptyAgentSessionState());
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null);
@@ -158,11 +139,13 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const sessionIdRef = useRef<string>(getClientSessionId());
   const initialLoadRef = useRef(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const sessionSocketRef = useRef<WebSocket | null>(null);
+  const socketReconnectTimeoutRef = useRef<number | null>(null);
+  const socketHeartbeatIntervalRef = useRef<number | null>(null);
+  const lastStreamEventIdRef = useRef<string | null>(null);
+  const lastPongAtRef = useRef<number>(Date.now());
+  const reconnectAttemptRef = useRef(0);
   const requestAbortControllerRef = useRef<AbortController | null>(null);
-  const jobMessageIdsRef = useRef<Record<string, string>>({});
-  const jobChatIdsRef = useRef<Record<string, string>>({});
-  const latestChatStatesRef = useRef<Record<string, ChatRuntimeState>>({});
 
   const [currentView, setCurrentView] = useState<"chat" | "workspace" | "settings">(initialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -174,7 +157,7 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const [webBrowsingEnabled, setWebBrowsingEnabled] = useState(true);
 
   const currentChatKey = getChatStateKey(chatId);
-  const currentChatState = chatStates[currentChatKey] || createEmptyChatRuntime();
+  const currentChatState = selectChatRuntime(sessionState, chatId);
   const messages = currentChatState.messages;
   const sandboxId = currentChatState.sandboxId;
   const pendingQuestion = currentChatState.pendingQuestion;
@@ -182,6 +165,7 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const activeJobIds = currentChatState.activeJobIds;
   const jobId = activeJobIds[activeJobIds.length - 1] || null;
   const isProcessing = activeJobIds.length > 0;
+  const slideState = selectSlideRuntime(sessionState, chatId, isProcessing);
 
   const removeAttachedFile = (fileName: string) => {
     setAttachedFiles((prev) => prev.filter((file) => file.name !== fileName));
@@ -258,296 +242,53 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
     }
   };
 
-  const updateChatStateByKey = (
-    chatKey: string,
-    updater: (state: ChatRuntimeState) => ChatRuntimeState
-  ) => {
-    setChatStates((prev) => {
-      const next = {
-        ...prev,
-        [chatKey]: updater(prev[chatKey] || createEmptyChatRuntime()),
-      };
-      latestChatStatesRef.current = next;
-      return next;
-    });
-  };
-
-  const replaceChatStateKey = (fromKey: string, toKey: string) => {
-    if (fromKey === toKey) return;
-
-    setChatStates((prev) => {
-      const fromState = prev[fromKey];
-      const toState = prev[toKey] || createEmptyChatRuntime();
-      if (!fromState) return prev;
-
-      const next = {
-        ...prev,
-        [toKey]: {
-          ...toState,
-          messages: fromState.messages.length > 0 ? fromState.messages : toState.messages,
-          sandboxId: fromState.sandboxId || toState.sandboxId,
-          activeJobIds: Array.from(new Set([...toState.activeJobIds, ...fromState.activeJobIds])),
-          pendingQuestion: fromState.pendingQuestion || toState.pendingQuestion,
-          activeAgent: fromState.activeAgent || toState.activeAgent,
-        },
-      };
-      delete next[fromKey];
-      latestChatStatesRef.current = next;
-      return next;
-    });
-  };
-
-  const upsertAssistantMessage = (chatKey: string, messageId: string, updater: (message: Message) => Message) => {
-    updateChatStateByKey(chatKey, (state) => ({
-      ...state,
-      messages: state.messages.map((message) => (message.id === messageId ? updater(message) : message)),
-    }));
-  };
-
-  const ensureJobMessage = (jobIdValue: string, chatIdValue: string) => {
-    const chatKey = getChatStateKey(chatIdValue);
-    jobChatIdsRef.current[jobIdValue] = chatKey;
-
-    let messageId = jobMessageIdsRef.current[jobIdValue];
-    if (messageId) {
-      return { chatKey, messageId };
-    }
-
-    messageId = `job-${jobIdValue}`;
-    jobMessageIdsRef.current[jobIdValue] = messageId;
-    updateChatStateByKey(chatKey, (state) => {
-      if (state.messages.some((message) => message.id === messageId)) {
-        return state;
-      }
-
-      return {
-        ...state,
-        messages: [
-          ...state.messages,
-          {
-            id: messageId,
-            role: "assistant" as const,
-            content: "",
-            timestamp: new Date(),
-            thinkingSteps: [],
-          },
-        ],
-      };
-    });
-
-    return { chatKey, messageId };
-  };
-
-  const setJobActive = (jobIdValue: string, chatIdValue: string, active: boolean) => {
-    const chatKey = getChatStateKey(chatIdValue);
-    updateChatStateByKey(chatKey, (state) => ({
-      ...state,
-      activeJobIds: active
-        ? Array.from(new Set([...state.activeJobIds, jobIdValue]))
-        : state.activeJobIds.filter((existingJobId) => existingJobId !== jobIdValue),
-      activeAgent: active ? state.activeAgent : state.activeJobIds.length <= 1 ? null : state.activeAgent,
-    }));
-  };
-
-  const applyJobSnapshot = (job: JobSnapshot) => {
-    const { chatKey, messageId } = ensureJobMessage(job.id, job.chatId);
-    updateChatStateByKey(chatKey, (state) => {
-      const nextMessages = state.messages.some((message) => message.id === messageId)
-        ? state.messages.map((message) =>
-            message.id === messageId
-              ? {
-                  ...message,
-                  content: job.finalContent || message.content,
-                  previewUrl: job.previewUrl || message.previewUrl,
-                  thinkingSteps: job.steps || message.thinkingSteps,
-                }
-              : message
-          )
-        : [
-            ...state.messages,
-            {
-              id: messageId,
-              role: "assistant" as const,
-              content: job.finalContent,
-              timestamp: new Date(job.createdAt),
-              previewUrl: job.previewUrl || undefined,
-              thinkingSteps: job.steps || [],
-            },
-          ];
-
-      return {
-        ...state,
-        messages: nextMessages,
-        sandboxId: job.sandboxId || state.sandboxId,
-        activeJobIds:
-          job.status === "running"
-            ? Array.from(new Set([...state.activeJobIds, job.id]))
-            : state.activeJobIds.filter((existingJobId) => existingJobId !== job.id),
-      };
-    });
-  };
-
   const applyStreamEvent = (event: StreamEvent) => {
-    if (event.type === "session_connected") {
-      return;
-    }
+    setSessionState((prev) => applySessionStreamEvent(prev, event));
 
-    if (event.type === "job_snapshot") {
-      applyJobSnapshot(event as unknown as JobSnapshot);
-      return;
-    }
-
-    const streamJobId = typeof event.jobId === "string" ? event.jobId : null;
-    const streamChatId = typeof event.chatId === "string" ? event.chatId : null;
-    if (!streamJobId || !streamChatId) {
-      return;
-    }
-
-    const { chatKey, messageId } = ensureJobMessage(streamJobId, streamChatId);
-
-    if (event.type === "job_created") {
-      setJobActive(streamJobId, streamChatId, true);
-      return;
-    }
-
-    if (event.type === "agent_mode") {
-      updateChatStateByKey(chatKey, (state) => ({
-        ...state,
-        activeAgent: { mode: event.mode as "plan" | "build", name: event.name as string },
-      }));
-      return;
-    }
-
-    if (event.type === "sandbox_info") {
-      updateChatStateByKey(chatKey, (state) => ({
-        ...state,
-        sandboxId: typeof event.sandboxId === "string" ? event.sandboxId : state.sandboxId,
-      }));
-      return;
-    }
-
-    if (event.type === "step_start") {
-      const stepId = String(event.id);
-      const nextStep: ThinkingStepData = {
-        id: stepId,
-        title: event.title as string,
-        status: "running",
-        content: "",
-        tool: event.tool as ThinkingStepData["tool"],
-        filename: (event.filename || (event.args as { path?: string } | undefined)?.path) as string | undefined,
-        fileContent: (event.fileContent || (event.args as { content?: string } | undefined)?.content) as string | undefined,
-      };
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        thinkingSteps: [
-          ...(message.thinkingSteps || []),
-          ...(message.thinkingSteps || []).some((step) => step.id === stepId)
-            ? []
-            : [nextStep],
-        ],
-      }));
-      return;
-    }
-
-    if (event.type === "step_update") {
-      const stepId = String(event.id);
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        thinkingSteps: (message.thinkingSteps || []).map((step) =>
-          step.id === stepId ? { ...step, content: event.content as string } : step
-        ),
-      }));
-      return;
-    }
-
-    if (event.type === "step_complete") {
-      const stepId = String(event.id);
-      const completeStep = (step: ThinkingStepData): ThinkingStepData => ({
-        ...step,
-        status: "complete",
-        result: (event.result ?? step.result) as string | undefined,
-        filename: step.filename || (event.filename as string | undefined),
-        fileContent: step.fileContent || (event.fileContent as string | undefined),
-      });
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        thinkingSteps: (message.thinkingSteps || []).map((step) =>
-          step.id === stepId ? completeStep(step) : step
-        ),
-      }));
-      return;
-    }
-
-    if (event.type === "text_delta") {
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        content: `${message.content}${String(event.content || "")}`,
-      }));
-      return;
-    }
-
-    if (event.type === "slide_content") {
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        fileContent: event.fileContent as string | undefined,
-      }));
-      return;
-    }
-
-    if (event.type === "file_written") {
-      const filename = typeof event.filename === "string" ? event.filename : undefined;
-      const fileContent = typeof event.content === "string" ? event.content : undefined;
-      if (filename === "index.html" && fileContent?.includes('<script id="slide-data"')) {
-        upsertAssistantMessage(chatKey, messageId, (message) => ({ ...message, fileContent }));
-      }
-      return;
-    }
-
-    if (event.type === "ask_user") {
-      updateChatStateByKey(chatKey, (state) => ({
-        ...state,
-        pendingQuestion: {
-          question: event.question as string,
-          options: event.options as PendingQuestion["options"],
-          context: event.context as string,
-          threadId: event.threadId as string,
-        },
-      }));
+    if (event.type === "ask_user" || event.type === "done" || event.type === "error") {
       setIsTyping(false);
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        content: "I have a question for you...",
-      }));
-      return;
     }
 
     if (event.type === "delegate_build") {
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        content: "Plan approved! The Build agent will now execute...",
-      }));
       const buildPrompt = `Execute this approved plan:\n\n${event.plan as string}${event.context ? `\n\nContext: ${event.context as string}` : ""}`;
       setInput(buildPrompt);
-      return;
     }
+  };
 
-    if (event.type === "done") {
-      setJobActive(streamJobId, streamChatId, false);
-      setIsTyping(false);
-      upsertAssistantMessage(chatKey, messageId, (message) => ({
-        ...message,
-        content: (event.content ?? message.content) as string,
-        previewUrl: event.previewUrl as string | undefined,
-      }));
-      updateChatStateByKey(chatKey, (state) => ({ ...state, activeAgent: null }));
-      return;
-    }
+  const appendChatMessages = (chatKey: string, nextMessages: Message[]) => {
+    setSessionState((prev) => appendMessages(prev, chatKey, nextMessages));
+  };
 
-    if (event.type === "error") {
-      setJobActive(streamJobId, streamChatId, false);
-      setIsTyping(false);
-      updateChatStateByKey(chatKey, (state) => ({ ...state, activeAgent: null }));
-    }
+  const patchMessage = (chatKey: string, messageId: string, updater: (message: Message) => Message) => {
+    setSessionState((prev) => updateMessageById(prev, chatKey, messageId, updater));
+  };
+
+  const queuePendingAssistant = (chatKey: string, messageId: string) => {
+    setSessionState((prev) => registerPendingAssistantMessage(prev, chatKey, messageId));
+  };
+
+  const clearPendingAssistant = (chatKey: string, messageId: string) => {
+    setSessionState((prev) => resolvePendingAssistantMessage(prev, chatKey, messageId));
+  };
+
+  const renameChatStateKey = (fromKey: string, toKey: string) => {
+    setSessionState((prev) => replaceChatKey(prev, fromKey, toKey));
+  };
+
+  const loadChatState = (nextChatId: string, nextMessages: Message[], nextSandboxId: string | null) => {
+    setSessionState((prev) => applyLoadedChat(prev, nextChatId, nextMessages, nextSandboxId));
+  };
+
+  const activateJob = (nextJobId: string, nextChatId: string, active: boolean) => {
+    setSessionState((prev) => setJobActive(prev, nextJobId, nextChatId, active));
+  };
+
+  const attachJobToMessage = (nextJobId: string, nextChatId: string, messageId: string) => {
+    setSessionState((prev) => bindJobToMessage(prev, nextJobId, nextChatId, messageId));
+  };
+
+  const clearPendingQuestionForChat = (chatKey: string) => {
+    setSessionState((prev) => setChatMeta(prev, chatKey, { pendingQuestion: null }));
   };
 
   const formatAttachmentSize = (bytes: number) => {
@@ -636,11 +377,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         };
       });
 
-      updateChatStateByKey(chat.id, (state) => ({
-        ...state,
-        messages: loadedMessages,
-        sandboxId: chat.sandboxId || state.sandboxId,
-      }));
+      loadChatState(chat.id, loadedMessages, chat.sandboxId || null);
       setCurrentView("chat");
 
       const hasPreviewContent =
@@ -659,26 +396,24 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
         if (sandboxRes.ok) {
           const { sandboxId: newSandboxId, previewUrl: newPreviewUrl } = await sandboxRes.json();
-          updateChatStateByKey(chat.id, (state) => ({ ...state, sandboxId: newSandboxId }));
+          setSessionState((prev) => setChatMeta(prev, chat.id, { sandboxId: newSandboxId }));
 
           if (newPreviewUrl) {
-            updateChatStateByKey(chat.id, (state) => ({
-              ...state,
-              messages: state.messages.map((message) =>
-                message.previewUrl ? { ...message, previewUrl: newPreviewUrl } : message
-              ),
-            }));
+            for (const message of loadedMessages) {
+              if (!message.previewUrl) continue;
+              patchMessage(chat.id, message.id, (existingMessage) => ({ ...existingMessage, previewUrl: newPreviewUrl }));
+            }
           }
         }
       }
 
       try {
-        const jobResponse = await fetch(`/api/agent?chatId=${chat.id}&sessionId=${encodeURIComponent(sessionIdRef.current)}`);
-        if (!jobResponse.ok) return;
-
-        const payload = (await jobResponse.json()) as { jobs?: JobSnapshot[] };
+        const payload = await callAgentRpc("chat.getActiveJobs", {
+          chatId: chat.id,
+          sessionId: sessionIdRef.current,
+        });
         for (const activeJob of payload.jobs || []) {
-          applyJobSnapshot(activeJob);
+          setSessionState((prev) => applyJobSnapshot(prev, activeJob));
           if (activeJob.status === "running") {
             setIsTyping(true);
           }
@@ -694,7 +429,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
   const handleNewChat = () => {
     setChatId(null);
-    updateChatStateByKey(DRAFT_CHAT_KEY, () => createEmptyChatRuntime());
+    setSessionState((prev) => resetDraftChat(prev));
     setActiveBadges([]);
     setCurrentView("chat");
     initialLoadRef.current = false;
@@ -814,25 +549,110 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
   useEffect(() => {
     const sessionId = sessionIdRef.current;
-    const source = new EventSource(`/api/agent/stream?sessionId=${encodeURIComponent(sessionId)}`);
-    eventSourceRef.current = source;
+    let disposed = false;
 
-    source.onmessage = (messageEvent) => {
-      try {
-        applyStreamEvent(JSON.parse(messageEvent.data) as StreamEvent);
-      } catch (error) {
-        console.error("Failed to parse session stream event:", error);
+    const clearSocketTimers = () => {
+      if (socketReconnectTimeoutRef.current !== null) {
+        window.clearTimeout(socketReconnectTimeoutRef.current);
+        socketReconnectTimeoutRef.current = null;
+      }
+
+      if (socketHeartbeatIntervalRef.current !== null) {
+        window.clearInterval(socketHeartbeatIntervalRef.current);
+        socketHeartbeatIntervalRef.current = null;
       }
     };
 
-    source.onerror = (error) => {
-      console.error("Session stream error:", error);
+    const scheduleReconnect = () => {
+      if (disposed) {
+        return;
+      }
+
+      if (socketReconnectTimeoutRef.current !== null) {
+        return;
+      }
+
+      const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, 10000);
+      reconnectAttemptRef.current += 1;
+      socketReconnectTimeoutRef.current = window.setTimeout(() => {
+        socketReconnectTimeoutRef.current = null;
+        connectSessionSocket();
+      }, delay);
     };
 
+    const connectSessionSocket = () => {
+      const socket = wsClient?.api.agent.ws.$ws();
+      if (!socket) {
+        return;
+      }
+      sessionSocketRef.current = socket;
+      lastPongAtRef.current = Date.now();
+
+      socket.addEventListener("open", () => {
+        reconnectAttemptRef.current = 0;
+        socket.send(
+          JSON.stringify({
+            type: "session.connect",
+            sessionId,
+            lastEventId: lastStreamEventIdRef.current,
+          }),
+        );
+
+        clearSocketTimers();
+        socketHeartbeatIntervalRef.current = window.setInterval(() => {
+          if (Date.now() - lastPongAtRef.current > 60000) {
+            socket.close();
+            return;
+          }
+
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 30000);
+      });
+
+      socket.addEventListener("message", (messageEvent) => {
+        try {
+          const event = JSON.parse(String(messageEvent.data)) as StreamEvent;
+          if (event.type === "pong") {
+            lastPongAtRef.current = Date.now();
+            return;
+          }
+
+          if (typeof event.eventId === "string") {
+            lastStreamEventIdRef.current = event.eventId;
+          } else if (typeof event.snapshotEventId === "string") {
+            lastStreamEventIdRef.current = event.snapshotEventId;
+          }
+
+          applyStreamEvent(event);
+        } catch (error) {
+          console.error("Failed to parse session stream event:", error);
+        }
+      });
+
+      socket.addEventListener("close", () => {
+        clearSocketTimers();
+        if (sessionSocketRef.current === socket) {
+          sessionSocketRef.current = null;
+        }
+        scheduleReconnect();
+      });
+
+      socket.addEventListener("error", (error) => {
+        console.error("Session stream error:", error);
+      });
+    };
+
+    connectSessionSocket();
+
     return () => {
-      source.close();
-      if (eventSourceRef.current === source) {
-        eventSourceRef.current = null;
+      disposed = true;
+      clearSocketTimers();
+      const socket = sessionSocketRef.current;
+      sessionSocketRef.current = null;
+      if (socket) {
+        socket.close();
       }
     };
   }, []);
@@ -862,19 +682,17 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       : userMessage.content;
 
     const draftChatKey = getChatStateKey(chatId);
-    updateChatStateByKey(draftChatKey, (state) => ({
-      ...state,
-      messages: [...state.messages, userMessage, assistantMessage],
-    }));
+    queuePendingAssistant(draftChatKey, assistantMessageId);
+    appendChatMessages(draftChatKey, [userMessage, assistantMessage]);
     setInput("");
     setAttachedFiles([]);
     setIsTyping(true);
 
     const abortController = new AbortController();
     requestAbortControllerRef.current = abortController;
+    let currentChatId = chatId;
 
     try {
-      let currentChatId = chatId;
       if (!currentChatId) {
         const createChatForm = new FormData();
         createChatForm.append("title", generateTitle(userMessage.content));
@@ -888,7 +706,10 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         if (chatResponse.ok) {
           const { chat } = await chatResponse.json();
           currentChatId = chat.id;
-          replaceChatStateKey(DRAFT_CHAT_KEY, chat.id);
+          const nextChatKey = getChatStateKey(chat.id);
+          clearPendingAssistant(draftChatKey, assistantMessageId);
+          queuePendingAssistant(nextChatKey, assistantMessageId);
+          renameChatStateKey(DRAFT_CHAT_KEY, chat.id);
           setChatId(chat.id);
           setSelectedWorkspaceId(chat.workspaceId || selectedWorkspaceId || null);
           setSidebarRefreshKey((prev) => prev + 1);
@@ -898,70 +719,40 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
       const createUserMessageRequest = currentChatId
         ? () => {
+            const chatIdForUserMessage = currentChatId as string;
             const userMsgForm = new FormData();
-            userMsgForm.append("chatId", currentChatId);
+            userMsgForm.append("chatId", chatIdForUserMessage);
             userMsgForm.append("role", "user");
             userMsgForm.append("content", userMessage.content);
             return fetch("/api/messages", { method: "POST", body: userMsgForm });
           }
         : null;
 
-      const formData = new FormData();
-      formData.append("prompt", promptWithAttachments);
-      if (sandboxId) {
-        formData.append("sandboxId", sandboxId);
-      }
-      if (currentChatId) {
-        formData.append("chatId", currentChatId);
-      }
-      formData.append("sessionId", sessionIdRef.current);
-      if (activeBadges.length > 0) {
-        formData.append("badges", JSON.stringify(activeBadges));
-      }
-      formData.append("webBrowsing", webBrowsingEnabled ? "true" : "false");
-
-      const [response] = await Promise.all([
-        fetch("/api/agent", {
-          method: "POST",
-          body: formData,
-          signal: abortController.signal,
-        }),
+      const [payload] = await Promise.all([
+        callAgentRpc("job.start", {
+          prompt: promptWithAttachments,
+          sandboxId: sandboxId || undefined,
+          chatId: currentChatId || undefined,
+          sessionId: sessionIdRef.current,
+          badges: activeBadges.length > 0 ? JSON.stringify(activeBadges) : undefined,
+        }, { signal: abortController.signal }),
         createUserMessageRequest?.(),
       ]);
-
-      if (!response.ok) {
-        throw new Error("Failed to get response");
-      }
-
-      const payload = (await response.json()) as { jobId?: string; chatId?: string };
       if (!payload.jobId || !payload.chatId) {
         throw new Error("Missing job metadata");
       }
 
-      jobMessageIdsRef.current[payload.jobId] = assistantMessageId;
-      jobChatIdsRef.current[payload.jobId] = getChatStateKey(payload.chatId);
-      setJobActive(payload.jobId, payload.chatId, true);
+      attachJobToMessage(payload.jobId, payload.chatId, assistantMessageId);
+      activateJob(payload.jobId, payload.chatId, true);
     } catch (error) {
+      clearPendingAssistant(getChatStateKey(currentChatId || chatId), assistantMessageId);
       if (error instanceof Error && (error.name === "AbortError" || error.message.includes("Cancelled by user"))) {
-        updateChatStateByKey(getChatStateKey(chatId), (state) => ({
-          ...state,
-          messages: state.messages.map((message) =>
-            message.id === assistantMessageId ? { ...message, content: "⏹️ Request stopped by user." } : message
-          ),
-        }));
+        patchMessage(getChatStateKey(chatId), assistantMessageId, (message) => ({ ...message, content: "⏹️ Request stopped by user." }));
         agentMessages.cancelled();
       } else {
-        updateChatStateByKey(getChatStateKey(chatId), (state) => ({
-          ...state,
-          messages: state.messages.map((message) =>
-            message.id === assistantMessageId
-              ? {
-                  ...message,
-                  content:
-                    "Sorry, I encountered an error connecting to the agent. Please check your API key and try again.",
-                }
-              : message
-          ),
+        patchMessage(getChatStateKey(chatId), assistantMessageId, (message) => ({
+          ...message,
+          content: "Sorry, I encountered an error connecting to the agent. Please check your API key and try again.",
         }));
         agentMessages.failed(error instanceof Error ? error.message : undefined);
       }
@@ -976,11 +767,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     }
     setIsTyping(false);
     if (jobId && chatId) {
-      const stopForm = new FormData();
-      stopForm.append("jobId", jobId);
-      stopForm.append("chatId", chatId);
-      stopForm.append("sessionId", sessionIdRef.current);
-      fetch("/api/agent/stop", { method: "POST", body: stopForm });
+      void callAgentRpc("job.stop", {
+        jobId,
+        chatId,
+        sessionId: sessionIdRef.current,
+      });
     }
     requestAbortControllerRef.current = null;
   };
@@ -988,7 +779,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
   const handleAnswerQuestion = async (answer: string) => {
     if (!pendingQuestion) return;
 
-    updateChatStateByKey(getChatStateKey(chatId), (state) => ({ ...state, pendingQuestion: null }));
+    clearPendingQuestionForChat(getChatStateKey(chatId));
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -997,10 +788,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       timestamp: new Date(),
     };
 
-    updateChatStateByKey(getChatStateKey(chatId), (state) => ({
-      ...state,
-      messages: [...state.messages, userMessage],
-    }));
+    appendChatMessages(getChatStateKey(chatId), [userMessage]);
 
     const saveUserMessage = chatId
       ? () => {
@@ -1014,7 +802,6 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
     setInput("");
 
-    const formData = new FormData();
     const contextualPrompt = `User answered the question: "${pendingQuestion.question}"\n\nAnswer: ${answer}${pendingQuestion.context ? `\n\nOriginal context: ${pendingQuestion.context}` : ""}`;
     const planPrefix = "Plan:\n";
     const planFromContext = pendingQuestion.context?.startsWith(planPrefix)
@@ -1041,19 +828,6 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       }
     }
 
-    formData.append("prompt", nextPrompt);
-    formData.append("agentMode", nextMode);
-    if (sandboxId) {
-      formData.append("sandboxId", sandboxId);
-    }
-    if (chatId) {
-      formData.append("chatId", chatId);
-    }
-    if (pendingQuestion.threadId) {
-      formData.append("threadId", pendingQuestion.threadId);
-    }
-    formData.append("sessionId", sessionIdRef.current);
-
     setIsTyping(true);
 
     const assistantMessageId = (Date.now() + 1).toString();
@@ -1065,40 +839,31 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       thinkingSteps: [],
     };
 
-    updateChatStateByKey(getChatStateKey(chatId), (state) => ({
-      ...state,
-      messages: [...state.messages, assistantMessage],
-    }));
+    appendChatMessages(getChatStateKey(chatId), [assistantMessage]);
+    queuePendingAssistant(getChatStateKey(chatId), assistantMessageId);
 
     try {
-      const [response] = await Promise.all([
-        fetch("/api/agent", {
-          method: "POST",
-          body: formData,
+      const [payload] = await Promise.all([
+        callAgentRpc("job.start", {
+          prompt: nextPrompt,
+          agentMode: nextMode,
+          sandboxId: sandboxId || undefined,
+          chatId: chatId || undefined,
+          sessionId: sessionIdRef.current,
         }),
         saveUserMessage?.(),
       ]);
-
-      if (!response.ok) {
-        throw new Error("Failed to get response");
-      }
-
-      const payload = (await response.json()) as { jobId?: string; chatId?: string };
       if (!payload.jobId || !payload.chatId) {
         throw new Error("Missing job metadata");
       }
 
-      jobMessageIdsRef.current[payload.jobId] = assistantMessageId;
-      jobChatIdsRef.current[payload.jobId] = getChatStateKey(payload.chatId);
-      setJobActive(payload.jobId, payload.chatId, true);
+      attachJobToMessage(payload.jobId, payload.chatId, assistantMessageId);
+      activateJob(payload.jobId, payload.chatId, true);
     } catch (error) {
-      updateChatStateByKey(getChatStateKey(chatId), (state) => ({
-        ...state,
-        messages: state.messages.map((message) =>
-          message.id === assistantMessageId
-            ? { ...message, content: "Sorry, there was an error processing your answer." }
-            : message
-        ),
+      clearPendingAssistant(getChatStateKey(chatId), assistantMessageId);
+      patchMessage(getChatStateKey(chatId), assistantMessageId, (message) => ({
+        ...message,
+        content: "Sorry, there was an error processing your answer.",
       }));
     } finally {
       requestAbortControllerRef.current = null;
@@ -1129,6 +894,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
   return {
     state: {
       messages,
+      slideState,
       input,
       isTyping,
       agentConfig,
@@ -1173,8 +939,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       removeAttachedFile,
       handleSelectModel,
       setWebBrowsingEnabled,
-      clearPendingQuestion: () =>
-        updateChatStateByKey(getChatStateKey(chatId), (state) => ({ ...state, pendingQuestion: null })),
+      clearPendingQuestion: () => clearPendingQuestionForChat(getChatStateKey(chatId)),
     },
   };
 }
