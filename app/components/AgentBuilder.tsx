@@ -35,7 +35,12 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
           onClose={() => actions.setIsSidebarOpen(false)}
         />
       }
-      header={<ChatHeader onOpenSidebar={() => actions.setIsSidebarOpen(true)} />}
+      header={
+        <ChatHeader
+          onOpenSidebar={() => actions.setIsSidebarOpen(true)}
+          onNewChat={handlePrimaryCreate}
+        />
+      }
       content={
         state.currentView === "workspace" ? (
           <AgentHubPanel
