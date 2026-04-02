@@ -212,6 +212,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   };
 
   const slideRequest = isSlideRequest(prompt);
+  let slideContentThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
   try {
     // Create broadcast helper for tools that need it
@@ -375,11 +376,13 @@ For slides/presentations, use the 'write_slides' tool - this does NOT require a 
 CRITICAL SLIDE RULES:
 - For any request to create slides, a deck, a presentation, or a PPT, your FIRST meaningful action must be a tool call.
 - Do NOT write a conversational preamble like "I'll create the slides" before calling tools.
-- If the user already provided a theme or enough direction, call 'write_slides' immediately.
+- Research before drafting slides whenever you have a research tool available.
+- For slide requests, the first tool call should usually be 'web_search', 'parse_document', or 'search_images' when those tools are relevant and available.
+- If research tools are unavailable, draft directly from the user's provided material and say you relied on the supplied context.
+- After gathering enough context, use 'write_slides' to produce the deck draft.
 - Prefer creating the full first draft of the deck in a single 'write_slides' call, then refine with additional 'write_slides' calls only if needed.
 - Only ask follow-up questions if essential information is truly missing.
 - Never use 'write_file' for slide decks. Always use 'write_slides'.
-- For slide requests in this environment, do NOT call search or research tools before the first draft. Produce the first complete deck directly with 'write_slides'.
 
 The HTML MUST contain a <script id="slide-data" type="application/json"> tag:
 
@@ -393,10 +396,11 @@ The HTML MUST contain a <script id="slide-data" type="application/json"> tag:
 Slide types: "title", "content", "accent", "image", "quote", "twoColumn".
 
 When user asks for slides/presentation/ppt:
-1. Use 'write_slides' tool with the HTML content (NOT write_file!)
-2. DO NOT call expose_preview - slides render natively
-3. Produce the first complete deck draft immediately
-4. If you refine, overwrite the deck with another 'write_slides' call
+1. Gather context first with available research tools when the topic would benefit from factual grounding, current data, or source material
+2. Use 'write_slides' tool with the HTML content (NOT write_file!)
+3. DO NOT call expose_preview - slides render natively
+4. Produce the first complete deck draft once you have enough research or user-provided material
+5. If you refine, overwrite the deck with another 'write_slides' call
 
 === SANDBOX LIFECYCLE ===
 The sandbox will timeout automatically.
@@ -427,7 +431,6 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
   let toolStarted = false;
   let lastToolCallPreview = "";
   let lastStreamedSlideContent = "";
-  let slideContentThrottleTimer: ReturnType<typeof setTimeout> | null = null;
   const SLIDE_STREAM_THROTTLE_MS = 300;
 
   const collectedSteps: AgentJobStep[] = [];
