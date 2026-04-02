@@ -22,6 +22,7 @@ export interface AttachedFile {
   name: string;
   type: string;
   size: number;
+  file?: File;
   content?: string;
 }
 
@@ -185,10 +186,10 @@ export function WelcomeScreen({
       reader.onerror = () => reject(new Error("Failed to read file."));
       reader.onload = () => resolve(reader.result as string);
 
-      if (file.type.startsWith("image/") || file.name.endsWith(".xlsx") || file.name.endsWith(".csv")) {
+      if (file.type.startsWith("image/")) {
         reader.readAsDataURL(file);
       } else {
-        reader.readAsText(file);
+        resolve("");
       }
     });
 
@@ -202,6 +203,7 @@ export function WelcomeScreen({
           name: file.name,
           type: file.type,
           size: file.size,
+          file,
           content: await readFileContent(file),
         }))
       );
@@ -446,7 +448,7 @@ export function WelcomeScreen({
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".xlsx,.csv,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.json"
+          accept=".csv,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md,.json"
           onChange={handleFileSelect}
           className="hidden"
         />

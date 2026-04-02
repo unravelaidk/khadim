@@ -1,6 +1,8 @@
 Use LiteParse whenever the user asks to parse, read, extract text from, summarize, or analyze a PDF.
 
-Use the `parse_document` tool for this.
+Use the `parse_document` tool for direct URLs or local file paths.
+
+Use the `read_uploaded_document` tool when the file was uploaded into the current chat or workspace.
 
 ## When To Use It
 
@@ -14,9 +16,12 @@ Use the `parse_document` tool for this.
 
 `parse_document({ url?, path?, targetPages?, ocrEnabled? })`
 
+`read_uploaded_document({ documentId, targetPages?, maxChars? })`
+
 - Provide exactly one of `url` or `path`.
 - Use `targetPages` for large PDFs when only part of the file matters.
 - Set `ocrEnabled: true` only for scanned PDFs or when normal extraction returns little text.
+- For uploaded files, use the document ID from the attached document list and call `read_uploaded_document`.
 
 ## Examples
 

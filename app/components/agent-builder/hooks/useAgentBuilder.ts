@@ -112,6 +112,18 @@ interface ModelsApiResponse {
   error?: string;
 }
 
+interface UploadedDocumentResponse {
+  document?: {
+    id: string;
+    filename: string;
+    mimeType: string | null;
+    size: number;
+    pageCount: number | null;
+    parseStatus: string;
+  };
+  error?: string;
+}
+
 export function useAgentBuilder({ initialChatId, initialView = "chat", initialWorkspaceId = null }: UseAgentBuilderOptions) {
   const wsClient = typeof window === "undefined" ? null : hc<AgentWsAppType>(window.location.origin);
   const getClientSessionId = () => {
@@ -303,9 +315,10 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
 
   const buildAttachmentContext = (files: AttachedFile[]) => {
     const MAX_CONTENT_CHARS = 4000;
-    if (files.length === 0) return "";
+    const promptFiles = files.filter((file) => !!file.content);
+    if (promptFiles.length === 0) return "";
 
-    return files
+    return promptFiles
       .map((file) => {
         const content = file.content ? file.content.slice(0, MAX_CONTENT_CHARS) : "";
         const isTruncated = !!file.content && file.content.length > MAX_CONTENT_CHARS;
@@ -324,6 +337,43 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         ].join("\n");
       })
       .join("\n\n---\n\n");
+  };
+
+  const uploadAttachedDocuments = async ({
+    files,
+    chatId,
+    workspaceId,
+  }: {
+    files: AttachedFile[];
+    chatId: string;
+    workspaceId?: string | null;
+  }) => {
+    const uploadableFiles = files.filter((file) => file.file && !file.type.startsWith("image/"));
+    if (uploadableFiles.length === 0) return [] as string[];
+
+    const results = await Promise.all(
+      uploadableFiles.map(async (file) => {
+        const body = new FormData();
+        body.append("file", file.file as File);
+        body.append("chatId", chatId);
+        if (workspaceId) {
+          body.append("workspaceId", workspaceId);
+        }
+
+        const response = await fetch("/api/documents/upload", {
+          method: "POST",
+          body,
+        });
+        const payload = (await response.json()) as UploadedDocumentResponse;
+        if (!response.ok || !payload.document) {
+          throw new Error(payload.error || `Failed to upload ${file.name}`);
+        }
+
+        return payload.document.id;
+      })
+    );
+
+    return results;
   };
 
   const generateTitle = (prompt: string): string => {
@@ -706,9 +756,9 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       thinkingSteps: [],
     };
 
-    const attachmentContext = buildAttachmentContext(attachedFiles);
-    const promptWithAttachments = attachmentContext
-      ? `${userMessage.content}\n\nAttached files:\n${attachmentContext}`
+    const inlineAttachmentContext = buildAttachmentContext(attachedFiles);
+    const promptWithAttachments = inlineAttachmentContext
+      ? `${userMessage.content}\n\nAttached files:\n${inlineAttachmentContext}`
       : userMessage.content;
 
     const draftChatKey = getChatStateKey(chatId);
@@ -747,6 +797,14 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         }
       }
 
+      const uploadedDocumentIds = currentChatId
+        ? await uploadAttachedDocuments({
+            files: attachedFiles,
+            chatId: currentChatId,
+            workspaceId: selectedWorkspaceId,
+          })
+        : [];
+
       const createUserMessageRequest = currentChatId
         ? () => {
             const chatIdForUserMessage = currentChatId as string;
@@ -765,6 +823,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           chatId: currentChatId || undefined,
           sessionId: sessionIdRef.current,
           badges: activeBadges.length > 0 ? JSON.stringify(activeBadges) : undefined,
+          documentIds: uploadedDocumentIds,
         }, { signal: abortController.signal }),
         createUserMessageRequest?.(),
       ]);

@@ -13,6 +13,7 @@ export default [
   route("api/sandbox/connect", "routes/api.sandbox.connect.ts"),
   route("api/chats", "routes/api.chats.ts"),
   route("api/chats/:id", "routes/api.chats.$id.ts"),
+  route("api/documents/upload", "routes/api.documents.upload.ts"),
   route("api/messages", "routes/api.messages.ts"),
   route("api/models", "routes/api.models.ts"),
 ] satisfies RouteConfig;

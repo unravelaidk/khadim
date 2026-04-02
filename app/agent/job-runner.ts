@@ -17,7 +17,8 @@ import {
   createWebSearchTool,
   createSearchImagesTool,
   createWriteSlidesTool,
-  createParseDocumentTool
+  createParseDocumentTool,
+  createReadUploadedDocumentTool
 } from "./tools";
 import { createAskUserTool, parseAskUserResponse } from "./tools/ask-user";
 import { createDelegateToBuildTool } from "./tools/delegate-build";
@@ -90,6 +91,7 @@ export interface RunAgentJobParams {
   agentConfig: AgentConfig;
   skillsContent: string;
   history: Message[];
+  uploadedDocumentsContext?: string;
   existingSandboxId?: string;
   apiKey?: string;
   abortSignal?: AbortSignal;
@@ -120,6 +122,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     agentConfig,
     skillsContent,
     history,
+    uploadedDocumentsContext,
     existingSandboxId,
     apiKey,
     abortSignal,
@@ -230,6 +233,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       createWebSearchTool(),
       createSearchImagesTool(),
       createParseDocumentTool(),
+      createReadUploadedDocumentTool(chatId),
       // Sandbox-free slide tool - no sandbox needed!
       createWriteSlidesTool(chatId, broadcastForTools),
     ];
@@ -272,7 +276,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     }
 
     const activeTools = filterToolsForAgent(allTools, agentMode);
-    const slidePreferredToolNames = new Set(["write_slides", "ask_user", "web_search", "search_images"]);
+    const slidePreferredToolNames = new Set(["write_slides", "ask_user", "web_search", "search_images", "parse_document", "read_uploaded_document"]);
     const requestTools = slideRequest
       ? activeTools.filter((tool) => slidePreferredToolNames.has(tool.name))
       : activeTools;
@@ -290,6 +294,9 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     const parseDocumentGuidance = activeToolNames.has("parse_document")
       ? `DOCUMENT PARSING:\nUse the parse_document tool to extract text from PDFs and documents when the user provides a URL or when you need to analyze document contents.\nExample: parse_document({ url: "https://example.com/report.pdf" })\nFor large documents, use targetPages to parse specific pages: parse_document({ url: "...", targetPages: "1-5" })\nEnable ocrEnabled for scanned documents with images instead of text.`
       : `DOCUMENT PARSING:\nThe parse_document tool is not available in this mode.`;
+    const uploadedDocumentGuidance = activeToolNames.has("read_uploaded_document")
+      ? `UPLOADED DOCUMENTS:\nUse read_uploaded_document when the user attached a PDF or text document to this chat or workspace. The current request may include document IDs in the attached document list.`
+      : `UPLOADED DOCUMENTS:\nThe read_uploaded_document tool is not available in this mode.`;
 
     const orchestratorConfig = {
       model: resolvedModel.model,
@@ -319,6 +326,10 @@ ${webSearchGuidance}
 ${imageSearchGuidance}
 
 ${parseDocumentGuidance}
+
+${uploadedDocumentsContext || ""}
+
+${uploadedDocumentGuidance}
 
 FRAMEWORK SELECTION:
 - Games/Interactive apps: type="vite"

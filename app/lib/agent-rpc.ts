@@ -7,6 +7,7 @@ import { startJob } from "../agent/stream-utils";
 import { decoratePromptWithBadges } from "./badges";
 import { loadChatHistory } from "./chat-history";
 import { abortJob } from "./job-cancel";
+import { buildUploadedDocumentsContext } from "./uploaded-documents";
 import {
   cancelJob,
   createJob,
@@ -112,6 +113,7 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         chatId?: string;
         sessionId?: string;
         badges?: string;
+        documentIds?: string[];
         agentMode?: AgentMode;
       };
       let prompt = asString(params.prompt);
@@ -138,6 +140,9 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
 
       const jobId = createId();
       const resolvedChatId = asString(params.chatId) || "default";
+      const uploadedDocumentsContext = Array.isArray(params.documentIds) && params.documentIds.length > 0
+        ? await buildUploadedDocumentsContext(resolvedChatId, params.documentIds)
+        : "";
       await createJob(jobId, resolvedChatId, sessionId);
 
       const agentConfig = getAgentConfig(agentMode);
@@ -153,6 +158,7 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         agentConfig,
         skillsContent,
         history,
+        uploadedDocumentsContext,
         existingSandboxId: asString(params.sandboxId),
       });
 
