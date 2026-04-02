@@ -179,11 +179,7 @@ async function appendSessionEvent(event: JobEvent): Promise<JobEvent> {
   return persistedEvent;
 }
 
-export async function getSessionEventsSince(sessionId: string, lastEventId?: string | null): Promise<JobEvent[]> {
-  const streamKey = getSessionEventStreamKey(sessionId);
-  const start = lastEventId ? `(${lastEventId}` : "-";
-  const entries = await redis.xrange(streamKey, start, "+", "COUNT", 500);
-
+function parseSessionEventEntries(entries: Array<[string, string[]]>): JobEvent[] {
   return entries.flatMap(([eventId, fields]) => {
     const eventIndex = fields.findIndex((value) => value === "event");
     const payload = eventIndex >= 0 ? fields[eventIndex + 1] : null;
@@ -191,12 +187,20 @@ export async function getSessionEventsSince(sessionId: string, lastEventId?: str
 
     try {
       const event = JSON.parse(payload) as JobEvent;
-    return [{ ...event, eventId }];
+      return [{ ...event, eventId }];
     } catch (error) {
       console.error("[JobManager] Failed to parse replay event:", error);
       return [];
     }
   });
+}
+
+export async function getSessionEventsSince(sessionId: string, lastEventId?: string | null): Promise<JobEvent[]> {
+  const streamKey = getSessionEventStreamKey(sessionId);
+  const start = lastEventId ? `(${lastEventId}` : "-";
+  const entries = await redis.xrange(streamKey, start, "+", "COUNT", 500);
+
+  return parseSessionEventEntries(entries as Array<[string, string[]]>);
 }
 
 export async function getSessionSnapshot(sessionId: string): Promise<SessionStreamSnapshot> {
@@ -452,26 +456,55 @@ export function subscribe(
   };
 }
 
-export function subscribeToSession(
+export async function subscribeToSession(
   sessionId: string,
+  lastEventId: string | null | undefined,
   callback: (event: JobEvent) => void
-): () => void {
-  if (!sessionSubscribers.has(sessionId)) {
-    sessionSubscribers.set(sessionId, new Set());
-  }
+): Promise<() => void> {
+  const streamKey = getSessionEventStreamKey(sessionId);
+  const subscriber = redis.duplicate({ lazyConnect: true });
+  let closed = false;
+  let cursor = lastEventId || "$";
 
-  sessionSubscribers.get(sessionId)!.add(callback);
-  console.log(`[JobManager] Subscribed to session ${sessionId}`);
+  await subscriber.connect();
+  console.log(`[JobManager] Subscribed to session stream ${sessionId} from ${cursor}`);
 
-  return () => {
-    const subscribers = sessionSubscribers.get(sessionId);
-    if (subscribers) {
-      subscribers.delete(callback);
-      if (subscribers.size === 0) {
-        sessionSubscribers.delete(sessionId);
+  const pump = (async () => {
+    while (!closed) {
+      try {
+        const entries = await subscriber.call(
+          "XREAD",
+          "BLOCK",
+          "30000",
+          "COUNT",
+          "100",
+          "STREAMS",
+          streamKey,
+          cursor,
+        ) as Array<[string, Array<[string, string[]]>]> | null;
+        if (!entries || closed) {
+          continue;
+        }
+
+        const [, streamEntries] = entries[0] ?? [];
+        for (const event of parseSessionEventEntries((streamEntries || []) as Array<[string, string[]]>)) {
+          cursor = event.eventId || cursor;
+          callback(event);
+        }
+      } catch (error) {
+        if (closed) {
+          return;
+        }
+        console.error(`[JobManager] Session stream subscriber error for ${sessionId}:`, error);
       }
     }
-    console.log(`[JobManager] Unsubscribed from session ${sessionId}`);
+  })();
+
+  return () => {
+    closed = true;
+    void subscriber.disconnect();
+    void pump.catch(() => {});
+    console.log(`[JobManager] Unsubscribed from session stream ${sessionId}`);
   };
 }
 

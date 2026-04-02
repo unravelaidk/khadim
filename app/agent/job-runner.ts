@@ -38,6 +38,25 @@ import { db, messages, chats, artifacts, workspaceFiles } from "../lib/db";
 import { getActiveModel, createModelInstance } from "./model-manager";
 import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 
+function summarizeToolCallPreview(partial: any, fallback: string): string {
+  const content = Array.isArray(partial?.content) ? partial.content : [];
+  const toolCall = [...content].reverse().find((item: any) => item?.type === "toolCall");
+  const toolName = typeof toolCall?.name === "string" ? toolCall.name : null;
+  const args = toolCall?.arguments;
+
+  if (!toolName) {
+    return fallback;
+  }
+
+  let argsPreview = "";
+  if (args && typeof args === "object") {
+    const serialized = JSON.stringify(args, null, 2);
+    argsPreview = serialized.length > 320 ? `${serialized.slice(0, 220)}\n...\n${serialized.slice(-80)}` : serialized;
+  }
+
+  return argsPreview ? `Preparing ${toolName} call...\n${argsPreview}` : `Preparing ${toolName} call...`;
+}
+
 type AgentConfig = ReturnType<typeof getAgentConfig>;
 type SandboxType = Awaited<ReturnType<typeof ensureSandbox>>['sandbox'];
 
@@ -66,6 +85,8 @@ export interface RunAgentJobParams {
 }
 
 export type JobRunnerOptions = RunAgentJobParams;
+
+const STREAM_HEARTBEAT_MS = 5000;
 
 function isSlideRequest(prompt: string): boolean {
   return /\b(slides?|presentation|deck|ppt|pitch deck)\b/i.test(prompt);
@@ -388,6 +409,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
   let finalContent = "";
   let lastPlanOutput = "";
   let toolStarted = false;
+  let lastToolCallPreview = "";
 
   const collectedSteps: AgentJobStep[] = [];
     
@@ -402,7 +424,20 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     const eventIterator = eventStream[Symbol.asyncIterator]();
 
     while (true) {
-      const nextEvent = await eventIterator.next();
+      const nextEvent = await Promise.race([
+        eventIterator.next(),
+        new Promise<IteratorResult<any>>((resolve) => {
+          if (!slideRequest || !currentThinkingId) {
+            return;
+          }
+
+          const timeoutId = setTimeout(() => {
+            resolve({ value: { event: "__heartbeat__" }, done: false });
+          }, STREAM_HEARTBEAT_MS);
+
+          runnerAbortController.signal.addEventListener("abort", () => clearTimeout(timeoutId), { once: true });
+        }),
+      ]);
 
       if (nextEvent.done) {
         break;
@@ -414,6 +449,16 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
       }
 
       const { event: eventType, name, data } = event as { event: string; name?: string; data?: any };
+
+      if (eventType === "__heartbeat__") {
+        const displayContent = thinkingContent.length > 0
+          ? (thinkingContent.length > 300
+              ? `${thinkingContent.slice(0, 220)}\n...\n${thinkingContent.slice(-80)}`
+              : thinkingContent)
+          : lastToolCallPreview || "Working on the slide deck...";
+        await broadcastJobEvent("step_update", { id: currentThinkingId, content: displayContent });
+        continue;
+      }
 
       if (eventType === "on_chat_model_start") {
         thinkingStepCounter++;
@@ -444,6 +489,28 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           }
         }
       }
+      else if (eventType === "on_toolcall_start") {
+        if (currentThinkingId) {
+          lastToolCallPreview = summarizeToolCallPreview(data?.partial, "Preparing tool call...");
+          await broadcastJobEvent("step_update", { id: currentThinkingId, content: lastToolCallPreview });
+        }
+      }
+      else if (eventType === "on_toolcall_delta") {
+        if (currentThinkingId) {
+          const nextPreview = summarizeToolCallPreview(data?.partial, lastToolCallPreview || "Preparing tool call...");
+          if (nextPreview !== lastToolCallPreview) {
+            lastToolCallPreview = nextPreview;
+            await broadcastJobEvent("step_update", { id: currentThinkingId, content: nextPreview });
+          }
+        }
+      }
+      else if (eventType === "on_toolcall_end") {
+        if (currentThinkingId) {
+          const toolName = typeof data?.toolCall?.name === "string" ? data.toolCall.name : "tool";
+          lastToolCallPreview = summarizeToolCallPreview(data?.partial, `Prepared ${toolName} call.`);
+          await broadcastJobEvent("step_update", { id: currentThinkingId, content: lastToolCallPreview });
+        }
+      }
       else if (eventType === "text_delta") {
         if (slideRequest && !toolStarted) {
           continue;
@@ -452,6 +519,15 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         if (text) {
           finalContent += text;
           await broadcastJobEvent("text_delta", { content: text });
+        }
+      }
+      else if (eventType === "on_tool_update") {
+        const activeToolStepId = `tool-${stepCounter}`;
+        const partialText = typeof data?.partialResult?.content?.[0]?.text === "string"
+          ? data.partialResult.content[0].text
+          : null;
+        if (partialText) {
+          await broadcastJobEvent("step_update", { id: activeToolStepId, content: partialText });
         }
       }
       else if (eventType === "on_chat_model_end") {

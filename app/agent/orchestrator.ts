@@ -169,6 +169,45 @@ async function* runPiOrchestrator(
         }
       }
 
+      if (
+        event.type === "message_update" &&
+        event.assistantMessageEvent.type === "toolcall_start"
+      ) {
+        eventQueue.push({
+          event: "on_toolcall_start",
+          name: currentAgent,
+          data: { partial: event.assistantMessageEvent.partial },
+        });
+      }
+
+      if (
+        event.type === "message_update" &&
+        event.assistantMessageEvent.type === "toolcall_delta"
+      ) {
+        eventQueue.push({
+          event: "on_toolcall_delta",
+          name: currentAgent,
+          data: {
+            delta: event.assistantMessageEvent.delta,
+            partial: event.assistantMessageEvent.partial,
+          },
+        });
+      }
+
+      if (
+        event.type === "message_update" &&
+        event.assistantMessageEvent.type === "toolcall_end"
+      ) {
+        eventQueue.push({
+          event: "on_toolcall_end",
+          name: currentAgent,
+          data: {
+            toolCall: event.assistantMessageEvent.toolCall,
+            partial: event.assistantMessageEvent.partial,
+          },
+        });
+      }
+
       if (event.type === "message_end" && event.message.role === "assistant") {
         eventQueue.push({ event: "on_chat_model_end", name: currentAgent, data: { output: event.message } });
       }
@@ -217,6 +256,18 @@ async function* runPiOrchestrator(
             agent.abort();
           }
         }
+      }
+
+      if (event.type === "tool_execution_update") {
+        eventQueue.push({
+          event: "on_tool_update",
+          name: event.toolName,
+          data: {
+            toolCallId: event.toolCallId,
+            args: event.args,
+            partialResult: event.partialResult,
+          },
+        });
       }
     });
 

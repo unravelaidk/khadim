@@ -22,7 +22,7 @@ describe("connectSessionStream", () => {
       jobs: [],
       updatedAt: new Date().toISOString(),
     });
-    subscribeToSessionMock.mockReturnValue(() => {});
+    subscribeToSessionMock.mockResolvedValue(() => {});
   });
 
   it("replays missed events after session_connected", async () => {
@@ -47,6 +47,7 @@ describe("connectSessionStream", () => {
 
     expect(getSessionEventsSinceMock).toHaveBeenCalledWith("session-1", "174355-0");
     expect(getSessionSnapshotMock).not.toHaveBeenCalled();
+    expect(subscribeToSessionMock).toHaveBeenCalledWith("session-1", "174356-0", expect.any(Function));
     expect(sent).toEqual([
       { type: "session_connected", sessionId: "session-1" },
       {
@@ -70,6 +71,7 @@ describe("connectSessionStream", () => {
     });
 
     expect(getSessionSnapshotMock).toHaveBeenCalledWith("session-1");
+    expect(subscribeToSessionMock).toHaveBeenCalledWith("session-1", "174355-0", expect.any(Function));
     expect(sent).toEqual([
       { type: "session_connected", sessionId: "session-1" },
       expect.objectContaining({
@@ -83,7 +85,7 @@ describe("connectSessionStream", () => {
   it("subscribes to live events after replay and cleans up", async () => {
     let onSessionEvent: ((event: Record<string, unknown>) => void) | null = null;
     const unsubscribe = vi.fn();
-    subscribeToSessionMock.mockImplementation((_sessionId, callback) => {
+    subscribeToSessionMock.mockImplementation(async (_sessionId, _lastEventId, callback) => {
       onSessionEvent = callback;
       return unsubscribe;
     });

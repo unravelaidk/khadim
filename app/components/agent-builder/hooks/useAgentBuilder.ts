@@ -138,6 +138,7 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(initialWorkspaceId);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const sessionIdRef = useRef<string>(getClientSessionId());
+  const currentChatIdRef = useRef<string | null>(initialChatId || null);
   const initialLoadRef = useRef(false);
   const sessionSocketRef = useRef<WebSocket | null>(null);
   const socketReconnectTimeoutRef = useRef<number | null>(null);
@@ -245,7 +246,10 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const applyStreamEvent = (event: StreamEvent) => {
     setSessionState((prev) => applySessionStreamEvent(prev, event));
 
-    if (event.type === "ask_user" || event.type === "done" || event.type === "error") {
+    const eventChatId = typeof event.chatId === "string" ? event.chatId : null;
+    const shouldAffectCurrentChat = !eventChatId || eventChatId === currentChatIdRef.current;
+
+    if (shouldAffectCurrentChat && (event.type === "ask_user" || event.type === "done" || event.type === "error")) {
       setIsTyping(false);
     }
 
@@ -527,6 +531,10 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       scrollParent.scrollTop = scrollParent.scrollHeight;
     }
   };
+
+  useEffect(() => {
+    currentChatIdRef.current = chatId;
+  }, [chatId]);
 
   useEffect(() => {
     if (currentView === "chat") {

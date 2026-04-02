@@ -50,6 +50,7 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
         ) : (
           <ChatPanel
             messages={state.messages}
+            slideState={state.slideState}
             pendingQuestion={state.pendingQuestion}
             onAnswerQuestion={actions.handleAnswerQuestion}
             onCancelQuestion={actions.clearPendingQuestion}

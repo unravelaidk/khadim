@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatInterface } from "./ChatInterface";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -76,15 +76,33 @@ export function ChatPanel({
   onToggleWebBrowsing,
 }: ChatPanelProps) {
   const [slideMinimized, setSlideMinimized] = useState(false);
+  const [selectedSlideContent, setSelectedSlideContent] = useState<string | null>(null);
+  const latestMessageSlideContent = useMemo(
+    () => [...messages].reverse().find((message) => message.fileContent?.includes('<script id="slide-data"'))?.fileContent || null,
+    [messages],
+  );
+
+  useEffect(() => {
+    if (!slideState?.content && !latestMessageSlideContent) {
+      setSelectedSlideContent(null);
+      return;
+    }
+
+    setSelectedSlideContent((current) => current || slideState?.content || latestMessageSlideContent || null);
+  }, [latestMessageSlideContent, slideState?.content]);
+
+  const previewContent = selectedSlideContent || slideState?.content || latestMessageSlideContent || null;
+  const previewIsBuilding = slideState?.content === previewContent ? slideState.isBuilding : false;
+  const previewIsStreaming = slideState?.content === previewContent ? slideState.isStreaming : false;
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {/* Sticky slide preview panel */}
-      {slideState && !isInitialState && (
+      {previewContent && !isInitialState && (
         <StickySlidePreview
-          content={slideState.content}
-          isStreaming={slideState.isStreaming}
-          isBuilding={slideState.isBuilding}
+          content={previewContent}
+          isStreaming={previewIsStreaming}
+          isBuilding={previewIsBuilding}
           isMinimized={slideMinimized}
           onToggleMinimize={() => setSlideMinimized(prev => !prev)}
           workspaceId={workspaceId}
@@ -124,6 +142,8 @@ export function ChatPanel({
               onCancelQuestion={onCancelQuestion}
               messagesEndRef={messagesEndRef}
               workspaceId={workspaceId}
+              selectedSlideContent={selectedSlideContent}
+              onSelectSlideContent={setSelectedSlideContent}
             />
           </>
         )}
