@@ -35,7 +35,25 @@ export interface SessionHost {
   streamEvents: (signal?: AbortSignal) => AsyncIterable<any>;
   getSandboxId: () => string | null;
   getPreviewUrl: () => string | null;
+  followUp: (content: string, hooks?: SessionHostRunHooks) => Promise<void>;
+  steer: (content: string, hooks?: SessionHostRunHooks) => Promise<void>;
+  dispose: () => Promise<void>;
 }
+
+export interface SessionHostRunHooks {
+  onEvent?: (event: { event: string; name?: string; data?: any }) => void | Promise<void>;
+}
+
+type PendingInputKind = "follow_up" | "steer";
+
+type PendingInput = {
+  kind: PendingInputKind;
+  content: string;
+  timestamp: number;
+  hooks?: SessionHostRunHooks;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+};
 
 function formatSandboxInitError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -63,6 +81,89 @@ export async function createSessionHost(params: CreateSessionHostParams): Promis
   let sandboxId: string | null = null;
   let previewUrl: string | null = null;
   let sandboxInitPromise: Promise<void> | null = null;
+  const pendingInputs: PendingInput[] = [];
+  const state = {
+    messages: [
+      ...history,
+      { role: "user" as const, content: prompt, timestamp: Date.now() },
+    ],
+    currentAgent: agentMode,
+    requestedMode: agentMode,
+  };
+  let activeRun: Promise<void> | null = null;
+  let disposed = false;
+
+  function createMessageForInput(input: PendingInput): Message {
+    const prefix = input.kind === "steer" ? "[Steer]" : "[Follow-up]";
+    return {
+      role: "user",
+      content: `${prefix}\n${input.content}`,
+      timestamp: input.timestamp,
+    };
+  }
+
+  async function runQueuedInput(input: PendingInput): Promise<void> {
+    if (disposed) {
+      throw new Error("Session host has been disposed");
+    }
+
+    state.messages.push(createMessageForInput(input));
+    const eventStream = orchestrator.streamEvents(state);
+    for await (const event of eventStream) {
+      await input.hooks?.onEvent?.(event);
+      if (event.event === "on_chain_end") {
+        const nextMessages = (event.data as { output?: { messages?: Message[] } } | undefined)?.output?.messages;
+        if (Array.isArray(nextMessages)) {
+          state.messages = nextMessages;
+        }
+      }
+    }
+  }
+
+  async function drainPendingInputs(): Promise<void> {
+    while (pendingInputs.length > 0) {
+      const input = pendingInputs.shift()!;
+      try {
+        await runQueuedInput(input);
+        input.resolve();
+      } catch (error) {
+        input.reject(error);
+      }
+    }
+  }
+
+  function startPendingDrain(): void {
+    if (activeRun || pendingInputs.length === 0 || disposed) {
+      return;
+    }
+
+    activeRun = drainPendingInputs().finally(() => {
+      activeRun = null;
+      if (pendingInputs.length > 0) {
+        startPendingDrain();
+      }
+    });
+  }
+
+  async function scheduleRun(kind: PendingInputKind, content: string, hooks?: SessionHostRunHooks): Promise<void> {
+    if (disposed) {
+      throw new Error("Session host has been disposed");
+    }
+
+    const completion = new Promise<void>((resolve, reject) => {
+      pendingInputs.push({
+        kind,
+        content,
+        timestamp: Date.now(),
+        hooks,
+        resolve,
+        reject,
+      });
+    });
+
+    startPendingDrain();
+    return completion;
+  }
 
   const ensureSandboxInitialized = async (): Promise<SandboxType> => {
     if (sandbox) return sandbox;
@@ -171,24 +272,56 @@ export async function createSessionHost(params: CreateSessionHostParams): Promis
     }),
   });
 
-  const inputs = {
-    messages: [
-      ...history,
-      { role: "user" as const, content: prompt, timestamp: Date.now() },
-    ],
-    currentAgent: agentMode,
-    requestedMode: agentMode,
-  };
-
   return {
-    streamEvents(signal?: AbortSignal) {
-      return orchestrator.streamEvents(inputs, { signal });
+    async *streamEvents(signal?: AbortSignal) {
+      if (disposed) {
+        throw new Error("Session host has been disposed");
+      }
+
+      let resolveRun!: () => void;
+      let rejectRun!: (error: unknown) => void;
+      activeRun = new Promise<void>((resolve, reject) => {
+        resolveRun = resolve;
+        rejectRun = reject;
+      }).finally(() => {
+        activeRun = null;
+        startPendingDrain();
+      });
+
+      try {
+        const eventStream = orchestrator.streamEvents(state, { signal });
+        for await (const event of eventStream) {
+          if (event.event === "on_chain_end") {
+            const nextMessages = (event.data as { output?: { messages?: Message[] } } | undefined)?.output?.messages;
+            if (Array.isArray(nextMessages)) {
+              state.messages = nextMessages;
+            }
+          }
+          yield event;
+        }
+        resolveRun();
+      } catch (error) {
+        rejectRun(error);
+        throw error;
+      }
     },
     getSandboxId() {
       return sandboxId;
     },
     getPreviewUrl() {
       return previewUrl;
+    },
+    followUp(content: string, hooks?: SessionHostRunHooks) {
+      return scheduleRun("follow_up", content, hooks);
+    },
+    steer(content: string, hooks?: SessionHostRunHooks) {
+      return scheduleRun("steer", content, hooks);
+    },
+    async dispose() {
+      disposed = true;
+      while (pendingInputs.length > 0) {
+        pendingInputs.shift()?.reject(new Error("Session host disposed"));
+      }
     },
   };
 }

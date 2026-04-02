@@ -58,7 +58,7 @@ export function ChatInput({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isProcessing && value.trim()) {
+      if (value.trim()) {
         onSend();
       }
     }

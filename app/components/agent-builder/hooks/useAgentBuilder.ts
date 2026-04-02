@@ -159,6 +159,11 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const lastPongAtRef = useRef<number>(Date.now());
   const reconnectAttemptRef = useRef(0);
   const requestAbortControllerRef = useRef<AbortController | null>(null);
+  const pendingSocketCommandRef = useRef<{
+    resolve: (value: { jobId: string; chatId: string; sessionId: string }) => void;
+    reject: (error: Error) => void;
+    timeoutId: number;
+  } | null>(null);
 
   const [currentView, setCurrentView] = useState<"chat" | "workspace" | "settings">(initialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -269,6 +274,30 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
       const buildPrompt = `Execute this approved plan:\n\n${event.plan as string}${event.context ? `\n\nContext: ${event.context as string}` : ""}`;
       setInput(buildPrompt);
     }
+  };
+
+  const sendSessionCommand = (command: "job.followUp" | "job.steer", prompt: string) => {
+    const socket = sessionSocketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Session socket is not connected"));
+    }
+
+    if (pendingSocketCommandRef.current) {
+      return Promise.reject(new Error("Another session command is already pending"));
+    }
+
+    return new Promise<{ jobId: string; chatId: string; sessionId: string }>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        if (!pendingSocketCommandRef.current) {
+          return;
+        }
+        pendingSocketCommandRef.current = null;
+        reject(new Error("Session command timed out"));
+      }, 15000);
+
+      pendingSocketCommandRef.current = { resolve, reject, timeoutId };
+      socket.send(JSON.stringify({ type: command, prompt }));
+    });
   };
 
   const appendChatMessages = (chatKey: string, nextMessages: Message[]) => {
@@ -699,6 +728,28 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
             return;
           }
 
+          if (event.type === "command_accepted") {
+            if (pendingSocketCommandRef.current) {
+              window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
+              pendingSocketCommandRef.current.resolve({
+                jobId: String((event as any).jobId || ""),
+                chatId: String((event as any).chatId || ""),
+                sessionId: String((event as any).sessionId || sessionId),
+              });
+              pendingSocketCommandRef.current = null;
+            }
+            return;
+          }
+
+          if (event.type === "error" && pendingSocketCommandRef.current) {
+            window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
+            pendingSocketCommandRef.current.reject(
+              new Error(typeof (event as any).error === "string" ? (event as any).error : "Session command failed"),
+            );
+            pendingSocketCommandRef.current = null;
+            return;
+          }
+
           if (typeof event.eventId === "string") {
             lastStreamEventIdRef.current = event.eventId;
           } else if (typeof event.snapshotEventId === "string") {
@@ -715,6 +766,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         clearSocketTimers();
         if (sessionSocketRef.current === socket) {
           sessionSocketRef.current = null;
+        }
+        if (pendingSocketCommandRef.current) {
+          window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
+          pendingSocketCommandRef.current.reject(new Error("Session socket closed"));
+          pendingSocketCommandRef.current = null;
         }
         scheduleReconnect();
       });
@@ -816,15 +872,42 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           }
         : null;
 
-      const [payload] = await Promise.all([
-        callAgentRpc("job.start", {
+      const submitAgentRequest = async () => {
+        if (currentChatId) {
+          try {
+            return await sendSessionCommand("job.followUp", promptWithAttachments);
+          } catch (error) {
+            if (!(error instanceof Error) || (!error.message.includes("No live session host found") && !error.message.includes("Session socket"))) {
+              throw error;
+            }
+          }
+
+          try {
+            return await callAgentRpc("job.followUp", {
+              jobId: jobId || undefined,
+              chatId: currentChatId,
+              sessionId: sessionIdRef.current,
+              prompt: promptWithAttachments,
+            }, { signal: abortController.signal });
+          } catch (error) {
+            if (!(error instanceof Error) || !error.message.includes("No live session host found")) {
+              throw error;
+            }
+          }
+        }
+
+        return callAgentRpc("job.start", {
           prompt: promptWithAttachments,
           sandboxId: sandboxId || undefined,
           chatId: currentChatId || undefined,
           sessionId: sessionIdRef.current,
           badges: activeBadges.length > 0 ? JSON.stringify(activeBadges) : undefined,
           documentIds: uploadedDocumentIds,
-        }, { signal: abortController.signal }),
+        }, { signal: abortController.signal });
+      };
+
+      const [payload] = await Promise.all([
+        submitAgentRequest(),
         createUserMessageRequest?.(),
       ]);
       if (!payload.jobId || !payload.chatId) {

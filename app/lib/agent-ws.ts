@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Server as HttpServer } from "node:http";
 import type { Http2SecureServer, Http2Server } from "node:http2";
+import { resolveLiveHost, runLiveHostInput } from "../agent/live-session-commands";
 import { connectSessionStream } from "../agent/session-stream";
 import { createNodeWebSocket } from "./hono-node-ws";
 
@@ -10,7 +11,9 @@ const CLOSE_CODE_BAD_REQUEST = 1008;
 
 type ClientMessage =
   | { type: "session.connect"; sessionId?: string; lastEventId?: string | null }
-  | { type: "ping" };
+  | { type: "ping" }
+  | { type: "job.followUp"; prompt?: string }
+  | { type: "job.steer"; prompt?: string };
 
 const agentWsApp = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: agentWsApp });
@@ -22,6 +25,7 @@ export const agentWsRoute = agentWsApp.get(
     let clientTimeout: NodeJS.Timeout | null = null;
     let handshakeTimeout: NodeJS.Timeout | null = null;
     let lastClientActivity = Date.now();
+    let connectedSessionId: string | null = null;
 
     const cleanup = () => {
       if (unsubscribeSession) {
@@ -76,6 +80,29 @@ export const agentWsRoute = agentWsApp.get(
           return;
         }
 
+        if (message.type === "job.followUp" || message.type === "job.steer") {
+          if (!connectedSessionId) {
+            ws.send(JSON.stringify({ type: "error", error: "session.connect required before commands" }));
+            return;
+          }
+
+          const prompt = typeof message.prompt === "string" && message.prompt.trim().length > 0 ? message.prompt : null;
+          if (!prompt) {
+            ws.send(JSON.stringify({ type: "error", error: "prompt is required" }));
+            return;
+          }
+
+          const record = resolveLiveHost({ sessionId: connectedSessionId });
+          if (!record) {
+            ws.send(JSON.stringify({ type: "error", error: "No live session host found" }));
+            return;
+          }
+
+          const result = await runLiveHostInput({ method: message.type, prompt, record });
+          ws.send(JSON.stringify({ type: "command_accepted", command: message.type, ...result }));
+          return;
+        }
+
         if (message.type !== "session.connect" || !message.sessionId?.trim()) {
           ws.close(CLOSE_CODE_BAD_REQUEST, "sessionId is required");
           cleanup();
@@ -88,6 +115,7 @@ export const agentWsRoute = agentWsApp.get(
         }
 
         unsubscribeSession?.();
+        connectedSessionId = message.sessionId;
         unsubscribeSession = await connectSessionStream({
           sessionId: message.sessionId,
           lastEventId: message.lastEventId,
