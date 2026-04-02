@@ -20,18 +20,6 @@ type AgentRpcParamsMap = {
     chatId?: string | null;
     sessionId?: string;
   };
-  "job.followUp": {
-    jobId?: string;
-    chatId?: string | null;
-    sessionId?: string;
-    prompt: string;
-  };
-  "job.steer": {
-    jobId?: string;
-    chatId?: string | null;
-    sessionId?: string;
-    prompt: string;
-  };
   "job.get": {
     jobId: string;
     chatId?: string | null;
@@ -50,8 +38,6 @@ type AgentRpcParamsMap = {
   };
 };
 
-type RpcKnownMethod = keyof AgentRpcParamsMap & keyof AgentRpcResultMap & AgentRpcMethod;
-
 type AgentRpcResultMap = {
   "job.start": {
     jobId: string;
@@ -61,8 +47,6 @@ type AgentRpcResultMap = {
     agentName: string;
   };
   "job.stop": { ok: true };
-  "job.followUp": { ok: true; jobId: string; sessionId: string; chatId: string };
-  "job.steer": { ok: true; jobId: string; sessionId: string; chatId: string };
   "job.get": { job: AgentJob };
   "chat.getActiveJobs": { jobs: AgentJob[] };
   "session.getSnapshot": { snapshot: SessionStreamSnapshot };
@@ -81,7 +65,7 @@ async function unwrapResponse<T>(response: Response): Promise<T> {
   return result.result as T;
 }
 
-export async function callAgentRpc<TMethod extends RpcKnownMethod>(
+export async function callAgentRpc<TMethod extends AgentRpcMethod>(
   method: TMethod,
   params: AgentRpcParamsMap[TMethod],
   options: { signal?: AbortSignal } = {},
@@ -98,22 +82,6 @@ export async function callAgentRpc<TMethod extends RpcKnownMethod>(
     case "job.stop": {
       const response = await client.job.stop.$post(
         { json: params as AgentRpcParamsMap["job.stop"] },
-        { init: { signal: options.signal } },
-      );
-      return unwrapResponse<AgentRpcResultMap[TMethod]>(response);
-    }
-
-    case "job.followUp": {
-      const response = await client.job["follow-up"].$post(
-        { json: params as AgentRpcParamsMap["job.followUp"] },
-        { init: { signal: options.signal } },
-      );
-      return unwrapResponse<AgentRpcResultMap[TMethod]>(response);
-    }
-
-    case "job.steer": {
-      const response = await client.job.steer.$post(
-        { json: params as AgentRpcParamsMap["job.steer"] },
         { init: { signal: options.signal } },
       );
       return unwrapResponse<AgentRpcResultMap[TMethod]>(response);
@@ -153,6 +121,4 @@ export async function callAgentRpc<TMethod extends RpcKnownMethod>(
       return unwrapResponse<AgentRpcResultMap[TMethod]>(response);
     }
   }
-
-  throw new Error(`Unsupported RPC method: ${method}`);
 }

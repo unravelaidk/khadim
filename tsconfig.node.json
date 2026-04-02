@@ -3,20 +3,13 @@
   "include": [
     "server.ts",
     "vite.config.ts",
-    "app/agent/**/*.ts",
-    "app/lib/agent-rpc.ts",
-    "app/lib/agent-rpc-hono.ts",
     "app/lib/agent-ws.ts",
     "app/lib/hono-node-ws.ts",
+    "app/agent/session-stream.ts",
     "app/lib/job-manager.ts",
-    "app/lib/job-cancel.ts",
-    "app/lib/chat-history.ts",
-    "app/lib/uploaded-documents.ts",
-    "app/lib/badges.ts",
-    "app/lib/versions.ts",
-    "app/lib/workspace-sync.ts",
-    "app/lib/db/**/*.ts",
-    "app/types/**/*.ts"
+    "app/lib/db/index.ts",
+    "app/lib/db/schema.ts",
+    "app/types/agent.ts"
   ],
   "compilerOptions": {
     "composite": true,
