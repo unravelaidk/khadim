@@ -7,7 +7,6 @@ import { createAgentRuntimeTools, buildAgentRuntimePrompt, selectRequestTools } 
 import type { AgentConfig, AgentId } from "../modes";
 import { artifacts, chats, db, workspaceFiles } from "../../lib/db";
 import type { Message } from "@mariozechner/pi-ai";
-import type { SessionState } from "./session-state";
 
 type SandboxType = Awaited<ReturnType<typeof ensureSandbox>>["sandbox"];
 
@@ -36,28 +35,7 @@ export interface SessionHost {
   streamEvents: (signal?: AbortSignal) => AsyncIterable<any>;
   getSandboxId: () => string | null;
   getPreviewUrl: () => string | null;
-  getState: () => SessionState;
-  enqueueUserPrompt: (content: string) => void;
-  prompt: (content: string, hooks?: SessionHostRunHooks) => Promise<void>;
-  followUp: (content: string, hooks?: SessionHostRunHooks) => Promise<void>;
-  steer: (content: string, hooks?: SessionHostRunHooks) => Promise<void>;
-  dispose: () => Promise<void>;
 }
-
-export interface SessionHostRunHooks {
-  onEvent?: (event: any) => void | Promise<void>;
-}
-
-type PendingInputKind = "prompt" | "follow_up" | "steer";
-
-type PendingInput = {
-  kind: PendingInputKind;
-  content: string;
-  timestamp: number;
-  hooks?: SessionHostRunHooks;
-  resolve: () => void;
-  reject: (error: unknown) => void;
-};
 
 function formatSandboxInitError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -85,116 +63,6 @@ export async function createSessionHost(params: CreateSessionHostParams): Promis
   let sandboxId: string | null = null;
   let previewUrl: string | null = null;
   let sandboxInitPromise: Promise<void> | null = null;
-  const pendingInputs: PendingInput[] = [];
-  const state: SessionState = {
-    messages: [
-      ...history,
-      { role: "user", content: prompt, timestamp: Date.now() },
-    ],
-    currentAgent: agentMode,
-    requestedMode: agentMode,
-  };
-  let activeRun: Promise<void> | null = null;
-  let activeRunAbort: AbortController | null = null;
-  let disposed = false;
-
-  function createMessageForInput(input: PendingInput): Message {
-    const prefix = input.kind === "steer"
-      ? "[Steer]"
-      : input.kind === "follow_up"
-        ? "[Follow-up]"
-        : undefined;
-
-    return {
-      role: "user",
-      content: prefix ? `${prefix}\n${input.content}` : input.content,
-      timestamp: input.timestamp,
-    };
-  }
-
-  async function runQueuedInput(input: PendingInput, signal?: AbortSignal): Promise<void> {
-    if (disposed) {
-      throw new Error("Session host has been disposed");
-    }
-    state.messages.push(createMessageForInput(input));
-
-    const eventStream = orchestrator.streamEvents(state, { signal });
-    for await (const event of eventStream) {
-      await input.hooks?.onEvent?.(event);
-      if (event.event === "on_chain_end") {
-        const nextMessages = (event.data as { output?: { messages?: Message[] } } | undefined)?.output?.messages;
-        if (Array.isArray(nextMessages)) {
-          state.messages = nextMessages as Message[];
-        }
-      }
-    }
-  }
-
-  async function drainPendingInputs(): Promise<void> {
-    while (pendingInputs.length > 0) {
-      const input = pendingInputs.shift()!;
-      const abort = new AbortController();
-      activeRunAbort = abort;
-      try {
-        await runQueuedInput(input, abort.signal);
-        input.resolve();
-      } catch (error) {
-        if (abort.signal.aborted) {
-          // Run was interrupted (e.g. by steer) — resolve silently
-          input.resolve();
-        } else {
-          input.reject(error);
-        }
-      } finally {
-        if (activeRunAbort === abort) {
-          activeRunAbort = null;
-        }
-      }
-    }
-  }
-
-  async function scheduleRun(kind: PendingInputKind, content: string, hooks?: SessionHostRunHooks): Promise<void> {
-    if (disposed) {
-      throw new Error("Session host has been disposed");
-    }
-    const completion = new Promise<void>((resolve, reject) => {
-      pendingInputs.push({
-        kind,
-        content,
-        timestamp: Date.now(),
-        hooks,
-        resolve,
-        reject,
-      });
-    });
-
-    if (activeRun) {
-      return completion;
-    }
-
-    activeRun = (async () => {
-      await drainPendingInputs();
-    })().finally(() => {
-      activeRun = null;
-    });
-
-    return completion;
-  }
-
-  function startPendingDrain(): void {
-    if (activeRun || pendingInputs.length === 0) {
-      return;
-    }
-
-    activeRun = (async () => {
-      await drainPendingInputs();
-    })().finally(() => {
-      activeRun = null;
-      if (pendingInputs.length > 0) {
-        startPendingDrain();
-      }
-    });
-  }
 
   const ensureSandboxInitialized = async (): Promise<SandboxType> => {
     if (sandbox) return sandbox;
@@ -303,83 +171,24 @@ export async function createSessionHost(params: CreateSessionHostParams): Promis
     }),
   });
 
-  return {
-    async *streamEvents(signal?: AbortSignal) {
-      if (disposed) {
-        throw new Error("Session host has been disposed");
-      }
-      let resolveActiveRun!: () => void;
-      let rejectActiveRun!: (error: unknown) => void;
-      activeRun = new Promise<void>((resolve, reject) => {
-        resolveActiveRun = resolve;
-        rejectActiveRun = reject;
-      }).finally(() => {
-        activeRun = null;
-        startPendingDrain();
-      });
+  const inputs = {
+    messages: [
+      ...history,
+      { role: "user" as const, content: prompt, timestamp: Date.now() },
+    ],
+    currentAgent: agentMode,
+    requestedMode: agentMode,
+  };
 
-      const eventStream = orchestrator.streamEvents(state, { signal });
-      try {
-        for await (const event of eventStream) {
-          if (event.event === "on_chain_end") {
-            const nextMessages = (event.data as { output?: { messages?: Message[] } } | undefined)?.output?.messages;
-            if (Array.isArray(nextMessages)) {
-              state.messages = nextMessages as Message[];
-            }
-          }
-          yield event;
-        }
-        resolveActiveRun();
-      } catch (error) {
-        rejectActiveRun(error);
-        throw error;
-      } finally {
-        resolveActiveRun();
-      }
+  return {
+    streamEvents(signal?: AbortSignal) {
+      return orchestrator.streamEvents(inputs, { signal });
     },
     getSandboxId() {
       return sandboxId;
     },
     getPreviewUrl() {
       return previewUrl;
-    },
-    getState() {
-      return {
-        messages: [...state.messages],
-        currentAgent: state.currentAgent,
-        requestedMode: state.requestedMode,
-      };
-    },
-    enqueueUserPrompt(content: string) {
-      pendingInputs.push({
-        kind: "prompt",
-        content,
-        timestamp: Date.now(),
-        resolve: () => {},
-        reject: () => {},
-      });
-    },
-    prompt(content: string, hooks?: SessionHostRunHooks) {
-      return scheduleRun("prompt", content, hooks);
-    },
-    followUp(content: string, hooks?: SessionHostRunHooks) {
-      return scheduleRun("follow_up", content, hooks);
-    },
-    steer(content: string, hooks?: SessionHostRunHooks) {
-      // Abort the currently active run so steer executes immediately
-      if (activeRunAbort) {
-        activeRunAbort.abort();
-      }
-      return scheduleRun("steer", content, hooks);
-    },
-    async dispose() {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      while (pendingInputs.length > 0) {
-        pendingInputs.shift()?.reject(new Error("Session host disposed"));
-      }
     },
   };
 }

@@ -699,7 +699,7 @@ async function searchBrave(query: string, numResults: number): Promise<Array<{ t
 
         if (!response.ok) return null;
 
-        const data = await response.json() as { web?: { results?: any[] } };
+        const data = await response.json();
         const webResults = data.web?.results || [];
 
         if (webResults.length === 0) return null;
@@ -818,7 +818,7 @@ async function searchPexels(query: string, numResults: number, orientation?: str
 
         if (!response.ok) return null;
 
-        const data = await response.json() as { photos?: any[] };
+        const data = await response.json();
         if (!data.photos || data.photos.length === 0) return null;
 
         return data.photos.map((p: any) => ({
@@ -847,7 +847,7 @@ async function searchUnsplash(query: string, numResults: number, orientation?: s
 
         if (!response.ok) return null;
 
-        const data = await response.json() as { results?: any[] };
+        const data = await response.json();
         if (!data.results || data.results.length === 0) return null;
 
         return data.results.map((img: any) => ({
@@ -990,7 +990,7 @@ Then use the URLs in your slide JSON:
         headers: { "User-Agent": "Mozilla/5.0" }
     });
     
-    const imgData = await imgResponse.json() as { results?: any[] };
+    const imgData = await imgResponse.json();
     const results = imgData.results || [];
     
     let output = `🖼️ IMAGE SEARCH RESULTS

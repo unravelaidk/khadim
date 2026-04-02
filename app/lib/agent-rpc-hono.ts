@@ -23,13 +23,6 @@ const jobStopSchema = z.object({
   sessionId: optionalString,
 });
 
-const jobMessageSchema = z.object({
-  jobId: optionalString,
-  chatId: nullableString,
-  sessionId: optionalString,
-  prompt: optionalString,
-});
-
 const jobGetParamSchema = z.object({
   jobId: z.string().min(1),
 });
@@ -69,30 +62,6 @@ export const agentRpcApp = new Hono()
   .post("/job/stop", zValidator("json", jobStopSchema), async (c) => {
     const result = await handleAgentRpc({
       method: "job.stop",
-      params: c.req.valid("json"),
-    });
-
-    if (!result.ok) {
-      return c.json(result, { status: result.status as 400 | 404 });
-    }
-
-    return c.json(result, 200);
-  })
-  .post("/job/follow-up", zValidator("json", jobMessageSchema), async (c) => {
-    const result = await handleAgentRpc({
-      method: "job.followUp",
-      params: c.req.valid("json"),
-    });
-
-    if (!result.ok) {
-      return c.json(result, { status: result.status as 400 | 404 });
-    }
-
-    return c.json(result, 200);
-  })
-  .post("/job/steer", zValidator("json", jobMessageSchema), async (c) => {
-    const result = await handleAgentRpc({
-      method: "job.steer",
       params: c.req.valid("json"),
     });
 
