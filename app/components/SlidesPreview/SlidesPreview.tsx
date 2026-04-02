@@ -7,6 +7,7 @@ import { SlideViewer } from './SlideViewer';
 import { SlideNavigation } from './SlideNavigation';
 import { SlideFullscreen } from './SlideFullscreen';
 import { generateHTMLFromSlides, hasRichHtmlStyling } from './utils';
+import { LuDownload, LuChevronDown, LuMaximize2 } from 'react-icons/lu';
 import type { SlideData, SlideTheme } from '../../types/slides';
 
 interface SlidesPreviewProps {
@@ -41,11 +42,13 @@ export function SlidesPreview({
   const hasRichHtml = hasRichHtmlStyling(htmlContent);
   const previousSlideCountRef = useRef(slides.length);
   const previousHtmlRef = useRef(htmlContent);
+  const [showFloatingExport, setShowFloatingExport] = useState(false);
 
   // Export hook
   const { 
     isDownloading,
-    downloadAsStyledPptx, 
+    downloadAsStyledPptx,
+    downloadAsImagePptx,
     downloadAsPdf,
     savePdfToWorkspace,
   } = useSlideExport({
@@ -149,7 +152,8 @@ export function SlidesPreview({
               onViewModeChange={setViewMode}
               onFullscreen={() => setIsFullscreen(true)}
               onExportPdf={downloadAsPdf}
-              onExportPptx={downloadAsStyledPptx}
+              onExportPptx={downloadAsImagePptx}
+              onExportEditablePptx={downloadAsStyledPptx}
               onSavePdfToWorkspace={workspaceId ? savePdfToWorkspace : undefined}
             />
 
@@ -177,7 +181,87 @@ export function SlidesPreview({
           </div>
 
           {/* Slide Viewer / Code View */}
-          <div className="flex-1 flex min-w-0 flex-col bg-[var(--surface-bg-subtle)]">
+          <div className="relative flex-1 flex min-w-0 flex-col bg-[var(--surface-bg-subtle)]">
+            {/* Floating export controls when header is hidden */}
+            {hideHeader && (
+              <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+                <div className="relative">
+                  <button
+                    onClick={() => setShowFloatingExport(!showFloatingExport)}
+                    disabled={isDownloading}
+                    className="flex items-center gap-1.5 rounded-xl bg-[var(--glass-bg-strong)] backdrop-blur-md border border-[var(--glass-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[var(--glass-bg)] disabled:opacity-50"
+                  >
+                    <LuDownload className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{isDownloading ? 'Exporting…' : 'Export'}</span>
+                    <LuChevronDown className="w-3 h-3 opacity-60" />
+                  </button>
+
+                  {showFloatingExport && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowFloatingExport(false)} />
+                      <div className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-2xl glass-panel-strong shadow-[var(--shadow-glass-lg)] animate-in fade-in slide-in-from-top-2 duration-150">
+                        <div className="p-1.5">
+                          <button
+                            onClick={() => { setShowFloatingExport(false); downloadAsPdf(); }}
+                            disabled={isDownloading || !hasRichHtml}
+                            className="w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg-strong)] disabled:opacity-50"
+                          >
+                            <div className="flex-1">
+                              <div className="text-xs font-semibold text-[var(--text-primary)]">PDF Export</div>
+                              <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Preserves all CSS styling</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => { setShowFloatingExport(false); downloadAsImagePptx(); }}
+                            disabled={isDownloading || !hasRichHtml}
+                            className="w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg-strong)] disabled:opacity-50"
+                          >
+                            <div className="flex-1">
+                              <div className="text-xs font-semibold text-[var(--text-primary)]">PPTX Export</div>
+                              <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Pixel-perfect with editable text</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => { setShowFloatingExport(false); downloadAsStyledPptx(); }}
+                            disabled={isDownloading || !hasRichHtml}
+                            className="w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg-strong)] disabled:opacity-50"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
+                                PPTX Export (Native)
+                                <span className="rounded-full bg-[#10150a] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[var(--text-inverse)]">BETA</span>
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Fully editable shapes &amp; text</div>
+                            </div>
+                          </button>
+                          {workspaceId && (
+                            <button
+                              onClick={() => { setShowFloatingExport(false); savePdfToWorkspace(); }}
+                              disabled={isDownloading || !hasRichHtml}
+                              className="w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg-strong)] disabled:opacity-50"
+                            >
+                              <div className="flex-1">
+                                <div className="text-xs font-semibold text-[var(--text-primary)]">Save PDF to workspace</div>
+                                <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Stores the exported PDF with workspace files</div>
+                              </div>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setIsFullscreen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-xl bg-[var(--glass-bg-strong)] backdrop-blur-md border border-[var(--glass-border)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[var(--glass-bg)]"
+                  title="Present fullscreen"
+                >
+                  <LuMaximize2 className="w-3.5 h-3.5 text-[var(--text-primary)]" />
+                </button>
+              </div>
+            )}
+
             {viewMode === 'preview' ? (
               <>
                 {/* Slide Preview */}

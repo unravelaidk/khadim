@@ -13,6 +13,10 @@ export default defineConfig(({ isSsrBuild }) => ({
         }
       : undefined,
   },
+  ssr: {
+    // browser-only libs — never bundle into the SSR build
+    external: ["@react-pdf/renderer", "react-pdf-tailwind"],
+  },
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
@@ -20,7 +24,12 @@ export default defineConfig(({ isSsrBuild }) => ({
     },
   },
   optimizeDeps: {
-    include: ["react", "react-dom"],
+    include: [
+      "react",
+      "react-dom",
+      "@react-pdf/renderer",
+      "react-pdf-tailwind",
+    ],
   },
   plugins: [
     svgr({ include: "**/*.svg" }),
