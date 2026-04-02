@@ -1,19 +1,21 @@
 import { useState, useCallback, useEffect, lazy, Suspense } from "react";
-import { LuX, LuDownload, LuCopy, LuCheck, LuFile, LuSave, LuFileText } from "react-icons/lu";
+import { createPortal } from "react-dom";
+import { LuX, LuDownload, LuCopy, LuCheck, LuFile, LuSave, LuFileText, LuMaximize2, LuMinimize2 } from "react-icons/lu";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism";
 
+/* ── VS Code–style theme (code files only) ─────────────────────────── */
 const vscDarkPlus = {
   "pre[class*=\"language-\"]": {
     color: "#d4d4d4",
     fontSize: "13px",
     textShadow: "none",
-    fontFamily: "Menlo, Monaco, Consolas, \"Andale Mono\", \"Ubuntu Mono\", \"Courier New\", monospace",
+    fontFamily: "var(--font-mono)",
     direction: "ltr",
     textAlign: "left",
     whiteSpace: "pre",
     wordSpacing: "normal",
     wordBreak: "normal",
-    lineHeight: "1.5",
+    lineHeight: "1.6",
     MozTabSize: "4",
     OTabSize: "4",
     tabSize: "4",
@@ -24,19 +26,19 @@ const vscDarkPlus = {
     padding: "1em",
     margin: ".5em 0",
     overflow: "auto",
-    background: "#1e1e1e",
+    background: "transparent",
   },
   "code[class*=\"language-\"]": {
     color: "#d4d4d4",
     fontSize: "13px",
     textShadow: "none",
-    fontFamily: "Menlo, Monaco, Consolas, \"Andale Mono\", \"Ubuntu Mono\", \"Courier New\", monospace",
+    fontFamily: "var(--font-mono)",
     direction: "ltr",
     textAlign: "left",
     whiteSpace: "pre",
     wordSpacing: "normal",
     wordBreak: "normal",
-    lineHeight: "1.5",
+    lineHeight: "1.6",
     MozTabSize: "4",
     OTabSize: "4",
     tabSize: "4",
@@ -146,6 +148,11 @@ function getLanguageFromFilename(filename: string): string {
     json: "json",
     md: "markdown",
     py: "python",
+    rs: "rust",
+    go: "go",
+    sh: "bash",
+    yml: "yaml",
+    yaml: "yaml",
   };
   return langMap[ext] || "text";
 }
@@ -166,12 +173,31 @@ export function FileEditorModal({
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState(content);
   const [saving, setSaving] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const language = getLanguageFromFilename(filename);
   const isMd = isMarkdownFile(filename);
 
   useEffect(() => {
     setDraft(content);
   }, [content, filename, isOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isOpen, onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
 
   const currentContent = editable ? draft : content;
 
@@ -207,63 +233,85 @@ export function FileEditorModal({
     (markdown: string) => {
       setDraft(markdown);
     },
-    []
+    [],
   );
 
   const lines = currentContent.split("\n");
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-200">
-      {/* Backdrop */}
+  const sizeClasses = isFullscreen
+    ? "w-full h-full max-w-none max-h-none rounded-none"
+    : isMd
+      ? "w-full max-w-5xl max-h-[88dvh] rounded-2xl"
+      : "w-full max-w-4xl max-h-[88dvh] rounded-2xl";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200">
+      {/* Backdrop — darker, less transparent */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-md"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div
-        className={`relative w-full max-h-[90vh] overflow-hidden animate-in zoom-in duration-200 flex flex-col ${
-          isMd
-            ? "max-w-5xl rounded-2xl glass-panel-strong border border-[var(--glass-border-strong)] shadow-[var(--shadow-glass-lg)]"
-            : "max-w-4xl bg-[#1e1e1e] rounded-xl shadow-2xl border border-gray-700"
-        }`}
+        className={`
+          relative overflow-hidden animate-in zoom-in duration-200 flex flex-col
+          ${sizeClasses}
+          ${isMd
+            ? "bg-[var(--surface-bg)] border border-[var(--glass-border-strong)] shadow-[var(--shadow-glass-lg)]"
+            : "bg-[#0f1409] border border-[var(--glass-border-strong)] shadow-[var(--shadow-glass-lg)]"
+          }
+        `}
       >
-        {/* Header */}
+        {/* Top shine line */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--glass-shine)] to-transparent" />
+
+        {/* ── Header ──────────────────────────────────────────────── */}
         <div
-          className={`flex items-center justify-between px-4 py-3 shrink-0 ${
+          className={`flex items-center justify-between px-4 py-3 shrink-0 border-b ${
             isMd
-              ? "border-b border-[var(--glass-border)] bg-[var(--surface-secondary)]"
-              : "bg-[#252526] border-b border-gray-700"
+              ? "border-[var(--glass-border)] bg-[var(--surface-elevated)]"
+              : "border-[#1e2518] bg-[#0d1208]"
           }`}
         >
+          {/* Left: file info */}
           <div className="flex items-center gap-3 min-w-0">
-            {isMd ? (
-              <LuFileText className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-            ) : (
-              <LuFile className="w-4 h-4 text-amber-400 shrink-0" />
-            )}
-            <span
-              className={`text-sm font-medium truncate ${
-                isMd ? "text-[var(--text-primary)]" : "text-gray-200"
-              }`}
-            >
-              {filename}
-            </span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded font-mono shrink-0 ${
+            <div
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
                 isMd
-                  ? "bg-[var(--surface-secondary)] text-[var(--text-muted)] border border-[var(--glass-border)]"
-                  : "bg-gray-700 text-gray-400"
+                  ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent-ink)]"
+                  : "bg-amber-500/15 text-amber-400"
               }`}
             >
-              {language}
-            </span>
+              {isMd ? (
+                <LuFileText className="w-3.5 h-3.5" />
+              ) : (
+                <LuFile className="w-3.5 h-3.5" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <span
+                className={`block text-sm font-semibold truncate ${
+                  isMd ? "text-[var(--text-primary)]" : "text-gray-100"
+                }`}
+              >
+                {filename}
+              </span>
+              <span
+                className={`block text-[10px] uppercase tracking-[0.14em] font-medium mt-0.5 ${
+                  isMd ? "text-[var(--text-muted)]" : "text-gray-500"
+                }`}
+              >
+                {language} · {lines.length} lines
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <HeaderButton isMd={isMd} onClick={handleCopy}>
+          {/* Right: actions */}
+          <div className="flex items-center gap-1">
+            <HeaderButton isMd={isMd} onClick={handleCopy} title={copied ? "Copied!" : "Copy to clipboard"}>
               {copied ? (
                 <LuCheck className="w-3.5 h-3.5 text-emerald-500" />
               ) : (
@@ -274,13 +322,13 @@ export function FileEditorModal({
               </span>
             </HeaderButton>
 
-            <HeaderButton isMd={isMd} onClick={handleDownload}>
+            <HeaderButton isMd={isMd} onClick={handleDownload} title="Download file">
               <LuDownload className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Download</span>
             </HeaderButton>
 
             {editable && onSave && (
-              <HeaderButton isMd={isMd} onClick={handleSave} disabled={saving}>
+              <HeaderButton isMd={isMd} onClick={handleSave} disabled={saving} title="Save changes">
                 <LuSave className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">
                   {saving ? "Saving…" : "Save"}
@@ -288,12 +336,23 @@ export function FileEditorModal({
               </HeaderButton>
             )}
 
+            <div className={`mx-1 h-4 w-px ${isMd ? "bg-[var(--glass-border)]" : "bg-gray-700"}`} />
+
+            <HeaderButton isMd={isMd} onClick={() => setIsFullscreen(!isFullscreen)} title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+              {isFullscreen ? (
+                <LuMinimize2 className="w-3.5 h-3.5" />
+              ) : (
+                <LuMaximize2 className="w-3.5 h-3.5" />
+              )}
+            </HeaderButton>
+
             <button
               onClick={onClose}
+              title="Close (Esc)"
               className={`p-1.5 rounded-lg transition-colors ${
                 isMd
-                  ? "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+                  ? "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-card)]"
+                  : "text-gray-500 hover:text-gray-200 hover:bg-gray-700/60"
               }`}
             >
               <LuX className="w-4 h-4" />
@@ -301,13 +360,16 @@ export function FileEditorModal({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        {/* ── Content ─────────────────────────────────────────────── */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {isMd ? (
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-64">
-                  <div className="w-5 h-5 rounded-full border-2 border-[var(--text-primary)] border-t-transparent animate-spin" />
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-5 h-5 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+                    <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)] font-medium">Loading editor…</span>
+                  </div>
                 </div>
               }
             >
@@ -319,52 +381,51 @@ export function FileEditorModal({
               />
             </Suspense>
           ) : (
-            /* Code editor — unchanged */
-            <div className="scrollbar-hide overflow-auto max-h-[calc(90vh-56px)]">
-              <div className="grid min-w-full grid-cols-1">
-                <div className="flex min-w-0">
-                  <div className="flex-shrink-0 py-4 px-3 text-right bg-[#1e1e1e] border-r border-gray-800 select-none">
-                    {lines.map((_, i) => (
-                      <div
-                        key={i}
-                        className="text-xs leading-6 text-gray-600 font-mono"
-                      >
-                        {i + 1}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="scrollbar-hide flex-1 overflow-x-hidden px-4 py-4">
-                    <div className="relative min-h-[60vh]">
-                      <SyntaxHighlighter
-                        language={language}
-                        style={vscDarkPlus as Record<string, React.CSSProperties>}
-                        customStyle={{
-                          margin: 0,
-                          padding: 0,
-                          background: "transparent",
-                          fontSize: "0.875rem",
-                          lineHeight: "1.5rem",
-                          minHeight: "60vh",
-                        }}
-                        wrapLongLines
-                        showLineNumbers={false}
-                      >
-                        {currentContent}
-                      </SyntaxHighlighter>
-                      {editable && (
-                        <textarea
-                          value={draft}
-                          onChange={(e) => setDraft(e.target.value)}
-                          spellCheck={false}
-                          className="scrollbar-hide absolute inset-0 min-h-[60vh] w-full resize-none overflow-x-hidden bg-transparent text-sm leading-6 font-mono text-transparent caret-white outline-none"
-                          style={{
-                            WebkitTextFillColor: "transparent",
-                            whiteSpace: "pre-wrap",
-                            overflowWrap: "anywhere",
-                          }}
-                        />
-                      )}
+            /* ── Code viewer ──────────────────────────────────────── */
+            <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+              <div className="flex min-w-0">
+                {/* Line numbers gutter */}
+                <div className="flex-shrink-0 py-4 px-3 text-right bg-[#0a0e07] border-r border-[#1a2012] select-none sticky left-0 z-10">
+                  {lines.map((_, i) => (
+                    <div
+                      key={i}
+                      className="text-[11px] leading-[1.6rem] text-gray-600 font-mono tabular-nums"
+                    >
+                      {i + 1}
                     </div>
+                  ))}
+                </div>
+                {/* Code content */}
+                <div className="flex-1 min-w-0 px-4 py-4">
+                  <div className="relative">
+                    <SyntaxHighlighter
+                      language={language}
+                      style={vscDarkPlus as Record<string, React.CSSProperties>}
+                      customStyle={{
+                        margin: 0,
+                        padding: 0,
+                        background: "transparent",
+                        fontSize: "0.8125rem",
+                        lineHeight: "1.6rem",
+                      }}
+                      wrapLongLines
+                      showLineNumbers={false}
+                    >
+                      {currentContent}
+                    </SyntaxHighlighter>
+                    {editable && (
+                      <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        spellCheck={false}
+                        className="absolute inset-0 w-full h-full resize-none bg-transparent text-[0.8125rem] leading-[1.6rem] font-mono text-transparent caret-[var(--color-accent)] outline-none"
+                        style={{
+                          WebkitTextFillColor: "transparent",
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere",
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -372,7 +433,8 @@ export function FileEditorModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -382,21 +444,24 @@ function HeaderButton({
   isMd,
   onClick,
   disabled,
+  title,
   children,
 }: {
   isMd: boolean;
   onClick: () => void;
   disabled?: boolean;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+      title={title}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold tracking-wide rounded-lg transition-all duration-150 disabled:opacity-40 ${
         isMd
-          ? "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
-          : "text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+          ? "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-card)]"
+          : "text-gray-500 hover:text-gray-200 hover:bg-gray-700/60"
       }`}
     >
       {children}

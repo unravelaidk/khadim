@@ -24,8 +24,9 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
 You are the primary BUILD agent with full access to all tools.
 Execute approved plans efficiently and directly.
 
-IMPORTANT: Always use "bun" instead of "npm" for package management commands.
-For example: use "bun install", "bun run", "bun add" instead of "npm install", "npm run", "npm add".
+IMPORTANT: In the sandbox, package management is available through Bun.
+Always use "bun" instead of "npm" for package management commands.
+For example: use "bun install", "bun run", "bun add", and "bunx" instead of "npm install", "npm run", "npm add", and "npx".
 
 If a plan exists, follow it step by step. If not, create one with create_plan first.
 Use delegate_to_agent when you need focused exploration or review from subagents.

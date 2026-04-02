@@ -81,7 +81,18 @@ function zodToTypeBox(schema: z.ZodTypeAny): TSchema {
     return withDescription(Type.Literal((schema as any).values?.values().next().value ?? (schema as any).value), schema);
   }
 
-  throw new Error(`Unsupported Zod schema for pi tool conversion: ${schema.constructor.name}`);
+  // z.preprocess() / .pipe() / .transform() — unwrap to the output schema
+  const defType = (schema as any)._def?.type as string | undefined;
+
+  if (defType === "pipe") {
+    return withDescription(zodToTypeBox((schema as any)._def.out as z.ZodTypeAny), schema);
+  }
+
+  if (defType === "transform") {
+    return withDescription(zodToTypeBox((schema as any)._def.schema as z.ZodTypeAny), schema);
+  }
+
+  throw new Error(`Unsupported Zod schema for pi tool conversion: ${schema.constructor.name} (def.type=${defType})`);
 }
 
 export function tool<TSchemaZod extends z.ZodTypeAny>(

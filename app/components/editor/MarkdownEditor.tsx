@@ -72,10 +72,10 @@ function ToolbarButton({
       disabled={disabled}
       title={title}
       className={`
-        inline-flex h-7 w-7 items-center justify-center rounded-md text-xs transition-colors
+        inline-flex h-7 w-7 items-center justify-center rounded-md text-xs transition-all duration-150
         ${isActive
-          ? "bg-[var(--text-primary)] text-[var(--text-inverse)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+          ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)] shadow-[var(--shadow-glow-accent)]"
+          : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-card)]"
         }
         disabled:opacity-30 disabled:cursor-not-allowed
       `}
@@ -86,7 +86,17 @@ function ToolbarButton({
 }
 
 function ToolbarDivider() {
-  return <div className="mx-0.5 h-5 w-px bg-[var(--glass-border)]" />;
+  return <div className="mx-1 h-4 w-px bg-[var(--glass-border)]" />;
+}
+
+/* ── Toolbar Group Label ───────────────────────────────────────────── */
+
+function ToolbarGroup({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <div className="flex items-center gap-0.5">{children}</div>;
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────── */
@@ -118,120 +128,127 @@ function EditorToolbar({
   }, [editor]);
 
   return (
-    <div className="flex items-center gap-0.5 flex-wrap">
+    <div className="flex items-center gap-1 flex-wrap">
       {/* History */}
-      <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo">
-        <LuUndo2 className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo">
-        <LuRedo2 className="w-3.5 h-3.5" />
-      </ToolbarButton>
+      <ToolbarGroup>
+        <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo (Ctrl+Z)">
+          <LuUndo2 className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo (Ctrl+Shift+Z)">
+          <LuRedo2 className="w-3.5 h-3.5" />
+        </ToolbarButton>
+      </ToolbarGroup>
 
       <ToolbarDivider />
 
       {/* Headings */}
-      <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} isActive={editor.isActive("heading", { level: 1 })} title="Heading 1">
-        <LuHeading1 className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive("heading", { level: 2 })} title="Heading 2">
-        <LuHeading2 className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive("heading", { level: 3 })} title="Heading 3">
-        <LuHeading3 className="w-3.5 h-3.5" />
-      </ToolbarButton>
+      <ToolbarGroup>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} isActive={editor.isActive("heading", { level: 1 })} title="Heading 1">
+          <LuHeading1 className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive("heading", { level: 2 })} title="Heading 2">
+          <LuHeading2 className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive("heading", { level: 3 })} title="Heading 3">
+          <LuHeading3 className="w-3.5 h-3.5" />
+        </ToolbarButton>
+      </ToolbarGroup>
 
       <ToolbarDivider />
 
       {/* Inline formatting */}
-      <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive("bold")} title="Bold">
-        <LuBold className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive("italic")} title="Italic">
-        <LuItalic className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive("underline")} title="Underline">
-        <LuUnderline className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive("strike")} title="Strikethrough">
-        <LuStrikethrough className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleCode().run()} isActive={editor.isActive("code")} title="Inline code">
-        <LuCode className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleHighlight().run()} isActive={editor.isActive("highlight")} title="Highlight">
-        <LuHighlighter className="w-3.5 h-3.5" />
-      </ToolbarButton>
+      <ToolbarGroup>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive("bold")} title="Bold (Ctrl+B)">
+          <LuBold className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive("italic")} title="Italic (Ctrl+I)">
+          <LuItalic className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive("underline")} title="Underline (Ctrl+U)">
+          <LuUnderline className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive("strike")} title="Strikethrough">
+          <LuStrikethrough className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleCode().run()} isActive={editor.isActive("code")} title="Inline code">
+          <LuCode className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleHighlight().run()} isActive={editor.isActive("highlight")} title="Highlight">
+          <LuHighlighter className="w-3.5 h-3.5" />
+        </ToolbarButton>
+      </ToolbarGroup>
 
       <ToolbarDivider />
 
       {/* Lists */}
-      <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive("bulletList")} title="Bullet list">
-        <LuList className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive("orderedList")} title="Ordered list">
-        <LuListOrdered className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleTaskList().run()} isActive={editor.isActive("taskList")} title="Task list">
-        <LuListChecks className="w-3.5 h-3.5" />
-      </ToolbarButton>
+      <ToolbarGroup>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive("bulletList")} title="Bullet list">
+          <LuList className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive("orderedList")} title="Ordered list">
+          <LuListOrdered className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleTaskList().run()} isActive={editor.isActive("taskList")} title="Task list">
+          <LuListChecks className="w-3.5 h-3.5" />
+        </ToolbarButton>
+      </ToolbarGroup>
 
       <ToolbarDivider />
 
       {/* Block elements */}
-      <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive("blockquote")} title="Blockquote">
-        <LuQuote className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive("codeBlock")} title="Code block">
-        <LuFileCode className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">
-        <LuMinus className="w-3.5 h-3.5" />
-      </ToolbarButton>
+      <ToolbarGroup>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive("blockquote")} title="Blockquote">
+          <LuQuote className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive("codeBlock")} title="Code block">
+          <LuFileCode className="w-3.5 h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">
+          <LuMinus className="w-3.5 h-3.5" />
+        </ToolbarButton>
+      </ToolbarGroup>
 
       <ToolbarDivider />
 
       {/* Links & media */}
-      <ToolbarButton onClick={addLink} isActive={editor.isActive("link")} title="Add link">
-        <LuLink className="w-3.5 h-3.5" />
-      </ToolbarButton>
-      {editor.isActive("link") && (
-        <ToolbarButton onClick={() => editor.chain().focus().unsetLink().run()} title="Remove link">
-          <LuUnlink className="w-3.5 h-3.5" />
+      <ToolbarGroup>
+        <ToolbarButton onClick={addLink} isActive={editor.isActive("link")} title="Add link">
+          <LuLink className="w-3.5 h-3.5" />
         </ToolbarButton>
-      )}
-      <ToolbarButton onClick={addImage} title="Add image">
-        <LuImage className="w-3.5 h-3.5" />
-      </ToolbarButton>
+        {editor.isActive("link") && (
+          <ToolbarButton onClick={() => editor.chain().focus().unsetLink().run()} title="Remove link">
+            <LuUnlink className="w-3.5 h-3.5" />
+          </ToolbarButton>
+        )}
+        <ToolbarButton onClick={addImage} title="Add image">
+          <LuImage className="w-3.5 h-3.5" />
+        </ToolbarButton>
+      </ToolbarGroup>
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* View mode */}
-      <div className="flex rounded-lg border border-[var(--glass-border)] overflow-hidden">
-        <button
-          onClick={() => onViewModeChange("write")}
-          className={`p-1.5 px-2 text-xs flex items-center gap-1 transition-colors ${viewMode === "write" ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}`}
-          title="Write"
-        >
-          <LuPenLine className="w-3 h-3" />
-          <span className="hidden sm:inline">Write</span>
-        </button>
-        <button
-          onClick={() => onViewModeChange("split")}
-          className={`p-1.5 px-2 text-xs flex items-center gap-1 transition-colors ${viewMode === "split" ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}`}
-          title="Split"
-        >
-          <LuColumns2 className="w-3 h-3" />
-          <span className="hidden sm:inline">Split</span>
-        </button>
-        <button
-          onClick={() => onViewModeChange("preview")}
-          className={`p-1.5 px-2 text-xs flex items-center gap-1 transition-colors ${viewMode === "preview" ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}`}
-          title="Preview"
-        >
-          <LuEye className="w-3 h-3" />
-          <span className="hidden sm:inline">Preview</span>
-        </button>
+      {/* View mode toggle */}
+      <div className="flex rounded-lg overflow-hidden border border-[var(--glass-border)] bg-[var(--surface-card)]/40">
+        {([
+          { mode: "write" as const, icon: LuPenLine, label: "Write" },
+          { mode: "split" as const, icon: LuColumns2, label: "Split" },
+          { mode: "preview" as const, icon: LuEye, label: "Preview" },
+        ]).map(({ mode, icon: Icon, label }) => (
+          <button
+            key={mode}
+            onClick={() => onViewModeChange(mode)}
+            className={`relative p-1.5 px-2.5 text-[11px] flex items-center gap-1.5 font-medium tracking-wide transition-all duration-150 ${
+              viewMode === mode
+                ? "bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            }`}
+            title={label}
+          >
+            <Icon className="w-3 h-3" />
+            <span className="hidden sm:inline">{label}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -252,7 +269,7 @@ function MarkdownPreviewPane({ editor }: { editor: Editor }) {
   }, [editor]);
 
   return (
-    <div className="h-full overflow-auto scrollbar-thin px-6 py-5">
+    <div className="h-full overflow-y-auto overscroll-contain px-6 py-5">
       <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[var(--text-secondary)]">
         {md}
       </pre>
@@ -277,9 +294,10 @@ function WordCount({ editor }: { editor: Editor }) {
   }, [editor]);
 
   return (
-    <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)] tabular-nums">
-      <span>{stats.words} words</span>
-      <span>{stats.chars} characters</span>
+    <div className="flex items-center gap-3 text-[11px] tabular-nums font-mono">
+      <span className="text-[var(--text-muted)]">{stats.words} words</span>
+      <span className="text-[var(--text-muted)]/60">·</span>
+      <span className="text-[var(--text-muted)]">{stats.chars} chars</span>
     </div>
   );
 }
@@ -297,7 +315,7 @@ export function MarkdownEditor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        codeBlock: false, // replaced by lowlight version
+        codeBlock: false,
         heading: { levels: [1, 2, 3, 4] },
       }),
       Placeholder.configure({ placeholder }),
@@ -324,15 +342,18 @@ export function MarkdownEditor({
         class: "md-editor-content",
       },
     },
-    onUpdate: ({ editor }) => {
-      onChange?.(editor.storage.markdown.getMarkdown());
+    onUpdate: ({ editor: ed }) => {
+      onChange?.(ed.storage.markdown.getMarkdown());
     },
   });
 
   if (!editor) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-5 h-5 rounded-full border-2 border-[var(--text-primary)] border-t-transparent animate-spin" />
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-5 h-5 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+          <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)] font-medium">Loading editor…</span>
+        </div>
       </div>
     );
   }
@@ -341,7 +362,7 @@ export function MarkdownEditor({
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
       {!readOnly && (
-        <div className="shrink-0 border-b border-[var(--glass-border)] px-3 py-2">
+        <div className="shrink-0 border-b border-[var(--glass-border)] bg-[var(--surface-elevated)]/60 px-3 py-2">
           <EditorToolbar editor={editor} viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
       )}
@@ -350,29 +371,37 @@ export function MarkdownEditor({
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* WYSIWYG pane */}
         {(viewMode === "write" || viewMode === "split") && (
-          <div className={`overflow-auto scrollbar-thin ${viewMode === "split" ? "w-1/2 border-r border-[var(--glass-border)]" : "w-full"}`}>
+          <div
+            className={`overflow-y-auto overscroll-contain ${
+              viewMode === "split" ? "w-1/2 border-r border-[var(--glass-border)]" : "w-full"
+            }`}
+          >
             <EditorContent editor={editor} className="h-full" />
           </div>
         )}
 
         {/* Markdown source preview */}
         {(viewMode === "preview" || viewMode === "split") && (
-          <div className={`overflow-hidden ${viewMode === "split" ? "w-1/2" : "w-full"}`}>
+          <div className={`overflow-hidden flex flex-col ${viewMode === "split" ? "w-1/2" : "w-full"}`}>
             {viewMode === "split" && (
-              <div className="px-4 py-2 border-b border-[var(--glass-border)] bg-[var(--surface-secondary)]">
-                <span className="text-[11px] uppercase tracking-wider font-medium text-[var(--text-muted)]">Markdown source</span>
+              <div className="shrink-0 px-4 py-2 border-b border-[var(--glass-border)] bg-[var(--surface-elevated)]/40">
+                <span className="text-[10px] uppercase tracking-[0.16em] font-semibold text-[var(--text-muted)]">
+                  Markdown source
+                </span>
               </div>
             )}
-            <MarkdownPreviewPane editor={editor} />
+            <div className="flex-1 min-h-0">
+              <MarkdownPreviewPane editor={editor} />
+            </div>
           </div>
         )}
       </div>
 
       {/* Status bar */}
       {!readOnly && (
-        <div className="shrink-0 flex items-center justify-between border-t border-[var(--glass-border)] px-4 py-1.5 bg-[var(--surface-secondary)]">
+        <div className="shrink-0 flex items-center justify-between border-t border-[var(--glass-border)] px-4 py-1.5 bg-[var(--surface-elevated)]/40">
           <WordCount editor={editor} />
-          <span className="text-[11px] text-[var(--text-muted)]">Markdown</span>
+          <span className="text-[10px] uppercase tracking-[0.14em] font-semibold text-[var(--text-muted)]/60">Markdown</span>
         </div>
       )}
     </div>

@@ -284,7 +284,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       tools: requestTools,
       apiKey: resolvedModel.apiKey,
       temperature: resolvedModel.temperature,
-      systemPrompt: `You are an expert full-stack developer agent with access to a persistent Deno Sandbox.
+      systemPrompt: `You are an expert full-stack developer agent with access to a persistent sandbox environment.
 ${agentConfig.systemPromptAddition}
 
 === USER-DEFINED SKILLS (HIGHEST PRIORITY) ===
@@ -313,19 +313,24 @@ FRAMEWORK SELECTION:
 - Full web apps with routing: type="react-router"
 - Static sites/landing pages: type="astro"
 
+=== SANDBOX PACKAGE MANAGER ===
+- The sandbox has Bun available for package management and script execution.
+- Do not tell the user to use npm in the sandbox.
+- Use bun install, bun run <script>, bun add, and bunx when needed.
+
 === GAME DEVELOPMENT (CRITICAL!) ===
 When building games, you MUST actually implement the game logic, not just scaffold!
 
 GAME BUILD SEQUENCE:
 1. create_web_app({ type: "vite", name: "game-name" }) → scaffold
-2. shell → "cd game-name && npm install"
+2. shell → "cd game-name && bun install"
 3. write_file → Write the COMPLETE game code to src/App.tsx or src/main.tsx
    - Include ALL game logic: player controls, physics, collision detection, scoring
    - Use React hooks (useState, useEffect, useRef) for game state
    - Use Canvas API or CSS for rendering
    - Handle keyboard/touch input
    - Implement game loop with requestAnimationFrame
-4. shell → "cd game-name && npm run build"
+4. shell → "cd game-name && bun run build"
 5. expose_preview → Get playable URL
 
 GAME IMPLEMENTATION REQUIREMENTS:
@@ -346,9 +351,9 @@ DO NOT just create a scaffold and stop. The user expects a PLAYABLE GAME!
 
 === BUILD SEQUENCE (General) ===
 1. create_web_app → scaffold
-2. shell → "cd <project> && npm install"
+2. shell → "cd <project> && bun install"
 3. Write application code with write_file
-4. shell → "cd <project> && npm run build"
+4. shell → "cd <project> && bun run build"
 5. expose_preview → IMMEDIATELY after build
 
 CRITICAL: The 'create_web_app' tool REQUIRES the 'type' parameter.
