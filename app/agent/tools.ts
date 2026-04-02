@@ -1055,7 +1055,7 @@ The slides are now visible in the preview panel.`;
     },
     {
         name: "write_slides",
-        description: `Write slide presentation HTML (NO SANDBOX NEEDED). THEMES: minimalist, paper, noir, brass, cobalt, emerald, midnight. Produce the first complete deck directly unless the user explicitly asks for a theme choice first.`,
+        description: `Write slide presentation HTML (NO SANDBOX NEEDED). THEMES: minimalist, paper, noir, brass, cobalt, emerald, midnight. Before calling this, research the topic with available tools unless the user already provided the needed source material.`,
         schema: z.object({
             content: z.string().describe("The complete HTML content with embedded slide-data JSON"),
             title: z.string().optional().describe("Optional title for the presentation"),
