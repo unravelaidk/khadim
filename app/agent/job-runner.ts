@@ -11,11 +11,12 @@ import {
   type AgentJobStep,
 } from "../lib/job-manager";
 import { scheduleSandboxCleanup } from "./sandbox";
-import { getAgentConfig } from "./agents";
 import type { AgentMode } from "./router";
 import { db, messages, artifacts, chats } from "../lib/db";
 import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 import { createSessionHost } from "./core/session-host";
+import { registerLiveSessionHost, unregisterLiveSessionJob } from "./core/live-session-hosts";
+import { loadAgentResources } from "./core/resource-loader";
 
 interface PartialToolCall {
   name: string | null;
@@ -47,16 +48,12 @@ function summarizeToolCallPreview(partial: any, fallback: string): string {
   return argsPreview ? `Preparing ${toolName} call...\n${argsPreview}` : `Preparing ${toolName} call...`;
 }
 
-type AgentConfig = ReturnType<typeof getAgentConfig>;
-
 export interface RunAgentJobParams {
   jobId: string;
   chatId: string;
   sessionId: string;
   prompt: string;
   agentMode: AgentMode;
-  agentConfig: AgentConfig;
-  skillsContent: string;
   history: Message[];
   uploadedDocumentsContext?: string;
   existingSandboxId?: string;
@@ -86,8 +83,6 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     sessionId,
     prompt,
     agentMode,
-    agentConfig,
-    skillsContent,
     history,
     uploadedDocumentsContext,
     existingSandboxId,
@@ -106,6 +101,8 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   let slideContentThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
   try {
+    const { agentConfig, skillsContent } = await loadAgentResources(agentMode);
+
     const sessionHost = await createSessionHost({
       chatId,
       prompt,
@@ -138,6 +135,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
         },
       },
     });
+    registerLiveSessionHost({ jobId, sessionId, chatId, host: sessionHost });
 
   let stepCounter = 0;
   let thinkingStepCounter = 0;
@@ -517,5 +515,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       await failJob(jobId, error instanceof Error ? error.message : String(error));
       throw error;
     }
+  } finally {
+    unregisterLiveSessionJob(jobId);
   }
 }

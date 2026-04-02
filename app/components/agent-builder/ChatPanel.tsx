@@ -20,6 +20,7 @@ interface ChatPanelProps {
   input: string;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  onSteer: () => void;
   onStop: () => void;
   isProcessing: boolean;
   isInitialState: boolean;
@@ -53,6 +54,7 @@ export function ChatPanel({
   input,
   onInputChange,
   onSend,
+  onSteer,
   onStop,
   isProcessing,
   isInitialState,
@@ -183,6 +185,7 @@ export function ChatPanel({
               value={input}
               onChange={onInputChange}
               onSend={onSend}
+              onSteer={onSteer}
               onStop={onStop}
               isProcessing={isProcessing}
               isCompact={false}
@@ -194,6 +197,9 @@ export function ChatPanel({
               onSelectModel={onSelectModel}
               webBrowsingEnabled={webBrowsingEnabled}
               onToggleWebBrowsing={onToggleWebBrowsing}
+              attachedFiles={attachedFiles}
+              onFilesAttached={onFilesAttached}
+              onRemoveFile={onRemoveFile}
             />
           </div>
         </div>

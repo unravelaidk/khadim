@@ -90,6 +90,7 @@ export interface AgentBuilderActions {
   handleOpenWorkspace: () => void;
   handleCreateChatInWorkspace: () => Promise<void>;
   handleSend: () => Promise<void>;
+  handleSteer: () => Promise<void>;
   handleStop: () => void;
   handleAnswerQuestion: (answer: string) => Promise<void>;
   handleSuggestionClick: (feature: ActiveBadge) => void;
@@ -159,6 +160,11 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const lastPongAtRef = useRef<number>(Date.now());
   const reconnectAttemptRef = useRef(0);
   const requestAbortControllerRef = useRef<AbortController | null>(null);
+  const pendingSocketCommandRef = useRef<{
+    resolve: (value: { jobId: string; chatId: string; sessionId: string }) => void;
+    reject: (error: Error) => void;
+    timeoutId: number;
+  } | null>(null);
 
   const [currentView, setCurrentView] = useState<"chat" | "workspace" | "settings">(initialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -269,6 +275,35 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
       const buildPrompt = `Execute this approved plan:\n\n${event.plan as string}${event.context ? `\n\nContext: ${event.context as string}` : ""}`;
       setInput(buildPrompt);
     }
+  };
+
+  const sendSessionCommand = (command: "job.followUp" | "job.steer", prompt: string) => {
+    const socket = sessionSocketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Session socket is not connected"));
+    }
+
+    if (pendingSocketCommandRef.current) {
+      return Promise.reject(new Error("Another session command is already pending"));
+    }
+
+    return new Promise<{ jobId: string; chatId: string; sessionId: string }>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        if (!pendingSocketCommandRef.current) {
+          return;
+        }
+        pendingSocketCommandRef.current = null;
+        reject(new Error("Session command timed out"));
+      }, 15000);
+
+      pendingSocketCommandRef.current = {
+        resolve,
+        reject,
+        timeoutId,
+      };
+
+      socket.send(JSON.stringify({ type: command, prompt }));
+    });
   };
 
   const appendChatMessages = (chatKey: string, nextMessages: Message[]) => {
@@ -699,6 +734,28 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
             return;
           }
 
+          if (event.type === "command_accepted") {
+            if (pendingSocketCommandRef.current) {
+              window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
+              pendingSocketCommandRef.current.resolve({
+                jobId: String((event as any).jobId || ""),
+                chatId: String((event as any).chatId || ""),
+                sessionId: String((event as any).sessionId || sessionId),
+              });
+              pendingSocketCommandRef.current = null;
+            }
+            return;
+          }
+
+          if (event.type === "error" && pendingSocketCommandRef.current) {
+            window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
+            pendingSocketCommandRef.current.reject(
+              new Error(typeof (event as any).error === "string" ? (event as any).error : "Session command failed"),
+            );
+            pendingSocketCommandRef.current = null;
+            return;
+          }
+
           if (typeof event.eventId === "string") {
             lastStreamEventIdRef.current = event.eventId;
           } else if (typeof event.snapshotEventId === "string") {
@@ -715,6 +772,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         clearSocketTimers();
         if (sessionSocketRef.current === socket) {
           sessionSocketRef.current = null;
+        }
+        if (pendingSocketCommandRef.current) {
+          window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
+          pendingSocketCommandRef.current.reject(new Error("Session socket closed"));
+          pendingSocketCommandRef.current = null;
         }
         scheduleReconnect();
       });
@@ -816,15 +878,29 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           }
         : null;
 
-      const [payload] = await Promise.all([
-        callAgentRpc("job.start", {
+      const submitAgentRequest = async () => {
+        if (currentChatId) {
+          try {
+            return await sendSessionCommand("job.followUp", promptWithAttachments);
+          } catch (error) {
+            if (!(error instanceof Error) || (!error.message.includes("No live session host found") && !error.message.includes("Session socket"))) {
+              throw error;
+            }
+          }
+        }
+
+        return callAgentRpc("job.start", {
           prompt: promptWithAttachments,
           sandboxId: sandboxId || undefined,
           chatId: currentChatId || undefined,
           sessionId: sessionIdRef.current,
           badges: activeBadges.length > 0 ? JSON.stringify(activeBadges) : undefined,
           documentIds: uploadedDocumentIds,
-        }, { signal: abortController.signal }),
+        }, { signal: abortController.signal });
+      };
+
+      const [payload] = await Promise.all([
+        submitAgentRequest(),
         createUserMessageRequest?.(),
       ]);
       if (!payload.jobId || !payload.chatId) {
@@ -847,6 +923,75 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       }
     } finally {
       requestAbortControllerRef.current = null;
+    }
+  };
+
+  const handleSteer = async () => {
+    if (!chatId || !input.trim()) return;
+
+    const steerMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input.trim(),
+      timestamp: new Date(),
+    };
+
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      thinkingSteps: [],
+    };
+
+    const chatKey = getChatStateKey(chatId);
+    queuePendingAssistant(chatKey, assistantMessageId);
+    appendChatMessages(chatKey, [steerMessage, assistantMessage]);
+    setInput("");
+    setIsTyping(true);
+
+    try {
+      const saveUserMessage = (() => {
+        const userMsgForm = new FormData();
+        userMsgForm.append("chatId", chatId);
+        userMsgForm.append("role", "user");
+        userMsgForm.append("content", steerMessage.content);
+        return fetch("/api/messages", { method: "POST", body: userMsgForm });
+      })();
+
+      const [payload] = await Promise.all([
+        (async () => {
+          try {
+            return await sendSessionCommand("job.steer", steerMessage.content);
+          } catch (error) {
+            if (!(error instanceof Error) || (!error.message.includes("No live session host found") && !error.message.includes("Session socket"))) {
+              throw error;
+            }
+
+            return callAgentRpc("job.steer", {
+              jobId: jobId || undefined,
+              chatId,
+              sessionId: sessionIdRef.current,
+              prompt: steerMessage.content,
+            });
+          }
+        })(),
+        saveUserMessage,
+      ]);
+
+      if (!payload.jobId || !payload.chatId) {
+        throw new Error("Missing job metadata");
+      }
+
+      attachJobToMessage(payload.jobId, payload.chatId, assistantMessageId);
+      activateJob(payload.jobId, payload.chatId, true);
+    } catch (error) {
+      clearPendingAssistant(chatKey, assistantMessageId);
+      patchMessage(chatKey, assistantMessageId, (message) => ({
+        ...message,
+        content: "Sorry, there was an error steering the session.",
+      }));
     }
   };
 
@@ -1020,6 +1165,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       handleOpenWorkspace,
       handleCreateChatInWorkspace,
       handleSend,
+      handleSteer,
       handleStop,
       handleAnswerQuestion,
       handleSuggestionClick,

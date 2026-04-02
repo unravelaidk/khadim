@@ -1,12 +1,12 @@
 import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
-import type { Message, Model } from "@mariozechner/pi-ai";
-import { type AgentId } from "./agents";
+import type { Model } from "@mariozechner/pi-ai";
 import {
   createAgentSessionTurn,
   formatDelegationPrompt,
   type AgentSessionConfig,
   type StreamEvent,
 } from "./core/agent-session";
+import type { SessionState } from "./core/session-state";
 import { runSubagentSession } from "./core/subagent-session";
 
 export interface OrchestratorConfig extends AgentSessionConfig {
@@ -17,15 +17,9 @@ export interface OrchestratorConfig extends AgentSessionConfig {
   temperature?: number;
 }
 
-export interface OrchestratorInputs {
-  messages: Message[];
-  currentAgent: AgentId;
-  requestedMode?: AgentId;
-}
-
 async function* runPiOrchestrator(
   config: OrchestratorConfig,
-  inputs: OrchestratorInputs,
+  inputs: SessionState,
   signal?: AbortSignal
 ): AsyncGenerator<StreamEvent> {
   let messages: AgentMessage[] = [...inputs.messages];
@@ -113,7 +107,7 @@ async function* runPiOrchestrator(
 
 export function createOrchestrator(config: OrchestratorConfig) {
   return {
-    streamEvents(inputs: OrchestratorInputs, options?: { signal?: AbortSignal }) {
+    streamEvents(inputs: SessionState, options?: { signal?: AbortSignal }) {
       return runPiOrchestrator(config, inputs, options?.signal);
     },
   };

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
-import { LuGlobe, LuChevronUp, LuSettings2 } from "react-icons/lu";
+import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
+import { LuGlobe, LuSettings2, LuPaperclip, LuX, LuFile, LuImage } from "react-icons/lu";
 import { ModelSelector } from "./ModelSelector";
 import type { ModelOption } from "./ModelSelector";
+import type { AttachedFile } from "./WelcomeScreen";
 
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
+  onSteer?: () => void;
   onStop?: () => void;
   isProcessing?: boolean;
   badges?: Array<{ label: string; icon: ReactNode; prompt?: string }>;
@@ -21,12 +23,16 @@ interface ChatInputProps {
   onSelectModel: (modelId: string) => Promise<void>;
   webBrowsingEnabled: boolean;
   onToggleWebBrowsing: (enabled: boolean) => void;
+  attachedFiles?: AttachedFile[];
+  onFilesAttached?: (files: AttachedFile[]) => void;
+  onRemoveFile?: (fileName: string) => void;
 }
 
 export function ChatInput({
   value = "",
   onChange,
   onSend,
+  onSteer,
   onStop,
   isProcessing = false,
   badges = [],
@@ -40,8 +46,12 @@ export function ChatInput({
   onSelectModel,
   webBrowsingEnabled,
   onToggleWebBrowsing,
+  attachedFiles = [],
+  onFilesAttached,
+  onRemoveFile,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showToolbar, setShowToolbar] = useState(false);
 
   const resizeTextarea = () => {
@@ -58,10 +68,71 @@ export function ChatInput({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isProcessing && value.trim()) {
+      if (isProcessing && onSteer && value.trim()) {
+        onSteer();
+      } else if (!isProcessing && (value.trim() || attachedFiles.length > 0)) {
         onSend();
       }
     }
+  };
+
+  const readFileContent = (file: File): Promise<string> =>
+    new Promise<string>((resolve, reject) => {
+      if (!file.type.startsWith("image/")) {
+        resolve("");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Failed to read file."));
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || !onFilesAttached) return;
+
+    try {
+      const newFiles = await Promise.all(
+        Array.from(files).map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          file,
+          content: await readFileContent(file),
+        }))
+      );
+
+      const dedupedFiles = [...attachedFiles];
+      for (const file of newFiles) {
+        const existingIndex = dedupedFiles.findIndex((item) => item.name === file.name);
+        if (existingIndex >= 0) {
+          dedupedFiles[existingIndex] = file;
+        } else {
+          dedupedFiles.push(file);
+        }
+      }
+
+      onFilesAttached(dedupedFiles);
+    } catch {
+      // Keep composer resilient; upload errors are surfaced later in the send flow.
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const getFileIcon = (file: AttachedFile) => {
+    if (file.type.startsWith("image/")) return <LuImage className="w-4 h-4" />;
+    return <LuFile className="w-4 h-4" />;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const isFixed = position === "fixed";
@@ -152,6 +223,57 @@ export function ChatInput({
           </div>
         )}
 
+        {attachedFiles.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-3 px-1 animate-in fade-in">
+            {attachedFiles.map((file) => (
+              <div key={file.name} className="relative group">
+                {file.type.startsWith("image/") && file.content ? (
+                  <div className="relative">
+                    <img
+                      src={file.content}
+                      alt={file.name}
+                      className="h-16 w-16 rounded-2xl border border-[var(--glass-border)] object-cover shadow-[var(--shadow-glass-sm)]"
+                    />
+                    {onRemoveFile && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFile(file.name)}
+                        className="absolute -right-2 -top-2 rounded-full bg-[#10150a] px-1 py-1 text-[var(--text-inverse)] opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <LuX className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-full glass-panel px-2.5 py-1.5 text-sm text-[var(--text-secondary)]">
+                    {getFileIcon(file)}
+                    <span className="max-w-[120px] truncate">{file.name}</span>
+                    <span className="text-xs text-[var(--text-muted)]">{formatFileSize(file.size)}</span>
+                    {onRemoveFile && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFile(file.name)}
+                        className="ml-1 rounded-full p-0.5 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        <LuX className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".csv,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md,.json"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
         <div className="relative group">
             {/* Mobile settings toggle */}
             <button
@@ -166,6 +288,24 @@ export function ChatInput({
             >
               <LuSettings2 className="w-4 h-4" />
             </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute left-11 top-1/2 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[var(--text-muted)] transition-all hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)] sm:flex"
+              aria-label="Attach files"
+              title="Attach files"
+            >
+              <LuPaperclip className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute left-11 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[var(--text-muted)] transition-all hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)] sm:hidden"
+              aria-label="Attach files"
+              title="Attach files"
+            >
+              <LuPaperclip className="w-4 h-4" />
+            </button>
             <textarea
               ref={inputRef}
               value={value}
@@ -177,10 +317,25 @@ export function ChatInput({
               onFocus={() => setShowToolbar(false)}
               placeholder={isProcessing ? "Keep typing..." : "Message..."}
               rows={1}
-              className="flex min-h-[46px] w-full resize-none items-center rounded-2xl sm:rounded-3xl glass-panel-strong pl-11 sm:pl-4 pr-12 py-3 text-[15px] text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--glass-border-strong)] focus:ring-4 focus:ring-[#10150a]/10 focus:outline-none sm:min-h-[52px] md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base"
+               className="flex min-h-[46px] w-full resize-none items-center rounded-2xl sm:rounded-3xl glass-panel-strong pl-20 sm:pl-14 pr-28 py-3 text-[15px] text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--glass-border-strong)] focus:ring-4 focus:ring-[#10150a]/10 focus:outline-none sm:min-h-[52px] sm:pr-32 md:min-h-[58px] md:px-6 md:py-4 md:pr-36 md:pl-16 md:text-base"
             style={{ maxHeight: "168px" }}
             aria-label="Chat message input"
             />
+          {onSteer ? (
+            <button
+              type="button"
+              onClick={onSteer}
+              disabled={!value.trim()}
+              className={`absolute right-11 sm:right-12 top-1/2 flex h-8 items-center justify-center rounded-full px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] -translate-y-1/2 transition-all md:right-14 md:h-9 ${value.trim()
+                ? "btn-glass text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
+                : "bg-[var(--glass-bg)] text-[var(--text-muted)] cursor-not-allowed"
+                }`}
+              aria-label="Steer agent"
+              title="Steer the live session"
+            >
+              Steer
+            </button>
+          ) : null}
           {isProcessing ? (
             <button
               onClick={onStop}
@@ -195,8 +350,10 @@ export function ChatInput({
           ) : (
             <button
                 onClick={onSend}
-                disabled={!value.trim()}
+                disabled={!value.trim() && attachedFiles.length === 0}
                 className={`absolute right-1.5 top-1/2 flex h-8 w-8 sm:h-9 sm:w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all md:h-11 md:w-11 ${value.trim()
+                ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] hover:scale-105 hover:shadow-[var(--shadow-glass-md)]"
+                : attachedFiles.length > 0
                 ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] hover:scale-105 hover:shadow-[var(--shadow-glass-md)]"
                 : "bg-[var(--glass-bg)] text-[var(--text-muted)] cursor-not-allowed"
                 }`}
