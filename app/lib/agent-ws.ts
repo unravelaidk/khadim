@@ -12,8 +12,8 @@ const CLOSE_CODE_BAD_REQUEST = 1008;
 type ClientMessage =
   | { type: "session.connect"; sessionId?: string; lastEventId?: string | null }
   | { type: "ping" }
-  | { type: "job.followUp"; prompt?: string }
-  | { type: "job.steer"; prompt?: string };
+  | { type: "job.followUp"; prompt?: string; chatId?: string; jobId?: string }
+  | { type: "job.steer"; prompt?: string; chatId?: string; jobId?: string };
 
 const agentWsApp = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: agentWsApp });
@@ -92,7 +92,11 @@ export const agentWsRoute = agentWsApp.get(
             return;
           }
 
-          const record = resolveLiveHost({ sessionId: connectedSessionId });
+          const record = resolveLiveHost({
+            sessionId: connectedSessionId,
+            chatId: typeof message.chatId === "string" ? message.chatId : undefined,
+            jobId: typeof message.jobId === "string" ? message.jobId : undefined,
+          });
           if (!record) {
             ws.send(JSON.stringify({ type: "error", error: "No live session host found" }));
             return;
