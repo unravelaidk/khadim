@@ -293,7 +293,7 @@ export function AgentHubPanel({
     return (
       <div className="flex h-full flex-1 flex-col overflow-hidden animate-in fade-in duration-300">
         <ScrollArea className="flex-1">
-          <div className="mx-auto w-full max-w-6xl px-4 pb-20 pt-5 md:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 pb-20 pt-4 sm:px-4 md:px-6 lg:px-8 sm:pt-5">
 
             {/* ── Navigation + Title ── */}
             <div className="mb-6">
@@ -305,50 +305,51 @@ export function AgentHubPanel({
                 All workspaces
               </button>
 
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-[var(--color-accent)] text-[var(--color-accent-ink)] shadow-[var(--shadow-glow-sm)]">
-                      <LuBox className="w-5 h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3 mb-2 flex-wrap">
+                    <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[var(--color-accent)] text-[var(--color-accent-ink)] shadow-[var(--shadow-glow-sm)] shrink-0">
+                      <LuBox className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
-                    <div className="min-w-0">
-                      <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)] truncate font-display lg:text-2xl">
+                    <div className="min-w-0 flex-1">
+                      <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[var(--text-primary)] truncate font-display lg:text-2xl">
                         {detail.workspace.name}
                       </h1>
                     </div>
                     {hasActivity && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         Live
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 pl-[52px] text-xs text-[var(--text-muted)]">
+                  <div className="flex items-center gap-2 sm:gap-3 text-[11px] sm:pl-[52px] sm:text-xs text-[var(--text-muted)] flex-wrap">
                     {agent && (
                       <span className="inline-flex items-center gap-1">
                         <LuBot className="w-3 h-3 opacity-60" />
                         {agent.name}
                       </span>
                     )}
-                    <span className="h-1 w-1 rounded-full bg-[var(--text-muted)] opacity-30" />
-                    <span>Created {formatDateCompact(detail.workspace.createdAt)}</span>
-                    <span className="h-1 w-1 rounded-full bg-[var(--text-muted)] opacity-30" />
+                    <span className="hidden sm:block h-1 w-1 rounded-full bg-[var(--text-muted)] opacity-30" />
+                    <span className="hidden sm:inline">Created {formatDateCompact(detail.workspace.createdAt)}</span>
+                    <span className="hidden sm:block h-1 w-1 rounded-full bg-[var(--text-muted)] opacity-30" />
                     <span>Updated {formatRelativeDate(detail.workspace.updatedAt)}</span>
                   </div>
                 </div>
 
                 <button
                   onClick={() => void onCreateChatInWorkspace()}
-                  className="btn-ink rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2 shrink-0"
+                  className="btn-ink inline-flex self-start rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-semibold items-center gap-1.5 sm:gap-2 shrink-0"
                 >
                   <LuPlus className="w-3.5 h-3.5" />
-                  New thread
+                  <span className="hidden sm:inline">New thread</span>
+                  <span className="sm:hidden">New</span>
                 </button>
               </div>
             </div>
 
             {/* ── Stats Row ── */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
               <StatCard
                 icon={<LuLayers className="w-4 h-4" />}
                 label="Files"
@@ -361,12 +362,6 @@ export function AgentHubPanel({
                 value={String(detail.chats.length)}
                 sub={detail.activeChats.length > 0 ? `${detail.activeChats.length} active` : "none active"}
                 accent={detail.activeChats.length > 0}
-              />
-              <StatCard
-                icon={<LuBot className="w-4 h-4" />}
-                label="Agents"
-                value={String(detail.activeAgents.length || 1)}
-                sub={agent?.name ?? "—"}
               />
               <StatCard
                 icon={<LuClock className="w-4 h-4" />}
@@ -397,10 +392,10 @@ export function AgentHubPanel({
             )}
 
             {/* ── Tab Switcher (mobile) ── */}
-            <div className="flex items-center gap-1 mb-4 border-b border-[var(--glass-border)] lg:hidden">
+            <div className="mb-4 flex items-center gap-1 overflow-x-auto border-b border-[var(--glass-border)] lg:hidden">
               <button
                 onClick={() => setDetailTab("files")}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                className={`min-w-0 shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   detailTab === "files"
                     ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                     : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -410,7 +405,7 @@ export function AgentHubPanel({
               </button>
               <button
                 onClick={() => setDetailTab("threads")}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                className={`min-w-0 shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   detailTab === "threads"
                     ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                     : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -421,14 +416,14 @@ export function AgentHubPanel({
             </div>
 
             {/* ── Main Two-Column ── */}
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
 
               {/* ── Left: Files ── */}
-              <div className={`space-y-4 ${detailTab !== "files" ? "hidden lg:block" : ""}`}>
+              <div className={`min-w-0 space-y-4 ${detailTab !== "files" ? "hidden lg:block" : ""}`}>
                 {/* Files card */}
                 <section className="rounded-2xl glass-panel-strong overflow-hidden">
                   {/* Toolbar */}
-                  <div className="flex items-center justify-between gap-3 border-b border-[var(--glass-border)] px-4 py-2.5 sm:px-5">
+                  <div className="flex flex-col gap-3 border-b border-[var(--glass-border)] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                     <div className="flex items-center gap-2.5">
                       <LuFolder className="w-4 h-4 text-[var(--text-muted)]" />
                       <span className="text-sm font-semibold text-[var(--text-primary)]">Files</span>
@@ -436,15 +431,15 @@ export function AgentHubPanel({
                         {detail.files.length}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="relative">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="relative min-w-0 flex-1 sm:flex-none">
                         <LuSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
                         <input
                           type="text"
                           placeholder="Filter…"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="glass-input h-8 w-32 sm:w-40 rounded-lg pl-8 pr-3 text-xs"
+                          className="glass-input h-8 w-full sm:w-40 rounded-lg pl-8 pr-3 text-xs"
                         />
                       </div>
                       <div className="flex rounded-lg border border-[var(--glass-border)] overflow-hidden">
@@ -551,7 +546,7 @@ export function AgentHubPanel({
               </div>
 
               {/* ── Right: Threads & Info ── */}
-              <div className={`space-y-4 ${detailTab !== "threads" ? "hidden lg:block" : ""}`}>
+              <div className={`min-w-0 space-y-4 ${detailTab !== "threads" ? "hidden lg:block" : ""}`}>
                 {/* Threads */}
                 <section className="rounded-2xl glass-panel-strong overflow-hidden">
                   <div className="flex items-center justify-between border-b border-[var(--glass-border)] px-4 py-2.5 sm:px-5">
@@ -854,13 +849,13 @@ function StatCard({ icon, label, value, sub, accent }: {
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-2xl glass-card-static p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-[var(--text-muted)]">{icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--text-muted)]">{label}</span>
+    <div className="rounded-2xl glass-card-static p-3 sm:p-4 min-w-0 overflow-hidden">
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+        <span className="text-[var(--text-muted)] shrink-0">{icon}</span>
+        <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.12em] sm:tracking-[0.15em] text-[var(--text-muted)] truncate">{label}</span>
       </div>
-      <p className="text-lg font-bold text-[var(--text-primary)] font-display tabular-nums">{value}</p>
-      <p className={`text-[11px] mt-0.5 ${accent ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-[var(--text-muted)]"}`}>
+      <p className="text-base sm:text-lg font-bold text-[var(--text-primary)] font-display tabular-nums truncate">{value}</p>
+      <p className={`text-[10px] sm:text-[11px] mt-0.5 truncate ${accent ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-[var(--text-muted)]"}`}>
         {sub}
       </p>
     </div>
@@ -873,7 +868,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   return (
     <div className="flex items-center justify-between gap-3 text-[11px]">
       <span className="text-[var(--text-muted)] shrink-0">{label}</span>
-      <span className={`text-[var(--text-secondary)] truncate text-right ${mono ? "font-mono text-[10px] opacity-60" : "tabular-nums"}`}>
+      <span className={`min-w-0 text-right text-[var(--text-secondary)] ${mono ? "break-all font-mono text-[10px] opacity-60" : "truncate tabular-nums"}`}>
         {value}
       </span>
     </div>
