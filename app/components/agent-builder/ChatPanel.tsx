@@ -115,7 +115,7 @@ export function ChatPanel({
         className={`min-h-0 flex-1 overflow-y-auto ${
           isInitialState
             ? "flex items-start justify-center px-0 py-6 sm:py-8 lg:py-10"
-            : "px-2 pb-52 pt-4 sm:px-3 sm:pt-6 md:px-6 md:pb-56 md:pt-8"
+            : "px-2 pb-36 pt-3 sm:px-3 sm:pb-44 sm:pt-6 md:px-6 md:pb-52 md:pt-8"
         }`}
       >
         {!isInitialState && (
@@ -177,7 +177,7 @@ export function ChatPanel({
       {!isInitialState && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40">
           {/* Fade gradient overlay */}
-          <div className="h-16 bg-gradient-to-t from-[var(--surface-bg)] to-transparent" />
+          <div className="h-8 sm:h-16 bg-gradient-to-t from-[var(--surface-bg)] to-transparent" />
           <div className="pointer-events-auto bg-[var(--surface-bg)]">
             <ChatInput
               value={input}
