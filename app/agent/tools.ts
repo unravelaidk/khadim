@@ -1,5 +1,6 @@
 import { tool } from "./pi-tool";
 import { z } from "zod";
+import * as fs from "node:fs/promises";
 import * as pathMod from "node:path";
 import { LiteParse } from "@llamaindex/liteparse";
 import { db, artifacts, projects } from "../lib/db";
@@ -1064,29 +1065,41 @@ The slides are now visible in the preview panel.`;
     }
 );
 
-// Singleton parser instance — reused across calls
-let liteparseInstance: InstanceType<typeof LiteParse> | null = null;
-
-function getLiteParse(): InstanceType<typeof LiteParse> {
-    if (!liteparseInstance) {
-        liteparseInstance = new LiteParse({ outputFormat: "text" });
-    }
-    return liteparseInstance;
-}
-
 export const createParseDocumentTool = () => tool(
-    async ({ url, targetPages, ocrEnabled = false }: { url: string; targetPages?: string; ocrEnabled?: boolean }) => {
+    async ({ url, path, targetPages, ocrEnabled = false }: { url?: string; path?: string; targetPages?: string; ocrEnabled?: boolean }) => {
         try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                return `Error: Failed to fetch document from URL (${response.status} ${response.statusText})`;
+            if (!url && !path) {
+                return "Error: Provide either a document URL or a local file path.";
             }
 
-            const contentType = response.headers.get("content-type") || "";
-            const buffer = Buffer.from(await response.arrayBuffer());
+            if (url && path) {
+                return "Error: Provide only one document source at a time: either url or path.";
+            }
 
-            const parser = getLiteParse();
-            // Reconfigure per call if needed
+            let source = "";
+            let contentType = "application/octet-stream";
+            let buffer: Buffer;
+
+            if (url) {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    return `Error: Failed to fetch document from URL (${response.status} ${response.statusText})`;
+                }
+
+                source = url;
+                contentType = response.headers.get("content-type") || contentType;
+                buffer = Buffer.from(await response.arrayBuffer());
+            } else {
+                const resolvedPath = pathMod.resolve(path!);
+                source = resolvedPath;
+                buffer = await fs.readFile(resolvedPath);
+
+                const extension = pathMod.extname(resolvedPath).toLowerCase();
+                if (extension === ".pdf") {
+                    contentType = "application/pdf";
+                }
+            }
+
             const config: Record<string, unknown> = { outputFormat: "text" };
             if (targetPages) config.targetPages = targetPages;
             if (ocrEnabled) config.ocrEnabled = true;
@@ -1101,7 +1114,7 @@ export const createParseDocumentTool = () => tool(
 
             let output = `📄 DOCUMENT PARSED SUCCESSFULLY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Source: ${url}
+Source: ${source}
 Content-Type: ${contentType}
 Pages: ${pageCount}
 Characters: ${textLength}${truncated ? " (truncated to 30,000)" : ""}
@@ -1116,9 +1129,10 @@ ${text}`;
     },
     {
         name: "parse_document",
-        description: "Parse a PDF or document from a URL and extract its text content. Supports PDFs natively, with optional OCR for scanned documents. Use this to read, summarize, or analyze document contents. Provide a direct URL to the file.",
+        description: "Parse a PDF with LiteParse and extract text from either a direct URL or a local file path. Supports page targeting and optional OCR for scanned PDFs.",
         schema: z.object({
-            url: z.string().describe("Direct URL to the PDF or document file"),
+            url: z.string().optional().describe("Direct URL to the PDF or document file"),
+            path: z.string().optional().describe("Local path to a PDF or document file on disk"),
             targetPages: z.string().optional().describe("Page range to parse, e.g. '1-5' or '1,3,7'. Omit to parse all pages."),
             ocrEnabled: z.boolean().optional().default(false).describe("Enable OCR for scanned/image-based documents (slower)"),
         }),
