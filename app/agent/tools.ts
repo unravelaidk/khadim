@@ -54,8 +54,23 @@ ${steps.map((step, i) => `   ${i + 1}. ${step}`).join('\n')}
         description: "Create an execution plan before doing complex work. Use when the task benefits from explicit steps and approval.",
         schema: z.object({
             goal: z.string().describe("Brief description of what you're building"),
-            steps: z.array(z.string()).describe("List of steps you'll take to complete the task"),
-            estimatedToolCalls: z.number().describe("Estimated number of tool calls to complete the task (target: under 10)"),
+            steps: z.preprocess(
+                (val) => {
+                    if (Array.isArray(val)) return val;
+                    if (typeof val === "string") {
+                        return val
+                            .split(/\n/)
+                            .map((line) => line.replace(/^\s*\d+[\.\)]\s*/, "").trim())
+                            .filter(Boolean);
+                    }
+                    return [];
+                },
+                z.array(z.string()),
+            ).describe("JSON array of step strings, e.g. [\"Step 1\", \"Step 2\"]"),
+            estimatedToolCalls: z.preprocess(
+                (val) => (typeof val === "string" ? Number(val) : val),
+                z.number(),
+            ).describe("Estimated number of tool calls to complete the task (target: under 10)"),
         }),
     }
 );
@@ -265,7 +280,7 @@ export const createShellTool = (sandbox: SandboxInstance) => tool(
 
 You tried: ${command}
 
-✅ SOLUTION: Build your project with 'npm run build', then call 'expose_preview' to start a server and get a public URL.
+✅ SOLUTION: Build your project with 'bun run build', then call 'expose_preview' to start a server and get a public URL.
 Example: expose_preview({ root: "dist" }) or expose_preview({ root: "." })`;
         }
 
@@ -509,7 +524,7 @@ Correct usage:
                 outputPath = `${name}/build/client`;
             }
 
-            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps:\n1. shell: cd ${name} && npm install\n2. Write your application code with write_file\n3. shell: cd ${name} && npm run build\n4. expose_preview({ root: "${outputPath}" }) to get a live preview URL`;
+            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps:\n1. shell: cd ${name} && bun install\n2. Write your application code with write_file\n3. shell: cd ${name} && bun run build\n4. expose_preview({ root: "${outputPath}" }) to get a live preview URL`;
         } catch (error) {
             return `Error creating app: ${error instanceof Error ? error.message : String(error)}`;
         }

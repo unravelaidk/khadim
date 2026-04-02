@@ -392,10 +392,31 @@ export function replaceChatKey(state: AgentSessionState, fromKey: string, toKey:
   }
 
   const toChat = getChat(state, toKey);
+
+  // Merge messages from both chats. The source (fromChat) provides the
+  // primary message list, but the target (toChat) may already contain
+  // messages created by stream events that arrived before the rename
+  // (e.g. fallback messages like `job-<id>`). We must preserve those
+  // so accumulated tool-step data is not lost.
+  let mergedMessagesById: Record<string, Message>;
+  let mergedMessageOrder: string[];
+
+  if (fromChat.messageOrder.length > 0) {
+    // Start with all target messages (may include fallback step messages)
+    mergedMessagesById = { ...toChat.messagesById, ...fromChat.messagesById };
+    // Keep the source order, then append any target-only messages
+    const fromIdSet = new Set(fromChat.messageOrder);
+    const extraIds = toChat.messageOrder.filter((id) => !fromIdSet.has(id));
+    mergedMessageOrder = [...fromChat.messageOrder, ...extraIds];
+  } else {
+    mergedMessagesById = toChat.messagesById;
+    mergedMessageOrder = toChat.messageOrder;
+  }
+
   let nextState = updateChat(state, toKey, () => ({
     ...toChat,
-    messagesById: fromChat.messageOrder.length > 0 ? fromChat.messagesById : toChat.messagesById,
-    messageOrder: fromChat.messageOrder.length > 0 ? fromChat.messageOrder : toChat.messageOrder,
+    messagesById: mergedMessagesById,
+    messageOrder: mergedMessageOrder,
     sandboxId: fromChat.sandboxId || toChat.sandboxId,
     activeJobIds: Array.from(new Set([...toChat.activeJobIds, ...fromChat.activeJobIds])),
     pendingQuestion: fromChat.pendingQuestion || toChat.pendingQuestion,
