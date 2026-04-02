@@ -1,31 +1,24 @@
-import { tool } from "../pi-tool";
-import { z } from "zod";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { Type, type Static } from "@mariozechner/pi-ai";
+import { textToolResult } from "../tool-utils";
 
 /**
  * Human-in-the-Loop Tool
  * Allows the agent to ask the user clarifying questions.
- * When invoked, this triggers an interrupt in the LangGraph workflow.
+ * When invoked, this returns an interrupt payload the orchestrator can surface to the user.
  */
-export const createAskUserTool = () => tool(
-    async ({ question, options, context }: { 
-        question: string; 
-        options?: string[]; 
-        context?: string;
-    }) => {
-        // Return a special marker that the orchestrator will detect
-        // This triggers an interrupt in the graph execution
-        const payload = {
-            type: "ASK_USER",
-            question,
-            options: options || [],
-            context: context || "",
-        };
-        
-        return `__INTERRUPT__:${JSON.stringify(payload)}`;
-    },
-    {
-        name: "ask_user",
-        description: `Ask the user a clarifying question when you need more information to proceed.
+const askUserParameters = Type.Object({
+    question: Type.String({ description: "The question to ask the user. Be clear and specific." }),
+    options: Type.Optional(Type.Array(Type.String({ description: "A single choice the user can pick." }), {
+        description: "Optional list of choices for the user to pick from. Use for multiple-choice questions.",
+    })),
+    context: Type.Optional(Type.String({ description: "Optional context explaining why you're asking this question." })),
+});
+
+export const createAskUserTool = (): AgentTool<typeof askUserParameters> => ({
+    name: "ask_user",
+    label: "ask_user",
+    description: `Ask the user a clarifying question when you need more information to proceed.
         
 USE THIS TOOL WHEN:
 - The user's request is ambiguous or lacks details
@@ -37,13 +30,18 @@ EXAMPLES:
 - "What color scheme would you prefer?" with options: ["Dark mode", "Light mode", "Colorful"]
 - "Should I include a contact form on the portfolio?"
 - "The request is unclear. Do you want a game or a website?"`,
-        schema: z.object({
-            question: z.string().describe("The question to ask the user. Be clear and specific."),
-            options: z.array(z.string()).optional().describe("Optional list of choices for the user to pick from. Use for multiple-choice questions."),
-            context: z.string().optional().describe("Optional context explaining why you're asking this question."),
-        }),
-    }
-);
+    parameters: askUserParameters,
+    execute: async (_toolCallId, { question, options, context }: Static<typeof askUserParameters>) => {
+        const payload = {
+            type: "ASK_USER" as const,
+            question,
+            options: options || [],
+            context: context || "",
+        };
+
+        return textToolResult(`__INTERRUPT__:${JSON.stringify(payload)}`);
+    },
+});
 
 export type AskUserPayload = {
     type: "ASK_USER";
