@@ -276,7 +276,11 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
     }
   };
 
-  const sendSessionCommand = (command: "job.followUp" | "job.steer", prompt: string) => {
+  const sendSessionCommand = (
+    command: "job.followUp" | "job.steer",
+    prompt: string,
+    options: { chatId?: string; jobId?: string } = {},
+  ) => {
     const socket = sessionSocketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Session socket is not connected"));
@@ -296,7 +300,7 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
       }, 15000);
 
       pendingSocketCommandRef.current = { resolve, reject, timeoutId };
-      socket.send(JSON.stringify({ type: command, prompt }));
+      socket.send(JSON.stringify({ type: command, prompt, chatId: options.chatId, jobId: options.jobId }));
     });
   };
 
@@ -875,7 +879,10 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       const submitAgentRequest = async () => {
         if (currentChatId) {
           try {
-            return await sendSessionCommand("job.followUp", promptWithAttachments);
+            return await sendSessionCommand("job.followUp", promptWithAttachments, {
+              chatId: currentChatId,
+              jobId: jobId || undefined,
+            });
           } catch (error) {
             if (!(error instanceof Error) || (!error.message.includes("No live session host found") && !error.message.includes("Session socket"))) {
               throw error;
