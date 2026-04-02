@@ -7,12 +7,13 @@ const connectionString = process.env.DATABASE_URL!;
 const queryClient = postgres(connectionString);
 export const db = drizzle(queryClient, { schema });
 
-export { chats, messages, artifacts, projects, projectVersions, modelConfigs, workspaces, workspaceFiles } from "./schema";
+export { chats, messages, uploadedDocuments, artifacts, projects, projectVersions, modelConfigs, workspaces, workspaceFiles } from "./schema";
 export type { 
   Workspace, NewWorkspace,
   WorkspaceFile, NewWorkspaceFile,
   Chat, NewChat, 
   Message, NewMessage, 
+  UploadedDocument, NewUploadedDocument,
   Artifact, NewArtifact,
   Project, NewProject,
   ProjectVersion, NewProjectVersion,

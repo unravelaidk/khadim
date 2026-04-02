@@ -13,6 +13,7 @@ const jobStartSchema = z.object({
   chatId: optionalString,
   sessionId: optionalString,
   badges: optionalString,
+  documentIds: z.array(z.string().min(1)).optional(),
   agentMode: z.enum(["plan", "build"]).optional(),
 });
 

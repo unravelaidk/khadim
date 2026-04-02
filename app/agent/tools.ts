@@ -7,6 +7,7 @@ import { db, artifacts, projects } from "../lib/db";
 import { eq, and } from "drizzle-orm";
 import { createVersionSnapshot } from "../lib/versions";
 import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
+import { readUploadedDocumentForAgent } from "../lib/uploaded-documents";
 
 // Type for our sandbox instance (compatible with RemoteSandbox from @khadim/codeexecution-client)
 export type SandboxInstance = {
@@ -1135,6 +1136,26 @@ ${text}`;
             path: z.string().optional().describe("Local path to a PDF or document file on disk"),
             targetPages: z.string().optional().describe("Page range to parse, e.g. '1-5' or '1,3,7'. Omit to parse all pages."),
             ocrEnabled: z.boolean().optional().default(false).describe("Enable OCR for scanned/image-based documents (slower)"),
+        }),
+    }
+);
+
+export const createReadUploadedDocumentTool = (chatId: string) => tool(
+    async ({ documentId, targetPages, maxChars = 12000 }: { documentId: string; targetPages?: string; maxChars?: number }) => {
+        try {
+            const result = await readUploadedDocumentForAgent({ chatId, documentId, targetPages, maxChars });
+            return result.output;
+        } catch (error) {
+            return `Error reading uploaded document: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+    {
+        name: "read_uploaded_document",
+        description: "Read the extracted content of a document the user uploaded to this chat or workspace. Use the document ID from the attached document list.",
+        schema: z.object({
+            documentId: z.string().describe("Document ID from the attached documents list"),
+            targetPages: z.string().optional().describe("Optional page range for PDFs, e.g. '1-5'"),
+            maxChars: z.number().optional().default(12000).describe("Maximum number of characters to return"),
         }),
     }
 );

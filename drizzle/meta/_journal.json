@@ -36,6 +36,13 @@
       "when": 1774713000000,
       "tag": "0005_workspace_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775097600000,
+      "tag": "0006_uploaded_documents",
+      "breakpoints": true
     }
   ]
 }

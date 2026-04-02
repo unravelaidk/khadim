@@ -12,6 +12,7 @@ type AgentRpcParamsMap = {
     chatId?: string;
     sessionId: string;
     badges?: string;
+    documentIds?: string[];
     agentMode?: "plan" | "build";
   };
   "job.stop": {

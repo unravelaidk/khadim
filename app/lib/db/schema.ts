@@ -32,6 +32,22 @@ export const chats = pgTable("chats", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const uploadedDocuments = pgTable("uploaded_documents", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  chatId: text("chat_id").references(() => chats.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type"),
+  size: integer("size").notNull(),
+  storagePath: text("storage_path").notNull(),
+  parseStatus: text("parse_status").notNull().default("pending"),
+  extractedText: text("extracted_text"),
+  pageCount: integer("page_count"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Individual message in a chat
 export const messages = pgTable("messages", {
   id: text("id").primaryKey().$defaultFn(() => createId()),
@@ -86,6 +102,8 @@ export type WorkspaceFile = typeof workspaceFiles.$inferSelect;
 export type NewWorkspaceFile = typeof workspaceFiles.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+export type UploadedDocument = typeof uploadedDocuments.$inferSelect;
+export type NewUploadedDocument = typeof uploadedDocuments.$inferInsert;
 export type Artifact = typeof artifacts.$inferSelect;
 export type NewArtifact = typeof artifacts.$inferInsert;
 export type Project = typeof projects.$inferSelect;
