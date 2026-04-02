@@ -272,7 +272,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     }
 
     const activeTools = filterToolsForAgent(allTools, agentMode);
-    const slidePreferredToolNames = new Set(["write_slides"]);
+    const slidePreferredToolNames = new Set(["write_slides", "ask_user", "web_search", "search_images"]);
     const requestTools = slideRequest
       ? activeTools.filter((tool) => slidePreferredToolNames.has(tool.name))
       : activeTools;
@@ -445,10 +445,8 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     const eventStream = app.streamEvents(inputs, { signal: runnerAbortController.signal });
     const eventIterator = eventStream[Symbol.asyncIterator]();
 
-    // Signal the frontend early so it can show the building skeleton
-    if (slideRequest) {
-      await broadcastJobEvent("slide_building", {});
-    }
+    // NOTE: slide_building is now sent when the write_slides tool actually starts,
+    // not eagerly — so the agent can ask clarifying questions first.
 
     while (true) {
       const nextEvent = await Promise.race([
@@ -576,7 +574,9 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         }
       }
       else if (eventType === "text_delta") {
-        if (slideRequest && !toolStarted) {
+        // Only suppress text_delta once the agent has started using tools
+        // (so clarifying questions still reach the user)
+        if (slideRequest && toolStarted) {
           continue;
         }
         const text = typeof data?.content === "string" ? data.content : "";
@@ -637,6 +637,8 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         else if (toolName === "delegate_to_agent") title = `Delegating to ${toolArgs.agent || "agent"}`;
 
         if (toolName === "write_slides") {
+          // Signal frontend now that we're actually building slides
+          await broadcastJobEvent("slide_building", {});
           const slideContent = typeof toolArgs.content === "string" ? toolArgs.content : undefined;
           const slideTheme = typeof toolArgs.theme === "string" ? toolArgs.theme : undefined;
           if (slideContent?.includes('<script id="slide-data"')) {
@@ -753,7 +755,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
       await broadcastJobEvent("slide_content", { fileContent: slideFileContent });
     }
 
-    if (slideRequest && !toolStarted && !slideFileContent) {
+    if (slideRequest && !toolStarted && !slideFileContent && !finalContent.trim()) {
       throw new Error("Slide generation finished without producing a presentation.");
     }
 
