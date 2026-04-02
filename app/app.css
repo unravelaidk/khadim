@@ -587,33 +587,34 @@ html.dark .prose-gb pre {
 /* Mobile markdown adjustments */
 @media (max-width: 640px) {
   .markdown-content {
-    font-size: 0.8rem;
+    font-size: 0.9375rem;
   }
 
   .markdown-content pre {
-    font-size: 0.65rem !important;
+    font-size: 0.8rem !important;
   }
 
   .markdown-content code {
-    font-size: 0.7rem !important;
+    font-size: 0.8125rem !important;
   }
 
   .markdown-content table {
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
   }
 
   .markdown-content ul,
   .markdown-content ol {
-    padding-left: 1em;
-    font-size: 0.8rem;
+    padding-left: 1.25em;
+    font-size: 0.9375rem;
   }
 
   .markdown-content p {
-    font-size: 0.8rem;
+    font-size: 0.9375rem;
+    line-height: 1.7;
   }
 
   .markdown-content blockquote {
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     padding-left: 0.75em;
   }
 }
