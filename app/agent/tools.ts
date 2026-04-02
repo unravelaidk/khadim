@@ -1,5 +1,5 @@
-import { tool } from "./pi-tool";
-import { z } from "zod";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { StringEnum, Type, type Static } from "@mariozechner/pi-ai";
 import * as fs from "node:fs/promises";
 import * as pathMod from "node:path";
 import { LiteParse } from "@llamaindex/liteparse";
@@ -8,6 +8,7 @@ import { eq, and } from "drizzle-orm";
 import { createVersionSnapshot } from "../lib/versions";
 import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 import { readUploadedDocumentForAgent } from "../lib/uploaded-documents";
+import { textToolResult } from "./tool-utils";
 
 // Type for our sandbox instance (compatible with RemoteSandbox from @khadim/codeexecution-client)
 export type SandboxInstance = {
@@ -35,51 +36,64 @@ function getStatusIcon(status: "pending" | "in_progress" | "done"): string {
 const lastSnapshotTime = new Map<string, number>();
 const SNAPSHOT_DEBOUNCE_MS = 30000; // 30 seconds between auto-snapshots
 
+const todoStatusSchema = StringEnum(["pending", "in_progress", "done"] as const, {
+    description: "Current status",
+});
+
+const appTypeSchema = StringEnum(["vite", "react-router", "astro"] as const, {
+    description: "The type of application: 'vite' for games/interactive, 'react-router' for web apps, 'astro' for simple static sites",
+});
+
+const sandboxActionSchema = StringEnum(["keep_alive", "stop"] as const, {
+    description: "Action to perform: 'keep_alive' (confirms active) or 'stop' (shuts down).",
+});
+
+const imageOrientationSchema = StringEnum(["landscape", "portrait", "squarish"] as const, {
+    description: "Image orientation filter - use 'landscape' for slide backgrounds",
+});
+
 // Planning tool - no sandbox needed, just returns the plan for visibility
-export const createPlanTool = () => tool(
-    async ({ goal, steps, estimatedToolCalls }: { goal: string; steps: string[]; estimatedToolCalls: number }) => {
+const createPlanParameters = Type.Object({
+    goal: Type.String({ description: "Brief description of what you're building" }),
+    steps: Type.Array(Type.String(), { description: "JSON array of step strings, e.g. [\"Step 1\", \"Step 2\"]" }),
+    estimatedToolCalls: Type.Number({ description: "Estimated number of tool calls to complete the task (target: under 10)" }),
+});
+
+export const createPlanTool = (): AgentTool<typeof createPlanParameters> => ({
+    name: "create_plan",
+    label: "create_plan",
+    description: "Create an execution plan before doing complex work. Use when the task benefits from explicit steps and approval.",
+    parameters: createPlanParameters,
+    execute: async (_toolCallId, { goal, steps, estimatedToolCalls }: Static<typeof createPlanParameters>) => {
         const planOutput = `
 📋 EXECUTION PLAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 Goal: ${goal}
 
 📝 Steps:
-${steps.map((step, i) => `   ${i + 1}. ${step}`).join('\n')}
+${steps.map((step: string, i: number) => `   ${i + 1}. ${step}`).join('\n')}
 
 ⏱️ Estimated tool calls: ${estimatedToolCalls}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
-        return planOutput;
+        return textToolResult(planOutput);
     },
-    {
-        name: "create_plan",
-        description: "Create an execution plan before doing complex work. Use when the task benefits from explicit steps and approval.",
-        schema: z.object({
-            goal: z.string().describe("Brief description of what you're building"),
-            steps: z.preprocess(
-                (val) => {
-                    if (Array.isArray(val)) return val;
-                    if (typeof val === "string") {
-                        return val
-                            .split(/\n/)
-                            .map((line) => line.replace(/^\s*\d+[\.\)]\s*/, "").trim())
-                            .filter(Boolean);
-                    }
-                    return [];
-                },
-                z.array(z.string()),
-            ).describe("JSON array of step strings, e.g. [\"Step 1\", \"Step 2\"]"),
-            estimatedToolCalls: z.preprocess(
-                (val) => (typeof val === "string" ? Number(val) : val),
-                z.number(),
-            ).describe("Estimated number of tool calls to complete the task (target: under 10)"),
-        }),
-    }
-);
+});
 
 // Todo tracking tools - help agent track progress on multi-step tasks
-export const createUpdateTodoTool = (chatId: string) => tool(
-    async ({ tasks }: { tasks: Array<{ task: string; status: "pending" | "in_progress" | "done" }> }) => {
+const updateTodoParameters = Type.Object({
+    tasks: Type.Array(Type.Object({
+        task: Type.String({ description: "Brief description of the task" }),
+        status: todoStatusSchema,
+    }), { description: "Full list of tasks with their current status" }),
+});
+
+export const createUpdateTodoTool = (chatId: string): AgentTool<typeof updateTodoParameters> => ({
+    name: "update_todo",
+    label: "update_todo",
+    description: "Update the todo list to track your progress. Use this after completing steps to stay on track.",
+    parameters: updateTodoParameters,
+    execute: async (_toolCallId, { tasks }: Static<typeof updateTodoParameters>) => {
         todoStorage.set(chatId, tasks);
 
         const pending = tasks.filter(t => t.status === "pending").length;
@@ -95,26 +109,22 @@ export const createUpdateTodoTool = (chatId: string) => tool(
         output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Progress: ${done}/${tasks.length} done | ${inProgress} in progress | ${pending} pending`;
 
-        return output;
+        return textToolResult(output);
     },
-    {
-        name: "update_todo",
-        description: "Update the todo list to track your progress. Use this after completing steps to stay on track.",
-        schema: z.object({
-            tasks: z.array(z.object({
-                task: z.string().describe("Brief description of the task"),
-                status: z.enum(["pending", "in_progress", "done"]).describe("Current status"),
-            })).describe("Full list of tasks with their current status"),
-        }),
-    }
-);
+});
 
-export const createReadTodoTool = (chatId: string) => tool(
-    async () => {
+const readTodoParameters = Type.Object({});
+
+export const createReadTodoTool = (chatId: string): AgentTool<typeof readTodoParameters> => ({
+    name: "read_todo",
+    label: "read_todo",
+    description: "Read the current todo list to see your progress and what steps remain.",
+    parameters: readTodoParameters,
+    execute: async () => {
         const tasks = todoStorage.get(chatId) || [];
 
         if (tasks.length === 0) {
-            return "📋 No todo list exists yet. Use update_todo to create one.";
+            return textToolResult("📋 No todo list exists yet. Use update_todo to create one.");
         }
 
         let output = `📋 CURRENT TODO LIST
@@ -131,17 +141,20 @@ export const createReadTodoTool = (chatId: string) => tool(
         output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Progress: ${done}/${tasks.length} done | ${inProgress} in progress | ${pending} pending`;
 
-        return output;
+        return textToolResult(output);
     },
-    {
-        name: "read_todo",
-        description: "Read the current todo list to see your progress and what steps remain.",
-        schema: z.object({}),
-    }
-);
+});
 
-export const createRunCodeTool = (sandbox: SandboxInstance) => tool(
-    async ({ code }: { code: string }) => {
+const runCodeParameters = Type.Object({
+    code: Type.String({ description: "The TypeScript code to execute." }),
+});
+
+export const createRunCodeTool = (sandbox: SandboxInstance): AgentTool<typeof runCodeParameters> => ({
+    name: "run_code",
+    label: "run_code",
+    description: "Run TypeScript/JavaScript code in the sandbox. You can write files (like HTML/CSS) using Bun.write inside your script.",
+    parameters: runCodeParameters,
+    execute: async (_toolCallId, { code }: Static<typeof runCodeParameters>) => {
         try {
             // Write the script file
             const scriptPath = "script.ts";
@@ -150,62 +163,68 @@ export const createRunCodeTool = (sandbox: SandboxInstance) => tool(
             // Execute using bun (the sandbox runs Bun)
             const result = await sandbox.exec(`bun run ${scriptPath}`);
 
-            return `Exit Code: ${result.exitCode}\nStdout:\n${result.stdout}\nStderr:\n${result.stderr}`;
+            return textToolResult(`Exit Code: ${result.exitCode}\nStdout:\n${result.stdout}\nStderr:\n${result.stderr}`);
         } catch (error) {
-            return `Execution Error: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Execution Error: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "run_code",
-        description: "Run TypeScript/JavaScript code in the sandbox. You can write files (like HTML/CSS) using Bun.write inside your script.",
-        schema: z.object({
-            code: z.string().describe("The TypeScript code to execute."),
-        }),
-    }
-);
+});
 
-export const createReadFileTool = (sandbox: SandboxInstance) => tool(
-    async ({ path }: { path: string }) => {
+const readFileParameters = Type.Object({
+    path: Type.String({ description: "Path to the file (e.g., index.html)" }),
+});
+
+export const createReadFileTool = (sandbox: SandboxInstance): AgentTool<typeof readFileParameters> => ({
+    name: "read_file",
+    label: "read_file",
+    description: "Read the content of a file from the sandbox. Use this to retrieve built artifacts (like index.html) to show to the user.",
+    parameters: readFileParameters,
+    execute: async (_toolCallId, { path }: Static<typeof readFileParameters>) => {
         try {
             const content = await sandbox.readFile(path);
-            return content;
+            return textToolResult(content);
         } catch (error) {
-            return `Error reading file '${path}': ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error reading file '${path}': ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "read_file",
-        description: "Read the content of a file from the sandbox. Use this to retrieve built artifacts (like index.html) to show to the user.",
-        schema: z.object({
-            path: z.string().describe("Path to the file (e.g., index.html)"),
-        }),
-    }
-);
+});
 
-export const createListFilesTool = (sandbox: SandboxInstance) => tool(
-    async ({ path }: { path: string }) => {
+const listFilesParameters = Type.Object({
+    path: Type.String({ default: ".", description: "Directory path to list" }),
+});
+
+export const createListFilesTool = (sandbox: SandboxInstance): AgentTool<typeof listFilesParameters> => ({
+    name: "list_files",
+    label: "list_files",
+    description: "List files in a directory.",
+    parameters: listFilesParameters,
+    execute: async (_toolCallId, { path }: Static<typeof listFilesParameters>) => {
         try {
             const result = await sandbox.exec(`ls -la ${path}`);
             if (result.exitCode !== 0) {
-                return `Error listing files: ${result.stderr}`;
+                return textToolResult(`Error listing files: ${result.stderr}`);
             }
-            return result.stdout;
+            return textToolResult(result.stdout);
         } catch (error) {
-            return `Error listing files: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error listing files: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "list_files",
-        description: "List files in a directory.",
-        schema: z.object({ path: z.string().default(".").describe("Directory path to list") })
-    }
-);
+});
+
+const writeFileParameters = Type.Object({
+    path: Type.String({ description: "Path to the file (e.g., index.html)" }),
+    content: Type.String({ description: "Content to write to the file" }),
+});
 
 export const createWriteFileTool = (
     sandboxOrGetter: SandboxInstance | null | (() => SandboxInstance | null),
     chatId?: string
-) => tool(
-    async ({ path, content }: { path: string; content: string }) => {
+) : AgentTool<typeof writeFileParameters> => ({
+    name: "write_file",
+    label: "write_file",
+    description: "Write content to a file in the sandbox when available, or persist it to chat storage so it can later sync into a workspace.",
+    parameters: writeFileParameters,
+    execute: async (_toolCallId, { path, content }: Static<typeof writeFileParameters>) => {
         try {
             const sandbox = typeof sandboxOrGetter === "function" ? sandboxOrGetter() : sandboxOrGetter;
 
@@ -216,7 +235,7 @@ export const createWriteFileTool = (
                 }
                 await sandbox.writeFile(path, content);
             } else if (!chatId) {
-                return `Error writing file '${path}': no active sandbox is available.`;
+                return textToolResult(`Error writing file '${path}': no active sandbox is available.`);
             }
 
             if (chatId) {
@@ -246,26 +265,26 @@ export const createWriteFileTool = (
             }
 
             if (sandbox) {
-                return `Successfully wrote ${content.length} bytes to ${path}`;
+                return textToolResult(`Successfully wrote ${content.length} bytes to ${path}`);
             }
 
-            return `Successfully saved ${content.length} bytes to ${path} in chat storage${chatId ? "; it will also sync to any workspace linked later" : ""}`;
+            return textToolResult(`Successfully saved ${content.length} bytes to ${path} in chat storage${chatId ? "; it will also sync to any workspace linked later" : ""}`);
         } catch (error) {
-            return `Error writing file '${path}': ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error writing file '${path}': ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "write_file",
-        description: "Write content to a file in the sandbox when available, or persist it to chat storage so it can later sync into a workspace.",
-        schema: z.object({
-            path: z.string().describe("Path to the file (e.g., index.html)"),
-            content: z.string().describe("Content to write to the file"),
-        }),
-    }
-);
+});
 
-export const createShellTool = (sandbox: SandboxInstance) => tool(
-    async ({ command }: { command: string }) => {
+const shellParameters = Type.Object({
+    command: Type.String({ description: "The shell command to run" }),
+});
+
+export const createShellTool = (sandbox: SandboxInstance): AgentTool<typeof shellParameters> => ({
+    name: "shell",
+    label: "shell",
+    description: "Run a shell command. DO NOT use for long-running processes (like servers) as it will block. If a command fails, read the FULL error output.",
+    parameters: shellParameters,
+    execute: async (_toolCallId, { command }: Static<typeof shellParameters>) => {
         // Block server commands that would hang forever
         const serverPatterns = [
             /python3?\s+-m\s+http\.server/i,
@@ -278,12 +297,12 @@ export const createShellTool = (sandbox: SandboxInstance) => tool(
 
         const isServerCommand = serverPatterns.some(pattern => pattern.test(command));
         if (isServerCommand) {
-            return `⛔ BLOCKED: The shell tool cannot run servers (they hang forever).
+            return textToolResult(`⛔ BLOCKED: The shell tool cannot run servers (they hang forever).
 
 You tried: ${command}
 
 ✅ SOLUTION: Build your project with 'bun run build', then call 'expose_preview' to start a server and get a public URL.
-Example: expose_preview({ root: "dist" }) or expose_preview({ root: "." })`;
+Example: expose_preview({ root: "dist" }) or expose_preview({ root: "." })`);
         }
 
         try {
@@ -292,7 +311,7 @@ Example: expose_preview({ root: "dist" }) or expose_preview({ root: "." })`;
             // Return full output with clear formatting for error analysis
             if (result.exitCode !== 0) {
                 // Command failed - return detailed error info
-                return `❌ COMMAND FAILED
+                return textToolResult(`❌ COMMAND FAILED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Command: ${command}
 Exit Code: ${result.exitCode}
@@ -303,34 +322,36 @@ ${result.stdout || "(empty)"}
 STDERR:
 ${result.stderr || "(empty)"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ ANALYZE THE ERROR ABOVE and fix the specific issue. Do NOT retry with the same command.`;
+⚠️ ANALYZE THE ERROR ABOVE and fix the specific issue. Do NOT retry with the same command.`);
             }
 
             // Command succeeded
-            return `✅ Exit: ${result.exitCode}\n${result.stdout}${result.stderr ? `\nStderr: ${result.stderr}` : ""}`;
+            return textToolResult(`✅ Exit: ${result.exitCode}\n${result.stdout}${result.stderr ? `\nStderr: ${result.stderr}` : ""}`);
         } catch (error) {
-            return `❌ Shell Error: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`❌ Shell Error: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "shell",
-        description: "Run a shell command. DO NOT use for long-running processes (like servers) as it will block. If a command fails, read the FULL error output.",
-        schema: z.object({
-            command: z.string().describe("The shell command to run"),
-        }),
-    }
-);
+});
 
-export const createExposePreviewTool = (sandbox: SandboxInstance, setPreviewUrl: (url: string) => void) => tool(
-    async ({ root, port }: { root: string; port?: number }) => {
+const exposePreviewParameters = Type.Object({
+    root: Type.String({ default: ".", description: "The directory containing built files (e.g., '.' or 'dist')" }),
+    port: Type.Optional(Type.Number({ description: "Port to expose (use when a dev server is already running)." })),
+});
+
+export const createExposePreviewTool = (sandbox: SandboxInstance, setPreviewUrl: (url: string) => void): AgentTool<typeof exposePreviewParameters> => ({
+    name: "expose_preview",
+    label: "expose_preview",
+    description: "Expose a sandbox port for live preview. If port is omitted, a static server is started from the root on port 8000.",
+    parameters: exposePreviewParameters,
+    execute: async (_toolCallId, { root, port }: Static<typeof exposePreviewParameters>) => {
         try {
             const result = await sandbox.exec(`ls -la ${root}`);
             if (result.exitCode !== 0) {
-                return `Error checking build directory: ${result.stderr}`;
+                return textToolResult(`Error checking build directory: ${result.stderr}`);
             }
 
             if (!sandbox.exposeHttp) {
-                return `Live preview is not supported by the current sandbox server. Please save artifacts (like index.html) instead.`;
+                return textToolResult(`Live preview is not supported by the current sandbox server. Please save artifacts (like index.html) instead.`);
             }
 
             const previewPort = port ?? 8000;
@@ -338,7 +359,7 @@ export const createExposePreviewTool = (sandbox: SandboxInstance, setPreviewUrl:
             // The 'port' parameter just specifies which port to use
             {
                 if (!sandbox.spawn) {
-                    return "Sandbox does not support background servers (spawn missing).";
+                    return textToolResult("Sandbox does not support background servers (spawn missing).");
                 }
 
                 const serverPath = `_preview_server_${previewPort}.ts`;
@@ -392,7 +413,7 @@ console.log("Static server running on port ${previewPort} serving " + root);
                 const spawnResult = await sandbox.spawn(["bun", "run", serverPath]);
 
                 if (!spawnResult || !spawnResult.pid) {
-                    return `Error: Failed to start preview server - spawn returned no PID`;
+                    return textToolResult(`Error: Failed to start preview server - spawn returned no PID`);
                 }
 
                 // Wait for server to start and verify it's running
@@ -409,33 +430,35 @@ console.log("Static server running on port ${previewPort} serving " + root);
             const previewUrl = await sandbox.exposeHttp({ port: previewPort });
             setPreviewUrl(previewUrl);
 
-            return `✅ Live preview ready: ${previewUrl}`;
+            return textToolResult(`✅ Live preview ready: ${previewUrl}`);
         } catch (error) {
-            return `Expose Error: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Expose Error: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "expose_preview",
-        description: "Expose a sandbox port for live preview. If port is omitted, a static server is started from the root on port 8000.",
-        schema: z.object({
-            root: z.string().default(".").describe("The directory containing built files (e.g., '.' or 'dist')"),
-            port: z.number().optional().describe("Port to expose (use when a dev server is already running)."),
-        }),
-    }
-);
+});
 
-export const createWebAppTool = (sandbox: SandboxInstance, chatId?: string) => tool(
-    async ({ type, name, template }: { type: "vite" | "react-router" | "astro"; name: string, template?: string }) => {
+const createWebAppParameters = Type.Object({
+    type: appTypeSchema,
+    name: Type.String({ description: "The name of the project directory" }),
+    template: Type.Optional(Type.String({ description: "Template to use. For astro: 'basics', 'blog', 'starlight' (docs), 'starlog', 'portfolio', 'minimal'. For react-router: 'minimal', 'javascript', etc." })),
+});
+
+export const createWebAppTool = (sandbox: SandboxInstance, chatId?: string): AgentTool<typeof createWebAppParameters> => ({
+    name: "create_web_app",
+    label: "create_web_app",
+    description: "Scaffold a new web application. Use 'vite' for React games/interactive apps, 'react-router' for full web apps, or 'astro' for simple static sites.",
+    parameters: createWebAppParameters,
+    execute: async (_toolCallId, { type, name, template }: Static<typeof createWebAppParameters>) => {
         // Validate type parameter - this is REQUIRED
         if (!type || !["vite", "react-router", "astro"].includes(type)) {
-            return `❌ ERROR: 'type' parameter is REQUIRED and must be one of: "vite", "react-router", or "astro".
+            return textToolResult(`❌ ERROR: 'type' parameter is REQUIRED and must be one of: "vite", "react-router", or "astro".
 
 You called: create_web_app({ type: ${JSON.stringify(type)}, name: "${name}" })
 
 Correct usage:
 ✅ create_web_app({ type: "astro", name: "${name}" })
 ✅ create_web_app({ type: "vite", name: "${name}" })
-✅ create_web_app({ type: "react-router", name: "${name}" })`;
+✅ create_web_app({ type: "react-router", name: "${name}" })`);
         }
 
         try {
@@ -454,7 +477,7 @@ Correct usage:
             const result = await sandbox.exec(command);
 
             if (result.exitCode !== 0) {
-                return `Failed to create app.\nExit Code: ${result.exitCode}\nOutput:\n${result.stdout}\n${result.stderr}`;
+                return textToolResult(`Failed to create app.\nExit Code: ${result.exitCode}\nOutput:\n${result.stdout}\n${result.stderr}`);
             }
 
             // Sync artifacts if chatId provided
@@ -526,24 +549,23 @@ Correct usage:
                 outputPath = `${name}/build/client`;
             }
 
-            return `Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps:\n1. shell: cd ${name} && bun install\n2. Write your application code with write_file\n3. shell: cd ${name} && bun run build\n4. expose_preview({ root: "${outputPath}" }) to get a live preview URL`;
+            return textToolResult(`Successfully generated ${type} app (template: ${template || "default"}) in '${name}'.\n\nNext steps:\n1. shell: cd ${name} && bun install\n2. Write your application code with write_file\n3. shell: cd ${name} && bun run build\n4. expose_preview({ root: "${outputPath}" }) to get a live preview URL`);
         } catch (error) {
-            return `Error creating app: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error creating app: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "create_web_app",
-        description: "Scaffold a new web application. Use 'vite' for React games/interactive apps, 'react-router' for full web apps, or 'astro' for simple static sites.",
-        schema: z.object({
-            type: z.enum(["vite", "react-router", "astro"]).describe("The type of application: 'vite' for games/interactive, 'react-router' for web apps, 'astro' for simple static sites"),
-            name: z.string().describe("The name of the project directory"),
-            template: z.string().optional().describe("Template to use. For astro: 'basics', 'blog', 'starlight' (docs), 'starlog', 'portfolio', 'minimal'. For react-router: 'minimal', 'javascript', etc."),
-        }),
-    }
-);
+});
 
-export const createSaveArtifactTool = (sandbox: SandboxInstance, chatId: string) => tool(
-    async ({ path }: { path: string }) => {
+const saveArtifactParameters = Type.Object({
+    path: Type.String({ description: "Path to the file in the sandbox" }),
+});
+
+export const createSaveArtifactTool = (sandbox: SandboxInstance, chatId: string): AgentTool<typeof saveArtifactParameters> => ({
+    name: "save_artifact",
+    label: "save_artifact",
+    description: "Save a file from the sandbox to the persistent database. REQUIRED for persistent storage and for non-text files (PPTX, images, PDFs, etc.) to be downloadable.",
+    parameters: saveArtifactParameters,
+    execute: async (_toolCallId, { path }: Static<typeof saveArtifactParameters>) => {
         try {
             // Check extension
             const ext = pathMod.extname(path).toLowerCase();
@@ -555,7 +577,7 @@ export const createSaveArtifactTool = (sandbox: SandboxInstance, chatId: string)
                 // Read as base64 using exec
                 const result = await sandbox.exec(`cat "${path}" | base64`);
                 if (result.exitCode !== 0) {
-                    return `Error reading file: ${result.stderr}`;
+                    return textToolResult(`Error reading file: ${result.stderr}`);
                 }
                 // Remove newlines/spaces from base64 output
                 content = `base64:${result.stdout.replace(/\s/g, '')}`;
@@ -577,49 +599,43 @@ export const createSaveArtifactTool = (sandbox: SandboxInstance, chatId: string)
             }).returning();
             await syncWorkspaceFileForChat(chatId, path, content);
 
-            return `Saved artifact '${path}' (ID: ${artifact.id}). View/Download at: /api/artifacts/${artifact.id}`;
+            return textToolResult(`Saved artifact '${path}' (ID: ${artifact.id}). View/Download at: /api/artifacts/${artifact.id}`);
 
         } catch (error) {
-            return `Error saving artifact: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error saving artifact: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "save_artifact",
-        description: "Save a file from the sandbox to the persistent database. REQUIRED for persistent storage and for non-text files (PPTX, images, PDFs, etc.) to be downloadable.",
-        schema: z.object({
-            path: z.string().describe("Path to the file in the sandbox")
-        })
-    }
-);
+});
 
-export const createManageSandboxTool = (sandbox: SandboxInstance) => tool(
-    async ({ action }: { action: "keep_alive" | "stop" }) => {
+const manageSandboxParameters = Type.Object({
+    action: sandboxActionSchema,
+});
+
+export const createManageSandboxTool = (sandbox: SandboxInstance): AgentTool<typeof manageSandboxParameters> => ({
+    name: "manage_sandbox",
+    label: "manage_sandbox",
+    description: "Control the sandbox lifecycle. Use 'keep_alive' to confirm session is active. Use 'stop' when the task is permanently done.",
+    parameters: manageSandboxParameters,
+    execute: async (_toolCallId, { action }: Static<typeof manageSandboxParameters>) => {
         try {
             if (action === "keep_alive") {
                 // Remote sandbox doesn't support extendLifetime directly
                 // Return a message indicating the limitation
-                return "⚠️ Note: The remote sandbox manages its own lifetime. Your session will remain active while you're working.";
+                return textToolResult("⚠️ Note: The remote sandbox manages its own lifetime. Your session will remain active while you're working.");
             } else if (action === "stop") {
                 // Use kill() if available
                 if (sandbox.kill) {
                     await sandbox.kill();
-                    return "🛑 Sandbox shutdown initiated.";
+                    return textToolResult("🛑 Sandbox shutdown initiated.");
                 }
-                return "⚠️ Warning: Could not explicitly stop sandbox (kill not available).";
+                return textToolResult("⚠️ Warning: Could not explicitly stop sandbox (kill not available).");
             }
-            return "❌ Invalid action.";
+            return textToolResult("❌ Invalid action.");
         } catch (error) {
-            return `Error managing sandbox: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error managing sandbox: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "manage_sandbox",
-        description: "Control the sandbox lifecycle. Use 'keep_alive' to confirm session is active. Use 'stop' when the task is permanently done.",
-        schema: z.object({
-            action: z.enum(["keep_alive", "stop"]).describe("Action to perform: 'keep_alive' (confirms active) or 'stop' (shuts down)."),
-        }),
-    }
-);
+});
 
 // Helper function for DuckDuckGo search
 async function searchDuckDuckGo(query: string, numResults: number): Promise<Array<{ title: string; snippet: string; url: string }> | null> {
@@ -698,8 +714,17 @@ async function searchBrave(query: string, numResults: number): Promise<Array<{ t
     }
 }
 
-export const createWebSearchTool = () => tool(
-    async ({ query, numResults = 5 }: { query: string; numResults?: number }) => {
+const webSearchParameters = Type.Object({
+    query: Type.String({ description: "The search query - be specific for better results" }),
+    numResults: Type.Number({ default: 5, description: "Number of results to return (default: 5, max: 10)" }),
+});
+
+export const createWebSearchTool = (): AgentTool<typeof webSearchParameters> => ({
+    name: "web_search",
+    label: "web_search",
+    description: "Search the web to find current information. Uses DuckDuckGo with Brave Search as fallback. Use this to research topics, find facts for slide content, get up-to-date data, or verify information. Returns titles, snippets, and URLs.",
+    parameters: webSearchParameters,
+    execute: async (_toolCallId, { query, numResults = 5 }: Static<typeof webSearchParameters>) => {
         try {
             // Try DuckDuckGo first
             let results = await searchDuckDuckGo(query, numResults);
@@ -715,9 +740,9 @@ export const createWebSearchTool = () => tool(
             if (!results || results.length === 0) {
                 const hasBraveKey = !!process.env.BRAVE_SEARCH_API_KEY;
                 if (!hasBraveKey) {
-                    return `🔍 No results found for: "${query}"\n\nDuckDuckGo search failed. For better reliability, add BRAVE_SEARCH_API_KEY to your environment.\nGet a free API key at: https://brave.com/search/api/`;
+                    return textToolResult(`🔍 No results found for: "${query}"\n\nDuckDuckGo search failed. For better reliability, add BRAVE_SEARCH_API_KEY to your environment.\nGet a free API key at: https://brave.com/search/api/`);
                 }
-                return `🔍 No results found for: "${query}"\n\nTry rephrasing your search or using different keywords.`;
+                return textToolResult(`🔍 No results found for: "${query}"\n\nTry rephrasing your search or using different keywords.`);
             }
 
             let output = `🔍 WEB SEARCH RESULTS (${source})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nQuery: "${query}"\n\n`;
@@ -731,20 +756,12 @@ export const createWebSearchTool = () => tool(
             output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
             output += `Found ${results.length} results. Use this information to inform your response.`;
 
-            return output;
+            return textToolResult(output);
         } catch (error) {
-            return `Search error: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Search error: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "web_search",
-        description: "Search the web to find current information. Uses DuckDuckGo with Brave Search as fallback. Use this to research topics, find facts for slide content, get up-to-date data, or verify information. Returns titles, snippets, and URLs.",
-        schema: z.object({
-            query: z.string().describe("The search query - be specific for better results"),
-            numResults: z.number().optional().default(5).describe("Number of results to return (default: 5, max: 10)"),
-        }),
-    }
-);
+});
 
 // Enhance image search queries for better results
 function enhanceImageQuery(query: string): string {
@@ -844,8 +861,18 @@ async function searchUnsplash(query: string, numResults: number, orientation?: s
     }
 }
 
-export const createSearchImagesTool = () => tool(
-    async ({ query, numResults = 5, orientation }: { query: string; numResults?: number; orientation?: "landscape" | "portrait" | "squarish" }) => {
+const searchImagesParameters = Type.Object({
+    query: Type.String({ description: "Search query for images - be specific (e.g., 'GPU graphics card', 'team collaboration office', 'data visualization chart')" }),
+    numResults: Type.Number({ default: 5, description: "Number of images to return (default: 5)" }),
+    orientation: Type.Optional(imageOrientationSchema),
+});
+
+export const createSearchImagesTool = (): AgentTool<typeof searchImagesParameters> => ({
+    name: "search_images",
+    label: "search_images",
+    description: "Search for high-quality images to use in slides or presentations. Returns image URLs that can be used in 'image' type slides. Use specific, descriptive queries - the tool will enhance them for better results.",
+    parameters: searchImagesParameters,
+    execute: async (_toolCallId, { query, numResults = 5, orientation }: Static<typeof searchImagesParameters>) => {
         try {
             // Enhance the query for better results
             const enhancedQuery = enhanceImageQuery(query);
@@ -884,7 +911,7 @@ export const createSearchImagesTool = () => tool(
 
             // Fall back to DuckDuckGo
             if (!results || results.length === 0) {
-                return await searchDuckDuckGoImages(query, numResults);
+                return textToolResult(await searchDuckDuckGoImages(query, numResults));
             }
 
             let output = `🖼️ IMAGE SEARCH RESULTS (${source})
@@ -913,26 +940,17 @@ Example slide JSON:
   "caption": "Photo credit"
 }`;
 
-            return output;
+            return textToolResult(output);
         } catch (error) {
             // Fallback to DuckDuckGo
             try {
-                return await searchDuckDuckGoImages(query, numResults);
+                return textToolResult(await searchDuckDuckGoImages(query, numResults));
             } catch {
-                return `Image search error: ${error instanceof Error ? error.message : String(error)}`;
+                return textToolResult(`Image search error: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
     },
-    {
-        name: "search_images",
-        description: "Search for high-quality images to use in slides or presentations. Returns image URLs that can be used in 'image' type slides. Use specific, descriptive queries - the tool will enhance them for better results.",
-        schema: z.object({
-            query: z.string().describe("Search query for images - be specific (e.g., 'GPU graphics card', 'team collaboration office', 'data visualization chart')"),
-            numResults: z.number().optional().default(5).describe("Number of images to return (default: 5)"),
-            orientation: z.enum(["landscape", "portrait", "squarish"]).optional().describe("Image orientation filter - use 'landscape' for slide backgrounds"),
-        }),
-    }
-);
+});
 
 // Fallback image search using DuckDuckGo
 async function searchDuckDuckGoImages(query: string, numResults: number = 5): Promise<string> {
@@ -996,15 +1014,25 @@ Use these URLs in 'image' type slides.`;
     return output;
 }
 
+const writeSlidesParameters = Type.Object({
+    content: Type.String({ description: "The complete HTML content with embedded slide-data JSON" }),
+    title: Type.Optional(Type.String({ description: "Optional title for the presentation" })),
+    theme: Type.Optional(Type.String({ description: "Theme: minimalist, paper, noir, brass, cobalt, emerald, midnight" })),
+});
+
 export const createWriteSlidesTool = (
     chatId: string, 
     broadcastFn: (event: { type: string; data: any }) => Promise<void>
-) => tool(
-    async ({ content, title, theme }: { content: string; title?: string; theme?: string }) => {
+) : AgentTool<typeof writeSlidesParameters> => ({
+    name: "write_slides",
+    label: "write_slides",
+    description: `Write slide presentation HTML (NO SANDBOX NEEDED). THEMES: minimalist, paper, noir, brass, cobalt, emerald, midnight. Before calling this, research the topic with available tools unless the user already provided the needed source material.`,
+    parameters: writeSlidesParameters,
+    execute: async (_toolCallId, { content, title, theme }: Static<typeof writeSlidesParameters>) => {
         try {
             // Validate that content contains slide-data script tag
             if (!content.includes('<script id="slide-data"') && !content.includes("<script id='slide-data'")) {
-                return `❌ ERROR: Slide content must include a <script id="slide-data" type="application/json"> tag with slide data.
+                return textToolResult(`❌ ERROR: Slide content must include a <script id="slide-data" type="application/json"> tag with slide data.
 
 Example:
 <script id="slide-data" type="application/json">
@@ -1012,7 +1040,7 @@ Example:
   {"id": 1, "type": "title", "title": "My Presentation", "subtitle": "A great topic"},
   {"id": 2, "type": "content", "title": "Overview", "bullets": ["Point 1", "Point 2"]}
 ]
-</script>`;
+</script>`);
             }
 
             const filename = "index.html";
@@ -1049,32 +1077,34 @@ Example:
             });
 
             const themeInfo = theme ? ` with "${theme}" theme` : "";
-            return `✅ Successfully saved ${title ? `"${title}"` : "presentation"}${themeInfo} (${content.length} bytes).
-The slides are now visible in the preview panel.`;
+            return textToolResult(`✅ Successfully saved ${title ? `"${title}"` : "presentation"}${themeInfo} (${content.length} bytes).
+The slides are now visible in the preview panel.`);
         } catch (error) {
-            return `Error saving slides: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error saving slides: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "write_slides",
-        description: `Write slide presentation HTML (NO SANDBOX NEEDED). THEMES: minimalist, paper, noir, brass, cobalt, emerald, midnight. Before calling this, research the topic with available tools unless the user already provided the needed source material.`,
-        schema: z.object({
-            content: z.string().describe("The complete HTML content with embedded slide-data JSON"),
-            title: z.string().optional().describe("Optional title for the presentation"),
-            theme: z.string().optional().describe("Theme: minimalist, paper, noir, brass, cobalt, emerald, midnight"),
-        }),
-    }
-);
+});
 
-export const createParseDocumentTool = () => tool(
-    async ({ url, path, targetPages, ocrEnabled = false }: { url?: string; path?: string; targetPages?: string; ocrEnabled?: boolean }) => {
+const parseDocumentParameters = Type.Object({
+    url: Type.Optional(Type.String({ description: "Direct URL to the PDF or document file" })),
+    path: Type.Optional(Type.String({ description: "Local path to a PDF or document file on disk" })),
+    targetPages: Type.Optional(Type.String({ description: "Page range to parse, e.g. '1-5' or '1,3,7'. Omit to parse all pages." })),
+    ocrEnabled: Type.Boolean({ default: false, description: "Enable OCR for scanned/image-based documents (slower)" }),
+});
+
+export const createParseDocumentTool = (): AgentTool<typeof parseDocumentParameters> => ({
+    name: "parse_document",
+    label: "parse_document",
+    description: "Parse a PDF with LiteParse and extract text from either a direct URL or a local file path. Supports page targeting and optional OCR for scanned PDFs.",
+    parameters: parseDocumentParameters,
+    execute: async (_toolCallId, { url, path, targetPages, ocrEnabled = false }: Static<typeof parseDocumentParameters>) => {
         try {
             if (!url && !path) {
-                return "Error: Provide either a document URL or a local file path.";
+                return textToolResult("Error: Provide either a document URL or a local file path.");
             }
 
             if (url && path) {
-                return "Error: Provide only one document source at a time: either url or path.";
+                return textToolResult("Error: Provide only one document source at a time: either url or path.");
             }
 
             let source = "";
@@ -1084,7 +1114,7 @@ export const createParseDocumentTool = () => tool(
             if (url) {
                 const response = await fetch(url);
                 if (!response.ok) {
-                    return `Error: Failed to fetch document from URL (${response.status} ${response.statusText})`;
+                    return textToolResult(`Error: Failed to fetch document from URL (${response.status} ${response.statusText})`);
                 }
 
                 source = url;
@@ -1123,39 +1153,30 @@ Characters: ${textLength}${truncated ? " (truncated to 30,000)" : ""}
 
 ${text}`;
 
-            return output;
+            return textToolResult(output);
         } catch (error) {
-            return `Error parsing document: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error parsing document: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "parse_document",
-        description: "Parse a PDF with LiteParse and extract text from either a direct URL or a local file path. Supports page targeting and optional OCR for scanned PDFs.",
-        schema: z.object({
-            url: z.string().optional().describe("Direct URL to the PDF or document file"),
-            path: z.string().optional().describe("Local path to a PDF or document file on disk"),
-            targetPages: z.string().optional().describe("Page range to parse, e.g. '1-5' or '1,3,7'. Omit to parse all pages."),
-            ocrEnabled: z.boolean().optional().default(false).describe("Enable OCR for scanned/image-based documents (slower)"),
-        }),
-    }
-);
+});
 
-export const createReadUploadedDocumentTool = (chatId: string) => tool(
-    async ({ documentId, targetPages, maxChars = 12000 }: { documentId: string; targetPages?: string; maxChars?: number }) => {
+const readUploadedDocumentParameters = Type.Object({
+    documentId: Type.String({ description: "Document ID from the attached documents list" }),
+    targetPages: Type.Optional(Type.String({ description: "Optional page range for PDFs, e.g. '1-5'" })),
+    maxChars: Type.Number({ default: 12000, description: "Maximum number of characters to return" }),
+});
+
+export const createReadUploadedDocumentTool = (chatId: string): AgentTool<typeof readUploadedDocumentParameters> => ({
+    name: "read_uploaded_document",
+    label: "read_uploaded_document",
+    description: "Read the extracted content of a document the user uploaded to this chat or workspace. Use the document ID from the attached document list.",
+    parameters: readUploadedDocumentParameters,
+    execute: async (_toolCallId, { documentId, targetPages, maxChars = 12000 }: Static<typeof readUploadedDocumentParameters>) => {
         try {
             const result = await readUploadedDocumentForAgent({ chatId, documentId, targetPages, maxChars });
-            return result.output;
+            return textToolResult(result.output);
         } catch (error) {
-            return `Error reading uploaded document: ${error instanceof Error ? error.message : String(error)}`;
+            return textToolResult(`Error reading uploaded document: ${error instanceof Error ? error.message : String(error)}`);
         }
     },
-    {
-        name: "read_uploaded_document",
-        description: "Read the extracted content of a document the user uploaded to this chat or workspace. Use the document ID from the attached document list.",
-        schema: z.object({
-            documentId: z.string().describe("Document ID from the attached documents list"),
-            targetPages: z.string().optional().describe("Optional page range for PDFs, e.g. '1-5'"),
-            maxChars: z.number().optional().default(12000).describe("Maximum number of characters to return"),
-        }),
-    }
-);
+});

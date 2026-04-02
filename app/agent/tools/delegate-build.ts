@@ -1,5 +1,11 @@
-import { tool } from "../pi-tool";
-import { z } from "zod";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { Type, type Static } from "@mariozechner/pi-ai";
+import { textToolResult } from "../tool-utils";
+
+const delegateBuildParameters = Type.Object({
+    plan: Type.String({ description: "The approved plan to execute, summarized clearly for the build agent" }),
+    context: Type.Optional(Type.String({ description: "Additional context or user preferences to pass to build agent" })),
+});
 
 /**
  * Delegate to Build Tool
@@ -8,18 +14,10 @@ import { z } from "zod";
  * Returns a special marker that the API will detect to switch to Build mode.
  */
 export function createDelegateToBuildTool() {
-    return tool(
-        async ({ plan, context }: { plan: string; context?: string }) => {
-            // Return a special marker that the API will detect
-            return JSON.stringify({
-                __DELEGATE_BUILD__: true,
-                plan,
-                context: context || "",
-            });
-        },
-        {
-            name: "delegate_to_build",
-            description: `Hand off to the Build agent to execute an approved plan.
+    return {
+        name: "delegate_to_build",
+        label: "delegate_to_build",
+        description: `Hand off to the Build agent to execute an approved plan.
             
 WHEN TO USE:
 - After creating a plan with create_plan
@@ -34,12 +32,15 @@ Example flow:
 3. You: Ask for approval with ask_user
 4. User: "Yes, proceed"
 5. You: Call delegate_to_build with the plan details`,
-            schema: z.object({
-                plan: z.string().describe("The approved plan to execute, summarized clearly for the build agent"),
-                context: z.string().optional().describe("Additional context or user preferences to pass to build agent"),
-            }),
-        }
-    );
+        parameters: delegateBuildParameters,
+        execute: async (_toolCallId: string, { plan, context }: Static<typeof delegateBuildParameters>) => {
+            return textToolResult(JSON.stringify({
+                __DELEGATE_BUILD__: true,
+                plan,
+                context: context || "",
+            }));
+        },
+    } satisfies AgentTool<typeof delegateBuildParameters>;
 }
 
 /**
