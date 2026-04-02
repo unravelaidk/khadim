@@ -38,11 +38,22 @@ import { db, messages, chats, artifacts, workspaceFiles } from "../lib/db";
 import { getActiveModel, createModelInstance } from "./model-manager";
 import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 
-function summarizeToolCallPreview(partial: any, fallback: string): string {
+interface PartialToolCall {
+  name: string | null;
+  arguments: Record<string, unknown> | null;
+}
+
+function extractPartialToolCall(partial: any): PartialToolCall {
   const content = Array.isArray(partial?.content) ? partial.content : [];
   const toolCall = [...content].reverse().find((item: any) => item?.type === "toolCall");
-  const toolName = typeof toolCall?.name === "string" ? toolCall.name : null;
-  const args = toolCall?.arguments;
+  return {
+    name: typeof toolCall?.name === "string" ? toolCall.name : null,
+    arguments: toolCall?.arguments && typeof toolCall.arguments === "object" ? toolCall.arguments : null,
+  };
+}
+
+function summarizeToolCallPreview(partial: any, fallback: string): string {
+  const { name: toolName, arguments: args } = extractPartialToolCall(partial);
 
   if (!toolName) {
     return fallback;
@@ -415,6 +426,9 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
   let lastPlanOutput = "";
   let toolStarted = false;
   let lastToolCallPreview = "";
+  let lastStreamedSlideContent = "";
+  let slideContentThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+  const SLIDE_STREAM_THROTTLE_MS = 300;
 
   const collectedSteps: AgentJobStep[] = [];
     
@@ -427,6 +441,11 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
 
     const eventStream = app.streamEvents(inputs, { signal: runnerAbortController.signal });
     const eventIterator = eventStream[Symbol.asyncIterator]();
+
+    // Signal the frontend early so it can show the building skeleton
+    if (slideRequest) {
+      await broadcastJobEvent("slide_building", {});
+    }
 
     while (true) {
       const nextEvent = await Promise.race([
@@ -499,6 +518,17 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           lastToolCallPreview = summarizeToolCallPreview(data?.partial, "Preparing tool call...");
           await broadcastJobEvent("step_update", { id: currentThinkingId, content: lastToolCallPreview });
         }
+        // Stream partial slide content as soon as it starts arriving
+        if (slideRequest) {
+          const tc = extractPartialToolCall(data?.partial);
+          if (tc.name === "write_slides" && typeof tc.arguments?.content === "string") {
+            const partialHtml = tc.arguments.content as string;
+            if (partialHtml.length > lastStreamedSlideContent.length) {
+              lastStreamedSlideContent = partialHtml;
+              await broadcastJobEvent("slide_content", { fileContent: partialHtml, partial: true });
+            }
+          }
+        }
       }
       else if (eventType === "on_toolcall_delta") {
         if (currentThinkingId) {
@@ -508,12 +538,38 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
             await broadcastJobEvent("step_update", { id: currentThinkingId, content: nextPreview });
           }
         }
+        // Progressively stream slide content during tool arg streaming
+        if (slideRequest) {
+          const tc = extractPartialToolCall(data?.partial);
+          if (tc.name === "write_slides" && typeof tc.arguments?.content === "string") {
+            const partialHtml = tc.arguments.content as string;
+            if (partialHtml.length > lastStreamedSlideContent.length + 200) {
+              lastStreamedSlideContent = partialHtml;
+              // Throttle broadcasts to avoid flooding the WebSocket
+              if (!slideContentThrottleTimer) {
+                slideContentThrottleTimer = setTimeout(async () => {
+                  slideContentThrottleTimer = null;
+                  await broadcastJobEvent("slide_content", { fileContent: lastStreamedSlideContent, partial: true });
+                }, SLIDE_STREAM_THROTTLE_MS);
+              }
+            }
+          }
+        }
       }
       else if (eventType === "on_toolcall_end") {
+        // Flush any pending throttled slide content
+        if (slideContentThrottleTimer) {
+          clearTimeout(slideContentThrottleTimer);
+          slideContentThrottleTimer = null;
+        }
         if (currentThinkingId) {
           const toolName = typeof data?.toolCall?.name === "string" ? data.toolCall.name : "tool";
           lastToolCallPreview = summarizeToolCallPreview(data?.partial, `Prepared ${toolName} call.`);
           await broadcastJobEvent("step_update", { id: currentThinkingId, content: lastToolCallPreview });
+        }
+        // Send final partial content before the tool actually executes
+        if (slideRequest && lastStreamedSlideContent.length > 0) {
+          await broadcastJobEvent("slide_content", { fileContent: lastStreamedSlideContent, partial: true });
         }
       }
       else if (eventType === "text_delta") {
@@ -723,6 +779,10 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     }
 
   } catch (error) {
+    if (slideContentThrottleTimer) {
+      clearTimeout(slideContentThrottleTimer);
+      slideContentThrottleTimer = null;
+    }
     if (error instanceof Error && (error.message === "AbortError" || error.name === "AbortError")) {
       console.log("Agent job aborted by client");
       await cancelJob(jobId);

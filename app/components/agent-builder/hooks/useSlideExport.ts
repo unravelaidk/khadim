@@ -125,6 +125,64 @@ export function useSlideExport({
     }
   };
 
+  /**
+   * Pixel-perfect PPTX export: captures each slide as a high-resolution
+   * image via html2canvas and embeds it as a full-bleed slide background.
+   * Output matches the on-screen rendering exactly.
+   */
+  const downloadAsImagePptx = async () => {
+    if (!htmlContent) {
+      showError("No HTML content available for PPTX export.");
+      return;
+    }
+
+    setIsDownloading(true);
+
+    try {
+      // Capture every slide as a full-resolution image
+      const imageSlides = await extractSlideData({
+        slides,
+        htmlContent,
+        mode: "image",
+      });
+
+      if (imageSlides.length === 0) {
+        showError("No slides could be captured.");
+        return;
+      }
+
+      const pptxgenjs = await import("pptxgenjs");
+      const pptx = new pptxgenjs.default();
+      pptx.title = title;
+      pptx.author = "Khadim AI";
+      pptx.layout = "LAYOUT_WIDE"; // 13.33" × 7.5" (16:9)
+
+      for (const imgSlide of imageSlides) {
+        const slide = pptx.addSlide();
+
+        if (imgSlide.backgroundImage) {
+          // Full-bleed image covering the entire slide
+          slide.addImage({
+            data: imgSlide.backgroundImage,
+            x: 0,
+            y: 0,
+            w: "100%",
+            h: "100%",
+          });
+        }
+      }
+
+      const safeTitle = title.replace(/[^a-z0-9]/gi, "_");
+      await pptx.writeFile({ fileName: `${safeTitle}.pptx` });
+      showSuccess("PPTX downloaded successfully.");
+    } catch (error) {
+      console.error("Error generating image-based PPTX:", error);
+      showError("Failed to export PPTX.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const downloadAsPdf = async () => {
     if (!htmlContent) {
       window.print();
@@ -312,6 +370,7 @@ export function useSlideExport({
     isDownloading,
     downloadAsPptx,
     downloadAsStyledPptx,
+    downloadAsImagePptx,
     downloadAsPdf,
     savePdfToWorkspace,
   };

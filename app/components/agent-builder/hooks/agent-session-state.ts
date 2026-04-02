@@ -45,6 +45,7 @@ interface ChatSessionState {
   activeJobIds: string[];
   pendingQuestion: PendingQuestion | null;
   activeAgent: ActiveAgentState;
+  slideBuilding: boolean;
 }
 
 export interface AgentSessionState {
@@ -82,6 +83,7 @@ function createEmptyChatState(): ChatSessionState {
     activeJobIds: [],
     pendingQuestion: null,
     activeAgent: null,
+    slideBuilding: false,
   };
 }
 
@@ -290,6 +292,8 @@ export function selectSlideRuntime(
   chatId: string | null | undefined,
   isProcessing: boolean,
 ): SlideRuntimeView | null {
+  const chatKey = getChatStateKey(chatId);
+  const chat = getChat(state, chatKey);
   const { messages } = selectChatRuntime(state, chatId);
   let latestContent: string | null = null;
   let isStreaming = false;
@@ -302,6 +306,11 @@ export function selectSlideRuntime(
       isStreaming = (message.thinkingSteps || []).some((step) => step.status === "running");
       break;
     }
+  }
+
+  // Early signal: the job runner detected a slide request
+  if (chat.slideBuilding && isProcessing) {
+    isBuilding = true;
   }
 
   const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
@@ -376,7 +385,7 @@ export function updateMessageById(
 export function setChatMeta(
   state: AgentSessionState,
   chatKey: string,
-  updates: Partial<Pick<ChatSessionState, "sandboxId" | "pendingQuestion" | "activeAgent" | "activeJobIds">>,
+  updates: Partial<Pick<ChatSessionState, "sandboxId" | "pendingQuestion" | "activeAgent" | "activeJobIds" | "slideBuilding">>,
 ): AgentSessionState {
   return updateChat(state, chatKey, (chat) => ({ ...chat, ...updates }));
 }
@@ -803,6 +812,10 @@ export function applyStreamEvent(state: AgentSessionState, event: StreamEvent): 
     })), event);
   }
 
+  if (event.type === "slide_building") {
+    return withAppliedEventMeta(setChatMeta(state, chatKey, { slideBuilding: true }), event);
+  }
+
   if (event.type === "slide_content") {
     return withAppliedEventMeta(updateJobBoundMessage(state, jobId, chatId, (message) => ({
       ...message,
@@ -850,12 +863,12 @@ export function applyStreamEvent(state: AgentSessionState, event: StreamEvent): 
         previewUrl: event.previewUrl as string | undefined,
       })),
       chatKey,
-      { activeAgent: null },
+      { activeAgent: null, slideBuilding: false },
     ), event);
   }
 
   if (event.type === "error") {
-    return withAppliedEventMeta(setChatMeta(setJobActive(state, jobId, chatId, false), chatKey, { activeAgent: null }), event);
+    return withAppliedEventMeta(setChatMeta(setJobActive(state, jobId, chatId, false), chatKey, { activeAgent: null, slideBuilding: false }), event);
   }
 
   return state;
