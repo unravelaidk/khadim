@@ -5,6 +5,7 @@ interface SlideNavigationProps {
   currentSlide: number;
   totalSlides: number;
   theme: SlideTheme;
+  isStreaming?: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onGoTo: (index: number) => void;
@@ -15,6 +16,7 @@ export function SlideNavigation({
   currentSlide,
   totalSlides,
   theme,
+  isStreaming = false,
   onPrevious,
   onNext,
   onGoTo,
@@ -47,6 +49,12 @@ export function SlideNavigation({
 
       {/* Slide Indicators */}
       <div className="flex items-center gap-2">
+        {isStreaming && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--glass-border)] bg-[var(--color-accent-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-primary)] animate-in fade-in duration-300">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-accent)]" />
+            Writing slide {totalSlides + 1}
+          </span>
+        )}
         <span className={`font-medium ${isCompact ? 'text-[10px]' : 'text-xs'}`} style={{ color: 'var(--text-muted)' }}>
           {currentSlide + 1} / {totalSlides}
         </span>

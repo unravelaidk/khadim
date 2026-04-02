@@ -79,7 +79,6 @@ export function SlideViewer({
   useIframe = true,
   slideKey,
 }: SlideViewerProps) {
-  const isBuilding = Boolean('__building' in slide && slide.__building);
   const themeIsLight = isLightTheme(theme);
   const textPrimary = theme.textColors.primary;
   const textSecondary = theme.textColors.secondary;
@@ -91,61 +90,6 @@ export function SlideViewer({
 
   const renderSlideContent = () => {
     if (!slide) return null;
-
-    if (isBuilding) {
-      return (
-        <div className="flex w-full max-w-3xl flex-col gap-8 px-8">
-          <div className="space-y-3 text-center">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-              Building live preview
-            </div>
-            <div className="mx-auto h-1.5 w-24 bg-[var(--color-accent)]" />
-            <div className="space-y-2">
-              <h2 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-                {slide.title || `Slide ${slideIndex + 1} in progress`}
-              </h2>
-              <p className="mx-auto max-w-xl text-sm text-[var(--text-secondary)]">
-                {slide.subtitle || 'Khadim is drafting this slide and the preview will update as content lands.'}
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4 shadow-[var(--shadow-glass-sm)]">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Draft copy</div>
-              <div className="space-y-2">
-                {'bullets' in slide && slide.bullets?.map((bullet, index) => (
-                  <div key={`${bullet}-${index}`} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
-                    <span className="mt-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--text-primary)]" style={{ animationDelay: `${index * 120}ms` }} />
-                    <span>{bullet}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--surface-bg-subtle)] p-4 shadow-[var(--shadow-glass-sm)]">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Current step</div>
-              <div className="space-y-3 text-sm text-[var(--text-secondary)]">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-accent)]" />
-                  Writing the next slide section
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--text-muted)]" style={{ animationDelay: '150ms' }} />
-                  Syncing preview content
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--text-muted)]" style={{ animationDelay: '300ms' }} />
-                  Preparing final layout
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-accent)]" />
-            Drafting slide content
-          </div>
-        </div>
-      );
-    }
 
     switch (slide.type) {
       case "title":
@@ -410,7 +354,7 @@ export function SlideViewer({
   };
 
   // Iframe mode for rich HTML content
-  if (!isBuilding && hasRichHtml && htmlContent && useIframe) {
+  if (hasRichHtml && htmlContent && useIframe) {
     return (
       <div 
         className="w-full h-full relative rounded-xl overflow-hidden shadow-lg bg-black"
@@ -448,27 +392,16 @@ export function SlideViewer({
       key={slideKey}
       className="w-full max-w-4xl aspect-[16/9] rounded-xl shadow-lg flex flex-col items-center justify-center p-8 slide-animate overflow-hidden relative border border-[var(--glass-border)]"
       style={{
-        background: isBuilding ? 'var(--surface-bg)' : getSlideBackground(slide?.type || "content", theme),
+        background: getSlideBackground(slide?.type || "content", theme),
       }}
     >
-      {!isBuilding && (
-        <div 
+      <div 
           className="absolute inset-0 opacity-20 pointer-events-none"
           style={{
             backgroundImage: "radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)",
             backgroundSize: "16px 16px",
           }}
         />
-      )}
-      {isBuilding && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: "linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px)",
-            backgroundSize: '28px 28px',
-          }}
-        />
-      )}
       <div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
         {renderSlideContent()}
       </div>

@@ -16,7 +16,6 @@ export function SlideThumbnail({
   theme, 
   onClick 
 }: SlideThumbnailProps) {
-  const isBuilding = '__building' in slide && slide.__building;
 
   return (
     <button
@@ -30,28 +29,10 @@ export function SlideThumbnail({
         }
       `}
       >
-      {isBuilding ? (
-        <div className="absolute inset-0 flex flex-col justify-between bg-[var(--surface-bg-subtle)] p-2">
-          <div className="space-y-1.5">
-            <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              Building
-            </div>
-            <div className="text-[9px] font-semibold leading-tight text-[var(--text-primary)]">
-              {slide.title || `Slide ${index + 1}`}
-            </div>
-            <div className="h-1.5 w-1/2 animate-pulse bg-[var(--text-muted)]" />
-          </div>
-          <div className="space-y-1">
-            <div className="h-1.5 w-full animate-pulse bg-[var(--glass-border)]" />
-            <div className="h-1.5 w-5/6 animate-pulse bg-[var(--glass-border)]" style={{ animationDelay: '150ms' }} />
-            <div className="h-1.5 w-4/6 animate-pulse bg-[var(--color-accent)]" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
-      ) : (
-        <div 
-          className="absolute inset-0 flex flex-col items-center justify-center p-2"
-          style={{ background: getSlideBackground(slide.type, theme) }}
-        >
+      <div 
+        className="absolute inset-0 flex flex-col items-center justify-center p-2"
+        style={{ background: getSlideBackground(slide.type, theme) }}
+      >
           <div 
             className="absolute inset-0 opacity-10 pointer-events-none"
             style={{
@@ -63,7 +44,6 @@ export function SlideThumbnail({
             {slide.title || `Slide ${index + 1}`}
           </span>
         </div>
-      )}
 
       <div 
         className="absolute bottom-1 left-1 px-1.5 py-0.5 text-[9px] font-bold text-[var(--text-inverse)]"

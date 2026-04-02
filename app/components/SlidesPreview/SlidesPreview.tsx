@@ -9,8 +9,6 @@ import { SlideFullscreen } from './SlideFullscreen';
 import { generateHTMLFromSlides, hasRichHtmlStyling } from './utils';
 import type { SlideData, SlideTheme } from '../../types/slides';
 
-type PreviewSlide = SlideData & { __building?: boolean };
-
 interface SlidesPreviewProps {
   slides: SlideData[];
   htmlContent?: string;
@@ -43,24 +41,6 @@ export function SlidesPreview({
   const hasRichHtml = hasRichHtmlStyling(htmlContent);
   const previousSlideCountRef = useRef(slides.length);
   const previousHtmlRef = useRef(htmlContent);
-  const previewSlides = useMemo<PreviewSlide[]>(() => {
-    if (!isStreaming) return slides;
-    return [
-      ...slides,
-      {
-        id: Number.MAX_SAFE_INTEGER,
-        type: 'content',
-        title: `Slide ${slides.length + 1} in progress`,
-        subtitle: 'Khadim is drafting the next section now.',
-        bullets: [
-          'Generating structure and copy',
-          'Updating layout and visuals',
-          'Preview will refresh automatically',
-        ],
-        __building: true,
-      },
-    ];
-  }, [slides, isStreaming]);
 
   // Export hook
   const { 
@@ -90,16 +70,16 @@ export function SlidesPreview({
 
   // Keep currentSlide in bounds when slides array changes during streaming
   useEffect(() => {
-    if (currentSlide >= previewSlides.length) {
-      setCurrentSlide(Math.max(0, previewSlides.length - 1));
+    if (currentSlide >= slides.length) {
+      setCurrentSlide(Math.max(0, slides.length - 1));
     }
-  }, [currentSlide, previewSlides.length]);
+  }, [currentSlide, slides.length]);
 
   useEffect(() => {
-    if (isStreaming && previewSlides.length > 0) {
-      setCurrentSlide(previewSlides.length - 1);
+    if (isStreaming && slides.length > 0) {
+      setCurrentSlide(slides.length - 1);
     }
-  }, [isStreaming, previewSlides.length]);
+  }, [isStreaming, slides.length]);
 
   useEffect(() => {
     setSlideKey(prev => prev + 1);
@@ -130,12 +110,12 @@ export function SlidesPreview({
   }, [isStreaming]);
 
   const goToSlide = (index: number) => {
-    if (index >= 0 && index < previewSlides.length) {
+    if (index >= 0 && index < slides.length) {
       setCurrentSlide(index);
     }
   };
 
-  const slide = previewSlides[Math.min(currentSlide, previewSlides.length - 1)];
+  const slide = slides[Math.min(currentSlide, slides.length - 1)];
 
   return (
     <>
@@ -184,7 +164,7 @@ export function SlidesPreview({
         <div className="flex h-[360px] md:h-[460px] lg:h-[520px] flex-col md:flex-row">
           {/* Sidebar with Thumbnails */}
           <div className="w-full border-b border-[var(--glass-border)] bg-[var(--glass-bg)] md:w-48 md:border-b-0 md:border-r-[var(--glass-border)] lg:w-52 overflow-x-auto md:overflow-y-auto p-2.5 md:space-y-2.5 flex md:block gap-2.5 scrollbar-hide">
-            {previewSlides.map((s, index) => (
+            {slides.map((s, index) => (
               <SlideThumbnail
                 key={s.id}
                 slide={s}
@@ -213,11 +193,12 @@ export function SlidesPreview({
 
                 {/* Navigation */}
                 <SlideNavigation
-                  currentSlide={Math.min(currentSlide, previewSlides.length - 1)}
-                  totalSlides={previewSlides.length}
+                  currentSlide={Math.min(currentSlide, slides.length - 1)}
+                  totalSlides={slides.length}
                   theme={currentTheme}
-                  onPrevious={() => goToSlide(Math.min(currentSlide, previewSlides.length - 1) - 1)}
-                  onNext={() => goToSlide(Math.min(currentSlide, previewSlides.length - 1) + 1)}
+                  isStreaming={isStreaming}
+                  onPrevious={() => goToSlide(Math.min(currentSlide, slides.length - 1) - 1)}
+                  onNext={() => goToSlide(Math.min(currentSlide, slides.length - 1) + 1)}
                   onGoTo={goToSlide}
                   variant="compact"
                 />

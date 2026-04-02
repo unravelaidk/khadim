@@ -1,6 +1,8 @@
 import type { SlideData, SlideTheme } from '../../types/slides';
 
 const SLIDE_SCRIPT_RE = /<script id=["']slide-data["'][^>]*>([\s\S]*?)<\/script>/i;
+// Matches the opening tag even when the closing </script> hasn't arrived yet
+const SLIDE_SCRIPT_PARTIAL_RE = /<script id=["']slide-data["'][^>]*>([\s\S]+)/i;
 
 /**
  * Checks if HTML content has rich styling that requires iframe rendering
@@ -21,17 +23,67 @@ export function hasRichHtmlStyling(htmlContent: string | undefined): boolean {
  * Parses SlideData[] from HTML containing a <script id="slide-data"> tag
  */
 export function parseSlidesFromHtml(htmlContent: string): SlideData[] | null {
+  // Try complete script tag first
   const match = htmlContent.match(SLIDE_SCRIPT_RE);
-  if (!match?.[1]) return null;
-
-  try {
-    const parsed = JSON.parse(match[1].trim());
-    if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    if (!parsed.every((s: any) => s && typeof s === 'object' && 'type' in s)) return null;
-    return parsed as SlideData[];
-  } catch {
-    return null;
+  if (match?.[1]) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (!Array.isArray(parsed) || parsed.length === 0) return null;
+      if (!parsed.every((s: any) => s && typeof s === 'object' && 'type' in s)) return null;
+      return parsed as SlideData[];
+    } catch {
+      return null;
+    }
   }
+
+  // Try partial streaming content: the closing </script> hasn't arrived yet
+  const partial = htmlContent.match(SLIDE_SCRIPT_PARTIAL_RE);
+  if (!partial?.[1]) return null;
+
+  // Strip any trailing </script> or HTML that leaked in
+  let jsonFragment = partial[1].replace(/<\/script[\s\S]*$/i, '').trim();
+  if (!jsonFragment.startsWith('[')) return null;
+
+  // Try to extract complete slide objects from the partial JSON array.
+  // Strategy: find all complete {...} objects at the top level of the array.
+  try {
+    // If it happens to be valid JSON already, use it directly
+    const parsed = JSON.parse(jsonFragment);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const valid = parsed.filter((s: any) => s && typeof s === 'object' && 'type' in s);
+      return valid.length > 0 ? valid as SlideData[] : null;
+    }
+  } catch {
+    // Expected — the JSON is incomplete. Try to salvage complete objects.
+  }
+
+  // Find all complete JSON objects in the partial array by balanced-brace matching
+  const slides: SlideData[] = [];
+  let depth = 0;
+  let objStart = -1;
+
+  for (let i = 0; i < jsonFragment.length; i++) {
+    const ch = jsonFragment[i];
+    if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart >= 0) {
+        try {
+          const obj = JSON.parse(jsonFragment.slice(objStart, i + 1));
+          if (obj && typeof obj === 'object' && 'type' in obj) {
+            slides.push(obj as SlideData);
+          }
+        } catch {
+          // Incomplete object, skip
+        }
+        objStart = -1;
+      }
+    }
+  }
+
+  return slides.length > 0 ? slides : null;
 }
 
 /**

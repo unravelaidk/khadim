@@ -92,13 +92,15 @@ export function ChatPanel({
   }, [latestMessageSlideContent, slideState?.content]);
 
   const previewContent = selectedSlideContent || slideState?.content || latestMessageSlideContent || null;
-  const previewIsBuilding = slideState?.content === previewContent ? slideState.isBuilding : false;
-  const previewIsStreaming = slideState?.content === previewContent ? slideState.isStreaming : false;
+  const isActivelyBuilding = slideState?.isBuilding ?? false;
+  const previewIsBuilding = previewContent && slideState?.content === previewContent ? slideState.isBuilding : isActivelyBuilding;
+  const previewIsStreaming = previewContent && slideState?.content === previewContent ? slideState.isStreaming : false;
+  const shouldShowSlidePreview = !!(previewContent || isActivelyBuilding);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {/* Sticky slide preview panel */}
-      {previewContent && !isInitialState && (
+      {shouldShowSlidePreview && !isInitialState && (
         <StickySlidePreview
           content={previewContent}
           isStreaming={previewIsStreaming}
