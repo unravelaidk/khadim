@@ -16,6 +16,7 @@ import type { AgentMode } from "./router";
 import { db, messages, artifacts, chats } from "../lib/db";
 import { syncWorkspaceFileForChat } from "../lib/workspace-sync";
 import { createSessionHost } from "./core/session-host";
+import { registerLiveSessionHost, unregisterLiveSessionJob } from "./core/live-session-hosts";
 
 interface PartialToolCall {
   name: string | null;
@@ -138,6 +139,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
         },
       },
     });
+    registerLiveSessionHost({ jobId, sessionId, chatId, host: sessionHost });
 
   let stepCounter = 0;
   let thinkingStepCounter = 0;
@@ -517,5 +519,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       await failJob(jobId, error instanceof Error ? error.message : String(error));
       throw error;
     }
+  } finally {
+    unregisterLiveSessionJob(jobId);
   }
 }
