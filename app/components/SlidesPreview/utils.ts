@@ -77,6 +77,7 @@ export function generateHTMLFromSlides(
   title: string, 
   theme: SlideTheme
 ): string {
+  const slideDataJson = JSON.stringify(slides, null, 2);
   const slidesHTML = slides.map((slide, i) => {
     let content = '';
     if (slide.title) content += `      <h1>${slide.title}</h1>\n`;
@@ -103,6 +104,10 @@ export function generateHTMLFromSlides(
 <head>
   <meta charset="UTF-8">
   <title>${title}</title>
+  <meta name="slide-theme" content="${theme.id}">
+  <script id="slide-data" type="application/json">
+${slideDataJson}
+  </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: ${theme.fontFamily}; }

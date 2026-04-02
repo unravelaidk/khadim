@@ -63,6 +63,7 @@ export async function connectSessionStream({
   sendJobSnapshot = false,
 }: ConnectSessionStreamOptions): Promise<() => void> {
   let cleanedUp = false;
+  let liveCursor = lastEventId ?? "$";
 
   const cleanup = (unsubscribe?: () => void) => {
     if (cleanedUp) {
@@ -80,9 +81,11 @@ export async function connectSessionStream({
     for (const event of replayEvents) {
       send(toJobEventMessage(event));
     }
+    liveCursor = replayEvents.at(-1)?.eventId ?? lastEventId ?? "$";
   } else {
     const snapshot = await getSessionSnapshot(sessionId);
     send(toSessionSnapshotEvent(snapshot));
+    liveCursor = snapshot.snapshotEventId ?? "$";
 
     if (sendJobSnapshot) {
       for (const job of snapshot.jobs) {
@@ -91,7 +94,7 @@ export async function connectSessionStream({
     }
   }
 
-  const unsubscribe = subscribeToSession(sessionId, (event) => {
+  const unsubscribe = await subscribeToSession(sessionId, liveCursor, (event) => {
     if (cleanedUp) {
       return;
     }
