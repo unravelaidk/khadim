@@ -142,4 +142,74 @@ describe("agent-session-state", () => {
       isBuilding: true,
     });
   });
+
+  it("keeps slide content renderable when slide events arrive out of sequence", () => {
+    const chatKey = getChatStateKey("chat-1");
+    let state = createEmptyAgentSessionState();
+    state = registerPendingAssistantMessage(state, chatKey, "assistant-1");
+    state = appendMessages(state, chatKey, [assistantMessage("assistant-1")]);
+
+    state = applyStreamEvent(state, {
+      type: "file_written",
+      eventId: "100-1",
+      sequence: 101,
+      jobId: "job-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      filename: "index.html",
+      content: '<script id="slide-data">[{"id":1,"type":"title","title":"Deck"}]</script>',
+      isSlide: true,
+    });
+
+    state = applyStreamEvent(state, {
+      type: "slide_content",
+      eventId: "100-0",
+      sequence: 100,
+      jobId: "job-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      fileContent: '<script id="slide-data">[{"id":1,"type":"title","title":"Deck"}]</script>',
+    });
+
+    expect(selectSlideRuntime(state, "chat-1", true)).toEqual({
+      content: '<script id="slide-data">[{"id":1,"type":"title","title":"Deck"}]</script>',
+      isStreaming: false,
+      isBuilding: true,
+    });
+  });
+
+  it("keeps late slide artifacts renderable even after an error event", () => {
+    const chatKey = getChatStateKey("chat-1");
+    let state = createEmptyAgentSessionState();
+    state = registerPendingAssistantMessage(state, chatKey, "assistant-1");
+    state = appendMessages(state, chatKey, [assistantMessage("assistant-1")]);
+
+    state = applyStreamEvent(state, {
+      type: "error",
+      eventId: "200-0",
+      sequence: 200,
+      jobId: "job-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      message: "Slide generation stalled before write_slides ran.",
+    });
+
+    state = applyStreamEvent(state, {
+      type: "file_written",
+      eventId: "201-0",
+      sequence: 201,
+      jobId: "job-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      filename: "index.html",
+      content: '<script id="slide-data">[{"id":1,"type":"title","title":"Deck"}]</script>',
+      isSlide: true,
+    });
+
+    expect(selectSlideRuntime(state, "chat-1", false)).toEqual({
+      content: '<script id="slide-data">[{"id":1,"type":"title","title":"Deck"}]</script>',
+      isStreaming: false,
+      isBuilding: false,
+    });
+  });
 });

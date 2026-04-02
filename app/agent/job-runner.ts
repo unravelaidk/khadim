@@ -1,9 +1,6 @@
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { and, eq } from "drizzle-orm";
 import { createOrchestrator } from "./orchestrator";
-import { generateHTMLFromSlides } from "../components/SlidesPreview/utils";
-import { getThemeById } from "../components/agent-builder/slideTemplates";
-import type { SlideData } from "../types/slides";
 import {
   createPlanTool,
   createUpdateTodoTool,
@@ -70,69 +67,8 @@ export interface RunAgentJobParams {
 
 export type JobRunnerOptions = RunAgentJobParams;
 
-const SLIDE_REQUEST_TIMEOUT_MS = 12000;
-
 function isSlideRequest(prompt: string): boolean {
   return /\b(slides?|presentation|deck|ppt|pitch deck)\b/i.test(prompt);
-}
-
-function inferThemeFromPrompt(prompt: string): string {
-  const normalized = prompt.toLowerCase();
-  for (const themeId of ["minimalist", "paper", "noir", "brass", "cobalt", "emerald", "midnight"]) {
-    if (normalized.includes(themeId)) {
-      return themeId;
-    }
-  }
-  return "brass";
-}
-
-function derivePresentationTitle(prompt: string): string {
-  const cleaned = prompt
-    .replace(/^\[user context\/selected features:[^\]]+\]\s*/i, "")
-    .replace(/^(build|create|make|write|design)\s+/i, "")
-    .replace(/\b(slides?|presentation|deck|ppt)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!cleaned) {
-    return "Presentation";
-  }
-
-  return cleaned
-    .split(" ")
-    .slice(0, 7)
-    .join(" ")
-    .replace(/(^\w|\s\w)/g, (match) => match.toUpperCase());
-}
-
-function buildFallbackSlides(prompt: string): { title: string; themeId: string; slides: SlideData[] } {
-  const title = derivePresentationTitle(prompt);
-  const themeId = inferThemeFromPrompt(prompt);
-  const isLaunch = /\b(product launch|launch plan|go-to-market|gtm)\b/i.test(prompt);
-
-  const slides: SlideData[] = isLaunch
-    ? [
-        { id: 1, type: "title", title, subtitle: "Launch plan presentation" },
-        { id: 2, type: "content", title: "Launch Objectives", bullets: ["Drive awareness in target segment", "Convert early demand into qualified pipeline", "Align launch narrative across teams"] },
-        { id: 3, type: "twoColumn", title: "Owners & Workstreams", leftTitle: "Core Owners", leftBullets: ["Product marketing", "Growth lead", "Sales enablement"], rightTitle: "Dependencies", rightBullets: ["Creative assets", "Pricing approval", "Partner coordination"] },
-        { id: 4, type: "content", title: "Launch Channels", bullets: ["Email and lifecycle campaigns", "Product website and landing page", "Social, community, and partner amplification", "Sales collateral and demos"] },
-        { id: 5, type: "comparison", title: "Week-by-Week Execution", leftLabel: "Weeks 1-2", leftItems: ["Finalize positioning", "Lock messaging and assets", "Train internal teams"], rightLabel: "Weeks 3-4", rightItems: ["Launch campaigns", "Track performance daily", "Iterate based on signal"] },
-        { id: 6, type: "content", title: "Risks & Mitigations", bullets: ["Creative delay -> pre-approve fallback assets", "Weak conversion -> tighten CTA and landing page", "Messaging drift -> single-source launch brief"] },
-        { id: 7, type: "accent", title: "Success Metrics", subtitle: "Pipeline, adoption, and velocity" },
-        { id: 8, type: "title", title: "Ready To Launch", subtitle: "Clear owners. Tight timeline. Measurable outcomes." },
-      ]
-    : [
-        { id: 1, type: "title", title, subtitle: "Presentation draft" },
-        { id: 2, type: "content", title: "Executive Summary", bullets: ["Core objective", "Audience and context", "Desired outcome"] },
-        { id: 3, type: "section", title: "Key Story" },
-        { id: 4, type: "content", title: "Main Points", bullets: ["Priority insight 1", "Priority insight 2", "Priority insight 3"] },
-        { id: 5, type: "twoColumn", title: "Approach", leftTitle: "What", leftBullets: ["Strategy", "Scope"], rightTitle: "How", rightBullets: ["Execution", "Measurement"] },
-        { id: 6, type: "comparison", title: "Risks & Opportunities", leftLabel: "Risks", leftItems: ["Constraint 1", "Constraint 2"], rightLabel: "Opportunities", rightItems: ["Upside 1", "Upside 2"] },
-        { id: 7, type: "accent", title: "Recommendation", subtitle: "Decisive next step" },
-        { id: 8, type: "title", title: "Next Steps", subtitle: "Questions and discussion" },
-      ];
-
-  return { title, themeId, slides };
 }
 
 async function persistSlideDeck(chatId: string, content: string): Promise<void> {
@@ -163,7 +99,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
   let sandboxInitPromise: Promise<void> | null = null;
 
   const broadcastJobEvent = async (type: string, data: Record<string, unknown>) => {
-    broadcast(jobId, { type, data, jobId, chatId, sessionId });
+    await broadcast(jobId, { type, data, jobId, chatId, sessionId });
   };
 
   const formatSandboxInitError = (error: unknown) => {
@@ -243,6 +179,8 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     return sandbox!;
   };
 
+  const slideRequest = isSlideRequest(prompt);
+
   try {
     // Create broadcast helper for tools that need it
     const broadcastForTools = async (event: { type: string; data: any }) => {
@@ -301,8 +239,12 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
     }
 
     const activeTools = filterToolsForAgent(allTools, agentMode);
-    const activeToolNames = new Set(activeTools.map((tool) => tool.name));
-    const availableToolsText = formatAvailableTools(activeTools);
+    const slidePreferredToolNames = new Set(["write_slides"]);
+    const requestTools = slideRequest
+      ? activeTools.filter((tool) => slidePreferredToolNames.has(tool.name))
+      : activeTools;
+    const activeToolNames = new Set(requestTools.map((tool) => tool.name));
+    const availableToolsText = formatAvailableTools(requestTools);
     const askUserGuidance = activeToolNames.has("ask_user")
       ? `IMPORTANT: When you need to ask the user a question, you MUST use the ask_user tool. Do NOT ask questions in your text response - the user cannot reply to text questions. The ask_user tool shows an interactive prompt the user can respond to.`
       : `IMPORTANT: No interactive question tool is available in this mode. If you are missing required information, explain the blocker plainly instead of inventing a tool call.`;
@@ -318,7 +260,7 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
 
     const orchestratorConfig = {
       model: resolvedModel.model,
-      tools: allTools,
+      tools: requestTools,
       apiKey: resolvedModel.apiKey,
       temperature: resolvedModel.temperature,
       systemPrompt: `You are an expert full-stack developer agent with access to a persistent Deno Sandbox.
@@ -400,6 +342,7 @@ CRITICAL SLIDE RULES:
 - Prefer creating the full first draft of the deck in a single 'write_slides' call, then refine with additional 'write_slides' calls only if needed.
 - Only ask follow-up questions if essential information is truly missing.
 - Never use 'write_file' for slide decks. Always use 'write_slides'.
+- For slide requests in this environment, do NOT call search or research tools before the first draft. Produce the first complete deck directly with 'write_slides'.
 
 The HTML MUST contain a <script id="slide-data" type="application/json"> tag:
 
@@ -437,14 +380,14 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
       requestedMode: agentMode,
     };
 
-    let stepCounter = 0;
-    let thinkingStepCounter = 0;
-    let currentThinkingId = "";
-    let thinkingContent = "";
+  let stepCounter = 0;
+  let thinkingStepCounter = 0;
+  let currentThinkingId = "";
+  let thinkingContent = "";
+  let lastThinkingPreview = "";
   let finalContent = "";
   let lastPlanOutput = "";
   let toolStarted = false;
-  let slideFallbackApplied = false;
 
   const collectedSteps: AgentJobStep[] = [];
     
@@ -459,20 +402,7 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
     const eventIterator = eventStream[Symbol.asyncIterator]();
 
     while (true) {
-      const nextEvent = await Promise.race([
-        eventIterator.next(),
-        new Promise<IteratorResult<any>>((resolve) => {
-          if (!isSlideRequest(prompt) || toolStarted || slideFallbackApplied) {
-            return;
-          }
-
-          const timeoutId = setTimeout(() => {
-            resolve({ value: { event: "__slide_timeout__" }, done: false });
-          }, SLIDE_REQUEST_TIMEOUT_MS);
-
-          runnerAbortController.signal.addEventListener("abort", () => clearTimeout(timeoutId), { once: true });
-        }),
-      ]);
+      const nextEvent = await eventIterator.next();
 
       if (nextEvent.done) {
         break;
@@ -485,28 +415,11 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
 
       const { event: eventType, name, data } = event as { event: string; name?: string; data?: any };
 
-      if (eventType === "__slide_timeout__") {
-        const fallback = buildFallbackSlides(prompt);
-        const html = generateHTMLFromSlides(fallback.slides, fallback.title, getThemeById(fallback.themeId));
-        if (currentThinkingId) {
-          // Slides can get stuck in model reasoning without ever reaching write_slides.
-          const fallbackResult = "Timed out waiting for slide tool call, generated fallback deck.";
-          await updateStep(jobId, currentThinkingId, { status: "complete", content: thinkingContent, result: fallbackResult });
-          await broadcastJobEvent("step_complete", { id: currentThinkingId, result: fallbackResult });
-        }
-        await persistSlideDeck(chatId, html);
-        await broadcastJobEvent("slide_content", { fileContent: html, theme: fallback.themeId });
-        await broadcastJobEvent("file_written", { filename: "index.html", content: html, isSlide: true });
-        finalContent = `Created a presentation draft in the ${fallback.themeId} theme.`;
-        slideFallbackApplied = true;
-        runnerAbortController.abort();
-        break;
-      }
-
       if (eventType === "on_chat_model_start") {
         thinkingStepCounter++;
         currentThinkingId = `thinking-${thinkingStepCounter}`;
         thinkingContent = "";
+        lastThinkingPreview = "";
         const stepTitle = `Reasoning (step ${thinkingStepCounter})`;
         
         const step: AgentJobStep = { id: currentThinkingId, title: stepTitle, status: "running" };
@@ -521,13 +434,20 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
           if (text) {
             thinkingContent += text;
               const displayContent = thinkingContent.length > 300
-                ? thinkingContent.slice(0, 300) + "..."
+                ? `${thinkingContent.slice(0, 220)}\n...\n${thinkingContent.slice(-80)}`
                 : thinkingContent;
+              if (displayContent === lastThinkingPreview) {
+                continue;
+              }
+              lastThinkingPreview = displayContent;
               await broadcastJobEvent("step_update", { id: currentThinkingId, content: displayContent });
           }
         }
       }
       else if (eventType === "text_delta") {
+        if (slideRequest && !toolStarted) {
+          continue;
+        }
         const text = typeof data?.content === "string" ? data.content : "";
         if (text) {
           finalContent += text;
@@ -575,6 +495,17 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
         else if (toolName === "expose_preview") title = "Creating live preview";
         else if (toolName === "create_web_app") title = `Scaffolding ${toolArgs.type} app`;
         else if (toolName === "delegate_to_agent") title = `Delegating to ${toolArgs.agent || "agent"}`;
+
+        if (toolName === "write_slides") {
+          const slideContent = typeof toolArgs.content === "string" ? toolArgs.content : undefined;
+          const slideTheme = typeof toolArgs.theme === "string" ? toolArgs.theme : undefined;
+          if (slideContent?.includes('<script id="slide-data"')) {
+            await broadcastJobEvent("slide_content", {
+              fileContent: slideContent,
+              theme: slideTheme,
+            });
+          }
+        }
 
         // Include file content in broadcast for write_file
         const step: AgentJobStep = { id: stepId, title, status: "running", tool: toolName };
@@ -680,6 +611,10 @@ Be FAST and EFFICIENT. Target: Complete most tasks in under 10 tool calls.`,
 
     if (slideFileContent) {
       await broadcastJobEvent("slide_content", { fileContent: slideFileContent });
+    }
+
+    if (slideRequest && !toolStarted && !slideFileContent) {
+      throw new Error("Slide generation finished without producing a presentation.");
     }
 
     await completeJob(jobId, finalContent, previewUrl);
