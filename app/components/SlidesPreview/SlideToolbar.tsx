@@ -23,6 +23,7 @@ interface SlideToolbarProps {
   onFullscreen: () => void;
   onExportPdf: () => void;
   onExportPptx: () => void;
+  onExportEditablePptx?: () => void;
   onSavePdfToWorkspace?: () => void;
 }
 
@@ -40,6 +41,7 @@ export function SlideToolbar({
   onFullscreen,
   onExportPdf,
   onExportPptx,
+  onExportEditablePptx,
   onSavePdfToWorkspace,
 }: SlideToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -130,11 +132,25 @@ export function SlideToolbar({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
                         PPTX Export
-                        <span className="rounded-full bg-[#10150a] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[var(--text-inverse)]">BETA</span>
                       </div>
-                      <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Native editable PowerPoint</div>
+                      <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Pixel-perfect with editable text</div>
                     </div>
                   </button>
+                  {onExportEditablePptx && (
+                    <button
+                      onClick={() => { setShowExportMenu(false); onExportEditablePptx(); }}
+                      disabled={isDownloading || !hasRichHtml}
+                      className="w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg-strong)] disabled:opacity-50"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
+                          PPTX Export (Native)
+                          <span className="rounded-full bg-[#10150a] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[var(--text-inverse)]">BETA</span>
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">Fully editable shapes &amp; text</div>
+                      </div>
+                    </button>
+                  )}
                   {onSavePdfToWorkspace && (
                     <button
                       onClick={() => { setShowExportMenu(false); onSavePdfToWorkspace(); }}

@@ -8,6 +8,55 @@ import { extractSlideData } from "../utils/slideExtraction";
 import { getSlideBodyText } from "../../SlidesPreview/utils";
 import { showError, showSuccess } from "../../../lib/toast";
 
+// ── Inline helpers (avoid pulling in the local @khadim/html-to-pptx pkg) ──
+
+const FONT_MAP: Record<string, string> = {
+  Inter: "Segoe UI", Roboto: "Segoe UI", "Open Sans": "Segoe UI",
+  Lato: "Segoe UI", Montserrat: "Segoe UI", Poppins: "Arial",
+  Nunito: "Arial", "Source Sans Pro": "Segoe UI", "system-ui": "Segoe UI",
+  "sans-serif": "Arial", "-apple-system": "Segoe UI",
+  "Bebas Neue": "Impact", Oswald: "Impact", Anton: "Impact",
+  Raleway: "Segoe UI", "DM Sans": "Segoe UI", "Space Grotesk": "Segoe UI",
+  Outfit: "Arial", "Playfair Display": "Georgia",
+  "Cormorant Garamond": "Georgia", Merriweather: "Georgia",
+  Lora: "Georgia", Georgia: "Georgia", serif: "Georgia",
+  "Times New Roman": "Times New Roman", "Fira Code": "Consolas",
+  "Source Code Pro": "Consolas", "JetBrains Mono": "Consolas",
+  Consolas: "Consolas", Monaco: "Consolas", monospace: "Consolas",
+  "Courier New": "Courier New",
+};
+
+function mapFont(css: string): string {
+  for (const f of css.split(",").map((s) => s.trim().replace(/['"]/g, ""))) {
+    if (FONT_MAP[f]) return FONT_MAP[f];
+    if (["Arial","Calibri","Cambria","Georgia","Times New Roman","Verdana","Segoe UI","Consolas"].includes(f)) return f;
+  }
+  return "Arial";
+}
+
+function cssColorToHex(color: string): string {
+  if (color.startsWith("#")) {
+    const h = color.slice(1);
+    if (h.length === 3) return h.split("").map((c) => c + c).join("");
+    if (h.length === 8) return h.slice(0, 6);
+    return h;
+  }
+  const m = color.match(/rgba?\(([^)]+)\)/);
+  if (m) {
+    const [r, g, b] = m[1].split(",").map((p) => Math.round(Math.min(255, Math.max(0, parseFloat(p.trim()) || 0))));
+    return [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+  const named: Record<string, string> = { white: "ffffff", black: "000000", transparent: "000000" };
+  return named[color.toLowerCase()] || "000000";
+}
+
+function pptxAlign(a: string): "left" | "center" | "right" | "justify" {
+  if (a === "center") return "center";
+  if (a === "right" || a === "end") return "right";
+  if (a === "justify") return "justify";
+  return "left";
+}
+
 interface UseSlideExportProps {
   slides: SlideData[];
   htmlContent?: string;
@@ -126,9 +175,17 @@ export function useSlideExport({
   };
 
   /**
-   * Pixel-perfect PPTX export: captures each slide as a high-resolution
-   * image via html2canvas and embeds it as a full-bleed slide background.
-   * Output matches the on-screen rendering exactly.
+   * Hybrid PPTX export — pixel-perfect background + editable text.
+   *
+   * 1. Renders each slide in an iframe, hides text, captures the
+   *    background / decorations as a high-res image via html2canvas.
+   * 2. Extracts every text element with its computed position, size,
+   *    font, color, weight, etc.
+   * 3. Builds a PPTX where each slide has the captured image as a
+   *    full-bleed background and native editable text boxes on top.
+   *
+   * Result: visuals match the HTML exactly, and every piece of text
+   * is still selectable / editable in PowerPoint.
    */
   const downloadAsImagePptx = async () => {
     if (!htmlContent) {
@@ -139,14 +196,15 @@ export function useSlideExport({
     setIsDownloading(true);
 
     try {
-      // Capture every slide as a full-resolution image
-      const imageSlides = await extractSlideData({
+      // "editable" mode already captures a background image (text hidden)
+      // AND extracts text elements — exactly what the hybrid needs.
+      const extractedSlides = await extractSlideData({
         slides,
         htmlContent,
-        mode: "image",
+        mode: "editable",
       });
 
-      if (imageSlides.length === 0) {
+      if (extractedSlides.length === 0) {
         showError("No slides could be captured.");
         return;
       }
@@ -155,20 +213,66 @@ export function useSlideExport({
       const pptx = new pptxgenjs.default();
       pptx.title = title;
       pptx.author = "Khadim AI";
-      pptx.layout = "LAYOUT_WIDE"; // 13.33" × 7.5" (16:9)
+      pptx.layout = "LAYOUT_WIDE"; // 13.33 × 7.5 in (16:9)
 
-      for (const imgSlide of imageSlides) {
+      // Slide dimensions (px → inches)
+      const W_PX = 1280;
+      const H_PX = 720;
+      const W_IN = 13.333;
+      const H_IN = 7.5;
+      const SX = W_IN / W_PX;
+      const SY = H_IN / H_PX;
+
+      for (const data of extractedSlides) {
         const slide = pptx.addSlide();
 
-        if (imgSlide.backgroundImage) {
-          // Full-bleed image covering the entire slide
+        // ── 1. Background image (pixel-perfect) ────────────────────
+        if (data.backgroundImage) {
           slide.addImage({
-            data: imgSlide.backgroundImage,
+            data: data.backgroundImage,
             x: 0,
             y: 0,
             w: "100%",
             h: "100%",
           });
+        } else {
+          slide.background = { color: cssColorToHex(data.backgroundColor) };
+        }
+
+        // ── 2. Editable text boxes ─────────────────────────────────
+        for (const t of data.textElements) {
+          const x = t.x * SX;
+          const y = t.y * SY;
+          const w = Math.max(t.w * SX, 0.8);
+          const h = Math.max(t.h * SY, 0.35);
+
+          // Skip off-slide elements
+          if (x >= W_IN || y >= H_IN) continue;
+
+          const opts: Record<string, unknown> = {
+            x,
+            y,
+            w,
+            h,
+            fontSize: Math.round(t.fontSize * 0.75), // px → pt
+            fontFace: mapFont(t.fontFamily),
+            color: cssColorToHex(t.color),
+            bold: t.isBold,
+            italic: t.isItalic,
+            align: pptxAlign(t.textAlign),
+            valign: "middle",
+            wrap: true,
+            transparent: true, // no text-box fill
+          };
+
+          if (t.lineSpacingMultiple && t.lineSpacingMultiple > 0) {
+            opts.lineSpacingMultiple = Math.round(t.lineSpacingMultiple * 100) / 100;
+          }
+          if (t.letterSpacing && t.letterSpacing !== 0) {
+            opts.charSpacing = Math.round(t.letterSpacing * 0.75);
+          }
+
+          slide.addText(t.text, opts);
         }
       }
 
@@ -176,7 +280,7 @@ export function useSlideExport({
       await pptx.writeFile({ fileName: `${safeTitle}.pptx` });
       showSuccess("PPTX downloaded successfully.");
     } catch (error) {
-      console.error("Error generating image-based PPTX:", error);
+      console.error("Error generating hybrid PPTX:", error);
       showError("Failed to export PPTX.");
     } finally {
       setIsDownloading(false);
@@ -192,74 +296,30 @@ export function useSlideExport({
     setIsDownloading(true);
 
     try {
-      // Extract full slide images + text for searchable PDF
-      const [imageSlides, editableSlides] = await Promise.all([
-        extractSlideData({ slides, htmlContent, mode: "image" }),
-        extractSlideData({ slides, htmlContent, mode: "editable" }),
-      ]);
+      const { downloadSlidePdf } = await import("../utils/slidePdfBuilder");
 
-      const jsPDF = (await import("jspdf")).jsPDF;
-
-      const width = 1280;
-      const height = 720;
-
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "px",
-        format: [width, height],
-        compress: true
+      // "editable" mode captures background image (text hidden) + text elements
+      const extractedSlides = await extractSlideData({
+        slides,
+        htmlContent,
+        mode: "editable",
       });
 
-      for (let i = 0; i < slides.length; i++) {
-        if (i > 0) pdf.addPage([width, height], "landscape");
-
-        const imageSlide = imageSlides[i];
-        const editableSlide = editableSlides[i];
-
-        // Full slide screenshot as background — pixel-perfect
-        if (imageSlide?.backgroundImage) {
-          pdf.addImage(imageSlide.backgroundImage, "PNG", 0, 0, width, height, undefined, "FAST");
-        }
-
-        // Invisible text layer for copy/paste and search
-        if (editableSlide?.textElements?.length) {
-          pdf.setTextColor(0, 0, 0);
-          const gState = new (pdf as any).GState({ opacity: 0 });
-          pdf.setGState(gState);
-
-          for (const textEl of editableSlide.textElements) {
-            if (!textEl.text?.trim()) continue;
-
-            const fontStyle = textEl.isBold && textEl.isItalic ? "bolditalic"
-              : textEl.isBold ? "bold"
-              : textEl.isItalic ? "italic"
-              : "normal";
-
-            pdf.setFont("helvetica", fontStyle);
-            pdf.setFontSize(textEl.fontSize || 16);
-
-            const x = textEl.x + 5;
-            const y = textEl.y + (textEl.fontSize || 16);
-            const maxWidth = textEl.w - 10;
-            const lines = pdf.splitTextToSize(textEl.text, maxWidth);
-
-            pdf.text(lines, x, y, {
-              maxWidth,
-              align: textEl.textAlign === "center" ? "center" :
-                     textEl.textAlign === "right" ? "right" : "left"
-            });
-          }
-
-          const resetGState = new (pdf as any).GState({ opacity: 1 });
-          pdf.setGState(resetGState);
-        }
+      if (extractedSlides.length === 0) {
+        showError("No slides could be captured.");
+        return;
       }
 
-      pdf.save(`${title.replace(/[^a-z0-9]/gi, "_")}.pdf`);
-
+      await downloadSlidePdf(extractedSlides, title);
+      showSuccess("PDF downloaded successfully.");
     } catch (error) {
       console.error("Error generating PDF:", error);
-      window.print();
+      // Fallback to window.print if react-pdf fails
+      try {
+        window.print();
+      } catch (_) {
+        showError(`Failed to export PDF: ${error instanceof Error ? error.message : String(error)}`);
+      }
     } finally {
       setIsDownloading(false);
     }
@@ -279,74 +339,27 @@ export function useSlideExport({
     setIsDownloading(true);
 
     try {
-      const [imageSlides, editableSlides] = await Promise.all([
-        extractSlideData({ slides, htmlContent, mode: "image" }),
-        extractSlideData({ slides, htmlContent, mode: "editable" }),
-      ]);
+      const { buildSlidePdfBase64 } = await import("../utils/slidePdfBuilder");
 
-      const jsPDF = (await import("jspdf")).jsPDF;
-      const width = 1280;
-      const height = 720;
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "px",
-        format: [width, height],
-        compress: true,
+      const extractedSlides = await extractSlideData({
+        slides,
+        htmlContent,
+        mode: "editable",
       });
 
-      for (let i = 0; i < slides.length; i++) {
-        if (i > 0) pdf.addPage([width, height], "landscape");
-
-        const imageSlide = imageSlides[i];
-        const editableSlide = editableSlides[i];
-
-        if (imageSlide?.backgroundImage) {
-          pdf.addImage(imageSlide.backgroundImage, "PNG", 0, 0, width, height, undefined, "FAST");
-        }
-
-        if (editableSlide?.textElements?.length) {
-          pdf.setTextColor(0, 0, 0);
-          const gState = new (pdf as any).GState({ opacity: 0 });
-          pdf.setGState(gState);
-
-          for (const textEl of editableSlide.textElements) {
-            if (!textEl.text?.trim()) continue;
-            const fontStyle = textEl.isBold && textEl.isItalic ? "bolditalic"
-              : textEl.isBold ? "bold"
-              : textEl.isItalic ? "italic"
-              : "normal";
-            pdf.setFont("helvetica", fontStyle);
-            pdf.setFontSize(textEl.fontSize || 16);
-            const x = textEl.x + 5;
-            const y = textEl.y + (textEl.fontSize || 16);
-            const maxWidth = textEl.w - 10;
-            const lines = pdf.splitTextToSize(textEl.text, maxWidth);
-            pdf.text(lines, x, y, {
-              maxWidth,
-              align: textEl.textAlign === "center" ? "center" : textEl.textAlign === "right" ? "right" : "left",
-            });
-          }
-
-          const resetGState = new (pdf as any).GState({ opacity: 1 });
-          pdf.setGState(resetGState);
-        }
+      if (extractedSlides.length === 0) {
+        showError("No slides could be captured.");
+        return;
       }
 
-      const arrayBuffer = pdf.output("arraybuffer");
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = "";
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      }
-      const base64 = btoa(binary);
+      const { base64, size } = await buildSlidePdfBase64(extractedSlides, title);
 
       const formData = new FormData();
       formData.append("workspaceId", workspaceId);
       formData.append("path", `exports/${title.replace(/[^a-z0-9]/gi, "_")}.pdf`);
       formData.append("content", `base64:${base64}`);
       formData.append("mimeType", "application/pdf");
-      formData.append("size", String(bytes.length));
+      formData.append("size", String(size));
 
       const response = await fetch("/api/workspace-files", {
         method: "POST",
