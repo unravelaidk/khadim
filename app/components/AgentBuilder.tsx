@@ -63,6 +63,7 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
             input={state.input}
             onInputChange={actions.setInput}
             onSend={actions.handleSend}
+            onSteer={actions.handleSteer}
             onStop={actions.handleStop}
             isProcessing={state.isProcessing}
             isInitialState={state.isInitialState}

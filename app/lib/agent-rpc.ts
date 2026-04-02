@@ -1,8 +1,7 @@
 import { createId } from "@paralleldrive/cuid2";
-import { getAgentConfig } from "../agent/agents";
 import { getActiveModel } from "../agent/model-manager";
+import { resolveLiveHost, runLiveHostInput } from "../agent/live-session-commands";
 import { selectAgent, type AgentMode } from "../agent/router";
-import { loadSkills } from "../agent/skills";
 import { startJob } from "../agent/stream-utils";
 import { decoratePromptWithBadges } from "./badges";
 import { loadChatHistory } from "./chat-history";
@@ -22,6 +21,8 @@ type JsonObject = Record<string, unknown>;
 
 export type AgentRpcMethod =
   | "job.start"
+  | "job.followUp"
+  | "job.steer"
   | "job.stop"
   | "job.get"
   | "chat.getActiveJobs"
@@ -145,8 +146,6 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         : "";
       await createJob(jobId, resolvedChatId, sessionId);
 
-      const agentConfig = getAgentConfig(agentMode);
-      const skillsContent = await loadSkills();
       const history = params.chatId ? await loadChatHistory(params.chatId) : [];
 
       startJob(jobId, {
@@ -155,8 +154,6 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         sessionId,
         prompt,
         agentMode,
-        agentConfig,
-        skillsContent,
         history,
         uploadedDocumentsContext,
         existingSandboxId: asString(params.sandboxId),
@@ -167,8 +164,34 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         chatId: resolvedChatId,
         sessionId,
         agentMode,
-        agentName: agentConfig.name,
+        agentName: agentMode,
       });
+    }
+
+    case "job.followUp": {
+      const params = request.params as { jobId?: string; sessionId?: string; chatId?: string | null; prompt?: string };
+      const prompt = asString(params.prompt);
+      if (!prompt) return failure(400, "prompt is required");
+
+      const record = resolveLiveHost(params);
+      if (!record) {
+        return failure(404, "No live session host found");
+      }
+
+      return success(await runLiveHostInput({ method: "job.followUp", prompt, record }));
+    }
+
+    case "job.steer": {
+      const params = request.params as { jobId?: string; sessionId?: string; chatId?: string | null; prompt?: string };
+      const prompt = asString(params.prompt);
+      if (!prompt) return failure(400, "prompt is required");
+
+      const record = resolveLiveHost(params);
+      if (!record) {
+        return failure(404, "No live session host found");
+      }
+
+      return success(await runLiveHostInput({ method: "job.steer", prompt, record }));
     }
 
     case "job.stop": {
@@ -190,4 +213,6 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
       return success({ ok: true });
     }
   }
+
+  return failure(400, `Unsupported method: ${request.method}`);
 }
