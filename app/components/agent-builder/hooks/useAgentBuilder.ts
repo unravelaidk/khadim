@@ -522,6 +522,28 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     }
   };
 
+  // Track whether the user is near the bottom of the chat scroll container.
+  // When true, new streaming chunks auto-scroll; when the user scrolls up we
+  // leave them in place so they can read history.
+  const isNearBottomRef = useRef(true);
+
+  // Attach a scroll listener to <main> once it exists so we can track position.
+  useEffect(() => {
+    const el = messagesEndRef.current;
+    if (!el) return;
+    const scrollParent = el.closest('main');
+    if (!scrollParent) return;
+
+    const handleScroll = () => {
+      const threshold = 120; // px from bottom considered "near bottom"
+      const { scrollTop, scrollHeight, clientHeight } = scrollParent;
+      isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < threshold;
+    };
+
+    scrollParent.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollParent.removeEventListener('scroll', handleScroll);
+  }, [messagesEndRef]);
+
   const scrollToBottom = () => {
     const el = messagesEndRef.current;
     if (!el) return;
@@ -537,7 +559,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
   }, [chatId]);
 
   useEffect(() => {
-    if (currentView === "chat") {
+    if (currentView === "chat" && isNearBottomRef.current) {
       scrollToBottom();
     }
   }, [messages, currentView]);
