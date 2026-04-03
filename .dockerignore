@@ -1,5 +1,6 @@
 node_modules
 build
+apps/*/build
 .git
 .DS_Store
 coverage
