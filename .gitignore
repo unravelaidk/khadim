@@ -29,6 +29,7 @@ apps/*/src-tauri/target
 .idea
 .vscode
 .claude
+.khadim-worktrees/
 *.suo
 *.ntvs*
 *.njsproj
