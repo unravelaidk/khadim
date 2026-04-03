@@ -12,6 +12,11 @@ Thumbs.db
 dist
 build
 .react-router
+apps/*/build
+apps/*/.react-router
+target
+apps/*/src-tauri/target
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -23,6 +28,7 @@ build
 # Editor directories and files
 .idea
 .vscode
+.claude
 *.suo
 *.ntvs*
 *.njsproj
