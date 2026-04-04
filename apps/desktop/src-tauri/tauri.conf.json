@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.khadim.desktop",
   "build": {
-    "beforeDevCommand": "bun dev",
-    "beforeBuildCommand": "bun build",
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist"
   },
@@ -28,8 +28,12 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "../../web/public/favicon.ico",
-      "../../web/public/khadim-logo.svg"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/256x256@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
     ]
   }
 }
