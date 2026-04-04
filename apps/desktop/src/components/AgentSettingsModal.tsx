@@ -73,7 +73,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
       <div className="absolute inset-0 bg-[var(--surface-ink-25)] backdrop-blur-sm" />
 
       <div
-        className="relative z-10 w-full max-w-[440px] mx-4 glass-panel-strong rounded-3xl animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[440px] mx-4 glass-panel-strong rounded-[28px] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Agent settings"
@@ -82,7 +82,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-[13px] font-bold shrink-0"
+              className="w-9 h-9 rounded-2xl flex items-center justify-center text-[13px] font-bold shrink-0"
               style={{
                 background: `hsl(${hashStr(agent.id)} 45% 90%)`,
                 color: `hsl(${hashStr(agent.id)} 40% 30%)`,
@@ -109,7 +109,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -132,7 +132,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-              className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
+              className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
               placeholder="Agent name"
             />
           </label>
@@ -140,7 +140,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
           {/* Info grid */}
           <div className="grid grid-cols-2 gap-3">
             {/* Model */}
-            <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3">
+             <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3">
               <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
                 Model
               </span>
@@ -150,7 +150,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
             </div>
 
             {/* Status */}
-            <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3">
+            <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3">
               <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
                 Status
               </span>
@@ -161,7 +161,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
 
             {/* Branch */}
             {agent.branch && (
-              <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3 col-span-2">
+              <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3 col-span-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
                   Branch
                 </span>
@@ -178,7 +178,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
 
             {/* Worktree */}
             {agent.worktreePath && (
-              <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3 col-span-2">
+              <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3 col-span-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
                   Worktree
                 </span>
@@ -203,7 +203,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
 
           {/* Error message */}
           {agent.status === "error" && agent.errorMessage && (
-            <div className="rounded-xl bg-[var(--color-danger-bg-strong)] border border-[var(--color-danger-border)] p-3">
+            <div className="rounded-2xl bg-[var(--color-danger-bg-strong)] border border-[var(--color-danger-border)] p-3">
               <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-danger)] block mb-1">
                 Error
               </span>
@@ -214,7 +214,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
           )}
 
           {/* Danger zone */}
-          <div className="rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-subtle)] p-4">
+          <div className="rounded-2xl border border-[var(--color-danger-border)] bg-[var(--color-danger-subtle)] p-4">
             <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--color-danger-text-light)] mb-2">
               Danger zone
             </h3>
@@ -251,7 +251,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className={`h-8 px-4 rounded-xl text-[11px] font-semibold transition-all ${
+              className={`h-8 px-4 rounded-2xl text-[11px] font-semibold transition-all ${
                 confirmDelete
                   ? "bg-[var(--color-danger-strong)] text-[var(--text-inverse)] hover:bg-[var(--color-danger-hover)] shadow-sm"
                   : "bg-[var(--color-danger-muted)] text-[var(--color-danger-text)] hover:bg-[var(--color-danger-bg)] border border-[var(--color-danger-border)]"
@@ -262,7 +262,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
             {confirmDelete && !deleting && (
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="ml-2 h-8 px-3 rounded-xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] transition-colors"
+                className="ml-2 h-8 px-3 rounded-2xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] transition-colors"
               >
                 Cancel
               </button>
@@ -274,13 +274,13 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
         <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-xl btn-glass text-[12px] font-semibold"
+            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="h-9 px-5 rounded-xl btn-ink text-[12px] font-semibold"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold"
           >
             Save
           </button>

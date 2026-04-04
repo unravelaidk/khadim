@@ -64,7 +64,7 @@ export function ChatInput({
             }}
             placeholder={isProcessing ? "Keep typing..." : "Message..."}
             rows={1}
-            className="flex min-h-[52px] w-full resize-none items-center rounded-2xl glass-panel-strong pl-5 pr-14 py-4 text-[15px] text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--glass-border-strong)] focus:ring-4 focus:ring-[#10150a]/10 focus:outline-none md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base"
+            className="flex min-h-[52px] w-full resize-none items-center rounded-3xl glass-panel-strong pl-5 pr-14 py-4 text-[15px] text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--glass-border-strong)] focus:ring-4 focus:ring-[var(--input-focus-ring)] focus:outline-none md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base"
             style={{ maxHeight: "168px" }}
           />
           {isProcessing ? (

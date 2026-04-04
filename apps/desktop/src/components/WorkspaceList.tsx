@@ -13,7 +13,7 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin" style={{ minHeight: 0 }}>
+    <div className="flex-1">
       <div className="mx-auto max-w-5xl px-6 py-8">
         {/* Header */}
         <div className="mb-6">
@@ -34,7 +34,7 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
           {workspaces.map((ws) => (
             <div
               key={ws.id}
-              className="group relative text-left rounded-2xl glass-card p-4 flex flex-col cursor-pointer"
+              className="group relative text-left rounded-3xl glass-card p-4 flex flex-col cursor-pointer"
               onClick={() => onSelect(ws.id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(ws.id); }}
               tabIndex={0}
@@ -52,7 +52,7 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
                   }
                 }}
                 onBlur={() => setConfirmDeleteId((prev) => (prev === ws.id ? null : prev))}
-                className={`absolute top-2.5 right-2.5 z-10 rounded-lg px-2 py-1 text-[10px] font-semibold transition-all duration-150 ${
+                className={`absolute top-2.5 right-2.5 z-10 rounded-xl px-2 py-1 text-[10px] font-semibold transition-all duration-150 ${
                   confirmDeleteId === ws.id
                     ? "bg-[var(--color-danger-muted)] text-[var(--color-danger)] border border-[var(--color-danger-border)] opacity-100"
                     : "opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)] border border-transparent"
@@ -69,9 +69,9 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
               </button>
 
               <div className="flex items-center justify-between mb-3 gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold"
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-bold"
                   style={{
-                    background: "linear-gradient(135deg, var(--color-accent-subtle), var(--glass-bg))",
+                    background: "var(--color-accent-subtle)",
                     border: "1px solid var(--glass-border)",
                   }}
                 >
@@ -95,7 +95,7 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
                   <span className="truncate">{ws.branch}</span>
                 </p>
               )}
-              <p className="text-[10px] text-[var(--text-muted)] mt-auto pt-3 truncate font-mono opacity-60">
+              <p className="text-[10px] text-[var(--text-muted)] mt-auto pt-3 truncate font-mono opacity-80">
                 {ws.worktree_path ?? ws.repo_path}
               </p>
             </div>
@@ -104,9 +104,9 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
           {/* + New workspace card */}
           <button
             onClick={onCreateNew}
-            className="group text-left rounded-2xl border-2 border-dashed border-[var(--glass-border-strong)] hover:border-[var(--color-accent-muted)] p-4 flex flex-col items-center justify-center min-h-[160px] transition-all duration-200 hover:bg-[var(--color-accent-subtle)]"
+            className="group text-left rounded-3xl border-2 border-dashed border-[var(--glass-border-strong)] hover:border-[var(--color-accent-muted)] p-4 flex flex-col items-center justify-center min-h-[160px] transition-all duration-200 hover:bg-[var(--color-accent-subtle)]"
           >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--glass-bg)] group-hover:bg-[var(--color-accent-subtle)] border border-[var(--glass-border)] transition-colors">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-[var(--glass-bg)] group-hover:bg-[var(--color-accent-subtle)] border border-[var(--glass-border)] transition-colors">
               <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
@@ -122,8 +122,8 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
 
         {/* Empty state — only when no workspaces at all */}
         {workspaces.length === 0 && (
-          <div className="mt-4 rounded-2xl glass-card-static p-12 text-center">
-            <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center bg-[var(--color-accent-subtle)] mb-4">
+          <div className="mt-4 rounded-3xl glass-card-static p-12 text-center">
+            <div className="w-14 h-14 rounded-3xl mx-auto flex items-center justify-center bg-[var(--color-accent-subtle)] mb-4">
               <svg className="w-7 h-7 text-[var(--text-secondary)]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
@@ -136,7 +136,7 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
             </p>
             <button
               onClick={onCreateNew}
-              className="mt-4 h-9 px-5 rounded-xl btn-ink text-[12px] font-semibold"
+              className="mt-4 h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold"
             >
               Create workspace
             </button>

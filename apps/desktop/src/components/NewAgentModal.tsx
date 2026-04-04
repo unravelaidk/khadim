@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BranchInfo, Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
+import { GlassSelect } from "./GlassSelect";
 
 interface Props {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface Props {
 export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCreating }: Props) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [baseBranch, setBaseBranch] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [newBranchName, setNewBranchName] = useState("");
   const [branchMode, setBranchMode] = useState<"existing" | "new">("new");
@@ -37,9 +39,18 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
       .then((list) => {
         setBranches(list);
         const current = list.find((b) => b.is_current);
-        setSelectedBranch(current?.name ?? list[0]?.name ?? "main");
+        const preferredBase = list.find((b) => !b.is_remote && b.name === workspace.branch)?.name
+          ?? current?.name
+          ?? list.find((b) => !b.is_remote)?.name
+          ?? "main";
+        setBaseBranch(preferredBase);
+        setSelectedBranch(preferredBase);
       })
-      .catch(() => setBranches([]))
+      .catch(() => {
+        setBranches([]);
+        setBaseBranch(workspace.branch ?? "main");
+        setSelectedBranch(workspace.branch ?? "main");
+      })
       .finally(() => setLoadingBranches(false));
 
     requestAnimationFrame(() => labelInputRef.current?.focus());
@@ -70,13 +81,14 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     setCreating(true);
 
     try {
-      // Build worktree path: <repo>/.khadim-worktrees/<branch-slug>
+      // Build a unique worktree path so multiple agents can reuse the same branch.
       const slug = branch.replace(/\//g, "-");
-      const worktreePath = `${workspace.repo_path}/.khadim-worktrees/${slug}`;
+      const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const worktreePath = `${workspace.repo_path}/.khadim-worktrees/${slug}-${suffix}`;
 
       // Create the worktree
       const isNew = branchMode === "new";
-      await commands.gitCreateWorktree(workspace.repo_path, worktreePath, branch, isNew);
+      await commands.gitCreateWorktree(workspace.repo_path, worktreePath, branch, isNew, baseBranch || undefined);
 
       onCreateAgent(branch, worktreePath, label);
       onClose();
@@ -93,6 +105,10 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
   if (!isOpen) return null;
 
   const localBranches = branches.filter((b) => !b.is_remote);
+  const baseBranchOptions = localBranches.map((b) => ({
+    value: b.name,
+    label: `${b.name}${b.name === workspace.branch ? " (workspace default)" : b.is_current ? " (current)" : ""}`,
+  }));
 
   return (
     <div
@@ -105,7 +121,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[480px] mx-4 glass-panel-strong rounded-3xl animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[480px] mx-4 glass-panel-strong rounded-[28px] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="New agent"
@@ -122,7 +138,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -144,20 +160,44 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               ref={labelInputRef}
               value={agentLabel}
               onChange={(e) => setAgentLabel(e.target.value)}
-              className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
+              className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
               placeholder="e.g. Fix auth flow"
             />
           </label>
 
+          <div className="block">
+            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              Base branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
+            </span>
+            {baseBranchOptions.length > 0 ? (
+              <GlassSelect
+                value={baseBranch}
+                onChange={(v) => setBaseBranch(v)}
+                options={baseBranchOptions}
+                className="mt-1.5"
+              />
+            ) : (
+              <input
+                value={baseBranch}
+                onChange={(e) => setBaseBranch(e.target.value)}
+                className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                placeholder="main"
+              />
+            )}
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+              This is the workspace default branch. You can still change it here for this agent.
+            </p>
+          </div>
+
           {/* Branch mode toggle */}
           <div>
             <span className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-2">
-              Worktree branch
+              Agent branch
             </span>
-            <div className="flex gap-1 p-0.5 rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
+            <div className="flex gap-1 p-0.5 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
               <button
                 onClick={() => setBranchMode("new")}
-                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg transition-all ${
+                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all ${
                   branchMode === "new"
                     ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
                     : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -167,7 +207,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               </button>
               <button
                 onClick={() => setBranchMode("existing")}
-                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg transition-all ${
+                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all ${
                   branchMode === "existing"
                     ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
                     : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -182,60 +222,57 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
           {branchMode === "new" ? (
             <label className="block">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                Branch name
+                New branch name
               </span>
               <input
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
-                className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
                 placeholder="feature/my-feature"
               />
               <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                Will be created from <span className="font-mono font-semibold">{selectedBranch || "HEAD"}</span>
+                Will be created from <span className="font-mono font-semibold">{baseBranch || "HEAD"}</span>
               </p>
             </label>
           ) : (
-            <label className="block">
+            <div className="block">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                Branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
+                Existing branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
               </span>
               {localBranches.length > 0 ? (
-                <select
+                <GlassSelect
                   value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
-                >
-                  {localBranches.map((b) => (
-                    <option key={b.name} value={b.name}>
-                      {b.name}{b.is_current ? " (current)" : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setSelectedBranch(v)}
+                  options={localBranches.map((b) => ({
+                    value: b.name,
+                    label: `${b.name}${b.is_current ? " (current)" : ""}`,
+                  }))}
+                  className="mt-1.5"
+                />
               ) : (
                 <input
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                  className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
                   placeholder="main"
                 />
               )}
-            </label>
+            </div>
           )}
 
           {/* Info note */}
-          <div className="flex items-start gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--glass-bg)] rounded-xl px-3 py-2.5 border border-[var(--glass-border)]">
+          <div className="flex items-start gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--glass-bg)] rounded-2xl px-3 py-2.5 border border-[var(--glass-border)]">
             <svg className="w-3.5 h-3.5 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>
-              Each agent gets its own worktree so it can work on a separate branch without conflicts.
-              The worktree will be created at <span className="font-mono text-[10px]">.khadim-worktrees/</span>
+              Each agent gets its own worktree. Existing branches can be reused, and the worktree directory will be unique under <span className="font-mono text-[10px]">.khadim-worktrees/</span>
             </span>
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-[12px] text-[var(--color-danger-text-light)] bg-[var(--color-danger-bg-strong)] rounded-lg px-3 py-2 border border-[var(--color-danger-border)]">{error}</p>
+            <p className="text-[12px] text-[var(--color-danger-text-light)] bg-[var(--color-danger-bg-strong)] rounded-xl px-3 py-2 border border-[var(--color-danger-border)]">{error}</p>
           )}
         </div>
 
@@ -243,14 +280,14 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
         <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-xl btn-glass text-[12px] font-semibold"
+            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"
           >
             Cancel
           </button>
           <button
             onClick={() => void submit()}
             disabled={creating || isCreating}
-            className="h-9 px-5 rounded-xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
           >
             {creating || isCreating ? "Creating..." : "Create agent"}
           </button>

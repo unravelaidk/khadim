@@ -136,11 +136,22 @@ pub fn create_worktree(
     worktree_path: &str,
     branch: &str,
     new_branch: bool,
+    base_branch: Option<&str>,
 ) -> Result<WorktreeInfo, AppError> {
     if new_branch {
-        run_git(repo_path, &["worktree", "add", "-b", branch, worktree_path])?;
+        if let Some(base_branch) = base_branch.filter(|value| !value.trim().is_empty()) {
+            run_git(
+                repo_path,
+                &["worktree", "add", "-b", branch, worktree_path, base_branch],
+            )?;
+        } else {
+            run_git(repo_path, &["worktree", "add", "-b", branch, worktree_path])?;
+        }
     } else {
-        run_git(repo_path, &["worktree", "add", worktree_path, branch])?;
+        run_git(
+            repo_path,
+            &["worktree", "add", "--force", worktree_path, branch],
+        )?;
     }
 
     // Return info about the created worktree
@@ -209,4 +220,200 @@ pub fn status_summary(repo_path: &str) -> Result<String, AppError> {
 /// Get diff stat for display.
 pub fn diff_stat(repo_path: &str) -> Result<String, AppError> {
     run_git(repo_path, &["diff", "--stat"])
+}
+
+/// A single file entry from `git diff` with change counts.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiffFileEntry {
+    /// Relative path within the repo.
+    pub path: String,
+    /// Single-letter status: M, A, D, R, C, U, or ? for untracked.
+    pub status: String,
+    /// Lines added (None for binary files).
+    pub insertions: Option<u32>,
+    /// Lines removed (None for binary files).
+    pub deletions: Option<u32>,
+}
+
+/// List files changed in the working tree (unstaged + staged + untracked).
+///
+/// Combines `git diff --numstat`, `git diff --cached --numstat`, and
+/// `git ls-files --others --exclude-standard` to produce one merged list.
+pub fn diff_files(repo_path: &str) -> Result<Vec<DiffFileEntry>, AppError> {
+    use std::collections::HashMap;
+
+    let mut entries: HashMap<String, DiffFileEntry> = HashMap::new();
+
+    // Helper: parse --numstat output into the map.  Lines look like:
+    //   10\t5\tpath/to/file
+    //   -\t-\tbinary-file
+    fn parse_numstat(raw: &str, entries: &mut HashMap<String, DiffFileEntry>) {
+        for line in raw.lines() {
+            let parts: Vec<&str> = line.splitn(3, '\t').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let ins = parts[0].parse::<u32>().ok();
+            let del = parts[1].parse::<u32>().ok();
+            let path = parts[2].to_string();
+            let entry = entries
+                .entry(path.clone())
+                .or_insert_with(|| DiffFileEntry {
+                    path,
+                    status: "M".to_string(),
+                    insertions: Some(0),
+                    deletions: Some(0),
+                });
+            // Accumulate counts
+            match (entry.insertions, ins) {
+                (Some(a), Some(b)) => entry.insertions = Some(a + b),
+                _ => entry.insertions = None, // binary
+            }
+            match (entry.deletions, del) {
+                (Some(a), Some(b)) => entry.deletions = Some(a + b),
+                _ => entry.deletions = None,
+            }
+        }
+    }
+
+    fn parse_name_status(raw: &str, entries: &mut HashMap<String, DiffFileEntry>) {
+        for line in raw.lines() {
+            let parts: Vec<&str> = line.splitn(2, '\t').collect();
+            if parts.len() < 2 {
+                continue;
+            }
+            let status_char = parts[0].chars().next().unwrap_or('M').to_string();
+            let path = parts[1].to_string();
+            if let Some(entry) = entries.get_mut(&path) {
+                if entry.status == "M" || status_char == "A" || status_char == "D" {
+                    entry.status = status_char;
+                }
+            }
+        }
+    }
+
+    // ── 1. Branch diff: merge-base of default branch → HEAD ──────────
+    // Try to find a default branch to diff against.
+    let default_branch = find_default_branch(repo_path);
+
+    if let Some(ref base) = default_branch {
+        // merge-base between default branch and HEAD
+        if let Ok(merge_base) = run_git(repo_path, &["merge-base", base, "HEAD"]) {
+            let mb = merge_base.trim();
+            if !mb.is_empty() {
+                // Committed changes from merge-base to HEAD
+                let numstat_args = ["diff", "--numstat", mb, "HEAD"];
+                if let Ok(raw) = run_git(repo_path, &numstat_args) {
+                    parse_numstat(&raw, &mut entries);
+                }
+                let name_status_args = ["diff", "--name-status", mb, "HEAD"];
+                if let Ok(raw) = run_git(repo_path, &name_status_args) {
+                    parse_name_status(&raw, &mut entries);
+                }
+            }
+        }
+    }
+
+    // ── 2. Uncommitted changes on top ────────────────────────────────
+    // Unstaged changes
+    if let Ok(raw) = run_git(repo_path, &["diff", "--numstat"]) {
+        parse_numstat(&raw, &mut entries);
+    }
+
+    // Staged changes
+    if let Ok(raw) = run_git(repo_path, &["diff", "--cached", "--numstat"]) {
+        parse_numstat(&raw, &mut entries);
+    }
+
+    // Overlay status letters from --name-status (unstaged then staged)
+    for args in [
+        &["diff", "--name-status"][..],
+        &["diff", "--cached", "--name-status"][..],
+    ] {
+        if let Ok(raw) = run_git(repo_path, args) {
+            parse_name_status(&raw, &mut entries);
+        }
+    }
+
+    // Untracked files
+    if let Ok(raw) = run_git(repo_path, &["ls-files", "--others", "--exclude-standard"]) {
+        for line in raw.lines() {
+            let path = line.trim().to_string();
+            if path.is_empty() {
+                continue;
+            }
+            entries.entry(path.clone()).or_insert(DiffFileEntry {
+                path,
+                status: "?".to_string(),
+                insertions: None,
+                deletions: None,
+            });
+        }
+    }
+
+    let mut result: Vec<DiffFileEntry> = entries.into_values().collect();
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(result)
+}
+
+/// Attempt to find the default branch name for diffing.
+/// Tries: the upstream default via `origin/HEAD`, then `main`, then `master`.
+fn find_default_branch(repo_path: &str) -> Option<String> {
+    // 1. Check origin/HEAD symbolic ref
+    if let Ok(raw) = run_git(repo_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            // e.g. "refs/remotes/origin/main" → "origin/main"
+            let short = trimmed.strip_prefix("refs/remotes/").unwrap_or(trimmed);
+            return Some(short.to_string());
+        }
+    }
+
+    // 2. Check if common branch names exist locally
+    for name in ["main", "master"] {
+        if run_git(repo_path, &["rev-parse", "--verify", name]).is_ok() {
+            return Some(name.to_string());
+        }
+    }
+
+    // 3. Check remote variants
+    for name in ["origin/main", "origin/master"] {
+        if run_git(repo_path, &["rev-parse", "--verify", name]).is_ok() {
+            return Some(name.to_string());
+        }
+    }
+
+    None
+}
+
+// ── Remote & push helpers ────────────────────────────────────────────
+
+/// Add a remote to a git repo. Errors if the remote name already exists.
+pub fn add_remote(repo_path: &str, name: &str, url: &str) -> Result<(), AppError> {
+    run_git(repo_path, &["remote", "add", name, url])?;
+    Ok(())
+}
+
+/// Set the URL of an existing remote.
+pub fn set_remote_url(repo_path: &str, name: &str, url: &str) -> Result<(), AppError> {
+    run_git(repo_path, &["remote", "set-url", name, url])?;
+    Ok(())
+}
+
+/// Check if a remote with the given name exists.
+pub fn has_remote(repo_path: &str, name: &str) -> bool {
+    run_git(repo_path, &["remote", "get-url", name]).is_ok()
+}
+
+/// Push a branch to a remote. Sets upstream tracking (-u).
+/// Returns the git output on success.
+pub fn push(repo_path: &str, remote: &str, branch: &str) -> Result<String, AppError> {
+    // Use -u to set upstream tracking
+    run_git(repo_path, &["push", "-u", remote, branch])
+}
+
+/// Push all branches and tags to a remote.
+pub fn push_all(repo_path: &str, remote: &str) -> Result<String, AppError> {
+    run_git(repo_path, &["push", "-u", "--all", remote])?;
+    run_git(repo_path, &["push", "--tags", remote])
 }

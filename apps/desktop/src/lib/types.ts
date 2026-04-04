@@ -1,10 +1,36 @@
 import type { ThinkingStepData } from "./bindings";
 
-/** Top-level app mode: home (no workspace) vs workspace (entered a workspace) */
-export type AppMode = "home" | "workspace";
+/** Top-level interaction mode: chat (standalone LLM) vs work (workspace/agents) */
+export type InteractionMode = "chat" | "work";
 
-/** Navigation tabs visible in home mode */
-export type NavView = "workspaces" | "chat" | "settings";
+/** Sub-view within work mode when no workspace is entered yet */
+export type WorkHomeView = "workspaces";
+
+/** A local-only chat conversation (no workspace, no backend yet) */
+export interface LocalChatConversation {
+  id: string;
+  title: string;
+  messages: LocalChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A single message in a local chat conversation */
+export interface LocalChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+/** GitHub sub-navigation within the workspace GitHub tab */
+export type GitHubSubView =
+  | { kind: "issues" }
+  | { kind: "issue-detail"; issueNumber: number }
+  | { kind: "issue-create" }
+  | { kind: "prs" }
+  | { kind: "pr-detail"; prNumber: number }
+  | { kind: "pr-create" };
 
 /** Status of an individual agent within a workspace */
 export type AgentStatus = "idle" | "running" | "complete" | "error";
@@ -46,6 +72,37 @@ export interface AgentInstance {
   finishedAt: string | null;
   /** Error message if status is "error" */
   errorMessage: string | null;
+
+  // ── Token / context usage ─────────────────────────────────────
+  /** Latest token usage reported by the model for this session. */
+  tokenUsage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  } | null;
+}
+
+/** Creates a new local chat conversation */
+export function createLocalConversation(title = "New chat"): LocalChatConversation {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    title,
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Creates a new local chat message */
+export function createLocalMessage(role: "user" | "assistant", content: string): LocalChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 /** Creates a new blank agent instance */
@@ -72,5 +129,6 @@ export function createAgentInstance(
     startedAt: null,
     finishedAt: null,
     errorMessage: null,
+    tokenUsage: null,
   };
 }

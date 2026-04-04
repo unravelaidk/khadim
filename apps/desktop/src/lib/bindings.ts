@@ -18,7 +18,8 @@ export type ErrorKind =
   | "git"
   | "io"
   | "invalid_input"
-  | "backend_busy";
+  | "backend_busy"
+  | "github";
 
 export interface AppError {
   kind: ErrorKind;
@@ -53,7 +54,6 @@ export interface CreateWorkspaceInput {
   branch?: string;
   backend?: string;
   execution_target?: string;
-  create_worktree?: boolean;
 }
 
 export interface Conversation {
@@ -65,6 +65,10 @@ export interface Conversation {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** Cumulative input tokens (context sent to model) for this conversation. */
+  input_tokens: number;
+  /** Cumulative output tokens generated for this conversation. */
+  output_tokens: number;
 }
 
 export interface ChatMessage {
@@ -85,6 +89,31 @@ export interface ThinkingStepData {
   result?: string;
   filename?: string;
   fileContent?: string;
+  /** Full (absolute or repo-relative) path to the file touched by this step. */
+  filePath?: string;
+}
+
+// ── Question types (from OpenCode's question tool) ───────────────────
+
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface QuestionItem {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  /** When true (default), a "Type your own answer" free-text option is added. */
+  custom?: boolean;
+}
+
+/** Payload delivered via the "question" stream event. */
+export interface PendingQuestion {
+  /** Part ID — used to correlate the answer. */
+  id: string;
+  questions: QuestionItem[];
 }
 
 // ── Git types ────────────────────────────────────────────────────────
@@ -109,6 +138,17 @@ export interface WorktreeInfo {
   head: string;
   is_bare: boolean;
   is_main: boolean;
+}
+
+export interface DiffFileEntry {
+  /** Relative path within the repo. */
+  path: string;
+  /** Single-letter status: M, A, D, R, C, U, or ? for untracked. */
+  status: string;
+  /** Lines added (null for binary files). */
+  insertions: number | null;
+  /** Lines removed (null for binary files). */
+  deletions: number | null;
 }
 
 // ── OpenCode types ───────────────────────────────────────────────────
@@ -160,9 +200,133 @@ export interface ProcessOutput {
 export interface AgentStreamEvent {
   workspace_id: string;
   session_id: string;
-  event_type: "text_delta" | "step_start" | "step_update" | "step_complete" | "done" | "error" | string;
+  event_type: "text_delta" | "step_start" | "step_update" | "step_complete" | "question" | "done" | "error" | string;
   content: string | null;
   metadata: Record<string, unknown> | null;
+}
+
+// ── GitHub types ─────────────────────────────────────────────────────
+
+export interface GitHubUser {
+  login: string;
+  id: number;
+  avatar_url: string;
+  name: string | null;
+  html_url: string;
+}
+
+export interface GitHubLabel {
+  id: number;
+  name: string;
+  color: string;
+  description: string | null;
+}
+
+export interface GitHubMilestone {
+  id: number;
+  number: number;
+  title: string;
+  state: string;
+}
+
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  html_url: string;
+  user: GitHubUser;
+  labels: GitHubLabel[];
+  assignees: GitHubUser[];
+  milestone: GitHubMilestone | null;
+  comments: number;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  pull_request?: unknown;
+}
+
+export interface GitHubComment {
+  id: number;
+  body: string;
+  user: GitHubUser;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GitHubPRBranch {
+  label: string;
+  ref: string;
+  sha: string;
+}
+
+export interface GitHubPR {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  html_url: string;
+  user: GitHubUser;
+  labels: GitHubLabel[];
+  assignees: GitHubUser[];
+  milestone: GitHubMilestone | null;
+  head: GitHubPRBranch;
+  base: GitHubPRBranch;
+  merged: boolean | null;
+  mergeable: boolean | null;
+  draft: boolean | null;
+  comments: number;
+  commits: number | null;
+  additions: number | null;
+  deletions: number | null;
+  changed_files: number | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
+}
+
+export interface GitHubCheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface GitHubCheckSuite {
+  total_count: number;
+  check_runs: GitHubCheckRun[];
+}
+
+export interface GitHubAuthStatus {
+  authenticated: boolean;
+  user: GitHubUser | null;
+}
+
+export interface RepoSlug {
+  owner: string;
+  repo: string;
+}
+
+export interface GhCliInfo {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+}
+
+export interface GitHubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  private: boolean;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string;
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -181,6 +345,9 @@ export const commands = {
 
   createWorkspace: (input: CreateWorkspaceInput) =>
     invoke<Workspace>("create_workspace", { input }),
+
+  setWorkspaceBranch: (id: string, branch?: string) =>
+    invoke<void>("set_workspace_branch", { id, branch }),
 
   deleteWorkspace: (id: string) =>
     invoke<void>("delete_workspace", { id }),
@@ -201,17 +368,22 @@ export const commands = {
   gitDiffStat: (repoPath: string) =>
     invoke<string>("git_diff_stat", { repoPath }),
 
+  gitDiffFiles: (repoPath: string) =>
+    invoke<DiffFileEntry[]>("git_diff_files", { repoPath }),
+
   gitCreateWorktree: (
     repoPath: string,
     worktreePath: string,
     branch: string,
     newBranch: boolean,
+    baseBranch?: string,
   ) =>
     invoke<WorktreeInfo>("git_create_worktree", {
       repoPath,
       worktreePath,
       branch,
       newBranch,
+      baseBranch,
     }),
 
   gitRemoveWorktree: (
@@ -336,6 +508,265 @@ export const commands = {
   // Processes
   listProcesses: () =>
     invoke<ProcessInfo[]>("list_processes"),
+
+  // Editor
+  openInEditor: (filePath: string) =>
+    invoke<void>("open_in_editor", { filePath }),
+
+  // GitHub Auth
+  githubAuthStatus: () =>
+    invoke<GitHubAuthStatus>("github_auth_status"),
+
+  githubAuthLogin: () =>
+    invoke<void>("github_auth_login"),
+
+  githubAuthLogout: () =>
+    invoke<void>("github_auth_logout"),
+
+  // GitHub Repo Slug
+  githubRepoSlug: (remoteUrl: string) =>
+    invoke<RepoSlug | null>("github_repo_slug", { remoteUrl }),
+
+  // GitHub Issues
+  githubIssueList: (
+    owner: string,
+    repo: string,
+    issueState?: string,
+    page?: number,
+    perPage?: number,
+  ) =>
+    invoke<GitHubIssue[]>("github_issue_list", {
+      owner,
+      repo,
+      issueState,
+      page,
+      perPage,
+    }),
+
+  githubIssueGet: (owner: string, repo: string, number: number) =>
+    invoke<GitHubIssue>("github_issue_get", { owner, repo, number }),
+
+  githubIssueCreate: (
+    owner: string,
+    repo: string,
+    title: string,
+    body?: string,
+    labels?: string[],
+    assignees?: string[],
+  ) =>
+    invoke<GitHubIssue>("github_issue_create", {
+      owner,
+      repo,
+      title,
+      body,
+      labels,
+      assignees,
+    }),
+
+  githubIssueEdit: (
+    owner: string,
+    repo: string,
+    number: number,
+    title?: string,
+    body?: string,
+    issueState?: string,
+    labels?: string[],
+    assignees?: string[],
+  ) =>
+    invoke<GitHubIssue>("github_issue_edit", {
+      owner,
+      repo,
+      number,
+      title,
+      body,
+      issueState,
+      labels,
+      assignees,
+    }),
+
+  githubIssueClose: (owner: string, repo: string, number: number) =>
+    invoke<GitHubIssue>("github_issue_close", { owner, repo, number }),
+
+  githubIssueReopen: (owner: string, repo: string, number: number) =>
+    invoke<GitHubIssue>("github_issue_reopen", { owner, repo, number }),
+
+  githubIssueComment: (
+    owner: string,
+    repo: string,
+    number: number,
+    body: string,
+  ) =>
+    invoke<GitHubComment>("github_issue_comment", {
+      owner,
+      repo,
+      number,
+      body,
+    }),
+
+  githubIssueComments: (
+    owner: string,
+    repo: string,
+    number: number,
+    page?: number,
+    perPage?: number,
+  ) =>
+    invoke<GitHubComment[]>("github_issue_comments", {
+      owner,
+      repo,
+      number,
+      page,
+      perPage,
+    }),
+
+  githubLabelList: (owner: string, repo: string) =>
+    invoke<GitHubLabel[]>("github_label_list", { owner, repo }),
+
+  // GitHub PRs
+  githubPrList: (
+    owner: string,
+    repo: string,
+    prState?: string,
+    page?: number,
+    perPage?: number,
+  ) =>
+    invoke<GitHubPR[]>("github_pr_list", {
+      owner,
+      repo,
+      prState,
+      page,
+      perPage,
+    }),
+
+  githubPrGet: (owner: string, repo: string, number: number) =>
+    invoke<GitHubPR>("github_pr_get", { owner, repo, number }),
+
+  githubPrCreate: (
+    owner: string,
+    repo: string,
+    title: string,
+    body?: string,
+    head?: string,
+    base?: string,
+    draft?: boolean,
+  ) =>
+    invoke<GitHubPR>("github_pr_create", {
+      owner,
+      repo,
+      title,
+      body,
+      head,
+      base,
+      draft,
+    }),
+
+  githubPrEdit: (
+    owner: string,
+    repo: string,
+    number: number,
+    title?: string,
+    body?: string,
+    prState?: string,
+    base?: string,
+  ) =>
+    invoke<GitHubPR>("github_pr_edit", {
+      owner,
+      repo,
+      number,
+      title,
+      body,
+      prState,
+      base,
+    }),
+
+  githubPrClose: (owner: string, repo: string, number: number) =>
+    invoke<GitHubPR>("github_pr_close", { owner, repo, number }),
+
+  githubPrComment: (
+    owner: string,
+    repo: string,
+    number: number,
+    body: string,
+  ) =>
+    invoke<GitHubComment>("github_pr_comment", {
+      owner,
+      repo,
+      number,
+      body,
+    }),
+
+  githubPrComments: (
+    owner: string,
+    repo: string,
+    number: number,
+    page?: number,
+    perPage?: number,
+  ) =>
+    invoke<GitHubComment[]>("github_pr_comments", {
+      owner,
+      repo,
+      number,
+      page,
+      perPage,
+    }),
+
+  githubPrMerge: (
+    owner: string,
+    repo: string,
+    number: number,
+    mergeMethod?: string,
+    commitTitle?: string,
+    commitMessage?: string,
+  ) =>
+    invoke<unknown>("github_pr_merge", {
+      owner,
+      repo,
+      number,
+      mergeMethod,
+      commitTitle,
+      commitMessage,
+    }),
+
+  githubPrDiff: (owner: string, repo: string, number: number) =>
+    invoke<string>("github_pr_diff", { owner, repo, number }),
+
+  githubPrChecks: (owner: string, repo: string, prRef: string) =>
+    invoke<GitHubCheckSuite>("github_pr_checks", { owner, repo, prRef }),
+
+  githubPrReview: (
+    owner: string,
+    repo: string,
+    number: number,
+    event: string,
+    body?: string,
+  ) =>
+    invoke<unknown>("github_pr_review", {
+      owner,
+      repo,
+      number,
+      event,
+      body,
+    }),
+
+  // gh CLI
+  githubGhCliInfo: () =>
+    invoke<GhCliInfo>("github_gh_cli_info"),
+
+  githubGhSetupGit: () =>
+    invoke<void>("github_gh_setup_git"),
+
+  // GitHub Repo creation
+  githubCreateAndPush: (
+    repoPath: string,
+    name: string,
+    description: string | null,
+    isPrivate: boolean,
+  ) =>
+    invoke<GitHubRepo>("github_create_and_push", {
+      repoPath,
+      name,
+      description,
+      private: isPrivate,
+    }),
 };
 
 // ── Events ───────────────────────────────────────────────────────────
