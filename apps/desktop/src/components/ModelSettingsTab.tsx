@@ -8,7 +8,7 @@ import type {
 } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { ModelSelector } from "./ModelSelector";
-import { getProviderIconUrl, resolveModelIconUrl } from "../assets/model-icons";
+import { getProviderIconUrl, resolveModelIcon, isMonochromeProvider } from "../assets/model-icons";
 
 type FormState = {
   name: string;
@@ -107,7 +107,7 @@ function ProviderSelector({
                 }`}
               >
                 {getProviderIconUrl(provider.type) ? (
-                  <img src={getProviderIconUrl(provider.type)!} alt="" className="h-4 w-4 shrink-0 object-contain" />
+                  <img src={getProviderIconUrl(provider.type)!} alt="" className={`h-4 w-4 shrink-0 object-contain ${isMonochromeProvider(provider.type) ? "model-icon-mono" : ""}`} />
                 ) : (
                   <span className="text-[10px] font-semibold uppercase text-black">{provider.name.slice(0, 2)}</span>
                 )}
@@ -139,9 +139,12 @@ function ConfiguredModelCard({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {resolveModelIconUrl(model.name, model.model, model.provider) ? (
-              <img src={resolveModelIconUrl(model.name, model.model, model.provider)!} alt="" className="h-5 w-5 shrink-0 object-contain" />
-            ) : null}
+            {(() => {
+              const iconInfo = resolveModelIcon(model.name, model.model, model.provider);
+              return iconInfo ? (
+                <img src={iconInfo.url} alt="" className={`h-5 w-5 shrink-0 object-contain ${iconInfo.isMonochrome ? "model-icon-mono" : ""}`} />
+              ) : null;
+            })()}
             <p className="truncate text-sm font-medium text-[var(--text-primary)]">{model.name}</p>
           </div>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">

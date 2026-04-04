@@ -1,0 +1,258 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Dracula Theme Family — Dark purple-tinted theme
+   https://draculatheme.com/
+   
+   Note: Dracula is a dark-only theme. Light mode falls back to default light.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Dracula Dark ──────────────────────────────────────────────────── */
+[data-theme-family="dracula"][data-theme-variant="dark"] {
+  color-scheme: dark;
+  --surface-bg: #282a36;
+  --surface-bg-subtle: #21222c;
+  --surface-card: rgba(68, 71, 90, 0.72);
+  --surface-card-hover: rgba(77, 79, 99, 0.78);
+  --surface-elevated: rgba(77, 79, 99, 0.85);
+  
+  --glass-bg: rgba(68, 71, 90, 0.68);
+  --glass-bg-strong: rgba(68, 71, 90, 0.82);
+  --glass-border: rgba(248, 248, 242, 0.09);
+  --glass-border-strong: rgba(248, 248, 242, 0.15);
+  --glass-shine: rgba(255, 255, 255, 0.04);
+  --glass-tint: rgba(68, 71, 90, 0.45);
+  
+  --text-primary: #f8f8f2;
+  --text-secondary: #e6e6e1;
+  --text-muted: #6272a4;
+  --text-inverse: #282a36;
+  
+  --mesh-1: #282a36;
+  --mesh-2: #21222c;
+  --mesh-3: #1d1e26;
+  --mesh-4: #2a2c38;
+  --orb-accent: rgba(189, 147, 249, 0.035);
+  --orb-accent-soft: rgba(255, 184, 108, 0.025);
+  --orb-ink: rgba(0, 0, 0, 0.18);
+  
+  --input-bg: rgba(68, 71, 90, 0.72);
+  --input-border: rgba(248, 248, 242, 0.11);
+  --input-focus-ring: rgba(189, 147, 249, 0.18);
+  
+  --scrollbar-thumb: rgba(248, 248, 242, 0.22);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(248, 248, 242, 0.03);
+  --surface-ink-4: rgba(248, 248, 242, 0.05);
+  --surface-ink-5: rgba(248, 248, 242, 0.08);
+  --surface-ink-25: rgba(29, 30, 38, 0.52);
+  --surface-white-15: rgba(248, 248, 242, 0.12);
+  --surface-white-50: rgba(248, 248, 242, 0.45);
+  --surface-ink-solid: #1d1e26;
+  
+  --log-bg: rgba(29, 30, 38, 0.94);
+  --log-stdout: #50fa7b;
+  --log-stderr: #ffb86c;
+  
+  --color-accent: #bd93f9;
+  --color-accent-hover: #caa9fa;
+  --color-accent-muted: rgba(189, 147, 249, 0.18);
+  --color-accent-subtle: rgba(189, 147, 249, 0.07);
+  --color-accent-ink: #282a36;
+  --glow-low: rgba(189, 147, 249, 0.05);
+  --glow-high: rgba(189, 147, 249, 0.09);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(248, 248, 242, 0.04);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.54), 0 0 0 1px rgba(248, 248, 242, 0.06);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.64), 0 0 0 1px rgba(248, 248, 242, 0.08);
+  --shadow-glow: 0 0 0 1px rgba(189, 147, 249, 0.09);
+  --shadow-glow-sm: 0 0 0 1px rgba(189, 147, 249, 0.05);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.50);
+  
+  --color-success: #50fa7b;
+  --color-success-strong: #44f070;
+  --color-success-muted: rgba(80, 250, 123, 0.09);
+  --color-success-text: #50fa7b;
+  
+  --color-danger: #ff5555;
+  --color-danger-strong: #ff4757;
+  --color-danger-hover: #ff6b6b;
+  --color-danger-muted: rgba(255, 85, 85, 0.09);
+  --color-danger-subtle: rgba(255, 85, 85, 0.05);
+  --color-danger-text: #ff5555;
+  --color-danger-text-light: #ff6b6b;
+  --color-danger-border: rgba(255, 85, 85, 0.18);
+  --color-danger-border-strong: rgba(255, 85, 85, 0.28);
+  --color-danger-bg: rgba(255, 85, 85, 0.07);
+  --color-danger-bg-strong: rgba(255, 85, 85, 0.11);
+  --color-danger-ink: #ff6b6b;
+  
+  --color-warning-text: #ffb86c;
+}
+
+[data-theme-family="dracula"][data-theme-variant="dark"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="dracula"][data-theme-variant="dark"] .glass-panel,
+[data-theme-family="dracula"][data-theme-variant="dark"] .glass-card,
+[data-theme-family="dracula"][data-theme-variant="dark"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="dracula"][data-theme-variant="dark"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Dracula Light (fallback to default) ─────────────────────────────
+   Dracula doesn't have an official light variant. When users select light
+   mode with Dracula family, they get the default light theme instead.
+   This selector ensures the dark variant is used regardless of what
+   data-theme-variant is set to for Dracula. ─────────────────────────────── */
+[data-theme-family="dracula"][data-theme-variant="light"] {
+  color-scheme: light;
+  --surface-bg: #f5f5f4;
+  --surface-bg-subtle: #e7e6e3;
+  --surface-card: rgba(255, 255, 254, 0.72);
+  --surface-card-hover: rgba(255, 255, 254, 0.82);
+  --surface-elevated: rgba(255, 255, 254, 0.88);
+  
+  --glass-bg: rgba(255, 255, 253, 0.48);
+  --glass-bg-strong: rgba(255, 255, 253, 0.68);
+  --glass-border: rgba(20, 20, 18, 0.06);
+  --glass-border-strong: rgba(20, 20, 18, 0.11);
+  --glass-shine: rgba(255, 255, 255, 0.52);
+  --glass-tint: rgba(255, 255, 253, 0.38);
+  
+  --text-primary: #1c1c1a;
+  --text-secondary: #4a4a46;
+  --text-muted: #7a7a76;
+  --text-inverse: #f5f4f1;
+  
+  --orb-accent: rgba(189, 147, 249, 0.04);
+  --orb-accent-soft: rgba(20, 20, 18, 0.02);
+  --orb-ink: rgba(20, 20, 18, 0.04);
+  
+  --input-bg: rgba(255, 255, 253, 0.82);
+  --input-border: rgba(20, 20, 18, 0.12);
+  --input-focus-ring: rgba(189, 147, 249, 0.14);
+  
+  --scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(20, 20, 18, 0.03);
+  --surface-ink-4: rgba(20, 20, 18, 0.04);
+  --surface-ink-5: rgba(20, 20, 18, 0.05);
+  --surface-ink-25: rgba(20, 20, 18, 0.30);
+  --surface-white-15: rgba(255, 255, 255, 0.15);
+  --surface-white-50: rgba(255, 255, 255, 0.50);
+  --surface-ink-solid: #1c1c1a;
+  
+  --log-bg: rgba(26, 26, 24, 0.94);
+  --log-stdout: #6a994f;
+  --log-stderr: #b8750b;
+  
+  --color-accent: #bd93f9;
+  --color-accent-hover: #caa9fa;
+  --color-accent-muted: rgba(189, 147, 249, 0.14);
+  --color-accent-subtle: rgba(189, 147, 249, 0.05);
+  --color-accent-ink: #ffffff;
+  --glow-low: rgba(189, 147, 249, 0.05);
+  --glow-high: rgba(189, 147, 249, 0.09);
+  
+  --shadow-glass-sm: 0 4px 20px -6px rgba(20, 20, 18, 0.10), 0 0 0 1px rgba(255, 255, 253, 0.65);
+  --shadow-glass-md: 0 10px 32px -10px rgba(20, 20, 18, 0.14), 0 0 0 1px rgba(255, 255, 253, 0.60);
+  --shadow-glass-lg: 0 20px 56px -16px rgba(20, 20, 18, 0.18), 0 0 0 1px rgba(255, 255, 253, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(189, 147, 249, 0.16);
+  --shadow-glow-sm: 0 0 0 1px rgba(189, 147, 249, 0.10);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(20, 20, 18, 0.18);
+  
+  --color-success: #6a994f;
+  --color-success-strong: #5a8840;
+  --color-success-muted: rgba(106, 153, 79, 0.09);
+  --color-success-text: #5a8840;
+  
+  --color-danger: #d7373f;
+  --color-danger-strong: #c5252d;
+  --color-danger-hover: #e44850;
+  --color-danger-muted: rgba(215, 55, 63, 0.08);
+  --color-danger-subtle: rgba(215, 55, 63, 0.05);
+  --color-danger-text: #b5252b;
+  --color-danger-text-light: #d7373f;
+  --color-danger-border: rgba(215, 55, 63, 0.16);
+  --color-danger-border-strong: rgba(215, 55, 63, 0.26);
+  --color-danger-bg: rgba(215, 55, 63, 0.07);
+  --color-danger-bg-strong: rgba(215, 55, 63, 0.11);
+  --color-danger-ink: #9a1d22;
+  
+  --color-warning-text: #b8750b;
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .glass-panel,
+[data-theme-family="dracula"][data-theme-variant="light"] .glass-card,
+[data-theme-family="dracula"][data-theme-variant="light"] .glass-card-static {
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .glass-panel-strong {
+  backdrop-filter: blur(36px) saturate(1.45);
+  -webkit-backdrop-filter: blur(36px) saturate(1.45);
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .glass-input {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .btn-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: rgba(20, 20, 18, 0.75);
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .btn-accent:hover {
+  background: var(--color-accent-hover);
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .btn-ink {
+  background: var(--surface-ink-solid);
+  color: var(--text-inverse);
+  border-color: rgba(20, 20, 18, 0.65);
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] .btn-ink:hover {
+  background: #0a0a09;
+}
+
+[data-theme-family="dracula"][data-theme-variant="light"] ::selection {
+  background: rgba(189, 147, 249, 0.20);
+  color: #1c1c1a;
+}

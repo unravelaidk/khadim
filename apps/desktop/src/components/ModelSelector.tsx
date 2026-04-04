@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import type { OpenCodeModelOption } from "../lib/bindings";
-import { resolveModelIconUrl, getProviderIconUrl } from "../assets/model-icons";
+import { resolveModelIcon, getProviderIconUrl, isMonochromeProvider } from "../assets/model-icons";
 
 /* ─── Provider display labels ──────────────────────────────────────── */
 const PROVIDER_LABELS: Record<string, string> = {
@@ -35,18 +35,18 @@ function getModelKey(model: OpenCodeModelOption): string {
 
 /* ─── Model Icon Badge ─────────────────────────────────────────────── */
 function ModelIcon({ model, size = "md" }: { model: OpenCodeModelOption; size?: "sm" | "md" }) {
-  const iconUrl = useMemo(
-    () => resolveModelIconUrl(model.model_name, model.model_id, model.provider_id),
+  const iconInfo = useMemo(
+    () => resolveModelIcon(model.model_name, model.model_id, model.provider_id),
     [model.model_name, model.model_id, model.provider_id],
   );
 
   const sizeClasses = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const imgSize = size === "sm" ? 14 : 18;
 
-  if (iconUrl) {
+  if (iconInfo) {
     return (
       <span className={`inline-flex ${sizeClasses} shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--surface-card)] ring-1 ring-[var(--glass-border)]`}>
-        <img alt="" src={iconUrl} width={imgSize} height={imgSize} className="shrink-0 object-contain" />
+        <img alt="" src={iconInfo.url} width={imgSize} height={imgSize} className={`shrink-0 object-contain ${iconInfo.isMonochrome ? "model-icon-mono" : ""}`} />
       </span>
     );
   }
@@ -304,8 +304,9 @@ export function ModelSelector({
 function ProviderGroupIcon({ providerId }: { providerId: string }) {
   const url = getProviderIconUrl(providerId);
   if (!url) return null;
+  const isMono = isMonochromeProvider(providerId);
   return (
-    <img alt="" src={url} width={12} height={12} className="shrink-0 object-contain opacity-60" />
+    <img alt="" src={url} width={12} height={12} className={`shrink-0 object-contain opacity-60 ${isMono ? "model-icon-mono" : ""}`} />
   );
 }
 

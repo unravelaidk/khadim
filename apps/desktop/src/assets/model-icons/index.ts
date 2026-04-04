@@ -220,6 +220,20 @@ export function resolveModelIconUrl(
   modelId: string,
   providerId: string,
 ): string | null {
+  const result = resolveModelIcon(modelName, modelId, providerId);
+  return result?.url ?? null;
+}
+
+export interface ResolvedModelIcon {
+  url: string;
+  isMonochrome: boolean;
+}
+
+export function resolveModelIcon(
+  modelName: string,
+  modelId: string,
+  providerId: string,
+): ResolvedModelIcon | null {
   const candidates = new Set<string>();
 
   // 1. Regex rules against combined name + id
@@ -253,8 +267,39 @@ export function resolveModelIconUrl(
   // Return first candidate that maps to an actual icon
   for (const slug of candidates) {
     const url = MODEL_ICONS[slug];
-    if (url) return url;
+    if (url) {
+      return {
+        url,
+        isMonochrome: MONOCHROME_ICON_SLUGS.has(slug),
+      };
+    }
   }
 
   return null;
+}
+
+const MONOCHROME_ICON_SLUGS = new Set([
+  "ai21",
+  "aistudio",
+  "anthropic",
+  "aws",
+  "bfl",
+  "cerebras",
+  "dolphin",
+  "githubcopilot",
+  "grok",
+  "moonshot",
+  "nousresearch",
+  "ollama",
+  "openai",
+  "opencode",
+  "openrouter",
+  "vercel",
+  "yi",
+  "zai-brand",
+]);
+
+export function isMonochromeProvider(providerId: string): boolean {
+  const slug = PROVIDER_ICON_MAP[providerId];
+  return slug ? MONOCHROME_ICON_SLUGS.has(slug) : false;
 }

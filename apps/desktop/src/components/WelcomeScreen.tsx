@@ -11,10 +11,10 @@ interface WelcomeScreenProps {
 }
 
 const examples = [
-  { title: "Fix a bug", desc: "Diagnose and fix an issue in the current codebase.", prompt: "Find and fix the bug causing this issue. Explain what was wrong and why your fix is correct." },
-  { title: "Refactor this code", desc: "Clean up and simplify without changing behavior.", prompt: "Refactor this code to be cleaner and more maintainable. Keep the same behavior, improve readability and structure." },
-  { title: "Write tests", desc: "Add unit or integration tests for existing logic.", prompt: "Write thorough tests for this module. Cover the happy path, edge cases, and failure modes." },
-  { title: "Review my PR", desc: "Get a critical code review before merging.", prompt: "Review this code as a senior engineer would. Point out bugs, performance issues, and anything that doesn't meet production quality." },
+  { title: "Explain a concept", desc: "Get a clear, simple explanation of any topic.", prompt: "Explain quantum computing to me like I'm 12 years old. Use simple analogies and avoid jargon." },
+  { title: "Brainstorm ideas", desc: "Generate creative solutions and explore possibilities.", prompt: "Help me brainstorm 10 creative project ideas for learning web development. I'm interested in practical apps I can actually build." },
+  { title: "Write something", desc: "Draft emails, articles, or any written content.", prompt: "Help me write a professional but warm email to my team announcing a deadline extension for our project." },
+  { title: "Solve a problem", desc: "Work through challenges step by step.", prompt: "I need to make a decision between three job offers. Help me think through the trade-offs systematically." },
 ];
 
 export function WelcomeScreen({ input, setInput, onSend, hideInput = false, compact = false }: WelcomeScreenProps) {
@@ -29,7 +29,7 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
   if (compact) {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-4 animate-in fade-in duration-500">
-        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-muted)] mb-3 px-1">Quick prompts</p>
+        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-muted)] mb-3 px-1">Conversation starters</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {examples.map((ex) => (
             <button
@@ -120,9 +120,9 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
         <div className="w-full rounded-[28px] glass-card-static px-4 py-4 sm:px-6 sm:py-5">
           <div className="mb-4 flex items-center gap-2 text-lg font-medium text-[var(--text-primary)]">
             <svg className="h-4 w-4 text-[var(--text-primary)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            <span>Try these examples</span>
+            <span>Start a conversation</span>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

@@ -1,0 +1,257 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Gruvbox Theme Family — Retro groove with warm colors
+   https://github.com/morhetz/gruvbox
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Gruvbox Dark ──────────────────────────────────────────────────── */
+[data-theme-family="gruvbox"][data-theme-variant="dark"] {
+  color-scheme: dark;
+  --surface-bg: #282828;
+  --surface-bg-subtle: #1d2021;
+  --surface-card: rgba(60, 56, 54, 0.72);
+  --surface-card-hover: rgba(80, 73, 69, 0.78);
+  --surface-elevated: rgba(69, 64, 60, 0.85);
+  
+  --glass-bg: rgba(60, 56, 54, 0.68);
+  --glass-bg-strong: rgba(60, 56, 54, 0.82);
+  --glass-border: rgba(251, 241, 199, 0.09);
+  --glass-border-strong: rgba(251, 241, 199, 0.15);
+  --glass-shine: rgba(255, 255, 255, 0.04);
+  --glass-tint: rgba(60, 56, 54, 0.45);
+  
+  --text-primary: #ebdbb2;
+  --text-secondary: #d5c4a1;
+  --text-muted: #928374;
+  --text-inverse: #282828;
+  
+  --mesh-1: #282828;
+  --mesh-2: #1d2021;
+  --mesh-3: #1b1b1b;
+  --mesh-4: #292929;
+  --orb-accent: rgba(250, 189, 47, 0.035);
+  --orb-accent-soft: rgba(251, 116, 59, 0.025);
+  --orb-ink: rgba(0, 0, 0, 0.20);
+  
+  --input-bg: rgba(60, 56, 54, 0.72);
+  --input-border: rgba(251, 241, 199, 0.11);
+  --input-focus-ring: rgba(250, 189, 47, 0.18);
+  
+  --scrollbar-thumb: rgba(251, 241, 199, 0.22);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(251, 241, 199, 0.03);
+  --surface-ink-4: rgba(251, 241, 199, 0.05);
+  --surface-ink-5: rgba(251, 241, 199, 0.08);
+  --surface-ink-25: rgba(27, 27, 27, 0.52);
+  --surface-white-15: rgba(251, 241, 199, 0.12);
+  --surface-white-50: rgba(251, 241, 199, 0.45);
+  --surface-ink-solid: #1b1b1b;
+  
+  --log-bg: rgba(27, 27, 27, 0.94);
+  --log-stdout: #b8bb26;
+  --log-stderr: #fabd2f;
+  
+  --color-accent: #fe8019;
+  --color-accent-hover: #d65d0e;
+  --color-accent-muted: rgba(254, 128, 25, 0.18);
+  --color-accent-subtle: rgba(254, 128, 25, 0.07);
+  --color-accent-ink: #282828;
+  --glow-low: rgba(254, 128, 25, 0.05);
+  --glow-high: rgba(254, 128, 25, 0.09);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(251, 241, 199, 0.04);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.54), 0 0 0 1px rgba(251, 241, 199, 0.06);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.64), 0 0 0 1px rgba(251, 241, 199, 0.08);
+  --shadow-glow: 0 0 0 1px rgba(250, 189, 47, 0.09);
+  --shadow-glow-sm: 0 0 0 1px rgba(250, 189, 47, 0.05);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.50);
+  
+  --color-success: #b8bb26;
+  --color-success-strong: #a3a62a;
+  --color-success-muted: rgba(184, 187, 38, 0.09);
+  --color-success-text: #b8bb26;
+  
+  --color-danger: #fb4934;
+  --color-danger-strong: #cc241d;
+  --color-danger-hover: #fb5f50;
+  --color-danger-muted: rgba(251, 73, 52, 0.09);
+  --color-danger-subtle: rgba(251, 73, 52, 0.05);
+  --color-danger-text: #fb4934;
+  --color-danger-text-light: #fb5f50;
+  --color-danger-border: rgba(251, 73, 52, 0.18);
+  --color-danger-border-strong: rgba(251, 73, 52, 0.28);
+  --color-danger-bg: rgba(251, 73, 52, 0.07);
+  --color-danger-bg-strong: rgba(251, 73, 52, 0.11);
+  --color-danger-ink: #fb5f50;
+  
+  --color-warning-text: #fabd2f;
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="dark"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="dark"] .glass-panel,
+[data-theme-family="gruvbox"][data-theme-variant="dark"] .glass-card,
+[data-theme-family="gruvbox"][data-theme-variant="dark"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="dark"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Gruvbox Light ─────────────────────────────────────────────────── */
+[data-theme-family="gruvbox"][data-theme-variant="light"] {
+  color-scheme: light;
+  --surface-bg: #fbf1c7;
+  --surface-bg-subtle: #f2e5bc;
+  --surface-card: rgba(255, 251, 241, 0.72);
+  --surface-card-hover: rgba(255, 253, 245, 0.82);
+  --surface-elevated: rgba(255, 254, 248, 0.88);
+  
+  --glass-bg: rgba(255, 251, 241, 0.55);
+  --glass-bg-strong: rgba(255, 251, 241, 0.75);
+  --glass-border: rgba(40, 40, 40, 0.09);
+  --glass-border-strong: rgba(40, 40, 40, 0.14);
+  --glass-shine: rgba(255, 255, 255, 0.55);
+  --glass-tint: rgba(255, 251, 241, 0.40);
+  
+  --text-primary: #282828;
+  --text-secondary: #3c3836;
+  --text-muted: #665c54;
+  --text-inverse: #fbf1c7;
+  
+  --orb-accent: rgba(215, 153, 33, 0.04);
+  --orb-accent-soft: rgba(251, 116, 59, 0.03);
+  --orb-ink: rgba(40, 40, 40, 0.05);
+  
+  --input-bg: rgba(255, 251, 241, 0.85);
+  --input-border: rgba(40, 40, 40, 0.13);
+  --input-focus-ring: rgba(215, 153, 33, 0.16);
+  
+  --scrollbar-thumb: rgba(40, 40, 40, 0.28);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(40, 40, 40, 0.03);
+  --surface-ink-4: rgba(40, 40, 40, 0.05);
+  --surface-ink-5: rgba(40, 40, 40, 0.07);
+  --surface-ink-25: rgba(40, 40, 40, 0.28);
+  --surface-white-15: rgba(40, 40, 40, 0.12);
+  --surface-white-50: rgba(40, 40, 40, 0.45);
+  --surface-ink-solid: #282828;
+  
+  --log-bg: rgba(242, 229, 188, 0.94);
+  --log-stdout: #79740e;
+  --log-stderr: #b57614;
+  
+  --color-accent: #d79921;
+  --color-accent-hover: #d65d0e;
+  --color-accent-muted: rgba(215, 153, 33, 0.14);
+  --color-accent-subtle: rgba(215, 153, 33, 0.05);
+  --color-accent-ink: #ffffff;
+  --glow-low: rgba(215, 153, 33, 0.05);
+  --glow-high: rgba(215, 153, 33, 0.09);
+  
+  --shadow-glass-sm: 0 4px 20px -6px rgba(40, 40, 40, 0.09), 0 0 0 1px rgba(255, 251, 241, 0.65);
+  --shadow-glass-md: 0 10px 32px -10px rgba(40, 40, 40, 0.13), 0 0 0 1px rgba(255, 251, 241, 0.60);
+  --shadow-glass-lg: 0 20px 56px -16px rgba(40, 40, 40, 0.17), 0 0 0 1px rgba(255, 251, 241, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(40, 40, 40, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(40, 40, 40, 0.09);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(40, 40, 40, 0.14);
+  
+  --color-success: #79740e;
+  --color-success-strong: #6a6b0a;
+  --color-success-muted: rgba(121, 116, 14, 0.09);
+  --color-success-text: #6a6b0a;
+  
+  --color-danger: #9d0006;
+  --color-danger-strong: #8b0005;
+  --color-danger-hover: #b4080f;
+  --color-danger-muted: rgba(157, 0, 6, 0.09);
+  --color-danger-subtle: rgba(157, 0, 6, 0.05);
+  --color-danger-text: #8b0005;
+  --color-danger-text-light: #9d0006;
+  --color-danger-border: rgba(157, 0, 6, 0.16);
+  --color-danger-border-strong: rgba(157, 0, 6, 0.26);
+  --color-danger-bg: rgba(157, 0, 6, 0.07);
+  --color-danger-bg-strong: rgba(157, 0, 6, 0.11);
+  --color-danger-ink: #7a0405;
+  
+  --color-warning-text: #b57614;
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-panel,
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-card,
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-card-static {
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-panel-strong {
+  backdrop-filter: blur(36px) saturate(1.45);
+  -webkit-backdrop-filter: blur(36px) saturate(1.45);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-input {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .glass-input:focus {
+  border-color: rgba(40, 40, 40, 0.30);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .btn-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: rgba(40, 40, 40, 0.75);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .btn-accent:hover {
+  background: var(--color-accent-hover);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .btn-ink {
+  background: var(--surface-ink-solid);
+  color: var(--text-inverse);
+  border-color: rgba(40, 40, 40, 0.65);
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] .btn-ink:hover {
+  background: #1d1d1d;
+}
+
+[data-theme-family="gruvbox"][data-theme-variant="light"] ::selection {
+  background: rgba(215, 153, 33, 0.20);
+  color: #282828;
+}
