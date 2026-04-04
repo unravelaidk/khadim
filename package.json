@@ -2,15 +2,15 @@
   "name": "khadim",
   "private": true,
   "scripts": {
-    "build": "pnpm -r --if-present build",
-    "dev": "pnpm --filter @khadim/web dev",
-    "desktop:dev": "pnpm --filter @khadim/desktop tauri dev",
-    "desktop:build": "pnpm --filter @khadim/desktop build",
-    "start": "pnpm --filter @khadim/web start",
-    "typecheck": "pnpm --filter @khadim/web typecheck",
-    "test": "pnpm -r --if-present test",
-    "db:generate": "pnpm --filter @khadim/web db:generate",
-    "db:migrate": "pnpm --filter @khadim/web db:migrate"
+    "build": "bun -r --if-present build",
+    "dev": "bun --filter @khadim/web dev",
+    "desktop:dev": "bun --filter @khadim/desktop tauri dev",
+    "desktop:build": "bun --filter @khadim/desktop build",
+    "start": "bun --filter @khadim/web start",
+    "typecheck": "bun --filter @khadim/web typecheck",
+    "test": "bun -r --if-present test",
+    "db:generate": "bun --filter @khadim/web db:generate",
+    "db:migrate": "bun --filter @khadim/web db:migrate"
   },
   "workspaces": [
     "apps/*",

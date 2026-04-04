@@ -3,6 +3,7 @@
 mod db;
 mod error;
 mod git;
+mod github;
 mod health;
 mod opencode;
 mod process;
@@ -40,6 +41,147 @@ fn extract_text(value: &serde_json::Value) -> String {
     }
 }
 
+fn extract_message_parts_text(parts: &[serde_json::Value]) -> String {
+    parts.iter()
+        .filter_map(|part| {
+            let part_type = part.get("type").and_then(|value| value.as_str())?;
+            match part_type {
+                "text" | "reasoning" => part.get("text").and_then(|value| value.as_str()),
+                "tool" => part
+                    .get("state")
+                    .and_then(|value| value.get("output"))
+                    .and_then(|value| value.as_str()),
+                _ => None,
+            }
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn extract_assistant_message(
+    payload: &serde_json::Value,
+    preferred_message_id: Option<&str>,
+) -> Option<(String, Option<String>)> {
+    let messages = payload
+        .as_array()
+        .or_else(|| payload.get("messages").and_then(|value| value.as_array()))?;
+
+    let message = if let Some(preferred_message_id) = preferred_message_id {
+        messages.iter().find(|message| {
+            message
+                .get("info")
+                .and_then(|value| value.get("id"))
+                .and_then(|value| value.as_str())
+                == Some(preferred_message_id)
+                && message
+                    .get("info")
+                    .and_then(|value| value.get("role"))
+                    .and_then(|value| value.as_str())
+                    == Some("assistant")
+        })?
+    } else {
+        let message = messages.last()?;
+        let role = message
+            .get("info")
+            .and_then(|value| value.get("role"))
+            .and_then(|value| value.as_str())?;
+        if role != "assistant" {
+            return None;
+        }
+        message
+    };
+
+    let parts = message
+        .get("parts")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let content_from_parts = extract_message_parts_text(&parts);
+    let content = if !content_from_parts.trim().is_empty() {
+        content_from_parts
+    } else {
+        message
+            .get("info")
+            .map(extract_text)
+            .filter(|value| !value.trim().is_empty())?
+    };
+
+    Some((
+        content,
+        serde_json::to_string(message).ok().filter(|value| !value.is_empty()),
+    ))
+}
+
+async fn fetch_assistant_message_with_retry(
+    conn: &opencode::OpenCodeConnection,
+    session_id: &str,
+    preferred_message_id: Option<&str>,
+) -> Option<(String, Option<String>)> {
+    for attempt in 0..12 {
+        let result = OpenCodeManager::list_messages(conn, session_id)
+            .await
+            .ok()
+            .and_then(|payload| extract_assistant_message(&payload, preferred_message_id));
+
+        if result.is_some() {
+            return result;
+        }
+
+        if attempt < 11 {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
+
+    None
+}
+
+async fn persist_streamed_assistant_message(
+    state: &Arc<AppState>,
+    conn: &opencode::OpenCodeConnection,
+    session_id: &str,
+    conversation_id: &str,
+    streamed_content: &str,
+    terminal_event: &AgentStreamEvent,
+    assistant_message_id: Option<&str>,
+) -> Result<(), AppError> {
+    let remote_message = fetch_assistant_message_with_retry(conn, session_id, assistant_message_id).await;
+
+    let (content, metadata) = match remote_message {
+        Some((content, metadata)) => (content, metadata),
+        None => {
+            let fallback = streamed_content.trim();
+            if fallback.is_empty() {
+                return Ok(());
+            }
+
+            let metadata = (terminal_event.event_type == "error").then(|| {
+                serde_json::json!({
+                    "source": "stream_fallback",
+                    "terminal_event": terminal_event.event_type,
+                    "error": terminal_event.content,
+                })
+                .to_string()
+            });
+
+            (fallback.to_string(), metadata)
+        }
+    };
+
+    let assistant_msg = ChatMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        conversation_id: conversation_id.to_string(),
+        role: "assistant".to_string(),
+        content,
+        metadata,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    state.db.insert_message(&assistant_msg)
+}
+
 // ── App State ────────────────────────────────────────────────────────
 
 /// Shared state injected into all Tauri commands.
@@ -47,6 +189,7 @@ pub struct AppState {
     db: Database,
     process_runner: ProcessRunner,
     opencode: OpenCodeManager,
+    github: github::GitHubClient,
 }
 
 // ── Tauri commands ───────────────────────────────────────────────────
@@ -93,7 +236,6 @@ struct CreateWorkspaceInput {
     branch: Option<String>,
     backend: Option<String>,
     execution_target: Option<String>,
-    create_worktree: Option<bool>,
 }
 
 #[tauri::command]
@@ -113,25 +255,19 @@ fn create_workspace(
     let now = chrono::Utc::now().to_rfc3339();
     let backend = input.backend.unwrap_or_else(|| "opencode".to_string());
     let target = input.execution_target.unwrap_or_else(|| "local".to_string());
-
-    // Optionally create a worktree
-    let (worktree_path, branch) = if input.create_worktree.unwrap_or(false) {
-        let branch = input
-            .branch
-            .clone()
-            .unwrap_or_else(|| format!("khadim/{}", &id[..8]));
-        let wt_path = format!("{}/.khadim-worktrees/{}", input.repo_path, branch.replace('/', "-"));
-        let _wt = git::create_worktree(&input.repo_path, &wt_path, &branch, true)?;
-        (Some(wt_path), Some(branch))
-    } else {
-        (None, input.branch.clone())
-    };
+    let branch = input
+        .branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| git::repo_info(&input.repo_path).ok().and_then(|info| info.current_branch));
 
     let ws = Workspace {
         id: id.clone(),
         name: input.name,
         repo_path: input.repo_path,
-        worktree_path,
+        worktree_path: None,
         branch,
         backend,
         execution_target: target,
@@ -152,6 +288,19 @@ fn delete_workspace(state: State<'_, Arc<AppState>>, id: String) -> Result<(), A
         let _ = git::remove_worktree(&ws.repo_path, wt_path, true);
     }
     state.db.delete_workspace(&id)
+}
+
+#[tauri::command]
+fn set_workspace_branch(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    branch: Option<String>,
+) -> Result<(), AppError> {
+    let normalized = branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    state.db.update_workspace_branch(&id, normalized)
 }
 
 // ─── Git ─────────────────────────────────────────────────────────────
@@ -182,13 +331,25 @@ fn git_diff_stat(repo_path: String) -> Result<String, AppError> {
 }
 
 #[tauri::command]
+fn git_diff_files(repo_path: String) -> Result<Vec<git::DiffFileEntry>, AppError> {
+    git::diff_files(&repo_path)
+}
+
+#[tauri::command]
 fn git_create_worktree(
     repo_path: String,
     worktree_path: String,
     branch: String,
     new_branch: bool,
+    base_branch: Option<String>,
 ) -> Result<git::WorktreeInfo, AppError> {
-    git::create_worktree(&repo_path, &worktree_path, &branch, new_branch)
+    git::create_worktree(
+        &repo_path,
+        &worktree_path,
+        &branch,
+        new_branch,
+        base_branch.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -240,6 +401,8 @@ fn create_conversation(
         is_active: true,
         created_at: now.clone(),
         updated_at: now,
+        input_tokens: 0,
+        output_tokens: 0,
     };
 
     state.db.create_conversation(&conv)?;
@@ -520,10 +683,21 @@ async fn opencode_send_streaming(
     // Forward events to frontend
     let app_handle = app.clone();
     let state_arc = state.inner().clone();
+    let conn_for_persist = conn.clone();
     let conv_id = conversation_id.clone();
     tokio::spawn(async move {
         let mut full_content = String::new();
+        let mut assistant_message_id: Option<String> = None;
         while let Some(evt) = rx.recv().await {
+            if evt.event_type == "message_start" {
+                assistant_message_id = evt
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("messageId"))
+                    .and_then(|value| value.as_str())
+                    .map(ToOwned::to_owned);
+            }
+
             // Accumulate text deltas
             if evt.event_type == "text_delta" {
                 if let Some(ref text) = evt.content {
@@ -531,21 +705,41 @@ async fn opencode_send_streaming(
                 }
             }
 
+            // Persist token usage whenever OpenCode reports it.
+            if evt.event_type == "usage_update" {
+                if let Some(ref meta) = evt.metadata {
+                    let input  = meta.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let output = meta.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0);
+                    if let Err(e) = state_arc.db.update_conversation_tokens(&conv_id, input, output) {
+                        log::warn!("failed to persist token usage for {conv_id}: {}", e.message);
+                    }
+                }
+            }
+
+            let is_terminal = evt.event_type == "done" || evt.event_type == "error";
+            if is_terminal {
+                if let Err(error) = persist_streamed_assistant_message(
+                    &state_arc,
+                    &conn_for_persist,
+                    &evt.session_id,
+                    &conv_id,
+                    &full_content,
+                    &evt,
+                    assistant_message_id.as_deref(),
+                )
+                .await
+                {
+                    log::warn!(
+                        "failed to persist assistant message for session {}: {}",
+                        evt.session_id,
+                        error.message
+                    );
+                }
+            }
+
             let _ = app_handle.emit("agent-stream", &evt);
 
-            if evt.event_type == "done" || evt.event_type == "error" {
-                // Save the accumulated assistant message
-                if !full_content.is_empty() {
-                    let assistant_msg = ChatMessage {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        conversation_id: conv_id.clone(),
-                        role: "assistant".to_string(),
-                        content: full_content.clone(),
-                        metadata: None,
-                        created_at: chrono::Utc::now().to_rfc3339(),
-                    };
-                    let _ = state_arc.db.insert_message(&assistant_msg);
-                }
+            if is_terminal {
                 break;
             }
         }
@@ -656,6 +850,66 @@ fn list_processes(state: State<'_, Arc<AppState>>) -> Vec<process::ProcessInfo> 
     state.process_runner.list()
 }
 
+// ─── Editor ──────────────────────────────────────────────────────────
+
+/// Open a file in the user's preferred code editor.
+///
+/// Resolution order:
+///   1. `$VISUAL` / `$EDITOR` environment variable
+///   2. Well-known GUI editors on `$PATH`: code, cursor, zed
+///   3. Platform default opener (xdg-open / open / start)
+#[tauri::command]
+async fn open_in_editor(file_path: String) -> Result<(), AppError> {
+    use std::process::Command;
+
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(AppError::not_found(format!(
+            "File does not exist: {file_path}"
+        )));
+    }
+
+    // 1. Check $VISUAL / $EDITOR
+    for var in ["VISUAL", "EDITOR"] {
+        if let Ok(editor) = std::env::var(var) {
+            let editor = editor.trim().to_string();
+            if !editor.is_empty() {
+                let result = Command::new(&editor).arg(&file_path).spawn();
+                if result.is_ok() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    // 2. Try well-known GUI editors
+    for editor in ["code", "cursor", "zed"] {
+        let result = Command::new(editor).arg(&file_path).spawn();
+        if result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    // 3. Platform default opener
+    #[cfg(target_os = "linux")]
+    let opener = "xdg-open";
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(target_os = "windows")]
+    let opener = "start";
+
+    Command::new(opener)
+        .arg(&file_path)
+        .spawn()
+        .map_err(|e| {
+            AppError::io(format!(
+                "Failed to open {file_path} in any editor: {e}"
+            ))
+        })?;
+
+    Ok(())
+}
+
 // ── App entry point ──────────────────────────────────────────────────
 
 pub fn run() {
@@ -664,15 +918,18 @@ pub fn run() {
     let db = Database::open().expect("Failed to open database");
     let process_runner = ProcessRunner::new();
     let opencode = OpenCodeManager::new();
+    let github = github::GitHubClient::new();
 
     let app_state = Arc::new(AppState {
         db,
         process_runner,
         opencode,
+        github,
     });
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(app_state.clone())
         .invoke_handler(tauri::generate_handler![
             // Runtime
@@ -681,6 +938,7 @@ pub fn run() {
             list_workspaces,
             get_workspace,
             create_workspace,
+            set_workspace_branch,
             delete_workspace,
             // Git
             git_repo_info,
@@ -690,6 +948,7 @@ pub fn run() {
             git_remove_worktree,
             git_status,
             git_diff_stat,
+            git_diff_files,
             // Conversations
             list_conversations,
             get_conversation,
@@ -717,6 +976,40 @@ pub fn run() {
             set_setting,
             // Processes
             list_processes,
+            // Editor
+            open_in_editor,
+            // GitHub Auth
+            github::github_auth_status,
+            github::github_auth_login,
+            github::github_auth_logout,
+            github::github_repo_slug,
+            // GitHub Issues
+            github::github_issue_list,
+            github::github_issue_get,
+            github::github_issue_create,
+            github::github_issue_edit,
+            github::github_issue_close,
+            github::github_issue_reopen,
+            github::github_issue_comment,
+            github::github_issue_comments,
+            github::github_label_list,
+            // GitHub PRs
+            github::github_pr_list,
+            github::github_pr_get,
+            github::github_pr_create,
+            github::github_pr_edit,
+            github::github_pr_close,
+            github::github_pr_comment,
+            github::github_pr_comments,
+            github::github_pr_merge,
+            github::github_pr_diff,
+            github::github_pr_checks,
+            github::github_pr_review,
+            // gh CLI
+            github::github_gh_cli_info,
+            github::github_gh_setup_git,
+            // GitHub Repo creation
+            github::github_create_and_push,
         ])
         .on_window_event(|window, event| {
             // Clean up processes on close

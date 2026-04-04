@@ -1,30 +1,85 @@
 import KhadimLogo from "../assets/Khadim-logo.svg";
 import type { Workspace } from "../lib/bindings";
-import { backendLabel, executionTargetLabel } from "../lib/ui";
-import type { AgentInstance, AppMode, NavView } from "../lib/types";
+import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import type { AgentInstance, InteractionMode, LocalChatConversation, WorkHomeView } from "../lib/types";
 import { AgentCard } from "./AgentCard";
 
-/* ─── Helpers ──────────────────────────────────────────────────────── */
 
-/** Deterministic hue from a string — used for agent avatar colors */
-function hashHue(str: string): number {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-  return ((h % 360) + 360) % 360;
+/* ─── Mode Switcher ────────────────────────────────────────────────── */
+
+function ModeSwitcher({
+  mode,
+  onSwitch,
+}: {
+  mode: InteractionMode;
+  onSwitch: (m: InteractionMode) => void;
+}) {
+  const modes: { id: InteractionMode; label: string; icon: string }[] = [
+    {
+      id: "chat",
+      label: "Chat",
+      icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z",
+    },
+    {
+      id: "work",
+      label: "Work",
+      icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+    },
+  ];
+
+  return (
+    <div className="shrink-0 px-2 pt-2.5 pb-1">
+      <div className="flex gap-0.5 rounded-2xl bg-[var(--glass-bg)] p-0.5 border border-[var(--glass-border)]">
+        {modes.map(({ id, label, icon }) => (
+          <button
+            key={id}
+            onClick={() => onSwitch(id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
+              mode === id
+                ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <svg
+              className="w-3 h-3 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+            </svg>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
+
 
 /* ─── Sidebar ──────────────────────────────────────────────────────── */
 
 interface SidebarProps {
-  appMode: AppMode;
-  // Home mode props
+  mode: InteractionMode;
+  onSwitchMode: (m: InteractionMode) => void;
+
+  // Chat mode props
+  chatConversations: LocalChatConversation[];
+  activeChatId: string | null;
+  onSelectChat: (id: string) => void;
+  onNewChat: () => void;
+  onDeleteChat: (id: string) => void;
+
+  // Work mode — home props
+  workView: WorkHomeView | "workspace";
   workspaces: Workspace[];
   selectedWorkspaceId: string | null;
   onSelectWorkspace: (id: string) => void;
-  currentView: NavView;
-  onNavigate: (v: NavView) => void;
+  onNavigateWork: (v: WorkHomeView) => void;
   onNewWorkspace: () => void;
-  // Workspace mode props
+
+  // Work mode — workspace props
   activeWorkspace: Workspace | null;
   onExitWorkspace: () => void;
   agents: AgentInstance[];
@@ -35,15 +90,27 @@ interface SidebarProps {
   onManageWorkspace: () => void;
   onManageAgent: (id: string) => void;
   activeWorkspaceConnected: boolean;
+  githubAuthenticated: boolean;
+
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
+  onOpenSettings: () => void;
+  showSettings: boolean;
 }
 
 export function Sidebar({
-  appMode,
+  mode,
+  onSwitchMode,
+  chatConversations,
+  activeChatId,
+  onSelectChat,
+  onNewChat,
+  onDeleteChat,
+  workView,
   workspaces,
   selectedWorkspaceId,
   onSelectWorkspace,
-  currentView,
-  onNavigate,
+  onNavigateWork,
   onNewWorkspace,
   activeWorkspace,
   onExitWorkspace,
@@ -55,24 +122,29 @@ export function Sidebar({
   onManageWorkspace,
   onManageAgent,
   activeWorkspaceConnected,
+  githubAuthenticated,
+  theme,
+  onToggleTheme,
+  onOpenSettings,
+  showSettings,
 }: SidebarProps) {
   return (
-    <aside
-      className="relative z-50 shrink-0 w-[280px] py-3.5 pl-3.5"
-    >
+    <aside className="relative z-50 shrink-0 w-[280px] py-3.5 pl-3.5">
       {/* Glass shell */}
-      <div className="relative h-full glass-panel-strong flex flex-col rounded-2xl overflow-hidden border border-[var(--glass-border-strong)]">
-        {appMode === "home" ? (
-          <HomeSidebar
-            workspaces={workspaces}
-            selectedWorkspaceId={selectedWorkspaceId}
-            onSelectWorkspace={onSelectWorkspace}
-            currentView={currentView}
-            onNavigate={onNavigate}
-            onNewWorkspace={onNewWorkspace}
-            activeWorkspaceConnected={activeWorkspaceConnected}
+      <div className="relative h-full glass-panel-strong flex flex-col rounded-3xl overflow-hidden border border-[var(--glass-border-strong)]">
+        {/* Mode switcher at top */}
+        <ModeSwitcher mode={mode} onSwitch={onSwitchMode} />
+
+        {/* Mode-specific content */}
+        {mode === "chat" ? (
+          <ChatSidebar
+            conversations={chatConversations}
+            activeChatId={activeChatId}
+            onSelectChat={onSelectChat}
+            onNewChat={onNewChat}
+            onDeleteChat={onDeleteChat}
           />
-        ) : (
+        ) : workView === "workspace" ? (
           <WorkspaceSidebar
             workspace={activeWorkspace}
             onExit={onExitWorkspace}
@@ -84,29 +156,187 @@ export function Sidebar({
             onManageWorkspace={onManageWorkspace}
             onManageAgent={onManageAgent}
             connected={activeWorkspaceConnected}
-            hashHue={hashHue}
+            githubAuthenticated={githubAuthenticated}
+          />
+        ) : (
+          <WorkHomeSidebar
+            workspaces={workspaces}
+            selectedWorkspaceId={selectedWorkspaceId}
+            onSelectWorkspace={onSelectWorkspace}
+            currentView={workView}
+            onNavigate={onNavigateWork}
+            onNewWorkspace={onNewWorkspace}
+            activeWorkspaceConnected={activeWorkspaceConnected}
           />
         )}
+
+        {/* Footer: logo + settings + theme toggle */}
+        <div className="shrink-0 flex items-center justify-between px-3 py-2.5 border-t border-[var(--glass-border)]">
+          <div className="logo-adaptive flex items-center gap-2 text-[var(--text-primary)]">
+            <div className="w-5 h-5 [&>svg]:w-full [&>svg]:h-full">
+              <KhadimLogo />
+            </div>
+            <span className="text-[11px] font-bold tracking-tight">Khadim</span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={onOpenSettings}
+              className={`h-7 w-7 flex items-center justify-center rounded-xl transition-colors ${
+                showSettings
+                  ? "text-[var(--text-primary)] bg-[var(--glass-bg-strong)]"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
+              }`}
+              title="Settings"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" />
+                <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth={1.8} />
+              </svg>
+            </button>
+            <button
+              onClick={onToggleTheme}
+              className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364-.707-.707M6.343 6.343l-.707-.707m12.728 0-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
   );
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════
-   Home Sidebar
+   Chat Sidebar — standalone LLM conversations
    ═══════════════════════════════════════════════════════════════════════ */
 
-interface HomeSidebarProps {
+interface ChatSidebarProps {
+  conversations: LocalChatConversation[];
+  activeChatId: string | null;
+  onSelectChat: (id: string) => void;
+  onNewChat: () => void;
+  onDeleteChat: (id: string) => void;
+}
+
+function ChatSidebar({
+  conversations,
+  activeChatId,
+  onSelectChat,
+  onNewChat,
+  onDeleteChat,
+}: ChatSidebarProps) {
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--glass-border)]">
+        <span className="text-[13px] font-bold tracking-tight text-[var(--text-primary)]">Chats</span>
+        <button
+          onClick={onNewChat}
+          className="h-6 w-6 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          title="New chat"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Conversation list */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin px-1.5 py-1.5">
+        <div className="flex flex-col gap-0.5">
+          {conversations.map((conv) => {
+            const selected = conv.id === activeChatId;
+            const lastMsg = conv.messages[conv.messages.length - 1];
+            const preview = lastMsg
+              ? lastMsg.content.slice(0, 60) + (lastMsg.content.length > 60 ? "..." : "")
+              : "Empty conversation";
+            return (
+              <div key={conv.id} className="group relative">
+                <button
+                  onClick={() => onSelectChat(conv.id)}
+                  className={`w-full flex flex-col gap-0.5 px-3 py-2.5 rounded-xl text-left transition-all duration-150 ${
+                    selected
+                      ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] font-semibold truncate">{conv.title}</span>
+                    <span className={`text-[9px] shrink-0 ${selected ? "text-[var(--surface-white-50)]" : "text-[var(--text-muted)]"}`}>
+                      {relTime(conv.updatedAt)}
+                    </span>
+                  </div>
+                  <p className={`text-[10px] truncate ${selected ? "text-[var(--surface-white-50)]" : "text-[var(--text-muted)]"}`}>
+                    {preview}
+                  </p>
+                </button>
+                {/* Delete button — shown on hover */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteChat(conv.id);
+                  }}
+                  className="absolute right-1.5 top-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] hover:bg-[var(--color-danger-muted)] transition-colors"
+                  title="Delete chat"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+          {conversations.length === 0 && (
+            <div className="py-10 text-center">
+              <div className="w-10 h-10 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
+                <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                </svg>
+              </div>
+              <p className="text-[11px] font-medium text-[var(--text-secondary)]">No chats yet</p>
+              <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                Start a conversation with the AI
+              </p>
+              <button
+                onClick={onNewChat}
+                className="mt-3 h-7 px-3 rounded-xl btn-ink text-[10px] font-semibold"
+              >
+                New chat
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Work Home Sidebar — workspace list + settings
+   ═══════════════════════════════════════════════════════════════════════ */
+
+interface WorkHomeSidebarProps {
   workspaces: Workspace[];
   selectedWorkspaceId: string | null;
   onSelectWorkspace: (id: string) => void;
-  currentView: NavView;
-  onNavigate: (v: NavView) => void;
+  currentView: WorkHomeView;
+  onNavigate: (v: WorkHomeView) => void;
   onNewWorkspace: () => void;
   activeWorkspaceConnected: boolean;
 }
 
-function HomeSidebar({
+function WorkHomeSidebar({
   workspaces,
   selectedWorkspaceId,
   onSelectWorkspace,
@@ -114,48 +344,29 @@ function HomeSidebar({
   onNavigate,
   onNewWorkspace,
   activeWorkspaceConnected,
-}: HomeSidebarProps) {
+}: WorkHomeSidebarProps) {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--glass-border)]">
-        <div className="shrink-0 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full w-7 h-7">
-          <KhadimLogo />
-        </div>
-        <span className="text-[15px] font-bold tracking-tight text-[var(--text-primary)]">
-          Khadim
-        </span>
+      <div className="flex items-center px-4 py-3 border-b border-[var(--glass-border)]">
+        <span className="text-[13px] font-bold tracking-tight text-[var(--text-primary)]">Work</span>
       </div>
 
       {/* Navigation */}
       <nav className="flex flex-col gap-0.5 border-b border-[var(--glass-border)] p-2">
-        {([
-          { id: "workspaces" as const, label: "Workspaces", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
-          { id: "chat" as const, label: "Chat", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
-          { id: "settings" as const, label: "Settings", icon: "M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" },
-        ]).map(({ id, label, icon }) => (
-          <button
-            key={id}
-            onClick={() => onNavigate(id)}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 ${
-              currentView === id
-                ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
-                : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            <svg className="w-[15px] h-[15px] shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
-              {id === "settings" && <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth={1.8} />}
-            </svg>
-            <span className="text-[12px] font-semibold">{label}</span>
-            {id === "chat" && activeWorkspaceConnected && (
-              <span className="ml-auto flex items-center gap-1 text-[9px] font-bold text-[var(--color-success-text)] bg-[var(--color-success-muted)] rounded-full px-1.5 py-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] animate-pulse" />
-                live
-              </span>
-            )}
-          </button>
-        ))}
+        <button
+          onClick={() => onNavigate("workspaces")}
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${
+            currentView === "workspaces"
+              ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
+              : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <svg className="w-[15px] h-[15px] shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <span className="text-[12px] font-semibold">Workspaces</span>
+        </button>
       </nav>
 
       {/* Workspace list */}
@@ -166,7 +377,7 @@ function HomeSidebar({
           </span>
           <button
             onClick={onNewWorkspace}
-            className="h-5 w-5 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-5 w-5 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             title="New workspace"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -182,13 +393,13 @@ function HomeSidebar({
                 <button
                   key={ws.id}
                   onClick={() => onSelectWorkspace(ws.id)}
-                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all duration-150 ${
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all duration-150 ${
                     selected
                       ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
                   }`}
                 >
-                  <div className={`w-6 h-6 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold ${
+                  <div className={`w-6 h-6 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-bold ${
                     selected ? "bg-[var(--surface-white-15)]" : "bg-[var(--glass-bg)]"
                   }`}>
                     {ws.name.charAt(0).toUpperCase()}
@@ -209,8 +420,9 @@ function HomeSidebar({
   );
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════
-   Workspace Sidebar
+   Workspace Sidebar — inside an entered workspace
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface WorkspaceSidebarProps {
@@ -224,7 +436,7 @@ interface WorkspaceSidebarProps {
   onManageWorkspace: () => void;
   onManageAgent: (id: string) => void;
   connected: boolean;
-  hashHue: (s: string) => number;
+  githubAuthenticated: boolean;
 }
 
 function WorkspaceSidebar({
@@ -238,18 +450,17 @@ function WorkspaceSidebar({
   onManageWorkspace,
   onManageAgent,
   connected,
-  hashHue,
+  githubAuthenticated,
 }: WorkspaceSidebarProps) {
   const runningCount = agents.filter((a) => a.status === "running").length;
 
-  /* ── Expanded state ───────────────────────────────────────────── */
   return (
     <>
       {/* Back bar */}
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
         <button
           onClick={onExit}
-          className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
+          className="h-7 w-7 shrink-0 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
           title="Back to home"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -266,16 +477,12 @@ function WorkspaceSidebar({
         <div className="px-2 pb-2">
           <button
             onClick={onManageWorkspace}
-            className="group/ws w-full text-left rounded-xl p-2.5 transition-all duration-200 bg-[var(--glass-bg)] hover:bg-[var(--glass-bg-strong)] border border-[var(--glass-border)] hover:border-[var(--glass-border-strong)] hover:shadow-[var(--shadow-glass-sm)]"
+            className="group/ws w-full text-left rounded-2xl p-2.5 transition-all duration-200 bg-[var(--glass-bg)] hover:bg-[var(--glass-bg-strong)] border border-[var(--glass-border)] hover:border-[var(--glass-border-strong)] hover:shadow-[var(--shadow-glass-sm)]"
           >
             <div className="flex items-center gap-2.5">
               {/* Monogram */}
               <div
-                className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-[11px] font-extrabold text-[var(--color-accent-ink)]"
-                style={{
-                  background: "linear-gradient(135deg, var(--color-accent), var(--color-accent-hover))",
-                  boxShadow: "0 3px 10px -3px rgba(169, 191, 0, 0.45)",
-                }}
+                className="w-8 h-8 shrink-0 rounded-xl flex items-center justify-center text-[11px] font-extrabold bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--glass-border-strong)]"
               >
                 {workspace.name.charAt(0).toUpperCase()}
               </div>
@@ -285,9 +492,14 @@ function WorkspaceSidebar({
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                    {workspace.branch ?? "main"}
+                    {workspace.branch ?? "default branch"}
                   </span>
                   <span className={`w-[5px] h-[5px] rounded-full shrink-0 ${connected ? "bg-[var(--color-success)] animate-pulse" : "bg-[var(--scrollbar-thumb)]"}`} />
+                  {githubAuthenticated && (
+                    <svg className="w-3 h-3 shrink-0 text-[var(--text-muted)]" viewBox="0 0 16 16" fill="currentColor" aria-label="GitHub connected">
+                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                    </svg>
+                  )}
                 </div>
               </div>
               <svg
@@ -316,7 +528,7 @@ function WorkspaceSidebar({
           </div>
           <button
             onClick={onNewAgent}
-            className="h-5 w-5 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-5 w-5 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             title="New agent"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -332,7 +544,6 @@ function WorkspaceSidebar({
                 key={agent.id}
                 agent={agent}
                 isSelected={focusedAgentId === agent.id}
-                hue={hashHue(agent.id)}
                 onClick={() => onFocusAgent(agent.id)}
                 onRemove={() => onRemoveAgent(agent.id)}
                 onManage={() => onManageAgent(agent.id)}
@@ -340,7 +551,7 @@ function WorkspaceSidebar({
             ))}
             {agents.length === 0 && (
               <div className="py-10 text-center">
-                <div className="w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
+                <div className="w-10 h-10 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
                   <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                   </svg>
@@ -351,7 +562,7 @@ function WorkspaceSidebar({
                 </p>
                 <button
                   onClick={onNewAgent}
-                  className="mt-3 h-7 px-3 rounded-lg btn-ink text-[10px] font-semibold"
+                  className="mt-3 h-7 px-3 rounded-xl btn-ink text-[10px] font-semibold"
                 >
                   Create agent
                 </button>

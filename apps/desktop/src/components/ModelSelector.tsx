@@ -205,7 +205,7 @@ export function ModelSelector({
       {/* ── Dropdown ───────────────────────────────────────────── */}
       {isOpen && (
         <div
-          className={`absolute left-0 z-[100] w-full min-w-[17rem] max-w-[22rem] overflow-hidden rounded-2xl border border-[var(--glass-border-strong)] bg-[var(--glass-bg-strong)] shadow-[var(--shadow-glass-lg)] backdrop-blur-[30px] animate-in zoom-in fade-in duration-200 ${
+          className={`absolute left-0 z-[100] w-full min-w-[17rem] max-w-[22rem] overflow-hidden rounded-3xl border border-[var(--glass-border-strong)] bg-[var(--surface-elevated)] shadow-[var(--shadow-glass-lg)] animate-in zoom-in fade-in duration-200 ${
             direction === "up" ? "bottom-full mb-2" : "mt-2"
           }`}
           role="listbox"
@@ -325,7 +325,7 @@ function ModelItem({
       role="option"
       aria-selected={isSelected}
       onClick={onSelect}
-      className={`group/item flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-all duration-150 ${
+      className={`group/item flex w-full items-center gap-2 rounded-2xl px-2 py-1.5 text-left transition-all duration-150 ${
         isSelected
           ? "bg-[var(--color-accent)]/[0.08] text-[var(--text-primary)] ring-1 ring-inset ring-[var(--color-accent)]/20"
           : "text-[var(--text-primary)] hover:bg-[var(--glass-bg)]"

@@ -1,12 +1,30 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import type { ThinkingStepData } from "../lib/bindings";
+import { commands } from "../lib/bindings";
 
 interface ThinkingStepsProps {
   steps: ThinkingStepData[];
+  /** Workspace base path used to resolve relative file paths. */
+  basePath?: string;
 }
 
 interface ThinkingStepProps {
   step: ThinkingStepData;
+  basePath?: string;
+}
+
+/** Tools whose steps reference a file that can be opened. */
+const FILE_TOOLS = new Set(["read", "write", "edit", "glob", "search", "find"]);
+
+/** Resolve a possibly-relative file path against a base directory. */
+function resolveFilePath(filePath: string | undefined, basePath: string | undefined): string | null {
+  if (!filePath) return null;
+  // Already absolute
+  if (filePath.startsWith("/")) return filePath;
+  if (!basePath) return null;
+  // Join base + relative (avoid double slash)
+  const base = basePath.endsWith("/") ? basePath : basePath + "/";
+  return base + filePath;
 }
 
 function ToolGlyph({ tool, running, complete, errored }: { tool?: string; running: boolean; complete: boolean; errored: boolean }) {
@@ -67,7 +85,7 @@ function ToolGlyph({ tool, running, complete, errored }: { tool?: string; runnin
   }
 }
 
-function ThinkingStep({ step }: ThinkingStepProps) {
+function ThinkingStep({ step, basePath }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
 
   useEffect(() => {
@@ -86,8 +104,25 @@ function ThinkingStep({ step }: ThinkingStepProps) {
         ? "bg-[var(--color-success)]"
         : "bg-[var(--glass-border)]";
 
+  // Determine if this step has an openable file path.
+  const isFileTool = FILE_TOOLS.has(step.tool ?? "");
+  const resolvedPath = resolveFilePath(step.filePath ?? step.filename, basePath);
+  const canOpen = isFileTool && !!resolvedPath && !running;
+
+  const handleOpen = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (resolvedPath) {
+        commands.openInEditor(resolvedPath).catch((err) => {
+          console.warn("Failed to open in editor:", err);
+        });
+      }
+    },
+    [resolvedPath],
+  );
+
   return (
-    <div className="overflow-hidden rounded-lg transition-colors duration-150 bg-transparent hover:bg-[var(--glass-bg)]/40">
+    <div className="overflow-hidden rounded-xl transition-colors duration-150 bg-transparent hover:bg-[var(--glass-bg)]/40">
       <button
         type="button"
         onClick={() => detail && setIsExpanded((value) => !value)}
@@ -96,7 +131,7 @@ function ThinkingStep({ step }: ThinkingStepProps) {
         <div className={`mt-2 h-8 w-1 shrink-0 rounded-full ${accent}`} />
         <div className="flex min-w-0 flex-1 items-start gap-2.5 px-3 py-2">
           <div
-            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
               running
                   ? "bg-[var(--color-accent)]/80 text-[var(--color-accent-ink)]"
                 : errored
@@ -115,6 +150,21 @@ function ThinkingStep({ step }: ThinkingStepProps) {
                 <span className="truncate font-mono text-[11px] text-[var(--text-secondary)]">
                   {step.filename}
                 </span>
+              )}
+              {canOpen && (
+                <button
+                  type="button"
+                  onClick={handleOpen}
+                  title={`Open ${step.filename ?? "file"} in editor`}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] active:scale-95"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 3h6v6" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 14 21 3" />
+                  </svg>
+                  Open
+                </button>
               )}
               {detail && !running && (
                 <span className="ml-auto text-[var(--text-muted)]">
@@ -138,7 +188,7 @@ function ThinkingStep({ step }: ThinkingStepProps) {
 
       {detail && isExpanded && !running && (
         <div className="ml-[3px] border-l border-[var(--glass-border)] pl-5 pr-3 pb-3">
-          <div className="rounded-md bg-[var(--surface-card)]/60 px-3 py-2">
+            <div className="rounded-lg bg-[var(--surface-card)]/60 px-3 py-2">
             <pre className="whitespace-pre-wrap break-all text-[11px] leading-relaxed text-[var(--text-secondary)]">
               {detail}
             </pre>
@@ -149,39 +199,53 @@ function ThinkingStep({ step }: ThinkingStepProps) {
   );
 }
 
-function ThinkingStepsComponent({ steps }: ThinkingStepsProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+function ThinkingStepsComponent({ steps, basePath }: ThinkingStepsProps) {
+  // Start collapsed — auto-expands while running, user controls after.
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   if (steps.length === 0) return null;
 
   const hasRunning = steps.some((step) => step.status === "running");
   const completedCount = steps.filter((step) => step.status === "complete").length;
+  const hasErrors = steps.some((step) => step.status === "error");
+
+  // Auto-expand the panel while tools are actively running.
+  useEffect(() => {
+    if (hasRunning) setIsCollapsed(false);
+  }, [hasRunning]);
+
+  const headerDot = hasRunning
+    ? "animate-pulse bg-[var(--color-accent)] shadow-[0_0_6px_var(--glow-low)]"
+    : hasErrors
+    ? "bg-[var(--color-danger)]"
+    : "bg-[var(--color-success)]";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--surface-card)]/50">
+    <div className="overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-card)]/50">
       <button
         type="button"
         className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg)]/40"
-        onClick={() => !hasRunning && setIsCollapsed((value) => !value)}
+        onClick={() => setIsCollapsed((v) => !v)}
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${hasRunning ? "animate-pulse bg-[var(--color-accent)] shadow-[0_0_6px_var(--glow-low)]" : "bg-[var(--color-success)]"}`} />
+        <span className={`h-2 w-2 shrink-0 rounded-full ${headerDot}`} />
         <span className="flex-1 font-display text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
-          {hasRunning ? "Running" : "Work log"}
+          {hasRunning ? "Running" : `${completedCount} tool call${completedCount !== 1 ? "s" : ""}`}
         </span>
         <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
-          {completedCount}/{steps.length}
+          {!hasRunning && `${completedCount}/${steps.length}`}
         </span>
-        {!hasRunning && (
-          <svg className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform ${isCollapsed ? "-rotate-90" : "rotate-0"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-          </svg>
-        )}
+        <svg
+          className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform duration-200 ${isCollapsed ? "-rotate-90" : "rotate-0"}`}
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       {!isCollapsed && (
         <div className="space-y-0.5 border-t border-[var(--glass-border)] px-1.5 py-1.5">
           {steps.map((step) => (
-            <ThinkingStep key={step.id} step={step} />
+            <ThinkingStep key={step.id} step={step} basePath={basePath} />
           ))}
         </div>
       )}

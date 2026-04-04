@@ -1,23 +1,14 @@
-import { useState } from "react";
-import type { Conversation, OpenCodeConnection, ProcessOutput, Workspace } from "../lib/bindings";
+import { useEffect, useState } from "react";
+import { commands, type Conversation, type GitHubAuthStatus, type OpenCodeConnection, type ProcessOutput, type RepoSlug, type Workspace } from "../lib/bindings";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import { GlassSelect } from "./GlassSelect";
+import { ActivityChart } from "./ActivityChart";
+import { GitHubTab } from "./GitHubTab";
 
-type Tab = "overview" | "agents" | "logs";
+type Tab = "overview" | "agents" | "logs" | "github";
 
-/** Deterministic hue from a string */
-function hashHue(str: string): number {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-  return ((h % 360) + 360) % 360;
-}
 
-function statusDotClass(status: AgentInstance["status"]): string {
-  if (status === "running") return "bg-[var(--color-accent)] animate-pulse";
-  if (status === "complete") return "bg-[var(--color-success)]";
-  if (status === "error") return "bg-[var(--color-danger)]";
-  return "bg-[var(--scrollbar-thumb)]";
-}
 
 function statusText(agent: AgentInstance): string {
   if (agent.status === "running" && agent.currentActivity) return agent.currentActivity;
@@ -42,7 +33,12 @@ interface WorkspaceViewProps {
   onNewAgent: () => void;
   onFocusAgent: (id: string) => void;
   onManageAgent: (id: string) => void;
+  onWorkspaceBranchChange: (branch: string) => Promise<void>;
   loading: boolean;
+  githubAuthStatus: GitHubAuthStatus | null;
+  githubSlug: RepoSlug | null;
+  onNavigateToSettings: () => void;
+  onGitHubSlugChange: (slug: RepoSlug) => void;
 }
 
 export function WorkspaceView({
@@ -59,10 +55,48 @@ export function WorkspaceView({
   onNewAgent,
   onFocusAgent,
   onManageAgent,
+  onWorkspaceBranchChange,
   loading,
+  githubAuthStatus,
+  githubSlug,
+  onNavigateToSettings,
+  onGitHubSlugChange,
 }: WorkspaceViewProps) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [branchOptions, setBranchOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [branchDraft, setBranchDraft] = useState(workspace.branch ?? "");
+  const [branchBusy, setBranchBusy] = useState(false);
   const runningCount = agents.filter((a) => a.status === "running").length;
+
+  useEffect(() => {
+    setBranchDraft(workspace.branch ?? "");
+  }, [workspace.branch, workspace.id]);
+
+  useEffect(() => {
+    let alive = true;
+    void commands.gitListBranches(workspace.repo_path)
+      .then((branches) => {
+        if (!alive) return;
+        setBranchOptions(branches.filter((branch) => !branch.is_remote).map((branch) => ({
+          value: branch.name,
+          label: `${branch.name}${branch.is_current ? " (current)" : ""}`,
+        })));
+      })
+      .catch(() => {
+        if (alive) setBranchOptions([]);
+      });
+    return () => { alive = false; };
+  }, [workspace.repo_path]);
+
+  async function handleBranchChange(nextBranch: string) {
+    setBranchDraft(nextBranch);
+    setBranchBusy(true);
+    try {
+      await onWorkspaceBranchChange(nextBranch);
+    } finally {
+      setBranchBusy(false);
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
@@ -71,9 +105,9 @@ export function WorkspaceView({
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-[var(--color-accent-ink)]"
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-[var(--color-accent-ink)]"
               style={{
-                background: "linear-gradient(135deg, var(--color-accent), var(--color-accent-hover))",
+                background: "var(--color-accent)",
                 boxShadow: "var(--shadow-glow-accent)",
               }}
             >
@@ -93,7 +127,7 @@ export function WorkspaceView({
             <button
               onClick={onNewAgent}
               disabled={loading}
-              className="h-7 px-3 rounded-lg btn-glass text-[11px] font-semibold disabled:opacity-50"
+              className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold disabled:opacity-50"
             >
               New agent
             </button>
@@ -101,7 +135,7 @@ export function WorkspaceView({
               <button
                 onClick={onStopOpenCode}
                 disabled={loading}
-                className="h-7 px-3 rounded-lg btn-ink text-[11px] font-semibold disabled:opacity-50"
+                className="h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold disabled:opacity-50"
               >
                 Stop
               </button>
@@ -109,7 +143,7 @@ export function WorkspaceView({
               <button
                 onClick={onStartOpenCode}
                 disabled={loading || workspace.backend !== "opencode"}
-                className="h-7 px-3 rounded-lg btn-ink text-[11px] font-semibold disabled:opacity-50"
+                className="h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold disabled:opacity-50"
               >
                 Start
               </button>
@@ -119,11 +153,11 @@ export function WorkspaceView({
 
         {/* Tabs */}
         <div className="flex gap-1 mt-3">
-          {(["overview", "agents", "logs"] as const).map((t) => (
+          {(["overview", "agents", "github", "logs"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-semibold capitalize transition-all ${
+              className={`px-3 py-1 rounded-xl text-[11px] font-semibold capitalize transition-all ${
                 tab === t
                   ? "btn-ink"
                   : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
@@ -138,12 +172,17 @@ export function WorkspaceView({
         </div>
       </div>
 
+      {/* Activity chart — above tab content */}
+      <div className="shrink-0 px-6 py-3 border-b border-[var(--glass-border)]">
+        <ActivityChart agents={agents} />
+      </div>
+
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4" style={{ minHeight: 0 }}>
         {tab === "overview" && (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             {/* Runtime card */}
-            <section className="rounded-2xl glass-card-static p-4">
+            <section className="rounded-3xl glass-card-static p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-bold text-[var(--text-primary)]">Runtime</h2>
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${
@@ -167,8 +206,8 @@ export function WorkspaceView({
                   <dd className="font-medium text-[var(--text-primary)] truncate font-mono text-[11px]">{workspace.repo_path}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Branch</dt>
-                  <dd className="font-medium text-[var(--text-primary)]">{workspace.branch ?? "current"}</dd>
+                  <dt className="text-[var(--text-muted)]">Default branch</dt>
+                  <dd className="font-medium text-[var(--text-primary)]">{workspace.branch ?? "current repo branch"}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-[var(--text-muted)]">Updated</dt>
@@ -182,26 +221,42 @@ export function WorkspaceView({
                 </div>
               </dl>
               {connection && (
-                <div className="mt-4 rounded-xl bg-[var(--surface-ink-3)] p-3 text-[11px] text-[var(--text-secondary)]">
+                <div className="mt-4 rounded-2xl bg-[var(--surface-ink-3)] p-3 text-[11px] text-[var(--text-secondary)]">
                   <p className="font-semibold text-[var(--text-primary)]">OpenCode endpoint</p>
                   <p className="mt-1 break-all font-mono">{connection.base_url}</p>
                 </div>
               )}
+              <div className="mt-4 rounded-2xl bg-[var(--surface-ink-3)] p-3 text-[11px] text-[var(--text-secondary)]">
+                <p className="font-semibold text-[var(--text-primary)]">Change default branch</p>
+                {branchOptions.length > 0 ? (
+                  <GlassSelect
+                    value={branchDraft}
+                    onChange={(value) => { void handleBranchChange(value); }}
+                    options={branchOptions}
+                    className="mt-2"
+                  />
+                ) : (
+                  <p className="mt-1 font-mono">{workspace.branch ?? "current repo branch"}</p>
+                )}
+                <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+                  New agents use this as their base branch.{branchBusy ? " Saving..." : ""}
+                </p>
+              </div>
             </section>
 
             {/* Git snapshot — main repo */}
-            <section className="rounded-2xl glass-card-static p-4">
+            <section className="rounded-3xl glass-card-static p-4">
               <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3">Git snapshot (main repo)</h2>
               <div className="space-y-4">
                 <div>
                   <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-2">Status</p>
-                  <pre className="rounded-xl bg-[var(--surface-ink-4)] p-3 text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
+                  <pre className="rounded-2xl bg-[var(--surface-ink-4)] p-3 text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
                     {gitStatus || "Working tree clean"}
                   </pre>
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-2">Diff stat</p>
-                  <pre className="rounded-xl bg-[var(--surface-ink-4)] p-3 text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
+                  <pre className="rounded-2xl bg-[var(--surface-ink-4)] p-3 text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
                     {gitDiffStat || "No diff"}
                   </pre>
                 </div>
@@ -213,58 +268,37 @@ export function WorkspaceView({
         {tab === "agents" && (
           <div className="space-y-3">
             {agents.map((agent) => {
-              const hue = hashHue(agent.id);
               return (
                 <div
                   key={agent.id}
-                  className="rounded-xl glass-card p-4 transition-all duration-200 hover:shadow-[var(--shadow-glass-sm)]"
+                  className="rounded-2xl glass-card p-4 transition-all duration-200 hover:shadow-[var(--shadow-glass-sm)]"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Colored avatar with status dot */}
-                      <div
-                        className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-[13px] font-bold relative"
-                        style={{
-                          background: `hsl(${hue} 50% 92%)`,
-                          color: `hsl(${hue} 45% 35%)`,
-                        }}
-                      >
-                        {agent.label.charAt(0).toUpperCase()}
-                        <span
-                          className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[var(--surface-bg)] ${statusDotClass(agent.status)}`}
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
-                          {agent.label}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {agent.branch && (
-                            <span className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-                              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0a3 3 0 103 3H6m0-3h12a3 3 0 003-3V6a3 3 0 00-3-3H9a3 3 0 00-3 3v6z" />
-                              </svg>
-                              <span className="font-mono truncate">{agent.branch}</span>
-                            </span>
-                          )}
-                          {agent.modelLabel && (
-                            <span className="text-[9px] font-medium text-[var(--text-muted)] bg-[var(--surface-ink-5)] rounded-full px-1.5 py-0.5">
-                              {agent.modelLabel}
-                            </span>
-                          )}
-                        </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">
+                        {agent.label}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-[10px] ${agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"} truncate`}>
+                          {agent.status === "running" && agent.currentActivity ? agent.currentActivity : agent.status === "running" ? "Working..." : agent.status === "complete" ? "Done" : agent.status === "error" ? (agent.errorMessage ?? "Error") : "Idle"}
+                        </span>
+                        {agent.branch && (
+                          <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">
+                            {agent.branch}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={() => onFocusAgent(agent.id)}
-                        className="h-7 px-2.5 rounded-lg btn-glass text-[10px] font-semibold"
+                        className="h-7 px-2.5 rounded-xl btn-glass text-[10px] font-semibold"
                       >
                         Chat
                       </button>
                       <button
                         onClick={() => onManageAgent(agent.id)}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+                        className="h-7 w-7 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
                         title="Agent settings"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -283,7 +317,7 @@ export function WorkspaceView({
                   </p>
 
                   {agent.worktreePath && (
-                    <p className="text-[10px] font-mono text-[var(--text-muted)] opacity-50 mt-1 ml-12 truncate">
+                    <p className="text-[10px] font-mono text-[var(--text-muted)] opacity-75 mt-1 ml-12 truncate">
                       {agent.worktreePath}
                     </p>
                   )}
@@ -308,7 +342,7 @@ export function WorkspaceView({
                   <button
                     key={conversation.id}
                     onClick={() => onSelectConversation(conversation.id)}
-                    className="w-full rounded-xl glass-card p-3 text-left mb-1.5"
+                    className="w-full rounded-2xl glass-card p-3 text-left mb-1.5"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -335,7 +369,7 @@ export function WorkspaceView({
                 <button
                   onClick={onNewAgent}
                   disabled={loading}
-                  className="mt-4 h-8 px-4 rounded-xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+                  className="mt-4 h-8 px-4 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
                 >
                   Create first agent
                 </button>
@@ -344,8 +378,18 @@ export function WorkspaceView({
           </div>
         )}
 
+        {tab === "github" && (
+          <GitHubTab
+            authStatus={githubAuthStatus}
+            slug={githubSlug}
+            repoPath={workspace.worktree_path ?? workspace.repo_path}
+            onNavigateToSettings={onNavigateToSettings}
+            onSlugChange={onGitHubSlugChange}
+          />
+        )}
+
         {tab === "logs" && (
-          <div className="rounded-2xl bg-[var(--log-bg)] text-[var(--text-inverse)] p-4 min-h-[420px]">
+          <div className="rounded-3xl bg-[var(--log-bg)] text-[var(--text-inverse)] p-4 min-h-[420px]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--scrollbar-thumb)] mb-3">
               Process Output
             </div>

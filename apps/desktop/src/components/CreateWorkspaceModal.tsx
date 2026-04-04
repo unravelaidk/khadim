@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BranchInfo, CreateWorkspaceInput } from "../lib/bindings";
 import { commands } from "../lib/bindings";
+import { GlassSelect } from "./GlassSelect";
 
 let openDialog: typeof import("@tauri-apps/plugin-dialog").open | null = null;
 import("@tauri-apps/plugin-dialog").then((mod) => { openDialog = mod.open; }).catch(() => {});
@@ -18,7 +19,6 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
     repo_path: "",
     backend: "opencode",
     execution_target: "local",
-    create_worktree: false,
   });
   const [error, setError] = useState<string | null>(null);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
@@ -51,7 +51,6 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
         repo_path: "",
         backend: "opencode",
         execution_target: "local",
-        create_worktree: false,
       });
       setError(null);
       setBranches([]);
@@ -119,7 +118,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[520px] mx-4 glass-panel-strong rounded-3xl animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[520px] mx-4 glass-panel-strong rounded-[28px] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Create workspace"
@@ -136,7 +135,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -159,7 +158,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
               ref={nameInputRef}
               value={form.name ?? ""}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-              className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
+              className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
               placeholder="my-project"
             />
           </label>
@@ -173,13 +172,13 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
               <input
                 value={form.repo_path ?? ""}
                 onChange={(e) => setForm((prev) => ({ ...prev, repo_path: e.target.value }))}
-                className="flex-1 rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
+                className="flex-1 rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
                 placeholder="/path/to/repo"
               />
               <button
                 type="button"
                 onClick={() => void pickFolder()}
-                className="shrink-0 h-[42px] w-[42px] flex items-center justify-center rounded-xl btn-glass"
+                className="shrink-0 h-[42px] w-[42px] flex items-center justify-center rounded-2xl btn-glass"
                 title="Browse..."
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -191,78 +190,72 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
 
           {/* Backend + target row */}
           <div className="grid grid-cols-2 gap-3">
-            <label className="block">
+            <div className="block">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
                 Backend
               </span>
-              <select
-                value={form.backend}
-                onChange={(e) => setForm((prev) => ({ ...prev, backend: e.target.value }))}
-                className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
-              >
-                <option value="opencode">OpenCode</option>
-                <option value="khadim">Khadim</option>
-                <option value="claude_code">Claude Code</option>
-              </select>
-            </label>
+              <GlassSelect
+                value={form.backend ?? "opencode"}
+                onChange={(v) => setForm((prev) => ({ ...prev, backend: v }))}
+                options={[
+                  { value: "opencode", label: "OpenCode" },
+                  { value: "khadim", label: "Khadim" },
+                  { value: "claude_code", label: "Claude Code" },
+                ]}
+                className="mt-1.5"
+              />
+            </div>
 
-            <label className="block">
+            <div className="block">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
                 Execution target
               </span>
-              <select
-                value={form.execution_target}
-                onChange={(e) => setForm((prev) => ({ ...prev, execution_target: e.target.value }))}
-                className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
-              >
-                <option value="local">Local</option>
-                <option value="sandbox">Sandbox</option>
-              </select>
-            </label>
+              <GlassSelect
+                value={form.execution_target ?? "local"}
+                onChange={(v) => setForm((prev) => ({ ...prev, execution_target: v }))}
+                options={[
+                  { value: "local", label: "Local" },
+                  { value: "sandbox", label: "Sandbox" },
+                ]}
+                className="mt-1.5"
+              />
+            </div>
           </div>
 
-          {/* Branch */}
-          <label className="block">
+          {/* Default branch */}
+          <div className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-              Branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
+              Default branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
             </span>
             {branches.length > 0 ? (
-              <select
+              <GlassSelect
                 value={form.branch ?? ""}
-                onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value || undefined }))}
-                className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
-              >
-                <option value="">Current branch</option>
-                {branches.filter((b) => !b.is_remote).map((b) => (
-                  <option key={b.name} value={b.name}>
-                    {b.name}{b.is_current ? " (current)" : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, branch: v || undefined }))}
+                options={[
+                  { value: "", label: "Use current branch" },
+                  ...branches.filter((b) => !b.is_remote).map((b) => ({
+                    value: b.name,
+                    label: `${b.name}${b.is_current ? " (current)" : ""}`,
+                  })),
+                ]}
+                className="mt-1.5"
+              />
             ) : (
               <input
                 value={form.branch ?? ""}
                 onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-                className="mt-1.5 w-full rounded-xl glass-input px-3 py-2.5 text-sm outline-none"
+                className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
                 placeholder="main"
               />
             )}
-          </label>
-
-          {/* Worktree checkbox */}
-          <label className="flex items-center gap-2.5 text-[12px] text-[var(--text-secondary)] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={Boolean(form.create_worktree)}
-              onChange={(e) => setForm((prev) => ({ ...prev, create_worktree: e.target.checked }))}
-              className="accent-[var(--color-accent)] w-4 h-4"
-            />
-            Create a dedicated git worktree
-          </label>
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+              New agents will use this as their default base branch. You can change it later.
+            </p>
+          </div>
 
           {/* Error */}
           {error && (
-            <p className="text-[12px] text-[var(--color-danger-text-light)] bg-[var(--color-danger-bg-strong)] rounded-lg px-3 py-2 border border-[var(--color-danger-border)]">{error}</p>
+            <p className="text-[12px] text-[var(--color-danger-text-light)] bg-[var(--color-danger-bg-strong)] rounded-xl px-3 py-2 border border-[var(--color-danger-border)]">{error}</p>
           )}
         </div>
 
@@ -270,14 +263,14 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
         <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-xl btn-glass text-[12px] font-semibold"
+            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"
           >
             Cancel
           </button>
           <button
             onClick={() => void submit()}
             disabled={isCreating}
-            className="h-9 px-5 rounded-xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
           >
             {isCreating ? "Creating..." : "Create workspace"}
           </button>

@@ -21,6 +21,7 @@ pub enum ErrorKind {
     Io,
     InvalidInput,
     BackendBusy,
+    GitHub,
 }
 
 impl AppError {
@@ -83,6 +84,13 @@ impl AppError {
     pub fn backend_busy(msg: impl Into<String>) -> Self {
         Self {
             kind: ErrorKind::BackendBusy,
+            message: msg.into(),
+        }
+    }
+
+    pub fn github(msg: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::GitHub,
             message: msg.into(),
         }
     }

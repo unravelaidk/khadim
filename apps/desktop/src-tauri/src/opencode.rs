@@ -686,6 +686,7 @@ fn normalize_opencode_event(
     }
 
     match raw_type {
+        "message.updated" => normalize_message_updated(workspace_id, session_id, properties),
         "message.part.delta" => normalize_part_delta(
             workspace_id,
             session_id,
@@ -710,6 +711,64 @@ fn normalize_opencode_event(
         }
         _ => vec![],
     }
+}
+
+fn normalize_message_updated(
+    workspace_id: &str,
+    session_id: &str,
+    properties: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<AgentStreamEvent> {
+    let info = match properties.get("info").and_then(|value| value.as_object()) {
+        Some(info) => info,
+        None => return vec![],
+    };
+
+    let role = info.get("role").and_then(|value| value.as_str());
+    if role != Some("assistant") {
+        return vec![];
+    }
+
+    let message_id = match info.get("id").and_then(|value| value.as_str()) {
+        Some(message_id) => message_id,
+        None => return vec![],
+    };
+
+    let mut events = vec![stream_event(
+        workspace_id,
+        session_id,
+        "message_start",
+        None,
+        Some(serde_json::json!({
+            "messageId": message_id,
+            "role": "assistant",
+        })),
+    )];
+
+    // Extract token usage from info.tokens (OpenCode) or info.usage (fallback).
+    let tokens = info.get("tokens").or_else(|| info.get("usage"));
+    if let Some(tokens) = tokens {
+        let input  = tokens.get("input").and_then(|v| v.as_i64()).unwrap_or(0);
+        let output = tokens.get("output").and_then(|v| v.as_i64()).unwrap_or(0);
+        let cache_read  = tokens.get("cache_read").and_then(|v| v.as_i64()).unwrap_or(0);
+        let cache_write = tokens.get("cache_write").and_then(|v| v.as_i64()).unwrap_or(0);
+
+        if input > 0 || output > 0 {
+            events.push(stream_event(
+                workspace_id,
+                session_id,
+                "usage_update",
+                None,
+                Some(serde_json::json!({
+                    "input_tokens":       input,
+                    "output_tokens":      output,
+                    "cache_read_tokens":  cache_read,
+                    "cache_write_tokens": cache_write,
+                })),
+            ));
+        }
+    }
+
+    events
 }
 
 fn normalize_part_delta(
@@ -887,6 +946,51 @@ fn normalize_part_updated(
                 .and_then(|value| value.as_str())
                 .unwrap_or("pending");
             let input = state.get("input");
+
+            // ── Question tool: emit a dedicated "question" event so the
+            //    frontend can render an interactive prompt overlay. ──────
+            if tool == "question" {
+                if status == "pending" || status == "running" {
+                    // Extract the questions array from input and pass it
+                    // through as metadata so the frontend has the full schema.
+                    let questions_payload = input
+                        .and_then(|v| v.get("questions"))
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Array(vec![]));
+
+                    return vec![stream_event(
+                        workspace_id,
+                        session_id,
+                        "question",
+                        None,
+                        Some(serde_json::json!({
+                            "id": part_id,
+                            "questions": questions_payload,
+                        })),
+                    )];
+                }
+
+                // When the question completes, also emit a step_complete so
+                // the thinking-steps panel shows it was answered.
+                let result_text = state
+                    .get("output")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| summarize_tool_result(state));
+
+                return vec![stream_event(
+                    workspace_id,
+                    session_id,
+                    "step_complete",
+                    result_text,
+                    Some(serde_json::json!({
+                        "id": part_id,
+                        "title": "Question answered",
+                        "tool": "question",
+                    })),
+                )];
+            }
+
             let filename = tool_filename(input);
             let title = tool_title(tool, filename.as_deref());
 

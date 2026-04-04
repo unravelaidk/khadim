@@ -36,6 +36,10 @@ pub struct Conversation {
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
+    /// Cumulative input tokens used in this conversation (context sent to model).
+    pub input_tokens: i64,
+    /// Cumulative output tokens generated in this conversation.
+    pub output_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +145,17 @@ impl Database {
                 ON messages(conversation_id);
             ",
         )?;
+
+        // Additive migrations — ignore errors if columns already exist.
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+
         Ok(())
     }
 
@@ -228,6 +243,19 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_workspace_branch(&self, id: &str, branch: Option<&str>) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE workspaces SET branch = ?1, updated_at = ?2 WHERE id = ?3",
+            params![branch, now, id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!("Workspace {id} not found")));
+        }
+        Ok(())
+    }
+
     pub fn delete_workspace(&self, id: &str) -> Result<(), AppError> {
         let conn = self.conn.lock().unwrap();
         // Delete messages belonging to conversations in this workspace
@@ -251,8 +279,8 @@ impl Database {
     pub fn create_conversation(&self, conv: &Conversation) -> Result<(), AppError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO conversations (id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO conversations (id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at, input_tokens, output_tokens)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 conv.id,
                 conv.workspace_id,
@@ -262,7 +290,26 @@ impl Database {
                 conv.is_active as i32,
                 conv.created_at,
                 conv.updated_at,
+                conv.input_tokens,
+                conv.output_tokens,
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Update the token usage for a conversation. Replaces the stored values
+    /// (OpenCode reports cumulative per-request context, not deltas).
+    pub fn update_conversation_tokens(
+        &self,
+        id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE conversations SET input_tokens = ?1, output_tokens = ?2, updated_at = ?3 WHERE id = ?4",
+            params![input_tokens, output_tokens, now, id],
         )?;
         Ok(())
     }
@@ -283,7 +330,7 @@ impl Database {
     pub fn list_conversations(&self, workspace_id: &str) -> Result<Vec<Conversation>, AppError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at
+            "SELECT id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at, input_tokens, output_tokens
              FROM conversations WHERE workspace_id = ?1 ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map(params![workspace_id], |row| {
@@ -296,6 +343,8 @@ impl Database {
                 is_active: row.get::<_, i32>(5)? != 0,
                 created_at: row.get(6)?,
                 updated_at: row.get(7)?,
+                input_tokens: row.get::<_, i64>(8).unwrap_or(0),
+                output_tokens: row.get::<_, i64>(9).unwrap_or(0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -305,7 +354,7 @@ impl Database {
     pub fn get_conversation(&self, id: &str) -> Result<Conversation, AppError> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at
+            "SELECT id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at, input_tokens, output_tokens
              FROM conversations WHERE id = ?1",
             params![id],
             |row| {
@@ -318,6 +367,8 @@ impl Database {
                     is_active: row.get::<_, i32>(5)? != 0,
                     created_at: row.get(6)?,
                     updated_at: row.get(7)?,
+                    input_tokens: row.get::<_, i64>(8).unwrap_or(0),
+                    output_tokens: row.get::<_, i64>(9).unwrap_or(0),
                 })
             },
         )
@@ -363,6 +414,10 @@ impl Database {
                 msg.metadata,
                 msg.created_at,
             ],
+        )?;
+        conn.execute(
+            "UPDATE conversations SET updated_at = ?1 WHERE id = ?2",
+            params![msg.created_at, msg.conversation_id],
         )?;
         Ok(())
     }

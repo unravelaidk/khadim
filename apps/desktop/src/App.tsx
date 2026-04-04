@@ -5,10 +5,13 @@ import type {
   ChatMessage as StoredMessage,
   Conversation,
   CreateWorkspaceInput,
+  GitHubAuthStatus,
   OpenCodeConnection,
   OpenCodeModelOption,
   OpenCodeModelRef,
+  PendingQuestion,
   ProcessOutput,
+  RepoSlug,
   RuntimeSummary,
   ThinkingStepData,
   Workspace,
@@ -16,17 +19,22 @@ import type {
 import { commands, events } from "./lib/bindings";
 import { initWebviewZoom } from "./lib/webview-zoom";
 import { extractSessionId } from "./lib/ui";
-import type { AgentInstance, AppMode, NavView } from "./lib/types";
-import { createAgentInstance } from "./lib/types";
+import type { AgentInstance, InteractionMode, WorkHomeView, LocalChatConversation } from "./lib/types";
+import { createAgentInstance, createLocalConversation, createLocalMessage } from "./lib/types";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
 import { ChatMessage, TypingIndicator } from "./components/ChatMessage";
 import { ChatInput } from "./components/ChatInput";
 import { WelcomeScreen } from "./components/WelcomeScreen";
+import { ActivityChart } from "./components/ActivityChart";
 import { CreateWorkspaceModal } from "./components/CreateWorkspaceModal";
 import { NewAgentModal } from "./components/NewAgentModal";
 import { AgentSettingsModal } from "./components/AgentSettingsModal";
+import { ContextBar } from "./components/ContextBar";
+import { QuestionOverlay } from "./components/QuestionOverlay";
+import { ModifiedFilesPanel } from "./components/ModifiedFilesPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
 
 initWebviewZoom();
 
@@ -69,6 +77,7 @@ function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStreamEvent
   const tool = typeof metadata.tool === "string" ? metadata.tool : undefined;
   const filename = typeof metadata.filename === "string" ? metadata.filename : undefined;
   const fileContent = typeof metadata.fileContent === "string" ? metadata.fileContent : undefined;
+  const filePath = typeof metadata.filePath === "string" ? metadata.filePath : undefined;
   const nextResult = typeof metadata.result === "string" ? metadata.result : undefined;
   const index = prev.findIndex((step) => step.id === stepId);
   const current = index >= 0 ? prev[index] : { id: stepId, title, status: "running" as const };
@@ -78,6 +87,7 @@ function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStreamEvent
     tool: tool ?? current.tool,
     filename: filename ?? current.filename,
     fileContent: fileContent ?? current.fileContent,
+    filePath: filePath ?? current.filePath,
   };
 
   if (evt.event_type === "step_start") {
@@ -122,14 +132,35 @@ function deriveCurrentActivity(steps: ThinkingStepData[]): string | null {
 /* ─── App ──────────────────────────────────────────────────────────── */
 
 export default function App() {
+  // ── Theme ────────────────────────────────────────────────────────
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    return (localStorage.getItem("khadim:theme") as "dark" | "light") ?? "dark";
+  });
+
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => {
+      const next = t === "dark" ? "light" : "dark";
+      localStorage.setItem("khadim:theme", next);
+      return next;
+    });
+  }, []);
+
   // ── Mode & navigation ───────────────────────────────────────────
-  const [appMode, setAppMode] = useState<AppMode>("home");
-  const [currentView, setCurrentView] = useState<NavView>("workspaces");
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>("chat");
+  const [workView, setWorkView] = useState<WorkHomeView>("workspaces");
+  const [inWorkspace, setInWorkspace] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showNewAgentModal, setShowNewAgentModal] = useState(false);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [agentSettingsTarget, setAgentSettingsTarget] = useState<string | null>(null);
   const [runtime, setRuntime] = useState<RuntimeSummary | null>(null);
+
+  // ── Standalone chat state (local, no backend yet) ───────────────
+  const [chatConversations, setChatConversations] = useState<LocalChatConversation[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [standaloneChatInput, setStandaloneChatInput] = useState("");
+  const activeChatConv = chatConversations.find((c) => c.id === activeChatId) ?? null;
 
   // ── Workspace state ─────────────────────────────────────────────
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -154,19 +185,39 @@ export default function App() {
   const [agents, setAgents] = useState<AgentInstance[]>([]);
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
 
+  // ── GitHub ──────────────────────────────────────────────────────
+  const [githubAuthStatus, setGitHubAuthStatus] = useState<GitHubAuthStatus | null>(null);
+  const [githubSlug, setGitHubSlug] = useState<RepoSlug | null>(null);
+
   // ── Chat / streaming (for the focused agent) ────────────────────
-  const [chatInput, setChatInput] = useState("");
+  const [agentChatInput, setAgentChatInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingSteps, setStreamingSteps] = useState<ThinkingStepData[]>([]);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  const selectedWorkspaceIdRef = useRef<string | null>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
 
   // ── Derived state ───────────────────────────────────────────────
   const activeConversation = conversations.find((item) => item.id === selectedConversationId) ?? null;
   const focusedAgent = agents.find((a) => a.id === focusedAgentId) ?? null;
+
+  useEffect(() => {
+    selectedWorkspaceIdRef.current = selectedWorkspaceId;
+  }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeConversation?.backend_session_id ?? null;
+  }, [activeConversation?.backend_session_id]);
 
   const selectedModelOption = selectedModel
     ? availableModels.find((model) => getModelKey(model) === getModelKey(selectedModel)) ?? null
@@ -202,15 +253,32 @@ export default function App() {
       setConnection(nextConnection);
       setSelectedModel(storedModel);
 
-      // Build agent instances from existing conversations
-      const agentInstances = nextConversations.map((conv, i) =>
-        createAgentInstance(
+      // Auto-start the agent backend if not already running
+      if (!nextConnection && workspace.backend === "opencode") {
+        commands.opencodeStart(workspace.id)
+          .then((started) => commands.opencodeGetConnection(started.workspace_id))
+          .then((conn) => { if (conn) setConnection(conn); })
+          .catch((err) => console.warn("[auto-start] OpenCode start failed:", err));
+      }
+
+      // Build agent instances from existing conversations, restoring persisted token usage.
+      const agentInstances = nextConversations.map((conv, i) => {
+        const instance = createAgentInstance(
           conv.id,
           conv.title ?? `Agent ${i + 1}`,
           conv.backend_session_id ?? null,
           null,
-        )
-      );
+        );
+        if (conv.input_tokens > 0 || conv.output_tokens > 0) {
+          instance.tokenUsage = {
+            inputTokens: conv.input_tokens,
+            outputTokens: conv.output_tokens,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          };
+        }
+        return instance;
+      });
       setAgents(agentInstances);
 
       const preferredConversation = nextConversations.find((item) => item.is_active) ?? nextConversations[0] ?? null;
@@ -225,6 +293,22 @@ export default function App() {
       ]);
       setGitStatus(nextGitStatus);
       setGitDiffStat(nextGitDiff);
+
+      // Load GitHub repo slug from remote URL
+      const repoPathForGit = workspace.worktree_path ?? workspace.repo_path;
+      if (repoPathForGit) {
+        commands.gitRepoInfo(repoPathForGit)
+          .then((info) => {
+            if (info.remote_url) {
+              return commands.githubRepoSlug(info.remote_url);
+            }
+            return null;
+          })
+          .then((s) => setGitHubSlug(s ?? null))
+          .catch(() => setGitHubSlug(null));
+      } else {
+        setGitHubSlug(null);
+      }
     } finally {
       setLoadingWorkspace(false);
     }
@@ -247,6 +331,8 @@ export default function App() {
         const summary = await commands.getRuntimeSummary();
         setRuntime(summary);
         await refreshWorkspaces();
+        // Load GitHub auth status (fire-and-forget)
+        commands.githubAuthStatus().then(setGitHubAuthStatus).catch(() => {});
       } catch (error) {
         setError(getErrorMessage(error));
       }
@@ -265,6 +351,7 @@ export default function App() {
       setGitDiffStat("");
       setAgents([]);
       setFocusedAgentId(null);
+      setGitHubSlug(null);
       return;
     }
     void loadWorkspaceState(selectedWorkspaceId).catch((error) => {
@@ -361,66 +448,84 @@ export default function App() {
 
     void events.onOpencodeReady((info) => {
       if (!alive) return;
-      if (info.workspace_id === selectedWorkspaceId) {
+      if (info.workspace_id === selectedWorkspaceIdRef.current) {
         void commands.opencodeGetConnection(info.workspace_id).then(setConnection).catch(() => undefined);
       }
     }).then((fn) => { unlistenReady = fn; });
 
     void events.onAgentStream((evt: AgentStreamEvent) => {
       if (!alive) return;
-      if (evt.workspace_id !== selectedWorkspaceId) return;
+      if (evt.workspace_id !== selectedWorkspaceIdRef.current) return;
 
-      // Find which agent this event belongs to
-      const targetAgentId = agents.find((a) => a.sessionId === evt.session_id)?.id;
+      const isActiveSession = activeSessionIdRef.current != null && evt.session_id === activeSessionIdRef.current;
 
       if (evt.event_type === "text_delta" && evt.content) {
-        // Update focused agent's streaming content
-        if (activeConversation?.backend_session_id && evt.session_id === activeConversation.backend_session_id) {
+        if (isActiveSession) {
           setStreamingContent((prev) => prev + evt.content);
         }
-        // Update agent card preview
-        if (targetAgentId) {
-          setAgents((prev) => prev.map((a) => {
-            if (a.id !== targetAgentId) return a;
-            const newContent = a.streamingContent + (evt.content ?? "");
+
+        setAgents((prev) => {
+          let changed = false;
+          const next = prev.map((agent) => {
+            if (agent.sessionId !== evt.session_id) return agent;
+            changed = true;
+            const newContent = agent.streamingContent + evt.content;
             return {
-              ...a,
+              ...agent,
               streamingContent: newContent,
               streamPreview: extractStreamPreview(newContent),
               status: "running" as const,
             };
-          }));
-        }
+          });
+          return changed ? next : prev;
+        });
       } else if (evt.event_type === "step_start" || evt.event_type === "step_update" || evt.event_type === "step_complete") {
-        if (activeConversation?.backend_session_id && evt.session_id === activeConversation.backend_session_id) {
+        if (isActiveSession) {
           setStreamingSteps((prev) => applyStreamingStepEvent(prev, evt));
         }
-        // Update agent card activity
-        if (targetAgentId) {
-          setAgents((prev) => prev.map((a) => {
-            if (a.id !== targetAgentId) return a;
-            const newSteps = applyStreamingStepEvent(a.streamingSteps, evt);
+
+        setAgents((prev) => {
+          let changed = false;
+          const next = prev.map((agent) => {
+            if (agent.sessionId !== evt.session_id) return agent;
+            changed = true;
+            const newSteps = applyStreamingStepEvent(agent.streamingSteps, evt);
             return {
-              ...a,
+              ...agent,
               streamingSteps: newSteps,
               currentActivity: deriveCurrentActivity(newSteps),
               status: "running" as const,
             };
-          }));
+          });
+          return changed ? next : prev;
+        });
+      } else if (evt.event_type === "question" && isActiveSession && evt.metadata) {
+        // Agent is asking the user a question — show the overlay.
+        const meta = evt.metadata as Record<string, unknown>;
+        const id = typeof meta.id === "string" ? meta.id : "";
+        const questions = Array.isArray(meta.questions) ? meta.questions : [];
+        if (id && questions.length > 0) {
+          setPendingQuestion({
+            id,
+            questions: questions as PendingQuestion["questions"],
+          });
         }
       } else if (evt.event_type === "done") {
-        setIsProcessing(false);
-        setStreamingContent("");
-        setStreamingSteps([]);
-        if (selectedConversationId) {
-          void loadMessages(selectedConversationId).catch(() => {});
+        if (isActiveSession && selectedConversationIdRef.current) {
+          setIsProcessing(false);
+          setStreamingContent("");
+          setStreamingSteps([]);
+          setPendingQuestion(null);
+          void loadMessages(selectedConversationIdRef.current).catch(() => {});
         }
-        // Update agent card
-        if (targetAgentId) {
-          setAgents((prev) => prev.map((a) => {
-            if (a.id !== targetAgentId) return a;
+
+        setAgents((prev) => {
+          let changed = false;
+          const next = prev.map((agent) => {
+            if (agent.sessionId !== evt.session_id) return agent;
+            changed = true;
             return {
-              ...a,
+              ...agent,
               status: "complete" as const,
               streamingContent: "",
               streamPreview: [],
@@ -428,18 +533,44 @@ export default function App() {
               currentActivity: null,
               finishedAt: new Date().toISOString(),
             };
-          }));
-        }
-      } else if (evt.event_type === "error") {
-        setIsProcessing(false);
-        setStreamingContent("");
-        setStreamingSteps([]);
-        setError(evt.content ?? "Streaming error");
-        if (targetAgentId) {
-          setAgents((prev) => prev.map((a) => {
-            if (a.id !== targetAgentId) return a;
+          });
+          return changed ? next : prev;
+        });
+      } else if (evt.event_type === "usage_update" && evt.metadata) {
+        const inputTokens      = (evt.metadata as Record<string, number>).input_tokens      ?? 0;
+        const outputTokens     = (evt.metadata as Record<string, number>).output_tokens     ?? 0;
+        const cacheReadTokens  = (evt.metadata as Record<string, number>).cache_read_tokens  ?? 0;
+        const cacheWriteTokens = (evt.metadata as Record<string, number>).cache_write_tokens ?? 0;
+
+        setAgents((prev) => {
+          let changed = false;
+          const next = prev.map((agent) => {
+            if (agent.sessionId !== evt.session_id) return agent;
+            changed = true;
             return {
-              ...a,
+              ...agent,
+              tokenUsage: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
+            };
+          });
+          return changed ? next : prev;
+        });
+      } else if (evt.event_type === "error") {
+        if (isActiveSession && selectedConversationIdRef.current) {
+          setIsProcessing(false);
+          setStreamingContent("");
+          setStreamingSteps([]);
+          setPendingQuestion(null);
+          setError(evt.content ?? "Streaming error");
+          void loadMessages(selectedConversationIdRef.current).catch(() => {});
+        }
+
+        setAgents((prev) => {
+          let changed = false;
+          const next = prev.map((agent) => {
+            if (agent.sessionId !== evt.session_id) return agent;
+            changed = true;
+            return {
+              ...agent,
               status: "error" as const,
               streamingContent: "",
               streamPreview: [],
@@ -448,8 +579,9 @@ export default function App() {
               errorMessage: evt.content ?? "Error",
               finishedAt: new Date().toISOString(),
             };
-          }));
-        }
+          });
+          return changed ? next : prev;
+        });
       }
     }).then((fn) => { unlistenStream = fn; });
 
@@ -459,7 +591,7 @@ export default function App() {
       unlistenReady?.();
       unlistenStream?.();
     };
-  }, [activeConversation?.backend_session_id, selectedConversationId, selectedWorkspaceId, agents]);
+  }, []);
 
   const activeProcessOutput = connection
     ? processOutput.filter((line) => line.process_id === connection.process_id)
@@ -474,7 +606,7 @@ export default function App() {
       const created = await commands.createWorkspace(input);
       await refreshWorkspaces();
       setSelectedWorkspaceId(created.id);
-      setAppMode("workspace");
+      setInWorkspace(true);
     } catch (error) {
       setError(getErrorMessage(error));
       throw error;
@@ -485,12 +617,12 @@ export default function App() {
 
   const handleEnterWorkspace = useCallback((id: string) => {
     setSelectedWorkspaceId(id);
-    setAppMode("workspace");
+    setInWorkspace(true);
   }, []);
 
   const handleExitWorkspace = useCallback(() => {
-    setAppMode("home");
-    setCurrentView("workspaces");
+    setInWorkspace(false);
+    setWorkView("workspaces");
     // Keep selectedWorkspaceId so sidebar can highlight it, but exit workspace mode
   }, []);
 
@@ -498,8 +630,8 @@ export default function App() {
     try {
       // If we're deleting the currently-selected workspace, exit workspace mode
       if (id === selectedWorkspaceId) {
-        setAppMode("home");
-        setCurrentView("workspaces");
+        setInWorkspace(false);
+        setWorkView("workspaces");
         setSelectedWorkspaceId(null);
       }
       await commands.deleteWorkspace(id);
@@ -508,6 +640,14 @@ export default function App() {
       setError(getErrorMessage(err));
     }
   }, [selectedWorkspaceId]);
+
+  const handleWorkspaceBranchChange = useCallback(async (branch: string) => {
+    if (!selectedWorkspace) return;
+    await commands.setWorkspaceBranch(selectedWorkspace.id, branch);
+    await refreshWorkspaces();
+    const updated = await commands.getWorkspace(selectedWorkspace.id);
+    setSelectedWorkspace(updated);
+  }, [selectedWorkspace]);
 
   async function ensureOpenCodeStarted(workspace: Workspace) {
     if (connection) return connection;
@@ -578,9 +718,9 @@ export default function App() {
       setMessages([]);
       setConnection(nextConnection);
 
-      // If in home mode, switch to workspace mode
-      if (appMode === "home") {
-        setAppMode("workspace");
+      // If not in workspace yet, switch to workspace mode
+      if (!inWorkspace) {
+        setInWorkspace(true);
       }
 
       return updatedConversation;
@@ -591,7 +731,7 @@ export default function App() {
   }
 
   async function handleChatSend() {
-    if (!selectedWorkspace || !chatInput.trim()) return;
+    if (!selectedWorkspace || !agentChatInput.trim()) return;
 
     let conversation = activeConversation;
     if (!conversation) {
@@ -602,7 +742,7 @@ export default function App() {
       return;
     }
 
-    const content = chatInput.trim();
+    const content = agentChatInput.trim();
     let modelForSend = selectedModel;
     if (!modelForSend && selectedWorkspace.backend === "opencode") {
       const models = await commands.opencodeListModels(selectedWorkspace.id).catch(() => []);
@@ -615,7 +755,7 @@ export default function App() {
       }
     }
 
-    setChatInput("");
+    setAgentChatInput("");
     setIsProcessing(true);
     setStreamingContent("");
     setStreamingSteps([]);
@@ -775,15 +915,59 @@ export default function App() {
       setMessages([]);
       setConnection(nextConnection);
 
-      if (appMode === "home") {
-        setAppMode("workspace");
+      if (!inWorkspace) {
+        setInWorkspace(true);
       }
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setIsCreatingAgent(false);
     }
-  }, [selectedWorkspace, appMode, selectedModelOption]);
+  }, [selectedWorkspace, inWorkspace, selectedModelOption]);
+
+  /** Handle a question answer from the overlay — format and send as a message. */
+  const handleQuestionAnswer = useCallback(async (answers: string[]) => {
+    setPendingQuestion(null);
+    if (!selectedWorkspace || !activeConversation?.backend_session_id) return;
+
+    // Format answers into a human-readable reply string
+    const reply = answers.filter(Boolean).join("\n");
+    if (!reply) return;
+
+    setAgentChatInput("");
+    setIsProcessing(true);
+    setStreamingContent("");
+    setStreamingSteps([]);
+    setError(null);
+
+    if (focusedAgentId) {
+      setAgents((prev) => prev.map((a) => {
+        if (a.id !== focusedAgentId) return a;
+        return { ...a, status: "running" as const, streamingContent: "", streamPreview: [], streamingSteps: [], currentActivity: "Answering question..." };
+      }));
+    }
+
+    try {
+      await commands.opencodeSendStreaming(
+        selectedWorkspace.id,
+        activeConversation.backend_session_id,
+        activeConversation.id,
+        reply,
+        selectedModel,
+      );
+      await loadMessages(activeConversation.id);
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setIsProcessing(false);
+      setStreamingContent("");
+      setStreamingSteps([]);
+    }
+  }, [selectedWorkspace, activeConversation, selectedModel, focusedAgentId]);
+
+  /** Dismiss a pending question without answering. */
+  const handleQuestionDismiss = useCallback(() => {
+    setPendingQuestion(null);
+  }, []);
 
   /** Show workspace overview (unfocus any agent) */
   const handleManageWorkspace = useCallback(() => {
@@ -796,7 +980,151 @@ export default function App() {
     setAgentSettingsTarget(agentId);
   }, []);
 
+  // ── Standalone chat actions ─────────────────────────────────────
+
+  const handleNewStandaloneChat = useCallback(() => {
+    const conv = createLocalConversation();
+    setChatConversations((prev) => [conv, ...prev]);
+    setActiveChatId(conv.id);
+    setStandaloneChatInput("");
+  }, []);
+
+  const handleDeleteStandaloneChat = useCallback((id: string) => {
+    setChatConversations((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      if (activeChatId === id) {
+        setActiveChatId(next.length > 0 ? next[0].id : null);
+      }
+      return next;
+    });
+  }, [activeChatId]);
+
+  const handleStandaloneChatSend = useCallback(() => {
+    const text = standaloneChatInput.trim();
+    if (!text) return;
+
+    let convId = activeChatId;
+
+    // Auto-create a conversation if none selected
+    if (!convId) {
+      const conv = createLocalConversation(text.slice(0, 40));
+      setChatConversations((prev) => [conv, ...prev]);
+      convId = conv.id;
+      setActiveChatId(convId);
+    }
+
+    const userMsg = createLocalMessage("user", text);
+
+    setChatConversations((prev) =>
+      prev.map((c) => {
+        if (c.id !== convId) return c;
+        // Set title from first message if still default
+        const title = c.messages.length === 0 ? text.slice(0, 40) : c.title;
+        return { ...c, title, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() };
+      }),
+    );
+    setStandaloneChatInput("");
+
+    // Placeholder assistant reply (backend logic comes later)
+    setTimeout(() => {
+      const assistantMsg = createLocalMessage("assistant", "This is a placeholder response. The chat backend will be connected soon.");
+      setChatConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          return { ...c, messages: [...c.messages, assistantMsg], updatedAt: new Date().toISOString() };
+        }),
+      );
+    }, 600);
+  }, [standaloneChatInput, activeChatId]);
+
   // ── Render helpers ──────────────────────────────────────────────
+
+  /** Render the standalone chat view (no workspace, no agent) */
+  function renderStandaloneChat() {
+    const chatMessages = activeChatConv?.messages ?? [];
+
+    return (
+      <div className="relative flex flex-col overflow-hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+        {/* Header */}
+        <div className="shrink-0 px-6 py-3 border-b border-[var(--glass-border)] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <svg className="w-4 h-4 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+            </svg>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                {activeChatConv?.title ?? "Chat"}
+              </h2>
+              <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                {activeChatConv ? `${chatMessages.length} messages` : "Start a new conversation"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleNewStandaloneChat}
+            className="h-7 px-2.5 rounded-xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+          >
+            New
+          </button>
+        </div>
+
+        {/* Messages area */}
+        <main
+          className={`min-h-0 flex-1 overflow-y-auto scrollbar-thin ${
+            chatMessages.length === 0
+              ? "px-0 py-6"
+              : "pb-36 pt-3 sm:pb-44 md:pb-52 md:pt-6"
+          }`}
+        >
+          {chatMessages.length === 0 ? (
+            <WelcomeScreen
+              input={standaloneChatInput}
+              setInput={setStandaloneChatInput}
+              onSend={handleStandaloneChatSend}
+              compact
+              hideInput
+            />
+          ) : (
+            <div className="mx-auto flex max-w-3xl gap-4 px-4 md:px-6">
+              <div className="min-w-0 flex-1">
+                <div className="rounded-3xl p-5 glass-card-static">
+                  <div className="space-y-5">
+                    {chatMessages.map((msg) => (
+                      <ChatMessage
+                        key={msg.id}
+                        message={{
+                          id: msg.id,
+                          conversation_id: activeChatConv?.id ?? "",
+                          role: msg.role,
+                          content: msg.content,
+                          metadata: null,
+                          created_at: msg.createdAt,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Floating input */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40">
+          <div className="h-8 sm:h-16 bg-gradient-to-t from-[var(--surface-bg)] to-transparent" />
+          <div className="pointer-events-auto bg-[var(--surface-bg)]">
+            <ChatInput
+              value={standaloneChatInput}
+              onChange={setStandaloneChatInput}
+              onSend={handleStandaloneChatSend}
+              onStop={() => {}}
+              isProcessing={false}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   /** Render the chat/conversation view for the focused agent */
   function renderAgentChat() {
@@ -832,52 +1160,73 @@ export default function App() {
             )}
             <button
               onClick={() => void handleNewConversation()}
-              className="h-7 px-2.5 rounded-lg text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+              className="h-7 px-2.5 rounded-xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
             >
               New
             </button>
           </div>
         </div>
 
+        {/* Context usage bar — shown whenever an agent has token data */}
+        <ContextBar agent={focusedAgent} isStreaming={isProcessing} />
+
         {/* Messages area */}
         <main
           className={`min-h-0 flex-1 overflow-y-auto scrollbar-thin ${
             messages.length === 0 && !isProcessing
               ? "px-0 py-6"
-              : "px-4 pb-36 pt-3 sm:pb-44 md:px-6 md:pb-52 md:pt-6"
+              : "pb-36 pt-3 sm:pb-44 md:pb-52 md:pt-6"
           }`}
         >
           {messages.length === 0 && !isProcessing ? (
             <WelcomeScreen
-              input={chatInput}
-              setInput={setChatInput}
+              input={agentChatInput}
+              setInput={setAgentChatInput}
               onSend={() => void handleChatSend()}
+              compact
               hideInput
             />
           ) : (
-            <div className="mx-auto max-w-3xl">
-              <div className="rounded-2xl p-5 glass-card-static">
-                <div className="space-y-5">
-                  {messages.map((msg) => (
-                    <ChatMessage key={msg.id} message={msg} />
-                  ))}
-                  {isProcessing && (streamingContent || streamingSteps.length > 0) && (
-                    <ChatMessage
-                      message={{
-                        id: "__streaming__",
-                        conversation_id: selectedConversationId ?? "",
-                        role: "assistant",
-                        content: streamingContent,
-                        metadata: null,
-                        created_at: new Date().toISOString(),
-                        thinkingSteps: streamingSteps,
-                      }}
-                      isStreaming
-                    />
-                  )}
-                  {isProcessing && !streamingContent && streamingSteps.length === 0 && <TypingIndicator />}
-                  <div ref={chatEndRef} />
+            <div className="mx-auto flex max-w-6xl gap-4 px-4 md:px-6">
+              {/* Chat column */}
+              <div className="min-w-0 flex-1 max-w-3xl">
+                <div className="rounded-3xl p-5 glass-card-static">
+                  <div className="space-y-5">
+                    {messages.map((msg) => (
+                      <ChatMessage key={msg.id} message={msg} basePath={selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path} />
+                    ))}
+                    {isProcessing && (streamingContent || streamingSteps.length > 0) && (
+                      <ChatMessage
+                        message={{
+                          id: "__streaming__",
+                          conversation_id: selectedConversationId ?? "",
+                          role: "assistant",
+                          content: streamingContent,
+                          metadata: null,
+                          created_at: new Date().toISOString(),
+                          thinkingSteps: streamingSteps,
+                        }}
+                        isStreaming
+                        basePath={selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path}
+                      />
+                    )}
+                    {isProcessing && !streamingContent && streamingSteps.length === 0 && <TypingIndicator />}
+                    <div ref={chatEndRef} />
+                  </div>
                 </div>
+              </div>
+
+              {/* Modified files side panel */}
+              <div className="hidden xl:block w-[260px] shrink-0 sticky top-0 self-start">
+                <ModifiedFilesPanel
+                  repoPath={selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path}
+                  isStreaming={isProcessing}
+                  onOpenFile={(path) => {
+                    commands.openInEditor(path).catch((err) => {
+                      console.warn("Failed to open file:", err);
+                    });
+                  }}
+                />
               </div>
             </div>
           )}
@@ -888,8 +1237,8 @@ export default function App() {
           <div className="h-8 sm:h-16 bg-gradient-to-t from-[var(--surface-bg)] to-transparent" />
           <div className="pointer-events-auto bg-[var(--surface-bg)]">
             <ChatInput
-              value={chatInput}
-              onChange={setChatInput}
+              value={agentChatInput}
+              onChange={setAgentChatInput}
               onSend={() => void handleChatSend()}
               onStop={() => void handleAbort()}
               isProcessing={isProcessing}
@@ -904,20 +1253,30 @@ export default function App() {
     );
   }
 
+  // ── Derive sidebar work view ────────────────────────────────────
+  const sidebarWorkView: WorkHomeView | "workspace" = inWorkspace ? "workspace" : workView;
+
   // ── Main render ─────────────────────────────────────────────────
 
   return (
-    <div className="glass-page-shell flex h-full max-h-full overflow-hidden">
+    <div className="glass-page-shell flex h-full max-h-full overflow-hidden" data-theme={theme}>
       <Sidebar
-        appMode={appMode}
-        // Home mode props
+        mode={interactionMode}
+        onSwitchMode={setInteractionMode}
+        // Chat mode props
+        chatConversations={chatConversations}
+        activeChatId={activeChatId}
+        onSelectChat={setActiveChatId}
+        onNewChat={handleNewStandaloneChat}
+        onDeleteChat={handleDeleteStandaloneChat}
+        // Work mode — home props
+        workView={sidebarWorkView}
         workspaces={workspaces}
         selectedWorkspaceId={selectedWorkspaceId}
         onSelectWorkspace={handleEnterWorkspace}
-        currentView={currentView}
-        onNavigate={setCurrentView}
+        onNavigateWork={setWorkView}
         onNewWorkspace={() => setShowCreateModal(true)}
-        // Workspace mode props
+        // Work mode — workspace props
         activeWorkspace={selectedWorkspace}
         onExitWorkspace={handleExitWorkspace}
         agents={agents}
@@ -928,46 +1287,56 @@ export default function App() {
         onManageWorkspace={handleManageWorkspace}
         onManageAgent={handleManageAgent}
         activeWorkspaceConnected={Boolean(connection)}
+        githubAuthenticated={githubAuthStatus?.authenticated ?? false}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onOpenSettings={() => setShowSettings(true)}
+        showSettings={showSettings}
       />
 
       <div className="relative z-10 flex flex-col overflow-hidden" style={{ flex: "1 1 0%", minWidth: 0, minHeight: 0 }}>
         {/* Error banner */}
         {error && (
           <div className="shrink-0 px-6 pt-4">
-            <div className="rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-bg-strong)] px-4 py-3 text-[12px] text-[var(--color-danger-text)] flex items-center justify-between gap-3">
+            <div className="rounded-2xl border border-[var(--color-danger-border)] bg-[var(--color-danger-bg-strong)] px-4 py-3 text-[12px] text-[var(--color-danger-text)] flex items-center justify-between gap-3">
               <span>{error}</span>
               <button className="font-semibold" onClick={() => setError(null)}>Dismiss</button>
             </div>
           </div>
         )}
 
-        {/* ── HOME MODE ─────────────────────────────────────────── */}
-        {appMode === "home" && currentView === "workspaces" && (
-          <WorkspaceList
-            workspaces={workspaces}
-            onSelect={handleEnterWorkspace}
-            onCreateNew={() => setShowCreateModal(true)}
-            onDelete={(id) => void handleDeleteWorkspace(id)}
+        {/* ── SETTINGS (shown from any mode) ─────────────────────── */}
+        {showSettings && (
+          <SettingsPanel
+            onClose={() => setShowSettings(false)}
+            runtime={runtime}
+            githubAuthStatus={githubAuthStatus}
+            onGitHubAuthChange={setGitHubAuthStatus}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         )}
 
-        {appMode === "home" && currentView === "chat" && renderAgentChat()}
+        {/* ── CHAT MODE ─────────────────────────────────────────── */}
+        {!showSettings && interactionMode === "chat" && renderStandaloneChat()}
 
-        {appMode === "home" && currentView === "settings" && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-8" style={{ minHeight: 0 }}>
-            <div className="mx-auto max-w-2xl">
-              <h1 className="text-xl font-bold text-[var(--text-primary)] mb-6">Settings</h1>
-              <div className="rounded-xl glass-card-static p-5">
-                <p className="text-sm text-[var(--text-muted)]">Runtime: {runtime?.runtime ?? "loading"}</p>
-                <p className="text-sm text-[var(--text-muted)] mt-2">Platform: {runtime?.platform ?? "loading"}</p>
-                <p className="text-sm text-[var(--text-muted)] mt-2">OpenCode available: {runtime?.opencode_available ? "yes" : "unknown"}</p>
-              </div>
+        {/* ── WORK MODE — home views ────────────────────────────── */}
+        {!showSettings && interactionMode === "work" && !inWorkspace && workView === "workspaces" && (
+          <div className="flex-1 flex flex-col overflow-y-auto scrollbar-thin" style={{ minHeight: 0 }}>
+            <div className="mx-auto w-full max-w-5xl px-6 pt-5 pb-2">
+              <ActivityChart agents={agents} />
             </div>
+            <WorkspaceList
+              workspaces={workspaces}
+              onSelect={handleEnterWorkspace}
+              onCreateNew={() => setShowCreateModal(true)}
+              onDelete={(id) => void handleDeleteWorkspace(id)}
+            />
           </div>
         )}
 
-        {/* ── WORKSPACE MODE ────────────────────────────────────── */}
-        {appMode === "workspace" && !focusedAgentId && selectedWorkspace && (
+        {/* ── WORK MODE — inside a workspace ────────────────────── */}
+        {!showSettings && interactionMode === "work" && inWorkspace && !focusedAgentId && selectedWorkspace && (
           <WorkspaceView
             workspace={selectedWorkspace}
             conversations={conversations}
@@ -985,11 +1354,18 @@ export default function App() {
             onNewAgent={() => setShowNewAgentModal(true)}
             onFocusAgent={handleFocusAgent}
             onManageAgent={handleManageAgent}
+            onWorkspaceBranchChange={handleWorkspaceBranchChange}
             loading={loadingWorkspace || isProcessing}
+            githubAuthStatus={githubAuthStatus}
+            githubSlug={githubSlug}
+            onNavigateToSettings={() => {
+              setShowSettings(true);
+            }}
+            onGitHubSlugChange={setGitHubSlug}
           />
         )}
 
-        {appMode === "workspace" && focusedAgentId && renderAgentChat()}
+        {!showSettings && interactionMode === "work" && inWorkspace && focusedAgentId && renderAgentChat()}
       </div>
 
       {/* Create workspace modal */}
@@ -1025,6 +1401,15 @@ export default function App() {
           />
         );
       })()}
+
+      {/* Question overlay — shown when the agent asks a question */}
+      {pendingQuestion && (
+        <QuestionOverlay
+          question={pendingQuestion}
+          onAnswer={(answers) => void handleQuestionAnswer(answers)}
+          onDismiss={handleQuestionDismiss}
+        />
+      )}
     </div>
   );
 }
