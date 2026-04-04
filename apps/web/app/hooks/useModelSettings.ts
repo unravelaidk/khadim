@@ -27,8 +27,10 @@ export interface ModelConfig {
   name: string;
   provider: ProviderType;
   model: string;
+  apiKey: string | null;
   baseUrl: string | null;
   temperature: string | null;
+  hasApiKey?: boolean | null;
   isDefault: boolean | null;
   isActive: boolean | null;
 }

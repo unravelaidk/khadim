@@ -19,7 +19,7 @@ import type {
 import { commands, events } from "./lib/bindings";
 import { initWebviewZoom } from "./lib/webview-zoom";
 import { extractSessionId } from "./lib/ui";
-import type { AgentInstance, InteractionMode, WorkHomeView, LocalChatConversation } from "./lib/types";
+import type { AgentInstance, InteractionMode, WorkHomeView, LocalChatConversation, LocalChatMessage } from "./lib/types";
 import { createAgentInstance, createLocalConversation, createLocalMessage } from "./lib/types";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
@@ -41,15 +41,41 @@ initWebviewZoom();
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
 function getErrorMessage(error: unknown) {
-  if (error && typeof error === "object" && "message" in error) {
-    return String((error as AppError).message);
+  const raw = error && typeof error === "object" && "message" in error
+    ? String((error as AppError).message)
+    : "Something went wrong.";
+
+  if (raw.includes("Missing Authentication header") || raw.includes("HTTP 401 Unauthorized")) {
+    return "The selected provider is not authenticated. Add or update its API key in Model Settings and try again.";
   }
-  return "Something went wrong.";
+
+  if (raw.includes("usage_limit_reached")) {
+    return "Your Codex plan has reached its current usage limit. Wait for the reset window or switch to another model/provider.";
+  }
+
+  if (raw.includes("HTTP 429 Too Many Requests")) {
+    return "The provider is rate limiting requests right now. Please wait a moment and try again.";
+  }
+
+  if (raw.includes("No Khadim model is configured")) {
+    return "No Khadim model is configured yet. Open Model Settings, save a provider and model, then try again.";
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    return raw;
+  }
+  return raw;
+}
+
+function formatStreamingError(message: string | null | undefined) {
+  return getErrorMessage({ message: message ?? "Streaming error" } as AppError);
 }
 
 function getModelSettingKey(workspaceId: string) {
   return `opencode:model:${workspaceId}`;
 }
+
+const STANDALONE_KHADIM_WORKSPACE_ID = "__chat__";
 
 function getModelKey(model: OpenCodeModelRef) {
   return `${model.provider_id}:${model.model_id}`;
@@ -68,6 +94,19 @@ function parseStoredModel(value: string | null): OpenCodeModelRef | null {
   return null;
 }
 
+/** Mark any lingering "running" steps as "complete" so they don't stay open forever. */
+function finalizeSteps(steps: ThinkingStepData[]): ThinkingStepData[] {
+  let changed = false;
+  const next = steps.map((step) => {
+    if (step.status === "running") {
+      changed = true;
+      return { ...step, status: "complete" as const };
+    }
+    return step;
+  });
+  return changed ? next : steps;
+}
+
 function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStreamEvent) {
   const metadata = evt.metadata ?? {};
   const stepId = typeof metadata.id === "string" ? metadata.id : null;
@@ -79,6 +118,7 @@ function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStreamEvent
   const fileContent = typeof metadata.fileContent === "string" ? metadata.fileContent : undefined;
   const filePath = typeof metadata.filePath === "string" ? metadata.filePath : undefined;
   const nextResult = typeof metadata.result === "string" ? metadata.result : undefined;
+  const isError = metadata.is_error === true;
   const index = prev.findIndex((step) => step.id === stepId);
   const current = index >= 0 ? prev[index] : { id: stepId, title, status: "running" as const };
   const next: ThinkingStepData = {
@@ -99,9 +139,13 @@ function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStreamEvent
     if (evt.content) next.content = evt.content;
   }
   if (evt.event_type === "step_complete") {
-    next.status = "complete";
+    next.status = isError ? "error" : "complete";
     if (evt.content) next.content = evt.content;
-    if (nextResult) next.result = nextResult;
+    if (nextResult) {
+      next.result = nextResult;
+    } else if (evt.content) {
+      next.result = evt.content;
+    }
   }
 
   if (index >= 0) {
@@ -127,6 +171,14 @@ function deriveCurrentActivity(steps: ThinkingStepData[]): string | null {
   if (last.tool && last.filename) return `${last.tool}: ${last.filename}`;
   if (last.tool) return `${last.tool}...`;
   return last.title;
+}
+
+function hasFinishedAfter(startedAt: string | null, createdAt: string | null | undefined) {
+  if (!startedAt || !createdAt) return false;
+  const started = Date.parse(startedAt);
+  const created = Date.parse(createdAt);
+  if (Number.isNaN(started) || Number.isNaN(created)) return false;
+  return created >= started;
 }
 
 /* ─── App ──────────────────────────────────────────────────────────── */
@@ -156,11 +208,32 @@ export default function App() {
   const [agentSettingsTarget, setAgentSettingsTarget] = useState<string | null>(null);
   const [runtime, setRuntime] = useState<RuntimeSummary | null>(null);
 
-  // ── Standalone chat state (local, no backend yet) ───────────────
+  // ── Standalone chat state (local, streaming-enabled) ─────────────
   const [chatConversations, setChatConversations] = useState<LocalChatConversation[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [standaloneChatInput, setStandaloneChatInput] = useState("");
   const activeChatConv = chatConversations.find((c) => c.id === activeChatId) ?? null;
+  /** Whether a standalone chat request is currently streaming. */
+  const [chatIsProcessing, setChatIsProcessing] = useState(false);
+  const [chatStreamingContent, setChatStreamingContent] = useState("");
+  const [chatStreamingSteps, setChatStreamingSteps] = useState<ThinkingStepData[]>([]);
+  /** Tracks the active session ID for standalone chat so onAgentStream can match events. */
+  const chatSessionIdRef = useRef<string | null>(null);
+  /** Tracks the active conversation ID so the done/error handler can find it in the ref. */
+  const chatActiveConvIdRef = useRef<string | null>(null);
+  /** Latest standalone chat conversations for the long-lived event listener. */
+  const chatConversationsRef = useRef<LocalChatConversation[]>([]);
+  /** Accumulates streamed text for standalone chat so the done handler can read the final value. */
+  const chatStreamingContentRef = useRef("");
+  /** Accumulates streamed steps for standalone chat so the done handler can read the final value. */
+  const chatStreamingStepsRef = useRef<ThinkingStepData[]>([]);
+  /** Sessions that already errored so trailing done events do not overwrite the UI state. */
+  const chatErroredSessionsRef = useRef<Set<string>>(new Set());
+  /** Models available in standalone chat mode. */
+  const [chatAvailableModels, setChatAvailableModels] = useState<OpenCodeModelOption[]>([]);
+  const [chatSelectedModel, setChatSelectedModel] = useState<OpenCodeModelRef | null>(null);
+  /** Configured chat working directory (null = use temp dir). */
+  const [chatDirectory, setChatDirectory] = useState<string | null>(null);
 
   // ── Workspace state ─────────────────────────────────────────────
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -194,6 +267,10 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingSteps, setStreamingSteps] = useState<ThinkingStepData[]>([]);
+  /** Snapshots of streaming steps keyed by conversation ID, preserved across the streaming→history transition. */
+  const completedStepsRef = useRef<Map<string, ThinkingStepData[]>>(new Map());
+  /** Sessions that already errored so trailing done events do not overwrite the UI state. */
+  const erroredAgentSessionsRef = useRef<Set<string>>(new Set());
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
@@ -206,6 +283,12 @@ export default function App() {
   // ── Derived state ───────────────────────────────────────────────
   const activeConversation = conversations.find((item) => item.id === selectedConversationId) ?? null;
   const focusedAgent = agents.find((a) => a.id === focusedAgentId) ?? null;
+  const focusedAgentIsProcessing = focusedAgent?.status === "running";
+  const focusedAgentStreamingContent = focusedAgent?.streamingContent ?? "";
+  const focusedAgentStreamingSteps = focusedAgent?.streamingSteps ?? [];
+  const activeStandaloneIsProcessing = activeChatConv?.isProcessing ?? chatIsProcessing;
+  const activeStandaloneStreamingContent = activeChatConv?.streamingContent ?? chatStreamingContent;
+  const activeStandaloneStreamingSteps = activeChatConv?.streamingSteps ?? chatStreamingSteps;
 
   useEffect(() => {
     selectedWorkspaceIdRef.current = selectedWorkspaceId;
@@ -218,6 +301,61 @@ export default function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeConversation?.backend_session_id ?? null;
   }, [activeConversation?.backend_session_id]);
+
+  useEffect(() => {
+    chatConversationsRef.current = chatConversations;
+  }, [chatConversations]);
+
+  useEffect(() => {
+    chatActiveConvIdRef.current = activeChatId;
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!focusedAgent || focusedAgent.status !== "running") return;
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== "assistant") return;
+    if (!hasFinishedAfter(focusedAgent.startedAt, lastMessage.created_at)) return;
+    if (focusedAgent.streamingContent.trim()) return;
+    if (focusedAgent.streamingSteps.some((step) => step.status === "running")) return;
+
+    setIsProcessing(false);
+    setStreamingContent("");
+    setStreamingSteps([]);
+    setAgents((prev) => prev.map((agent) => {
+      if (agent.id !== focusedAgent.id || agent.status !== "running") return agent;
+      return {
+        ...agent,
+        status: "complete",
+        streamingContent: "",
+        streamPreview: [],
+        streamingSteps: [],
+        currentActivity: null,
+        finishedAt: lastMessage.created_at,
+      };
+    }));
+  }, [focusedAgent, messages]);
+
+  useEffect(() => {
+    const activeConversation = activeChatConv;
+    if (!activeConversation || !activeConversation.isProcessing) return;
+    const lastMessage = activeConversation.messages[activeConversation.messages.length - 1];
+    if (!lastMessage || lastMessage.role !== "assistant") return;
+    if (activeConversation.streamingContent.trim()) return;
+    if (activeConversation.streamingSteps.some((step) => step.status === "running")) return;
+
+    setChatConversations((prev) => prev.map((conversation) => {
+      if (conversation.id !== activeConversation.id || !conversation.isProcessing) return conversation;
+      return {
+        ...conversation,
+        isProcessing: false,
+        streamingContent: "",
+        streamingSteps: [],
+      };
+    }));
+    setChatIsProcessing(false);
+    setChatStreamingContent("");
+    setChatStreamingSteps([]);
+  }, [activeChatConv]);
 
   const selectedModelOption = selectedModel
     ? availableModels.find((model) => getModelKey(model) === getModelKey(selectedModel)) ?? null
@@ -239,11 +377,16 @@ export default function App() {
     setLoadingWorkspace(true);
     try {
       const storedModelPromise = commands.getSetting(getModelSettingKey(workspaceId)).catch(() => null);
-      const [workspace, nextConversations, nextConnection, storedModelValue] = await Promise.all([
+      const [workspace, nextConversations, nextConnection, storedModelValue, activeKhadimModel] = await Promise.all([
         commands.getWorkspace(workspaceId),
         commands.listConversations(workspaceId),
-        commands.opencodeGetConnection(workspaceId),
+        commands.getWorkspace(workspaceId).then((value) => value.backend === "opencode"
+          ? commands.opencodeGetConnection(workspaceId)
+          : Promise.resolve(null)),
         storedModelPromise,
+        commands.getWorkspace(workspaceId).then((value) => value.backend === "khadim"
+          ? commands.khadimActiveModel()
+          : Promise.resolve(null)),
       ]);
 
       const storedModel = parseStoredModel(storedModelValue);
@@ -251,7 +394,9 @@ export default function App() {
       setSelectedWorkspace(workspace);
       setConversations(nextConversations);
       setConnection(nextConnection);
-      setSelectedModel(storedModel);
+      setSelectedModel(storedModel ?? (activeKhadimModel
+        ? { provider_id: activeKhadimModel.provider_id, model_id: activeKhadimModel.model_id }
+        : null));
 
       // Auto-start the agent backend if not already running
       if (!nextConnection && workspace.backend === "opencode") {
@@ -320,6 +465,17 @@ export default function App() {
       return;
     }
     const nextMessages = await commands.listMessages(conversationId);
+    // Attach any streaming steps that were captured before the done event.
+    const savedSteps = completedStepsRef.current.get(conversationId);
+    if (savedSteps && savedSteps.length > 0) {
+      // Find the last assistant message and attach the steps.
+      for (let i = nextMessages.length - 1; i >= 0; i--) {
+        if (nextMessages[i].role === "assistant") {
+          (nextMessages[i] as StoredMessage & { thinkingSteps?: ThinkingStepData[] }).thinkingSteps = savedSteps;
+          break;
+        }
+      }
+    }
     setMessages(nextMessages);
   }
 
@@ -333,6 +489,8 @@ export default function App() {
         await refreshWorkspaces();
         // Load GitHub auth status (fire-and-forget)
         commands.githubAuthStatus().then(setGitHubAuthStatus).catch(() => {});
+        // Load chat directory setting
+        commands.getSetting("khadim:chat_directory").then((v) => { if (v) setChatDirectory(v); }).catch(() => {});
       } catch (error) {
         setError(getErrorMessage(error));
       }
@@ -368,13 +526,19 @@ export default function App() {
 
   // Load models when connection is available
   useEffect(() => {
-    if (!selectedWorkspaceId || !connection) {
+    if (!selectedWorkspaceId || !selectedWorkspace) {
       setAvailableModels([]);
       return;
     }
 
     let alive = true;
-    void commands.opencodeListModels(selectedWorkspaceId)
+    const loadModels = selectedWorkspace.backend === "khadim"
+      ? commands.khadimListModels()
+      : connection
+        ? commands.opencodeListModels(selectedWorkspaceId)
+        : Promise.resolve([]);
+
+    void loadModels
       .then(async (models) => {
         if (!alive) return;
         setAvailableModels(models);
@@ -398,7 +562,29 @@ export default function App() {
       });
 
     return () => { alive = false; };
-  }, [connection, selectedWorkspaceId]);
+  }, [connection, selectedWorkspaceId, selectedWorkspace]);
+
+  // Load models for standalone chat mode
+  useEffect(() => {
+    if (interactionMode !== "chat") return;
+    let alive = true;
+    void commands.khadimListModels()
+      .then(async (models) => {
+        if (!alive) return;
+        setChatAvailableModels(models);
+        // Restore persisted selection
+        const storedValue = await commands.getSetting(getModelSettingKey(STANDALONE_KHADIM_WORKSPACE_ID)).catch(() => null);
+        const stored = parseStoredModel(storedValue);
+        const hasStored = stored && models.some((m) => getModelKey(m) === getModelKey(stored));
+        const fallback = models.find((m) => m.is_default) ?? models[0] ?? null;
+        const next = hasStored ? stored : fallback ? { provider_id: fallback.provider_id, model_id: fallback.model_id } : null;
+        if (alive) setChatSelectedModel(next);
+      })
+      .catch(() => {
+        if (alive) setChatAvailableModels([]);
+      });
+    return () => { alive = false; };
+  }, [interactionMode]);
 
   // ── Scroll tracking ─────────────────────────────────────────────
 
@@ -416,7 +602,7 @@ export default function App() {
 
     scrollParent.addEventListener("scroll", handleScroll, { passive: true });
     return () => scrollParent.removeEventListener("scroll", handleScroll);
-  }, [messages, isProcessing]);
+  }, [messages, focusedAgentIsProcessing]);
 
   const scrollToBottom = () => {
     const el = chatEndRef.current;
@@ -428,10 +614,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if ((messages.length > 0 || isProcessing) && isNearBottomRef.current) {
+    if ((messages.length > 0 || focusedAgentIsProcessing || activeStandaloneIsProcessing) && isNearBottomRef.current) {
       scrollToBottom();
     }
-  }, [messages, isProcessing, streamingContent, streamingSteps]);
+  }, [messages, focusedAgentIsProcessing, focusedAgentStreamingContent, focusedAgentStreamingSteps, activeStandaloneIsProcessing, activeStandaloneStreamingContent, activeStandaloneStreamingSteps, activeChatConv?.messages]);
 
   // ── Event listeners ─────────────────────────────────────────────
 
@@ -455,11 +641,139 @@ export default function App() {
 
     void events.onAgentStream((evt: AgentStreamEvent) => {
       if (!alive) return;
+
+      // ── Standalone chat events (workspace_id === "__chat__") ─────
+      const standaloneChatIndex = evt.workspace_id === STANDALONE_KHADIM_WORKSPACE_ID
+        ? chatConversationsRef.current.findIndex((conversation) => conversation.sessionId === evt.session_id)
+        : -1;
+      const isChatSession = standaloneChatIndex >= 0;
+
+      if (isChatSession) {
+        const standaloneConversation = chatConversationsRef.current[standaloneChatIndex] ?? null;
+        if (evt.event_type === "text_delta" && evt.content) {
+          chatErroredSessionsRef.current.delete(evt.session_id);
+          setChatConversations((prev) => prev.map((conversation) => {
+            if (conversation.sessionId !== evt.session_id) return conversation;
+            return {
+              ...conversation,
+              isProcessing: true,
+              streamingContent: conversation.streamingContent + evt.content,
+            };
+          }));
+
+          if (chatActiveConvIdRef.current === standaloneConversation?.id) {
+            chatStreamingContentRef.current += evt.content;
+            setChatStreamingContent(chatStreamingContentRef.current);
+          }
+        } else if (evt.event_type === "step_start" || evt.event_type === "step_update" || evt.event_type === "step_complete") {
+          chatErroredSessionsRef.current.delete(evt.session_id);
+          setChatConversations((prev) => prev.map((conversation) => {
+            if (conversation.sessionId !== evt.session_id) return conversation;
+            return {
+              ...conversation,
+              isProcessing: true,
+              streamingSteps: applyStreamingStepEvent(conversation.streamingSteps, evt),
+            };
+          }));
+
+          if (chatActiveConvIdRef.current === standaloneConversation?.id) {
+            chatStreamingStepsRef.current = applyStreamingStepEvent(chatStreamingStepsRef.current, evt);
+            setChatStreamingSteps(chatStreamingStepsRef.current);
+          }
+        } else if (evt.event_type === "done") {
+          if (chatErroredSessionsRef.current.has(evt.session_id)) {
+            chatErroredSessionsRef.current.delete(evt.session_id);
+            return;
+          }
+          const finalContent = standaloneConversation?.streamingContent ?? "";
+          const finalSteps = finalizeSteps(standaloneConversation?.streamingSteps ?? []);
+          const convId = standaloneConversation?.id ?? null;
+
+          if (convId && (finalContent || finalSteps.length > 0)) {
+            const assistantMsg = createLocalMessage("assistant", finalContent);
+            if (finalSteps.length > 0) {
+              (assistantMsg as LocalChatMessage).thinkingSteps = finalSteps;
+            }
+            setChatConversations((convs) =>
+              convs.map((c) => {
+                if (c.id !== convId) return c;
+                return {
+                  ...c,
+                  messages: [...c.messages, assistantMsg],
+                  isProcessing: false,
+                  streamingContent: "",
+                  streamingSteps: [],
+                  updatedAt: new Date().toISOString(),
+                };
+              }),
+            );
+          } else if (convId) {
+            setChatConversations((convs) =>
+              convs.map((c) => c.id === convId
+                ? { ...c, isProcessing: false, streamingContent: "", streamingSteps: [] }
+                : c),
+            );
+          }
+
+          if (chatActiveConvIdRef.current === standaloneConversation?.id) {
+            chatStreamingContentRef.current = "";
+            chatStreamingStepsRef.current = [];
+            setChatStreamingContent("");
+            setChatStreamingSteps([]);
+            setChatIsProcessing(false);
+          }
+        } else if (evt.event_type === "error") {
+          chatErroredSessionsRef.current.add(evt.session_id);
+          const finalContent = standaloneConversation?.streamingContent ?? "";
+          const finalSteps = finalizeSteps(standaloneConversation?.streamingSteps ?? []);
+          const convId = standaloneConversation?.id ?? null;
+
+          if (convId && (finalContent || finalSteps.length > 0)) {
+            const assistantMsg = createLocalMessage("assistant", finalContent);
+            if (finalSteps.length > 0) {
+              (assistantMsg as LocalChatMessage).thinkingSteps = finalSteps;
+            }
+            setChatConversations((convs) =>
+              convs.map((c) => {
+                if (c.id !== convId) return c;
+                return {
+                  ...c,
+                  messages: [...c.messages, assistantMsg],
+                  isProcessing: false,
+                  streamingContent: "",
+                  streamingSteps: [],
+                  updatedAt: new Date().toISOString(),
+                };
+              }),
+            );
+          } else if (convId) {
+            setChatConversations((convs) =>
+              convs.map((c) => c.id === convId
+                ? { ...c, isProcessing: false, streamingContent: "", streamingSteps: [] }
+                : c),
+            );
+          }
+
+          if (chatActiveConvIdRef.current === standaloneConversation?.id) {
+            chatStreamingContentRef.current = "";
+            chatStreamingStepsRef.current = [];
+            setChatStreamingContent("");
+            setChatStreamingSteps([]);
+            setChatIsProcessing(false);
+          }
+          setError(formatStreamingError(evt.content));
+        }
+        // Chat events handled — don't fall through to workspace handling.
+        return;
+      }
+
+      // ── Workspace / agent events ────────────────────────────────
       if (evt.workspace_id !== selectedWorkspaceIdRef.current) return;
 
       const isActiveSession = activeSessionIdRef.current != null && evt.session_id === activeSessionIdRef.current;
 
       if (evt.event_type === "text_delta" && evt.content) {
+        erroredAgentSessionsRef.current.delete(evt.session_id);
         if (isActiveSession) {
           setStreamingContent((prev) => prev + evt.content);
         }
@@ -480,6 +794,7 @@ export default function App() {
           return changed ? next : prev;
         });
       } else if (evt.event_type === "step_start" || evt.event_type === "step_update" || evt.event_type === "step_complete") {
+        erroredAgentSessionsRef.current.delete(evt.session_id);
         if (isActiveSession) {
           setStreamingSteps((prev) => applyStreamingStepEvent(prev, evt));
         }
@@ -511,10 +826,21 @@ export default function App() {
           });
         }
       } else if (evt.event_type === "done") {
+        if (erroredAgentSessionsRef.current.has(evt.session_id)) {
+          erroredAgentSessionsRef.current.delete(evt.session_id);
+          return;
+        }
         if (isActiveSession && selectedConversationIdRef.current) {
+          // Snapshot the streaming steps so they survive the reload from DB.
+          // Finalize any still-running steps so they don't stay open forever.
+          setStreamingSteps((prev) => {
+            if (prev.length > 0 && selectedConversationIdRef.current) {
+              completedStepsRef.current.set(selectedConversationIdRef.current, finalizeSteps(prev));
+            }
+            return [];
+          });
           setIsProcessing(false);
           setStreamingContent("");
-          setStreamingSteps([]);
           setPendingQuestion(null);
           void loadMessages(selectedConversationIdRef.current).catch(() => {});
         }
@@ -537,6 +863,7 @@ export default function App() {
           return changed ? next : prev;
         });
       } else if (evt.event_type === "usage_update" && evt.metadata) {
+        erroredAgentSessionsRef.current.delete(evt.session_id);
         const inputTokens      = (evt.metadata as Record<string, number>).input_tokens      ?? 0;
         const outputTokens     = (evt.metadata as Record<string, number>).output_tokens     ?? 0;
         const cacheReadTokens  = (evt.metadata as Record<string, number>).cache_read_tokens  ?? 0;
@@ -555,12 +882,18 @@ export default function App() {
           return changed ? next : prev;
         });
       } else if (evt.event_type === "error") {
+        erroredAgentSessionsRef.current.add(evt.session_id);
         if (isActiveSession && selectedConversationIdRef.current) {
+          setStreamingSteps((prev) => {
+            if (prev.length > 0 && selectedConversationIdRef.current) {
+              completedStepsRef.current.set(selectedConversationIdRef.current, finalizeSteps(prev));
+            }
+            return [];
+          });
           setIsProcessing(false);
           setStreamingContent("");
-          setStreamingSteps([]);
           setPendingQuestion(null);
-          setError(evt.content ?? "Streaming error");
+          setError(formatStreamingError(evt.content));
           void loadMessages(selectedConversationIdRef.current).catch(() => {});
         }
 
@@ -576,7 +909,7 @@ export default function App() {
               streamPreview: [],
               streamingSteps: [],
               currentActivity: null,
-              errorMessage: evt.content ?? "Error",
+              errorMessage: formatStreamingError(evt.content),
               finishedAt: new Date().toISOString(),
             };
           });
@@ -697,6 +1030,10 @@ export default function App() {
         }
         await commands.setConversationBackendSession(conversation.id, sessionId);
         updatedConversation = { ...conversation, backend_session_id: sessionId };
+      } else if (selectedWorkspace.backend === "khadim") {
+        const session = await commands.khadimCreateSession(selectedWorkspace.id);
+        await commands.setConversationBackendSession(conversation.id, session.id);
+        updatedConversation = { ...conversation, backend_session_id: session.id };
       }
 
       const nextConversations = await commands.listConversations(selectedWorkspace.id);
@@ -753,12 +1090,22 @@ export default function App() {
         setSelectedModel(modelForSend);
         await commands.setSetting(getModelSettingKey(selectedWorkspace.id), JSON.stringify(modelForSend)).catch(() => undefined);
       }
+    } else if (!modelForSend && selectedWorkspace.backend === "khadim") {
+      const models = await commands.khadimListModels().catch(() => []);
+      if (models.length > 0) {
+        setAvailableModels(models);
+        const fallback = models.find((model) => model.is_default) ?? models[0];
+        modelForSend = { provider_id: fallback.provider_id, model_id: fallback.model_id };
+        setSelectedModel(modelForSend);
+        await commands.setSetting(getModelSettingKey(selectedWorkspace.id), JSON.stringify(modelForSend)).catch(() => undefined);
+      }
     }
 
     setAgentChatInput("");
     setIsProcessing(true);
     setStreamingContent("");
     setStreamingSteps([]);
+    erroredAgentSessionsRef.current.delete(conversation.backend_session_id);
     setError(null);
 
     // Mark agent as running
@@ -770,13 +1117,23 @@ export default function App() {
     }
 
     try {
-      await commands.opencodeSendStreaming(
-        selectedWorkspace.id,
-        conversation.backend_session_id,
-        conversation.id,
-        content,
-        modelForSend,
-      );
+      if (selectedWorkspace.backend === "khadim") {
+        await commands.khadimSendStreaming(
+          selectedWorkspace.id,
+          conversation.backend_session_id,
+          conversation.id,
+          content,
+          modelForSend,
+        );
+      } else {
+        await commands.opencodeSendStreaming(
+          selectedWorkspace.id,
+          conversation.backend_session_id,
+          conversation.id,
+          content,
+          modelForSend,
+        );
+      }
       await loadMessages(conversation.id);
     } catch (error) {
       setError(getErrorMessage(error));
@@ -796,9 +1153,26 @@ export default function App() {
   async function handleAbort() {
     if (!selectedWorkspace || !activeConversation?.backend_session_id) return;
     try {
-      await commands.opencodeAbort(selectedWorkspace.id, activeConversation.backend_session_id);
+      if (selectedWorkspace.backend === "khadim") {
+        await commands.khadimAbort(activeConversation.backend_session_id);
+      } else {
+        await commands.opencodeAbort(selectedWorkspace.id, activeConversation.backend_session_id);
+      }
       setIsProcessing(false);
+      setStreamingContent("");
       setStreamingSteps([]);
+      erroredAgentSessionsRef.current.delete(activeConversation.backend_session_id);
+      setAgents((prev) => prev.map((agent) => {
+        if (agent.sessionId !== activeConversation.backend_session_id) return agent;
+        return {
+          ...agent,
+          status: "idle",
+          streamingContent: "",
+          streamPreview: [],
+          streamingSteps: [],
+          currentActivity: null,
+        };
+      }));
     } catch (error) {
       setError(getErrorMessage(error));
     }
@@ -827,7 +1201,11 @@ export default function App() {
 
     // 1. Abort if running
     if (agent.status === "running" && agent.sessionId && selectedWorkspace) {
-      await commands.opencodeAbort(selectedWorkspace.id, agent.sessionId).catch(() => {});
+      if (selectedWorkspace.backend === "khadim") {
+        await commands.khadimAbort(agent.sessionId).catch(() => {});
+      } else {
+        await commands.opencodeAbort(selectedWorkspace.id, agent.sessionId).catch(() => {});
+      }
     }
 
     // 2. Delete conversation from the database
@@ -894,6 +1272,10 @@ export default function App() {
         }
         await commands.setConversationBackendSession(conversation.id, sessionId);
         updatedConversation = { ...conversation, backend_session_id: sessionId };
+      } else if (selectedWorkspace.backend === "khadim") {
+        const session = await commands.khadimCreateSession(selectedWorkspace.id);
+        await commands.setConversationBackendSession(conversation.id, session.id);
+        updatedConversation = { ...conversation, backend_session_id: session.id };
       }
 
       const nextConversations = await commands.listConversations(selectedWorkspace.id);
@@ -938,6 +1320,7 @@ export default function App() {
     setIsProcessing(true);
     setStreamingContent("");
     setStreamingSteps([]);
+    erroredAgentSessionsRef.current.delete(activeConversation.backend_session_id);
     setError(null);
 
     if (focusedAgentId) {
@@ -948,13 +1331,23 @@ export default function App() {
     }
 
     try {
-      await commands.opencodeSendStreaming(
-        selectedWorkspace.id,
-        activeConversation.backend_session_id,
-        activeConversation.id,
-        reply,
-        selectedModel,
-      );
+      if (selectedWorkspace.backend === "khadim") {
+        await commands.khadimSendStreaming(
+          selectedWorkspace.id,
+          activeConversation.backend_session_id,
+          activeConversation.id,
+          reply,
+          selectedModel,
+        );
+      } else {
+        await commands.opencodeSendStreaming(
+          selectedWorkspace.id,
+          activeConversation.backend_session_id,
+          activeConversation.id,
+          reply,
+          selectedModel,
+        );
+      }
       await loadMessages(activeConversation.id);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -1001,7 +1394,7 @@ export default function App() {
 
   const handleStandaloneChatSend = useCallback(() => {
     const text = standaloneChatInput.trim();
-    if (!text) return;
+    if (!text || activeStandaloneIsProcessing) return;
 
     let convId = activeChatId;
 
@@ -1020,34 +1413,132 @@ export default function App() {
         if (c.id !== convId) return c;
         // Set title from first message if still default
         const title = c.messages.length === 0 ? text.slice(0, 40) : c.title;
-        return { ...c, title, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() };
+        return {
+          ...c,
+          title,
+          messages: [...c.messages, userMsg],
+          isProcessing: true,
+          streamingContent: "",
+          streamingSteps: [],
+          updatedAt: new Date().toISOString(),
+        };
       }),
     );
     setStandaloneChatInput("");
+    setChatIsProcessing(true);
+    setChatStreamingContent("");
+    setChatStreamingSteps([]);
+    chatStreamingContentRef.current = "";
+    chatStreamingStepsRef.current = [];
+    if (chatSessionIdRef.current) {
+      chatErroredSessionsRef.current.delete(chatSessionIdRef.current);
+    }
+    setError(null);
 
-    // Placeholder assistant reply (backend logic comes later)
-    setTimeout(() => {
-      const assistantMsg = createLocalMessage("assistant", "This is a placeholder response. The chat backend will be connected soon.");
-      setChatConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== convId) return c;
-          return { ...c, messages: [...c.messages, assistantMsg], updatedAt: new Date().toISOString() };
-        }),
-      );
-    }, 600);
-  }, [standaloneChatInput, activeChatId]);
+    // Keep the convId accessible to the done/error handler via ref.
+    chatActiveConvIdRef.current = convId;
+
+    void (async () => {
+      try {
+        // Ensure we have a session
+        let sessionId = chatConversations.find((c) => c.id === convId)?.sessionId ?? null;
+        if (!sessionId) {
+          const created = await commands.khadimCreateSession(null);
+          sessionId = created.id;
+          setChatConversations((prev) => prev.map((c) => c.id === convId ? { ...c, sessionId } : c));
+        }
+        chatSessionIdRef.current = sessionId;
+
+        // Resolve model — lazy-load if needed
+        let modelForSend = chatSelectedModel;
+        if (!modelForSend) {
+          const models = await commands.khadimListModels().catch(() => []);
+          if (models.length > 0) {
+            setChatAvailableModels(models);
+            const fallback = models.find((m) => m.is_default) ?? models[0];
+            modelForSend = { provider_id: fallback.provider_id, model_id: fallback.model_id };
+            setChatSelectedModel(modelForSend);
+            await commands.setSetting(getModelSettingKey(STANDALONE_KHADIM_WORKSPACE_ID), JSON.stringify(modelForSend)).catch(() => undefined);
+          }
+        }
+
+        await commands.khadimSendStreaming(
+          STANDALONE_KHADIM_WORKSPACE_ID,
+          sessionId,
+          null,        // no DB conversation — local only
+          text,
+          modelForSend,
+        );
+        // The done/error event handler in onAgentStream will finalize the message.
+      } catch (err) {
+        setChatIsProcessing(false);
+        setChatStreamingContent("");
+        setChatStreamingSteps([]);
+        chatStreamingContentRef.current = "";
+        chatStreamingStepsRef.current = [];
+        setError(getErrorMessage(err));
+      }
+    })();
+  }, [standaloneChatInput, activeChatId, chatConversations, activeStandaloneIsProcessing, chatSelectedModel]);
+
+  const handleStandaloneChatAbort = useCallback(async () => {
+    const sessionId = chatSessionIdRef.current;
+    if (!sessionId) return;
+    try {
+      await commands.khadimAbort(sessionId);
+      setChatIsProcessing(false);
+      setChatStreamingContent("");
+      setChatStreamingSteps([]);
+      chatStreamingContentRef.current = "";
+      chatStreamingStepsRef.current = [];
+      chatErroredSessionsRef.current.delete(sessionId);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }, []);
+
+  const handleChatSelectModel = useCallback(async (modelKey: string) => {
+    const next = chatAvailableModels.find((m) => `${m.provider_id}:${m.model_id}` === modelKey);
+    if (!next) return;
+    const value = { provider_id: next.provider_id, model_id: next.model_id };
+    setChatSelectedModel(value);
+    await commands.setSetting(getModelSettingKey(STANDALONE_KHADIM_WORKSPACE_ID), JSON.stringify(value));
+  }, [chatAvailableModels]);
+
+  /** Update the chat working directory setting. Pass null to clear (revert to temp dir). */
+  const handleChatDirectoryChange = useCallback(async (dir: string | null) => {
+    setChatDirectory(dir);
+    if (dir) {
+      await commands.setSetting("khadim:chat_directory", dir);
+    } else {
+      // Clear the setting — next chat session will use the temp dir fallback.
+      await commands.setSetting("khadim:chat_directory", "");
+    }
+  }, []);
 
   // ── Render helpers ──────────────────────────────────────────────
 
   /** Render the standalone chat view (no workspace, no agent) */
   function renderStandaloneChat() {
     const chatMessages = activeChatConv?.messages ?? [];
+    const chatModelOption = chatSelectedModel
+      ? chatAvailableModels.find((m) => getModelKey(m) === getModelKey(chatSelectedModel)) ?? null
+      : null;
+    const chatModelLabel = chatModelOption
+      ? `${chatModelOption.provider_name} / ${chatModelOption.model_name}`
+      : chatSelectedModel
+        ? `${chatSelectedModel.provider_id} / ${chatSelectedModel.model_id}`
+        : null;
+    const hasContent = chatMessages.length > 0 || activeStandaloneIsProcessing;
 
     return (
       <div className="relative flex flex-col overflow-hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
         {/* Header */}
         <div className="shrink-0 px-6 py-3 border-b border-[var(--glass-border)] flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
+            {activeStandaloneIsProcessing && (
+              <div className="w-2 h-2 rounded-full shrink-0 bg-[var(--color-accent)] animate-pulse" />
+            )}
             <svg className="w-4 h-4 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
             </svg>
@@ -1055,28 +1546,41 @@ export default function App() {
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                 {activeChatConv?.title ?? "Chat"}
               </h2>
-              <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                {activeChatConv ? `${chatMessages.length} messages` : "Start a new conversation"}
+              <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate">
+                {chatDirectory
+                  ? <>
+                      <span className="opacity-60">cwd:</span>{" "}
+                      <span title={chatDirectory}>{chatDirectory}</span>
+                    </>
+                  : activeChatConv ? `${chatMessages.length} messages` : "Start a new conversation"}
               </p>
             </div>
           </div>
-          <button
-            onClick={handleNewStandaloneChat}
-            className="h-7 px-2.5 rounded-xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
-          >
-            New
-          </button>
+          <div className="flex items-center gap-2">
+            {chatModelLabel && (
+              <span className="inline-flex items-center gap-1.5 rounded-full glass-panel px-2.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
+                {chatModelLabel}
+              </span>
+            )}
+            <button
+              onClick={handleNewStandaloneChat}
+              className="h-7 px-2.5 rounded-xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+            >
+              New
+            </button>
+          </div>
         </div>
 
         {/* Messages area */}
         <main
           className={`min-h-0 flex-1 overflow-y-auto scrollbar-thin ${
-            chatMessages.length === 0
+            !hasContent
               ? "px-0 py-6"
               : "pb-36 pt-3 sm:pb-44 md:pb-52 md:pt-6"
           }`}
         >
-          {chatMessages.length === 0 ? (
+          {!hasContent ? (
             <WelcomeScreen
               input={standaloneChatInput}
               setInput={setStandaloneChatInput}
@@ -1099,9 +1603,26 @@ export default function App() {
                           content: msg.content,
                           metadata: null,
                           created_at: msg.createdAt,
+                          thinkingSteps: msg.thinkingSteps,
                         }}
                       />
                     ))}
+                    {activeStandaloneIsProcessing && (activeStandaloneStreamingContent || activeStandaloneStreamingSteps.length > 0) && (
+                      <ChatMessage
+                        message={{
+                          id: "__chat-streaming__",
+                          conversation_id: activeChatConv?.id ?? "",
+                          role: "assistant",
+                          content: activeStandaloneStreamingContent,
+                          metadata: null,
+                          created_at: new Date().toISOString(),
+                          thinkingSteps: activeStandaloneStreamingSteps,
+                        }}
+                        isStreaming
+                      />
+                    )}
+                    {activeStandaloneIsProcessing && !activeStandaloneStreamingContent && activeStandaloneStreamingSteps.length === 0 && <TypingIndicator />}
+                    <div ref={chatEndRef} />
                   </div>
                 </div>
               </div>
@@ -1117,8 +1638,12 @@ export default function App() {
               value={standaloneChatInput}
               onChange={setStandaloneChatInput}
               onSend={handleStandaloneChatSend}
-              onStop={() => {}}
-              isProcessing={false}
+              onStop={() => void handleStandaloneChatAbort()}
+              isProcessing={activeStandaloneIsProcessing}
+              availableModels={chatAvailableModels}
+              selectedModelKey={chatSelectedModel ? getModelKey(chatSelectedModel) : null}
+              onSelectModel={(key) => void handleChatSelectModel(key)}
+              modelDisabled={activeStandaloneIsProcessing}
             />
           </div>
         </div>
@@ -1168,17 +1693,17 @@ export default function App() {
         </div>
 
         {/* Context usage bar — shown whenever an agent has token data */}
-        <ContextBar agent={focusedAgent} isStreaming={isProcessing} />
+        <ContextBar agent={focusedAgent} isStreaming={focusedAgentIsProcessing} />
 
         {/* Messages area */}
         <main
           className={`min-h-0 flex-1 overflow-y-auto scrollbar-thin ${
-            messages.length === 0 && !isProcessing
+            messages.length === 0 && !focusedAgentIsProcessing
               ? "px-0 py-6"
               : "pb-36 pt-3 sm:pb-44 md:pb-52 md:pt-6"
           }`}
         >
-          {messages.length === 0 && !isProcessing ? (
+          {messages.length === 0 && !focusedAgentIsProcessing ? (
             <WelcomeScreen
               input={agentChatInput}
               setInput={setAgentChatInput}
@@ -1195,22 +1720,22 @@ export default function App() {
                     {messages.map((msg) => (
                       <ChatMessage key={msg.id} message={msg} basePath={selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path} />
                     ))}
-                    {isProcessing && (streamingContent || streamingSteps.length > 0) && (
+                    {focusedAgentIsProcessing && (focusedAgentStreamingContent || focusedAgentStreamingSteps.length > 0) && (
                       <ChatMessage
                         message={{
                           id: "__streaming__",
                           conversation_id: selectedConversationId ?? "",
                           role: "assistant",
-                          content: streamingContent,
+                          content: focusedAgentStreamingContent,
                           metadata: null,
                           created_at: new Date().toISOString(),
-                          thinkingSteps: streamingSteps,
+                          thinkingSteps: focusedAgentStreamingSteps,
                         }}
                         isStreaming
                         basePath={selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path}
                       />
                     )}
-                    {isProcessing && !streamingContent && streamingSteps.length === 0 && <TypingIndicator />}
+                    {focusedAgentIsProcessing && !focusedAgentStreamingContent && focusedAgentStreamingSteps.length === 0 && <TypingIndicator />}
                     <div ref={chatEndRef} />
                   </div>
                 </div>
@@ -1220,7 +1745,7 @@ export default function App() {
               <div className="hidden xl:block w-[260px] shrink-0 sticky top-0 self-start">
                 <ModifiedFilesPanel
                   repoPath={selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path}
-                  isStreaming={isProcessing}
+                  isStreaming={focusedAgentIsProcessing}
                   onOpenFile={(path) => {
                     commands.openInEditor(path).catch((err) => {
                       console.warn("Failed to open file:", err);
@@ -1241,11 +1766,11 @@ export default function App() {
               onChange={setAgentChatInput}
               onSend={() => void handleChatSend()}
               onStop={() => void handleAbort()}
-              isProcessing={isProcessing}
+              isProcessing={focusedAgentIsProcessing}
               availableModels={availableModels}
               selectedModelKey={selectedModel ? getModelKey(selectedModel) : null}
               onSelectModel={(key) => void handleSelectModel(key)}
-              modelDisabled={isProcessing}
+              modelDisabled={focusedAgentIsProcessing}
             />
           </div>
         </div>
@@ -1314,6 +1839,8 @@ export default function App() {
             onGitHubAuthChange={setGitHubAuthStatus}
             theme={theme}
             onToggleTheme={toggleTheme}
+            chatDirectory={chatDirectory}
+            onChatDirectoryChange={(dir) => void handleChatDirectoryChange(dir)}
           />
         )}
 
@@ -1355,7 +1882,7 @@ export default function App() {
             onFocusAgent={handleFocusAgent}
             onManageAgent={handleManageAgent}
             onWorkspaceBranchChange={handleWorkspaceBranchChange}
-            loading={loadingWorkspace || isProcessing}
+            loading={loadingWorkspace || focusedAgentIsProcessing}
             githubAuthStatus={githubAuthStatus}
             githubSlug={githubSlug}
             onNavigateToSettings={() => {

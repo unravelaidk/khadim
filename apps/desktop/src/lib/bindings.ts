@@ -174,6 +174,63 @@ export interface OpenCodeModelRef {
   model_id: string;
 }
 
+export interface KhadimSessionCreated {
+  id: string;
+}
+
+export interface KhadimModelOption {
+  provider_id: string;
+  provider_name: string;
+  model_id: string;
+  model_name: string;
+  is_default: boolean;
+}
+
+export interface KhadimProviderOption {
+  type: string;
+  name: string;
+  needs_base_url: boolean;
+}
+
+export interface KhadimConfiguredModel {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  base_url: string | null;
+  temperature: string | null;
+  has_api_key: boolean;
+  is_default: boolean;
+  is_active: boolean;
+}
+
+export interface KhadimModelConfigInput {
+  name: string;
+  provider: string;
+  model: string;
+  api_key?: string | null;
+  base_url?: string | null;
+  temperature?: string | null;
+  is_default?: boolean | null;
+  is_active?: boolean | null;
+}
+
+export interface KhadimDiscoveredModel {
+  id: string;
+  name: string;
+}
+
+export interface KhadimCodexSession {
+  sessionId: string;
+  authUrl: string;
+}
+
+export interface KhadimCodexStatus {
+  status: "pending" | "connected" | "failed" | string;
+  error: string | null;
+  authUrl: string | null;
+}
+
 export interface OpenCodeModelOption extends OpenCodeModelRef {
   provider_name: string;
   model_name: string;
@@ -497,6 +554,85 @@ export const commands = {
     invoke<OpenCodeConnection | null>("opencode_get_connection", {
       workspaceId,
     }),
+
+  // Khadim backend
+  khadimCreateSession: (workspaceId?: string | null) =>
+    invoke<KhadimSessionCreated>("khadim_create_session", { workspaceId }),
+
+  khadimListModels: () =>
+    invoke<KhadimModelOption[]>("khadim_list_models"),
+
+  khadimListModelConfigs: () =>
+    invoke<KhadimConfiguredModel[]>("khadim_list_model_configs"),
+
+  khadimListProviders: () =>
+    invoke<KhadimProviderOption[]>("khadim_list_providers"),
+
+  khadimDiscoverModels: (provider: string, apiKey?: string | null, baseUrl?: string | null) =>
+    invoke<KhadimDiscoveredModel[]>("khadim_discover_models", { provider, apiKey, baseUrl }),
+
+  khadimCreateModelConfig: (input: KhadimModelConfigInput) =>
+    invoke<KhadimConfiguredModel>("khadim_create_model_config", { input }),
+
+  khadimUpdateModelConfig: (id: string, input: KhadimModelConfigInput) =>
+    invoke<KhadimConfiguredModel>("khadim_update_model_config", { id, input }),
+
+  khadimDeleteModelConfig: (id: string) =>
+    invoke<void>("khadim_delete_model_config", { id }),
+
+  khadimSetActiveModelConfig: (id: string) =>
+    invoke<void>("khadim_set_active_model_config", { id }),
+
+  khadimSetDefaultModelConfig: (id: string) =>
+    invoke<void>("khadim_set_default_model_config", { id }),
+
+  khadimActiveModel: () =>
+    invoke<KhadimModelOption | null>("khadim_active_model"),
+
+  khadimCodexAuthConnected: () =>
+    invoke<boolean>("khadim_codex_auth_connected"),
+
+  khadimCodexAuthStart: () =>
+    invoke<KhadimCodexSession>("khadim_codex_auth_start"),
+
+  khadimCodexAuthStatus: (sessionId: string) =>
+    invoke<KhadimCodexStatus>("khadim_codex_auth_status", { sessionId }),
+
+  khadimCodexAuthComplete: (sessionId: string, code: string) =>
+    invoke<void>("khadim_codex_auth_complete", { sessionId, code }),
+
+  khadimSendStreaming: (
+    workspaceId: string,
+    sessionId: string,
+    conversationId?: string | null,
+    content?: string,
+    model?: OpenCodeModelRef | null,
+  ) =>
+    invoke<void>("khadim_send_streaming", {
+      workspaceId,
+      sessionId,
+      conversationId,
+      content,
+      model,
+    }),
+
+  khadimSendMessage: (
+    workspaceId: string,
+    sessionId: string,
+    conversationId?: string | null,
+    content?: string,
+    model?: OpenCodeModelRef | null,
+  ) =>
+    invoke<string>("khadim_send_message", {
+      workspaceId,
+      sessionId,
+      conversationId,
+      content,
+      model,
+    }),
+
+  khadimAbort: (sessionId: string) =>
+    invoke<void>("khadim_abort", { sessionId }),
 
   // Settings
   getSetting: (key: string) =>
