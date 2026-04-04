@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type {
   AgentStreamEvent,
   AppError,
@@ -185,17 +185,38 @@ function hasFinishedAfter(startedAt: string | null, createdAt: string | null | u
 
 export default function App() {
   // ── Theme ────────────────────────────────────────────────────────
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    return (localStorage.getItem("khadim:theme") as "dark" | "light") ?? "dark";
+  const [themeFamily, setThemeFamily] = useState<"default" | "catppuccin" | "nord" | "tokyo-night" | "gruvbox" | "one-dark" | "dracula">(() => {
+    return (localStorage.getItem("khadim:themeFamily") as "default" | "catppuccin" | "nord" | "tokyo-night" | "gruvbox" | "one-dark" | "dracula") ?? "default";
+  });
+  const [themeMode, setThemeMode] = useState<"dark" | "light">(() => {
+    return (localStorage.getItem("khadim:themeMode") as "dark" | "light") ?? "dark";
+  });
+  const [catppuccinVariant, setCatppuccinVariant] = useState<"mocha" | "macchiato" | "frappe" | "latte">(() => {
+    return (localStorage.getItem("khadim:catppuccinVariant") as "mocha" | "macchiato" | "frappe" | "latte") ?? "mocha";
   });
 
-  const toggleTheme = useCallback(() => {
-    setTheme((t) => {
-      const next = t === "dark" ? "light" : "dark";
-      localStorage.setItem("khadim:theme", next);
-      return next;
-    });
+  const handleSetThemeFamily = useCallback((next: "default" | "catppuccin" | "nord" | "tokyo-night" | "gruvbox" | "one-dark" | "dracula") => {
+    setThemeFamily(next);
+    localStorage.setItem("khadim:themeFamily", next);
   }, []);
+
+  const handleSetThemeMode = useCallback((next: "dark" | "light") => {
+    setThemeMode(next);
+    localStorage.setItem("khadim:themeMode", next);
+  }, []);
+
+  const handleSetCatppuccinVariant = useCallback((next: "mocha" | "macchiato" | "frappe" | "latte") => {
+    setCatppuccinVariant(next);
+    localStorage.setItem("khadim:catppuccinVariant", next);
+  }, []);
+
+  // Derive theme variant based on family and mode
+  const themeVariant = useMemo(() => {
+    if (themeFamily === "catppuccin") {
+      return catppuccinVariant;
+    }
+    return themeMode;
+  }, [themeFamily, themeMode, catppuccinVariant]);
 
   // ── Mode & navigation ───────────────────────────────────────────
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("chat");
@@ -951,6 +972,7 @@ export default function App() {
   const handleEnterWorkspace = useCallback((id: string) => {
     setSelectedWorkspaceId(id);
     setInWorkspace(true);
+    setShowSettings(false);
   }, []);
 
   const handleExitWorkspace = useCallback(() => {
@@ -1193,6 +1215,7 @@ export default function App() {
     setSelectedConversationId(agentId);
     // Load messages for this conversation
     void loadMessages(agentId).catch(() => {});
+    setShowSettings(false);
   }, []);
 
   const handleRemoveAgent = useCallback(async (agentId: string, deleteWorktree = true) => {
@@ -1375,11 +1398,27 @@ export default function App() {
 
   // ── Standalone chat actions ─────────────────────────────────────
 
+  const handleSelectChat = useCallback((id: string) => {
+    setActiveChatId(id);
+    setShowSettings(false);
+  }, []);
+
+  const handleSwitchMode = useCallback((mode: InteractionMode) => {
+    setInteractionMode(mode);
+    setShowSettings(false);
+  }, []);
+
+  const handleNavigateWork = useCallback((view: WorkHomeView) => {
+    setWorkView(view);
+    setShowSettings(false);
+  }, []);
+
   const handleNewStandaloneChat = useCallback(() => {
     const conv = createLocalConversation();
     setChatConversations((prev) => [conv, ...prev]);
     setActiveChatId(conv.id);
     setStandaloneChatInput("");
+    setShowSettings(false);
   }, []);
 
   const handleDeleteStandaloneChat = useCallback((id: string) => {
@@ -1784,14 +1823,14 @@ export default function App() {
   // ── Main render ─────────────────────────────────────────────────
 
   return (
-    <div className="glass-page-shell flex h-full max-h-full overflow-hidden" data-theme={theme}>
+    <div className="glass-page-shell flex h-full max-h-full overflow-hidden" data-theme-family={themeFamily} data-theme-variant={themeVariant}>
       <Sidebar
         mode={interactionMode}
-        onSwitchMode={setInteractionMode}
+        onSwitchMode={handleSwitchMode}
         // Chat mode props
         chatConversations={chatConversations}
         activeChatId={activeChatId}
-        onSelectChat={setActiveChatId}
+        onSelectChat={handleSelectChat}
         onNewChat={handleNewStandaloneChat}
         onDeleteChat={handleDeleteStandaloneChat}
         // Work mode — home props
@@ -1799,22 +1838,22 @@ export default function App() {
         workspaces={workspaces}
         selectedWorkspaceId={selectedWorkspaceId}
         onSelectWorkspace={handleEnterWorkspace}
-        onNavigateWork={setWorkView}
-        onNewWorkspace={() => setShowCreateModal(true)}
+        onNavigateWork={handleNavigateWork}
+        onNewWorkspace={() => { setShowCreateModal(true); setShowSettings(false); }}
         // Work mode — workspace props
         activeWorkspace={selectedWorkspace}
         onExitWorkspace={handleExitWorkspace}
         agents={agents}
         focusedAgentId={focusedAgentId}
         onFocusAgent={handleFocusAgent}
-        onNewAgent={() => setShowNewAgentModal(true)}
+        onNewAgent={() => { setShowNewAgentModal(true); setShowSettings(false); }}
         onRemoveAgent={handleRemoveAgent}
         onManageWorkspace={handleManageWorkspace}
         onManageAgent={handleManageAgent}
         activeWorkspaceConnected={Boolean(connection)}
         githubAuthenticated={githubAuthStatus?.authenticated ?? false}
-        theme={theme}
-        onToggleTheme={toggleTheme}
+        themeMode={themeMode}
+        onToggleTheme={() => handleSetThemeMode(themeMode === "dark" ? "light" : "dark")}
         onOpenSettings={() => setShowSettings(true)}
         showSettings={showSettings}
       />
@@ -1837,8 +1876,12 @@ export default function App() {
             runtime={runtime}
             githubAuthStatus={githubAuthStatus}
             onGitHubAuthChange={setGitHubAuthStatus}
-            theme={theme}
-            onToggleTheme={toggleTheme}
+            themeFamily={themeFamily}
+            themeMode={themeMode}
+            catppuccinVariant={catppuccinVariant}
+            onSetThemeFamily={handleSetThemeFamily}
+            onSetThemeMode={handleSetThemeMode}
+            onSetCatppuccinVariant={handleSetCatppuccinVariant}
             chatDirectory={chatDirectory}
             onChatDirectoryChange={(dir) => void handleChatDirectoryChange(dir)}
           />

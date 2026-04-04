@@ -1,0 +1,257 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Tokyo Night Theme Family — Inspired by Tokyo neon lights
+   https://github.com/enkia/tokyo-night-vscode-theme
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Tokyo Night (dark) ───────────────────────────────────────────── */
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] {
+  color-scheme: dark;
+  --surface-bg: #1a1b26;
+  --surface-bg-subtle: #16161e;
+  --surface-card: rgba(36, 40, 59, 0.72);
+  --surface-card-hover: rgba(45, 49, 73, 0.78);
+  --surface-elevated: rgba(41, 46, 66, 0.85);
+  
+  --glass-bg: rgba(36, 40, 59, 0.68);
+  --glass-bg-strong: rgba(36, 40, 59, 0.82);
+  --glass-border: rgba(192, 202, 245, 0.09);
+  --glass-border-strong: rgba(192, 202, 245, 0.15);
+  --glass-shine: rgba(255, 255, 255, 0.04);
+  --glass-tint: rgba(36, 40, 59, 0.45);
+  
+  --text-primary: #c0caf5;
+  --text-secondary: #a9b1d6;
+  --text-muted: #565f89;
+  --text-inverse: #1a1b26;
+  
+  --mesh-1: #1a1b26;
+  --mesh-2: #16161e;
+  --mesh-3: #13141a;
+  --mesh-4: #1c1e28;
+  --orb-accent: rgba(122, 162, 247, 0.035);
+  --orb-accent-soft: rgba(125, 207, 255, 0.025);
+  --orb-ink: rgba(0, 0, 0, 0.20);
+  
+  --input-bg: rgba(36, 40, 59, 0.72);
+  --input-border: rgba(192, 202, 245, 0.11);
+  --input-focus-ring: rgba(122, 162, 247, 0.18);
+  
+  --scrollbar-thumb: rgba(192, 202, 245, 0.22);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(192, 202, 245, 0.03);
+  --surface-ink-4: rgba(192, 202, 245, 0.05);
+  --surface-ink-5: rgba(192, 202, 245, 0.08);
+  --surface-ink-25: rgba(19, 20, 26, 0.52);
+  --surface-white-15: rgba(192, 202, 245, 0.12);
+  --surface-white-50: rgba(192, 202, 245, 0.45);
+  --surface-ink-solid: #13141a;
+  
+  --log-bg: rgba(19, 20, 26, 0.94);
+  --log-stdout: #9ece6a;
+  --log-stderr: #e0af68;
+  
+  --color-accent: #7aa2f7;
+  --color-accent-hover: #7dcfff;
+  --color-accent-muted: rgba(122, 162, 247, 0.18);
+  --color-accent-subtle: rgba(122, 162, 247, 0.07);
+  --color-accent-ink: #1a1b26;
+  --glow-low: rgba(122, 162, 247, 0.05);
+  --glow-high: rgba(122, 162, 247, 0.09);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(192, 202, 245, 0.04);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.54), 0 0 0 1px rgba(192, 202, 245, 0.06);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.64), 0 0 0 1px rgba(192, 202, 245, 0.08);
+  --shadow-glow: 0 0 0 1px rgba(122, 162, 247, 0.09);
+  --shadow-glow-sm: 0 0 0 1px rgba(122, 162, 247, 0.05);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.50);
+  
+  --color-success: #9ece6a;
+  --color-success-strong: #8fbc5f;
+  --color-success-muted: rgba(158, 206, 106, 0.09);
+  --color-success-text: #9ece6a;
+  
+  --color-danger: #f7768e;
+  --color-danger-strong: #db6985;
+  --color-danger-hover: #f48ea2;
+  --color-danger-muted: rgba(247, 118, 142, 0.09);
+  --color-danger-subtle: rgba(247, 118, 142, 0.05);
+  --color-danger-text: #f7768e;
+  --color-danger-text-light: #f48ea2;
+  --color-danger-border: rgba(247, 118, 142, 0.18);
+  --color-danger-border-strong: rgba(247, 118, 142, 0.28);
+  --color-danger-bg: rgba(247, 118, 142, 0.07);
+  --color-danger-bg-strong: rgba(247, 118, 142, 0.11);
+  --color-danger-ink: #f48ea2;
+  
+  --color-warning-text: #e0af68;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-panel,
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-card,
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Tokyo Night Day (light) ──────────────────────────────────────── */
+[data-theme-family="tokyo-night"][data-theme-variant="light"] {
+  color-scheme: light;
+  --surface-bg: #e1e2eb;
+  --surface-bg-subtle: #d5d6de;
+  --surface-card: rgba(255, 255, 255, 0.72);
+  --surface-card-hover: rgba(255, 255, 255, 0.82);
+  --surface-elevated: rgba(255, 255, 255, 0.88);
+  
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(26, 27, 38, 0.09);
+  --glass-border-strong: rgba(26, 27, 38, 0.14);
+  --glass-shine: rgba(255, 255, 255, 0.55);
+  --glass-tint: rgba(255, 255, 255, 0.40);
+  
+  --text-primary: #343b59;
+  --text-secondary: #4f5779;
+  --text-muted: #6e7490;
+  --text-inverse: #e1e2eb;
+  
+  --orb-accent: rgba(52, 132, 228, 0.04);
+  --orb-accent-soft: rgba(76, 158, 214, 0.03);
+  --orb-ink: rgba(26, 27, 38, 0.05);
+  
+  --input-bg: rgba(255, 255, 255, 0.85);
+  --input-border: rgba(26, 27, 38, 0.13);
+  --input-focus-ring: rgba(52, 132, 228, 0.16);
+  
+  --scrollbar-thumb: rgba(52, 59, 89, 0.28);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(26, 27, 38, 0.03);
+  --surface-ink-4: rgba(26, 27, 38, 0.05);
+  --surface-ink-5: rgba(26, 27, 38, 0.07);
+  --surface-ink-25: rgba(26, 27, 38, 0.28);
+  --surface-white-15: rgba(52, 59, 89, 0.12);
+  --surface-white-50: rgba(52, 59, 89, 0.45);
+  --surface-ink-solid: #343b59;
+  
+  --log-bg: rgba(52, 59, 89, 0.94);
+  --log-stdout: #3c7a34;
+  --log-stderr: #b8750b;
+  
+  --color-accent: #3484e4;
+  --color-accent-hover: #4c9ed6;
+  --color-accent-muted: rgba(52, 132, 228, 0.14);
+  --color-accent-subtle: rgba(52, 132, 228, 0.05);
+  --color-accent-ink: #ffffff;
+  --glow-low: rgba(52, 132, 228, 0.05);
+  --glow-high: rgba(52, 132, 228, 0.09);
+  
+  --shadow-glass-sm: 0 4px 20px -6px rgba(26, 27, 38, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.65);
+  --shadow-glass-md: 0 10px 32px -10px rgba(26, 27, 38, 0.13), 0 0 0 1px rgba(255, 255, 255, 0.60);
+  --shadow-glass-lg: 0 20px 56px -16px rgba(26, 27, 38, 0.17), 0 0 0 1px rgba(255, 255, 255, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(26, 27, 38, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(26, 27, 38, 0.09);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(26, 27, 38, 0.14);
+  
+  --color-success: #3c7a34;
+  --color-success-strong: #326a2b;
+  --color-success-muted: rgba(60, 122, 52, 0.09);
+  --color-success-text: #326a2b;
+  
+  --color-danger: #8c4351;
+  --color-danger-strong: #7a3844;
+  --color-danger-hover: #9c5360;
+  --color-danger-muted: rgba(140, 67, 81, 0.09);
+  --color-danger-subtle: rgba(140, 67, 81, 0.05);
+  --color-danger-text: #7a3844;
+  --color-danger-text-light: #8c4351;
+  --color-danger-border: rgba(140, 67, 81, 0.16);
+  --color-danger-border-strong: rgba(140, 67, 81, 0.26);
+  --color-danger-bg: rgba(140, 67, 81, 0.07);
+  --color-danger-bg-strong: rgba(140, 67, 81, 0.11);
+  --color-danger-ink: #6a2a37;
+  
+  --color-warning-text: #b8750b;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-panel,
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-card,
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-card-static {
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-panel-strong {
+  backdrop-filter: blur(36px) saturate(1.45);
+  -webkit-backdrop-filter: blur(36px) saturate(1.45);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-input {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-input:focus {
+  border-color: rgba(26, 27, 38, 0.30);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: rgba(26, 27, 38, 0.75);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-accent:hover {
+  background: var(--color-accent-hover);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-ink {
+  background: var(--surface-ink-solid);
+  color: var(--text-inverse);
+  border-color: rgba(26, 27, 38, 0.65);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-ink:hover {
+  background: #181b26;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] ::selection {
+  background: rgba(52, 132, 228, 0.20);
+  color: #343b59;
+}
