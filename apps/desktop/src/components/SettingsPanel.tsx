@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { GitHubAuthStatus, RuntimeSummary } from "../lib/bindings";
+import { commands } from "../lib/bindings";
 import { GitHubAuthPanel } from "./GitHubAuthPanel";
+import { ModelSettingsTab } from "./ModelSettingsTab";
+
+let openDialog: typeof import("@tauri-apps/plugin-dialog").open | null = null;
+import("@tauri-apps/plugin-dialog").then((mod) => { openDialog = mod.open; }).catch(() => {});
 
 /* ─── Tab definition ───────────────────────────────────────────────── */
 
@@ -44,6 +49,8 @@ interface SettingsPanelProps {
   onGitHubAuthChange: (status: GitHubAuthStatus) => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  chatDirectory: string | null;
+  onChatDirectoryChange: (dir: string | null) => void;
 }
 
 /* ─── Component ────────────────────────────────────────────────────── */
@@ -55,6 +62,8 @@ export function SettingsPanel({
   onGitHubAuthChange,
   theme,
   onToggleTheme,
+  chatDirectory,
+  onChatDirectoryChange,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
@@ -109,7 +118,12 @@ export function SettingsPanel({
       <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-6" style={{ minHeight: 0 }}>
         <div className="mx-auto max-w-2xl">
           {activeTab === "general" && (
-            <GeneralTab theme={theme} onToggleTheme={onToggleTheme} />
+            <GeneralTab
+              theme={theme}
+              onToggleTheme={onToggleTheme}
+              chatDirectory={chatDirectory}
+              onChatDirectoryChange={onChatDirectoryChange}
+            />
           )}
           {activeTab === "accounts" && (
             <AccountsTab
@@ -132,10 +146,29 @@ export function SettingsPanel({
 function GeneralTab({
   theme,
   onToggleTheme,
+  chatDirectory,
+  onChatDirectoryChange,
 }: {
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  chatDirectory: string | null;
+  onChatDirectoryChange: (dir: string | null) => void;
 }) {
+  const [picking, setPicking] = useState(false);
+
+  async function pickChatDir() {
+    if (!openDialog) return;
+    setPicking(true);
+    try {
+      const selected = await openDialog({ directory: true, multiple: false, title: "Select chat working directory" });
+      if (selected && typeof selected === "string") {
+        onChatDirectoryChange(selected);
+      }
+    } finally {
+      setPicking(false);
+    }
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Appearance */}
@@ -173,12 +206,62 @@ function GeneralTab({
         </div>
       </div>
 
-      {/* Placeholder for future general settings */}
+      {/* Chat directory */}
       <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Editor</h2>
-        <p className="text-[11px] text-[var(--text-muted)]">
-          Editor and workspace preferences will be available here in a future release.
+        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Chat Directory</h2>
+        <p className="text-[11px] text-[var(--text-muted)] mb-4">
+          Set a working directory for standalone chat mode. The agent can read, write, and list files inside this folder. When not set, the agent uses an empty temporary directory.
         </p>
+
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            {chatDirectory ? (
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2">
+                <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <span className="text-[11px] font-mono text-[var(--text-primary)] truncate">{chatDirectory}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--glass-border)] px-3 py-2">
+                <svg className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <span className="text-[11px] text-[var(--text-muted)] italic">Not set — using temporary directory</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => void pickChatDir()}
+              disabled={picking}
+              className="h-8 px-3.5 rounded-xl btn-glass text-[11px] font-semibold flex items-center gap-2"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              {picking ? "Picking..." : chatDirectory ? "Change" : "Choose folder"}
+            </button>
+            {chatDirectory && (
+              <button
+                onClick={() => onChatDirectoryChange(null)}
+                className="h-8 w-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg-strong)] transition-colors"
+                title="Clear chat directory"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {chatDirectory && (
+          <p className="text-[10px] text-[var(--text-muted)] mt-3">
+            New chat sessions will use this directory. Existing sessions keep their original directory until you start a new conversation.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -213,35 +296,7 @@ function AccountsTab({
    ═══════════════════════════════════════════════════════════════════════ */
 
 function ModelsTab() {
-  return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Model Configuration</h2>
-        <p className="text-[11px] text-[var(--text-muted)] mb-4">
-          Configure default models for chat and agent workspaces.
-        </p>
-
-        <div className="rounded-xl bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)] p-6 text-center">
-          <div className="w-10 h-10 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-[var(--glass-border)]">
-            <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-          </div>
-          <p className="text-[12px] font-semibold text-[var(--text-secondary)]">Coming soon</p>
-          <p className="text-[10px] text-[var(--text-muted)] mt-1 max-w-[280px] mx-auto">
-            Global model defaults, API key management, and per-workspace model overrides will be configured here.
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">OpenCode Models</h2>
-        <p className="text-[11px] text-[var(--text-muted)]">
-          Per-workspace model selection is available in the agent chat input when connected to an OpenCode backend. Global defaults will be added here.
-        </p>
-      </div>
-    </div>
-  );
+  return <ModelSettingsTab />;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

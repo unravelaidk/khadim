@@ -79,6 +79,8 @@ export function SettingsPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<FormData>(DEFAULT_EDIT_FORM);
+  const [existingApiKey, setExistingApiKey] = useState(false);
+  const [editExistingApiKey, setEditExistingApiKey] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [submittingManualCode, setSubmittingManualCode] = useState(false);
 
@@ -99,24 +101,30 @@ export function SettingsPanel() {
 
   useEffect(() => {
     discoverModels.reset();
-    if (form.apiKey.trim().length > 0) {
+    if (form.apiKey.trim().length > 0 || existingApiKey) {
       const timeout = setTimeout(() => {
         void discoverModels.discover(form.provider, form.apiKey, form.baseUrl);
       }, 300);
       return () => clearTimeout(timeout);
     }
-  }, [form.provider, form.apiKey, form.baseUrl]);
+  }, [existingApiKey, form.provider, form.apiKey, form.baseUrl]);
 
   useEffect(() => {
     if (!editModalOpen) return;
     editDiscoverModels.reset();
-    if (editForm.apiKey.trim().length > 0) {
+    if (editForm.apiKey.trim().length > 0 || editExistingApiKey) {
       const timeout = setTimeout(() => {
         void editDiscoverModels.discover(editForm.provider, editForm.apiKey, editForm.baseUrl);
       }, 300);
       return () => clearTimeout(timeout);
     }
-  }, [editModalOpen, editForm.provider, editForm.apiKey, editForm.baseUrl]);
+  }, [editExistingApiKey, editModalOpen, editForm.provider, editForm.apiKey, editForm.baseUrl]);
+
+  useEffect(() => {
+    if (editingId) return;
+    const providerConfig = models.find((model) => model.provider === form.provider && Boolean(model.apiKey?.trim() || model.hasApiKey));
+    setExistingApiKey(Boolean(providerConfig));
+  }, [editingId, form.provider, models]);
 
   const handleCreateModel = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -191,21 +199,23 @@ export function SettingsPanel() {
   );
 
   const handleEditModel = useCallback((model: ModelConfig) => {
-    setEditForm({
-      name: model.name,
-      provider: model.provider,
-      model: model.model,
-      baseUrl: model.baseUrl || "",
-      temperature: model.temperature || "0.2",
-      apiKey: "",
-    });
-    setEditingId(model.id);
-    setEditModalOpen(true);
-    editDiscoverModels.reset();
-  }, []);
+      setEditForm({
+        name: model.name,
+        provider: model.provider,
+        model: model.model,
+        baseUrl: model.baseUrl || "",
+        temperature: model.temperature || "0.2",
+        apiKey: "",
+      });
+      setEditExistingApiKey(Boolean(model.apiKey?.trim() || model.hasApiKey));
+      setEditingId(model.id);
+      setEditModalOpen(true);
+      editDiscoverModels.reset();
+    }, []);
 
   const handleCancelEdit = useCallback(() => {
     setEditForm(DEFAULT_EDIT_FORM);
+    setEditExistingApiKey(false);
     setEditingId(null);
     setEditModalOpen(false);
     editDiscoverModels.reset();
@@ -514,9 +524,15 @@ function AddModelForm({
             <input
               type={showApiKey ? "text" : "password"}
               value={form.apiKey}
-              onChange={(e) => setForm((prev) => ({ ...prev, apiKey: e.target.value }))}
+              onChange={(e) => {
+                const value = e.target.value;
+                setForm((prev) => ({ ...prev, apiKey: value }));
+                if (value.trim().length > 0) {
+                  setExistingApiKey(true);
+                }
+              }}
               className={`${inputClass} pr-10`}
-              placeholder="sk-..."
+              placeholder={existingApiKey ? "Saved key available" : "sk-..."}
             />
             <button
               type="button"
@@ -526,6 +542,11 @@ function AddModelForm({
               {showApiKey ? <LuEyeOff className="h-4 w-4" /> : <LuEye className="h-4 w-4" />}
             </button>
           </div>
+          {existingApiKey && !form.apiKey.trim() && (
+            <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+              A saved API key will be reused for this provider unless you enter a replacement.
+            </p>
+          )}
         </div>
 
         {providerInfo?.needsBaseUrl && (
@@ -550,17 +571,17 @@ function AddModelForm({
             className="w-full"
             direction="down"
             variant={ModelSelectorVariant.Picker}
-            onOpen={() => {
-              if (form.apiKey.trim().length > 0 && discoverModels.discoveredModels.length === 0 && !discoverModels.discovering) {
-                void discoverModels.discover(form.provider, form.apiKey, form.baseUrl);
-              }
-            }}
+              onOpen={() => {
+                if ((form.apiKey.trim().length > 0 || existingApiKey) && discoverModels.discoveredModels.length === 0 && !discoverModels.discovering) {
+                  void discoverModels.discover(form.provider, form.apiKey, form.baseUrl);
+                }
+              }}
             placeholder={
               discoverModels.discovering
                 ? "Fetching models..."
                 : discoverModels.error
                   ? "Error fetching models"
-                  : form.apiKey.trim().length > 0
+                  : form.apiKey.trim().length > 0 || existingApiKey
                     ? "Select a model..."
                     : "Enter API key to browse models"
             }
@@ -700,6 +721,30 @@ function EditModelModal({
           </div>
 
           <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
+              API Key {editForm.provider === "openai-codex" ? "(optional if connected)" : ""}
+            </label>
+            <input
+              type="password"
+              value={editForm.apiKey}
+              onChange={(e) => {
+                const value = e.target.value;
+                setEditForm((prev) => ({ ...prev, apiKey: value }));
+                if (value.trim().length > 0) {
+                  setEditExistingApiKey(true);
+                }
+              }}
+              className={inputClass}
+              placeholder={editExistingApiKey ? "Saved key available" : "sk-..."}
+            />
+            {editExistingApiKey && !editForm.apiKey.trim() && (
+              <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+                A saved API key will be reused for this provider unless you enter a replacement.
+              </p>
+            )}
+          </div>
+
+          <div>
             <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Model</label>
             <ModelSelector
               models={editProviderModelOptions}
@@ -710,7 +755,7 @@ function EditModelModal({
               direction="down"
               variant={ModelSelectorVariant.Picker}
               onOpen={() => {
-                if (editForm.apiKey.trim().length > 0 && editDiscoverModels.discoveredModels.length === 0 && !editDiscoverModels.discovering) {
+                if ((editForm.apiKey.trim().length > 0 || editExistingApiKey) && editDiscoverModels.discoveredModels.length === 0 && !editDiscoverModels.discovering) {
                   void editDiscoverModels.discover(editForm.provider, editForm.apiKey, editForm.baseUrl);
                 }
               }}
@@ -719,7 +764,7 @@ function EditModelModal({
                   ? "Fetching models..."
                   : editDiscoverModels.error
                     ? "Error fetching models"
-                    : editForm.apiKey.trim().length > 0
+                    : editForm.apiKey.trim().length > 0 || editExistingApiKey
                       ? "Select a model..."
                       : "Enter API key to browse models"
               }

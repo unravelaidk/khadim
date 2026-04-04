@@ -7,6 +7,7 @@ import {
   type RepoSlug,
 } from "../lib/bindings";
 import { relTime } from "../lib/ui";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface GitHubPRDetailProps {
   slug: RepoSlug;
@@ -210,7 +211,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
       {/* Body */}
       {pr.body && (
         <div className="rounded-2xl glass-card-static p-4">
-          <div className="prose-gb text-[12px] whitespace-pre-wrap">{pr.body}</div>
+          <MarkdownRenderer content={pr.body} className="text-[12px]" />
         </div>
       )}
 
@@ -327,7 +328,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
                 {relTime(comment.created_at)}
               </span>
             </div>
-            <div className="prose-gb text-[12px] whitespace-pre-wrap">{comment.body}</div>
+            <MarkdownRenderer content={comment.body} className="text-[12px]" />
           </div>
         ))}
 

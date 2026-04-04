@@ -1,6 +1,7 @@
 import { getModels } from "@mariozechner/pi-ai";
 import type { ProviderType } from "./models";
 import { getOpenAICodexApiKey } from "./oauth";
+import { getSavedProviderApiKey } from "./model-manager";
 
 export interface ProviderModel {
   id: string;
@@ -37,6 +38,8 @@ const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
 
 async function getApiKey(provider: ProviderType, passedApiKey?: string): Promise<string | undefined> {
   if (passedApiKey) return passedApiKey;
+  const savedApiKey = await getSavedProviderApiKey(provider);
+  if (savedApiKey) return savedApiKey;
 
   switch (provider) {
     case "openai":

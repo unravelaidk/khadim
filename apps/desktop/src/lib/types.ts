@@ -10,7 +10,11 @@ export type WorkHomeView = "workspaces";
 export interface LocalChatConversation {
   id: string;
   title: string;
+  sessionId: string | null;
   messages: LocalChatMessage[];
+  isProcessing: boolean;
+  streamingContent: string;
+  streamingSteps: ThinkingStepData[];
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +25,8 @@ export interface LocalChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  /** Tool-call / thinking steps captured during streaming (assistant only). */
+  thinkingSteps?: ThinkingStepData[];
 }
 
 /** GitHub sub-navigation within the workspace GitHub tab */
@@ -89,7 +95,11 @@ export function createLocalConversation(title = "New chat"): LocalChatConversati
   return {
     id: crypto.randomUUID(),
     title,
+    sessionId: null,
     messages: [],
+    isProcessing: false,
+    streamingContent: "",
+    streamingSteps: [],
     createdAt: now,
     updatedAt: now,
   };

@@ -5,11 +5,19 @@ mod error;
 mod git;
 mod github;
 mod health;
+mod khadim_agent;
+mod khadim_ai;
+mod khadim_code;
 mod opencode;
 mod process;
 
 use db::{ChatMessage, Conversation, Database, Workspace};
 use error::AppError;
+use khadim_agent::KhadimManager;
+use khadim_ai::model_settings::{DiscoveredProviderModel, ModelConfig, ModelConfigInput, ProviderOption};
+use khadim_ai::models::CatalogModelOption;
+use khadim_ai::oauth::{CodexLoginStatusResponse, CodexSessionInfo};
+use khadim_ai::types::ModelSelection;
 use opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
 use process::{ProcessOutput, ProcessRunner};
 use serde::{Deserialize, Serialize};
@@ -189,6 +197,7 @@ pub struct AppState {
     db: Database,
     process_runner: ProcessRunner,
     opencode: OpenCodeManager,
+    khadim: KhadimManager,
     github: github::GitHubClient,
 }
 
@@ -446,6 +455,79 @@ struct OpenCodeStarted {
     base_url: String,
     event_stream_url: String,
     healthy: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct KhadimSessionCreated {
+    id: String,
+}
+
+fn resolve_khadim_selection(
+    state: &Arc<AppState>,
+    model: Option<&OpenCodeModelRef>,
+) -> Result<Option<ModelSelection>, AppError> {
+    if let Some(model) = model {
+        let override_config = khadim_ai::model_settings::configured_model_override(
+            &state.db,
+            &model.provider_id,
+            &model.model_id,
+        )?;
+        let provider_api_key = khadim_ai::model_settings::saved_provider_api_key(&model.provider_id)?;
+        return Ok(Some(ModelSelection {
+            provider: model.provider_id.clone(),
+            model_id: model.model_id.clone(),
+            display_name: override_config.as_ref().map(|config| config.name.clone()),
+            api_key: override_config
+                .as_ref()
+                .and_then(|config| config.api_key.clone())
+                .or(provider_api_key),
+            base_url: override_config.as_ref().and_then(|config| config.base_url.clone()),
+        }));
+    }
+
+    let config = khadim_ai::model_settings::active_config(&state.db)?
+        .ok_or_else(|| AppError::invalid_input("No Khadim model is configured. Add one in Model Settings first."))?;
+
+    Ok(Some(ModelSelection {
+        provider: config.provider,
+        model_id: config.model,
+        display_name: Some(config.name),
+        api_key: config.api_key,
+        base_url: config.base_url,
+    }))
+}
+
+fn persist_user_message(
+    state: &Arc<AppState>,
+    conversation_id: &str,
+    content: &str,
+) -> Result<(), AppError> {
+    let user_msg = ChatMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        conversation_id: conversation_id.to_string(),
+        role: "user".to_string(),
+        content: content.to_string(),
+        metadata: None,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    state.db.insert_message(&user_msg)
+}
+
+fn persist_assistant_message(
+    state: &Arc<AppState>,
+    conversation_id: &str,
+    content: &str,
+    metadata: Option<String>,
+) -> Result<(), AppError> {
+    let assistant_msg = ChatMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        conversation_id: conversation_id.to_string(),
+        role: "assistant".to_string(),
+        content: content.to_string(),
+        metadata,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    state.db.insert_message(&assistant_msg)
 }
 
 #[tauri::command]
@@ -827,6 +909,269 @@ async fn opencode_get_connection(
     Ok(state.opencode.get_connection(&workspace_id))
 }
 
+// ─── Khadim Backend ──────────────────────────────────────────────────
+
+#[tauri::command]
+async fn khadim_create_session(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: Option<String>,
+) -> Result<KhadimSessionCreated, AppError> {
+    let (resolved_workspace_id, cwd) = if let Some(workspace_id) = workspace_id {
+        let workspace = state.db.get_workspace(&workspace_id)?;
+        (
+            workspace_id,
+            std::path::PathBuf::from(
+                workspace
+                    .worktree_path
+                    .unwrap_or(workspace.repo_path),
+            ),
+        )
+    } else {
+        // Standalone chat — check if the user configured a chat directory.
+        let configured_dir = state
+            .db
+            .get_setting("khadim:chat_directory")
+            .ok()
+            .flatten()
+            .filter(|v| !v.is_empty());
+
+        let dir = if let Some(path) = configured_dir {
+            let p = std::path::PathBuf::from(&path);
+            if p.is_dir() {
+                p
+            } else {
+                // Configured path no longer exists — fall back to temp.
+                let session_id = uuid::Uuid::new_v4().to_string();
+                let tmp = std::env::temp_dir().join(format!("khadim-chat-{session_id}"));
+                std::fs::create_dir_all(&tmp)?;
+                tmp
+            }
+        } else {
+            let session_id = uuid::Uuid::new_v4().to_string();
+            let tmp = std::env::temp_dir().join(format!("khadim-chat-{session_id}"));
+            std::fs::create_dir_all(&tmp)?;
+            tmp
+        };
+
+        ("__chat__".to_string(), dir)
+    };
+
+    let id = state.khadim.create_session(resolved_workspace_id, cwd);
+    Ok(KhadimSessionCreated { id })
+}
+
+#[tauri::command]
+async fn khadim_list_models(state: State<'_, Arc<AppState>>) -> Result<Vec<CatalogModelOption>, AppError> {
+    khadim_ai::model_settings::configured_model_options(&state.db)
+}
+
+#[tauri::command]
+fn khadim_list_model_configs(state: State<'_, Arc<AppState>>) -> Result<Vec<ModelConfig>, AppError> {
+    khadim_ai::model_settings::list_configs(&state.db)
+}
+
+#[tauri::command]
+fn khadim_list_providers() -> Vec<ProviderOption> {
+    khadim_ai::model_settings::supported_providers()
+}
+
+#[tauri::command]
+async fn khadim_discover_models(
+    provider: String,
+    api_key: Option<String>,
+    base_url: Option<String>,
+) -> Result<Vec<DiscoveredProviderModel>, AppError> {
+    khadim_ai::model_settings::discover_models(&provider, api_key, base_url).await
+}
+
+#[tauri::command]
+fn khadim_create_model_config(
+    state: State<'_, Arc<AppState>>,
+    input: ModelConfigInput,
+) -> Result<ModelConfig, AppError> {
+    khadim_ai::model_settings::create_config(&state.db, input)
+}
+
+#[tauri::command]
+fn khadim_update_model_config(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    input: ModelConfigInput,
+) -> Result<ModelConfig, AppError> {
+    khadim_ai::model_settings::update_config(&state.db, &id, input)
+}
+
+#[tauri::command]
+fn khadim_delete_model_config(state: State<'_, Arc<AppState>>, id: String) -> Result<(), AppError> {
+    khadim_ai::model_settings::delete_config(&state.db, &id)
+}
+
+#[tauri::command]
+fn khadim_set_active_model_config(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<(), AppError> {
+    khadim_ai::model_settings::set_active_config(&state.db, &id)
+}
+
+#[tauri::command]
+fn khadim_set_default_model_config(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<(), AppError> {
+    khadim_ai::model_settings::set_default_config(&state.db, &id)
+}
+
+#[tauri::command]
+fn khadim_active_model(state: State<'_, Arc<AppState>>) -> Result<Option<CatalogModelOption>, AppError> {
+    khadim_ai::model_settings::active_model_option(&state.db)
+}
+
+#[tauri::command]
+async fn khadim_codex_auth_connected() -> Result<bool, AppError> {
+    khadim_ai::oauth::has_openai_codex_auth().await
+}
+
+#[tauri::command]
+async fn khadim_codex_auth_start() -> Result<CodexSessionInfo, AppError> {
+    khadim_ai::oauth::start_openai_codex_login().await
+}
+
+#[tauri::command]
+async fn khadim_codex_auth_status(session_id: String) -> Result<CodexLoginStatusResponse, AppError> {
+    khadim_ai::oauth::get_openai_codex_login_status(&session_id).await
+}
+
+#[tauri::command]
+async fn khadim_codex_auth_complete(session_id: String, code: String) -> Result<(), AppError> {
+    khadim_ai::oauth::submit_openai_codex_manual_code(&session_id, &code).await
+}
+
+#[tauri::command]
+async fn khadim_send_streaming(
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    workspace_id: String,
+    session_id: String,
+    conversation_id: Option<String>,
+    content: String,
+    model: Option<OpenCodeModelRef>,
+) -> Result<(), AppError> {
+    if let Some(conversation_id) = conversation_id.as_deref() {
+        persist_user_message(state.inner(), conversation_id, &content)?;
+    }
+
+    let session = state.khadim.get_session(&session_id)?;
+    let state_arc = state.inner().clone();
+    let app_handle = app.clone();
+    let session_id_for_cleanup = session_id.clone();
+    let session_id_for_error = session_id.clone();
+
+    let handle = tokio::spawn(async move {
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
+        let emit_handle = app_handle.clone();
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                let _ = emit_handle.emit("agent-stream", &event);
+            }
+        });
+
+        let result = {
+            let mut session = session.lock().await;
+            match resolve_khadim_selection(&state_arc, model.as_ref()) {
+                Ok(selection) => {
+                    khadim_agent::orchestrator::run_prompt(
+                        &mut session,
+                        &content,
+                        selection,
+                        &tx,
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            }
+        };
+
+        match result {
+            Ok(text) => {
+                if let Some(conversation_id) = conversation_id {
+                    let _ = persist_assistant_message(&state_arc, &conversation_id, &text, None);
+                }
+            }
+            Err(error) => {
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id: workspace_id.clone(),
+                        session_id: session_id_for_error.clone(),
+                        event_type: "error".to_string(),
+                        content: Some(error.message.clone()),
+                        metadata: None,
+                    },
+                );
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id,
+                        session_id: session_id_for_error.clone(),
+                        event_type: "done".to_string(),
+                        content: None,
+                        metadata: None,
+                    },
+                );
+            }
+        }
+
+        state_arc.khadim.clear_run(&session_id_for_cleanup);
+    });
+
+    state.khadim.track_run(session_id, handle);
+    Ok(())
+}
+
+#[tauri::command]
+async fn khadim_send_message(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: String,
+    session_id: String,
+    conversation_id: Option<String>,
+    content: String,
+    model: Option<OpenCodeModelRef>,
+) -> Result<String, AppError> {
+    if let Some(conversation_id) = conversation_id.as_deref() {
+        persist_user_message(state.inner(), conversation_id, &content)?;
+    }
+
+    let session = state.khadim.get_session(&session_id)?;
+    let (tx, _rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
+    let selection = resolve_khadim_selection(state.inner(), model.as_ref())?;
+    let text = {
+        let mut session = session.lock().await;
+        khadim_agent::orchestrator::run_prompt(
+            &mut session,
+            &content,
+            selection,
+            &tx,
+        )
+        .await?
+    };
+
+    if let Some(conversation_id) = conversation_id.as_deref() {
+        persist_assistant_message(state.inner(), conversation_id, &text, None)?;
+    }
+
+    let _ = workspace_id;
+    Ok(text)
+}
+
+#[tauri::command]
+async fn khadim_abort(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+) -> Result<(), AppError> {
+    state.khadim.abort(&session_id).await
+}
+
 // ─── Settings ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -918,12 +1263,14 @@ pub fn run() {
     let db = Database::open().expect("Failed to open database");
     let process_runner = ProcessRunner::new();
     let opencode = OpenCodeManager::new();
+    let khadim = KhadimManager::new();
     let github = github::GitHubClient::new();
 
     let app_state = Arc::new(AppState {
         db,
         process_runner,
         opencode,
+        khadim,
         github,
     });
 
@@ -971,6 +1318,25 @@ pub fn run() {
             opencode_get_diff,
             opencode_session_statuses,
             opencode_get_connection,
+            // Khadim
+            khadim_create_session,
+            khadim_list_models,
+            khadim_list_model_configs,
+            khadim_list_providers,
+            khadim_discover_models,
+            khadim_create_model_config,
+            khadim_update_model_config,
+            khadim_delete_model_config,
+            khadim_set_active_model_config,
+            khadim_set_default_model_config,
+            khadim_active_model,
+            khadim_codex_auth_connected,
+            khadim_codex_auth_start,
+            khadim_codex_auth_status,
+            khadim_codex_auth_complete,
+            khadim_send_streaming,
+            khadim_send_message,
+            khadim_abort,
             // Settings
             get_setting,
             set_setting,

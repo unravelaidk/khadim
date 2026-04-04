@@ -3,6 +3,7 @@ import KhadimLogo from "../assets/Khadim-logo.svg";
 import type { ChatMessage as Message, ThinkingStepData } from "../lib/bindings";
 import { formatMessageTime } from "../lib/ui";
 import { ThinkingSteps } from "./ThinkingSteps";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 /** Reconstruct tool-call steps from the raw OpenCode message JSON stored in metadata. */
 function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
@@ -152,17 +153,12 @@ function ChatMessageComponent({ message, isStreaming = false, basePath }: ChatMe
       <div className="pl-8 md:pl-9">
         {thinkingSteps.length > 0 && (
           <div className={hasContent ? "mb-4" : "mb-0"}>
-            <ThinkingSteps steps={thinkingSteps} basePath={basePath} />
+            <ThinkingSteps steps={thinkingSteps} basePath={basePath} isStreaming={isStreaming} />
           </div>
         )}
 
-        <div className={`prose-gb text-sm leading-[1.7] md:text-[0.9375rem] md:leading-[1.75] ${isStreaming ? "streaming-cursor" : ""}`}>
-          {message.content.split("\n").map((line, i) => {
-            if (line.startsWith("- ")) return <li key={i} className="ml-1">{line.slice(2)}</li>;
-            if (line.startsWith("`") && line.endsWith("`") && line.length > 2) return <p key={i}><code>{line.slice(1, -1)}</code></p>;
-            if (line.trim() === "") return <br key={i} />;
-            return <p key={i}>{line}</p>;
-          })}
+        <div className={`text-sm leading-[1.7] md:text-[0.9375rem] md:leading-[1.75] ${isStreaming ? "streaming-cursor" : ""}`}>
+          <MarkdownRenderer content={message.content} />
         </div>
 
         {/* Copy button — visible on hover */}

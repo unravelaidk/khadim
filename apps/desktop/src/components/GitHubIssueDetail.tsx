@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { commands, type GitHubIssue, type GitHubComment, type RepoSlug } from "../lib/bindings";
 import { relTime } from "../lib/ui";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface GitHubIssueDetailProps {
   slug: RepoSlug;
@@ -151,7 +152,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
       {/* Body */}
       {issue.body && (
         <div className="rounded-2xl glass-card-static p-4">
-          <div className="prose-gb text-[12px] whitespace-pre-wrap">{issue.body}</div>
+          <MarkdownRenderer content={issue.body} className="text-[12px]" />
         </div>
       )}
 
@@ -204,7 +205,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
                 {relTime(comment.created_at)}
               </span>
             </div>
-            <div className="prose-gb text-[12px] whitespace-pre-wrap">{comment.body}</div>
+            <MarkdownRenderer content={comment.body} className="text-[12px]" />
           </div>
         ))}
 

@@ -4,6 +4,17 @@ import type { ModelConfig, NewModelConfig } from "../lib/db/schema";
 import { createChatModel } from "./models";
 import { createId } from "@paralleldrive/cuid2";
 
+export async function getSavedProviderApiKey(provider: string): Promise<string | null> {
+  const result = await db
+    .select({ apiKey: modelConfigs.apiKey })
+    .from(modelConfigs)
+    .where(eq(modelConfigs.provider, provider))
+    .orderBy(desc(modelConfigs.updatedAt))
+    .limit(1);
+
+  return result[0]?.apiKey?.trim() ? result[0].apiKey : null;
+}
+
 export async function getActiveModel(): Promise<ModelConfig | null> {
   const result = await db
     .select()

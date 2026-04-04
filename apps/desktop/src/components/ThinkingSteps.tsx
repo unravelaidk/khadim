@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ThinkingStepData } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 
@@ -6,6 +6,8 @@ interface ThinkingStepsProps {
   steps: ThinkingStepData[];
   /** Workspace base path used to resolve relative file paths. */
   basePath?: string;
+  /** Whether the parent message is still streaming. */
+  isStreaming?: boolean;
 }
 
 interface ThinkingStepProps {
@@ -87,9 +89,22 @@ function ToolGlyph({ tool, running, complete, errored }: { tool?: string; runnin
 
 function ThinkingStep({ step, basePath }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
+  const prevStatusRef = useRef(step.status);
 
   useEffect(() => {
-    setIsExpanded(step.status === "running");
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = step.status;
+
+    if (step.status === "running") {
+      // Auto-expand while the tool is running.
+      setIsExpanded(true);
+    } else if (prev === "running") {
+      // Tool just finished — keep expanded briefly so the result is visible,
+      // then collapse.  The parent container will also collapse after streaming
+      // ends, so this just keeps the individual step readable for a moment.
+      const timer = setTimeout(() => setIsExpanded(false), 400);
+      return () => clearTimeout(timer);
+    }
   }, [step.status]);
 
   const detail = step.content?.trim() || step.result?.trim() || "";
@@ -199,20 +214,50 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
   );
 }
 
-function ThinkingStepsComponent({ steps, basePath }: ThinkingStepsProps) {
-  // Start collapsed — auto-expands while running, user controls after.
-  const [isCollapsed, setIsCollapsed] = useState(true);
+/** Compact single-line chip shown when the step list is collapsed. */
+function CompactStepChip({ step }: { step: ThinkingStepData }) {
+  const errored = step.status === "error";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-medium ${
+        errored
+          ? "bg-[var(--color-danger-muted)]/60 text-[var(--color-danger)]"
+          : "bg-[var(--glass-bg)] text-[var(--text-muted)]"
+      }`}
+    >
+      <ToolGlyph tool={step.tool} running={false} complete={step.status === "complete"} errored={errored} />
+      <span className="font-mono uppercase tracking-wide">{step.tool ?? "step"}</span>
+      {step.filename && (
+        <span className="truncate max-w-[120px] text-[var(--text-secondary)]">{step.filename}</span>
+      )}
+    </span>
+  );
+}
+
+function ThinkingStepsComponent({ steps, basePath, isStreaming = false }: ThinkingStepsProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (steps.length === 0) return null;
 
   const hasRunning = steps.some((step) => step.status === "running");
   const completedCount = steps.filter((step) => step.status === "complete").length;
-  const hasErrors = steps.some((step) => step.status === "error");
+  const errorCount = steps.filter((step) => step.status === "error").length;
+  const hasErrors = errorCount > 0;
 
-  // Auto-expand the panel while tools are actively running.
+  // While tools are actively running, always show the full expanded view.
+  const showExpanded = hasRunning || isExpanded;
+
+  // Auto-expand while tools are running, auto-collapse when streaming finishes.
   useEffect(() => {
-    if (hasRunning) setIsCollapsed(false);
-  }, [hasRunning]);
+    if (hasRunning) {
+      setIsExpanded(true);
+    } else if (!isStreaming) {
+      // Collapse once the response is complete and nothing is running.
+      // Use a brief delay so the last step_complete result is visible before collapsing.
+      const timer = setTimeout(() => setIsExpanded(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [hasRunning, isStreaming]);
 
   const headerDot = hasRunning
     ? "animate-pulse bg-[var(--color-accent)] shadow-[0_0_6px_var(--glow-low)]"
@@ -222,27 +267,40 @@ function ThinkingStepsComponent({ steps, basePath }: ThinkingStepsProps) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-card)]/50">
+      {/* Header — always visible */}
       <button
         type="button"
         className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg)]/40"
-        onClick={() => setIsCollapsed((v) => !v)}
+        onClick={() => !hasRunning && setIsExpanded((v) => !v)}
       >
         <span className={`h-2 w-2 shrink-0 rounded-full ${headerDot}`} />
         <span className="flex-1 font-display text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
-          {hasRunning ? "Running" : `${completedCount} tool call${completedCount !== 1 ? "s" : ""}`}
+          {hasRunning ? "Running" : `${completedCount} tool call${completedCount !== 1 ? "s" : ""}${hasErrors ? `, ${errorCount} error${errorCount !== 1 ? "s" : ""}` : ""}`}
         </span>
         <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
           {!hasRunning && `${completedCount}/${steps.length}`}
         </span>
-        <svg
-          className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform duration-200 ${isCollapsed ? "-rotate-90" : "rotate-0"}`}
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-        </svg>
+        {!hasRunning && (
+          <svg
+            className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform duration-200 ${showExpanded ? "rotate-0" : "-rotate-90"}`}
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+          </svg>
+        )}
       </button>
 
-      {!isCollapsed && (
+      {/* Collapsed: compact chip summary of all steps */}
+      {!showExpanded && (
+        <div className="flex flex-wrap gap-1.5 px-3.5 pb-3 pt-0.5">
+          {steps.map((step) => (
+            <CompactStepChip key={step.id} step={step} />
+          ))}
+        </div>
+      )}
+
+      {/* Expanded: full step detail list */}
+      {showExpanded && (
         <div className="space-y-0.5 border-t border-[var(--glass-border)] px-1.5 py-1.5">
           {steps.map((step) => (
             <ThinkingStep key={step.id} step={step} basePath={basePath} />
