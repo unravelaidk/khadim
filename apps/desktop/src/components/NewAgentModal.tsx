@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { BranchInfo, Workspace } from "../lib/bindings";
+import type { Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
+import { useGitBranches } from "../hooks/useGitBranches";
 import { GlassSelect } from "./GlassSelect";
 
 interface Props {
@@ -13,8 +14,6 @@ interface Props {
 }
 
 export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCreating }: Props) {
-  const [branches, setBranches] = useState<BranchInfo[]>([]);
-  const [loadingBranches, setLoadingBranches] = useState(false);
   const [baseBranch, setBaseBranch] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [newBranchName, setNewBranchName] = useState("");
@@ -24,6 +23,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
   const [creating, setCreating] = useState(false);
   const backdropRef = useRef<HTMLDivElement>(null);
   const labelInputRef = useRef<HTMLInputElement>(null);
+  const { branches, localBranches, loading } = useGitBranches(workspace.repo_path, isOpen);
 
   // Load branches when modal opens
   useEffect(() => {
@@ -34,27 +34,20 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     setBranchMode("new");
     setCreating(false);
 
-    setLoadingBranches(true);
-    commands.gitListBranches(workspace.repo_path)
-      .then((list) => {
-        setBranches(list);
-        const current = list.find((b) => b.is_current);
-        const preferredBase = list.find((b) => !b.is_remote && b.name === workspace.branch)?.name
-          ?? current?.name
-          ?? list.find((b) => !b.is_remote)?.name
-          ?? "main";
-        setBaseBranch(preferredBase);
-        setSelectedBranch(preferredBase);
-      })
-      .catch(() => {
-        setBranches([]);
-        setBaseBranch(workspace.branch ?? "main");
-        setSelectedBranch(workspace.branch ?? "main");
-      })
-      .finally(() => setLoadingBranches(false));
-
     requestAnimationFrame(() => labelInputRef.current?.focus());
-  }, [isOpen, workspace.repo_path]);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const current = branches.find((branch) => branch.is_current);
+    const preferredBase = localBranches.find((branch) => branch.name === workspace.branch)?.name
+      ?? current?.name
+      ?? localBranches[0]?.name
+      ?? workspace.branch
+      ?? "main";
+    setBaseBranch(preferredBase);
+    setSelectedBranch(preferredBase);
+  }, [branches, isOpen, localBranches, workspace.branch]);
 
   // Escape to close
   useEffect(() => {
@@ -104,7 +97,6 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
   if (!isOpen) return null;
 
-  const localBranches = branches.filter((b) => !b.is_remote);
   const baseBranchOptions = localBranches.map((b) => ({
     value: b.name,
     label: `${b.name}${b.name === workspace.branch ? " (workspace default)" : b.is_current ? " (current)" : ""}`,
@@ -167,7 +159,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
           <div className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-              Base branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
+              Base branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
             </span>
             {baseBranchOptions.length > 0 ? (
               <GlassSelect
@@ -237,7 +229,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
           ) : (
             <div className="block">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                Existing branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
+                Existing branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
               </span>
               {localBranches.length > 0 ? (
                 <GlassSelect

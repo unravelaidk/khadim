@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useMemo, useState, memo } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
 import type { ChatMessage as Message, ThinkingStepData } from "../lib/bindings";
 import { formatMessageTime } from "../lib/ui";
@@ -105,9 +105,12 @@ function ChatMessageComponent({ message, isStreaming = false, basePath }: ChatMe
   const time = formatMessageTime(message.created_at);
   const hasContent = message.content.trim().length > 0;
   // Use live streaming steps if present; fall back to steps parsed from persisted metadata.
-  const thinkingSteps = (message.thinkingSteps && message.thinkingSteps.length > 0)
-    ? message.thinkingSteps
-    : stepsFromMetadata(message.metadata ?? null);
+  const thinkingSteps = useMemo(
+    () => (message.thinkingSteps && message.thinkingSteps.length > 0)
+      ? message.thinkingSteps
+      : stepsFromMetadata(message.metadata ?? null),
+    [message.metadata, message.thinkingSteps],
+  );
 
   if (!hasContent && thinkingSteps.length === 0 && !isUser) return null;
 

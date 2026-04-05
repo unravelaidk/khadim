@@ -115,7 +115,13 @@ export function ModelSelector({
   );
 
   const selectedModel = useMemo(
-    () => models.find((m) => getModelKey(m) === selectedModelKey) ?? null,
+    () => {
+      if (selectedModelKey) {
+        const selected = models.find((m) => getModelKey(m) === selectedModelKey);
+        if (selected) return selected;
+      }
+      return models.find((m) => m.is_default) ?? models[0] ?? null;
+    },
     [models, selectedModelKey],
   );
 
@@ -256,14 +262,14 @@ export function ModelSelector({
                     </span>
                     <span className="h-px flex-1 bg-[var(--glass-border)]" />
                   </div>
-                  {providerModels.map((model) => (
-                    <ModelItem
-                      key={getModelKey(model)}
-                      model={model}
-                      isSelected={getModelKey(model) === selectedModelKey}
-                      onSelect={() => {
-                        setIsOpen(false);
-                        setSearch("");
+                    {providerModels.map((model) => (
+                      <ModelItem
+                        key={getModelKey(model)}
+                        model={model}
+                        isSelected={selectedModel ? getModelKey(model) === getModelKey(selectedModel) : false}
+                        onSelect={() => {
+                          setIsOpen(false);
+                          setSearch("");
                         onSelectModel(getModelKey(model));
                       }}
                     />
@@ -275,7 +281,7 @@ export function ModelSelector({
                 <ModelItem
                   key={getModelKey(model)}
                   model={model}
-                  isSelected={getModelKey(model) === selectedModelKey}
+                  isSelected={selectedModel ? getModelKey(model) === getModelKey(selectedModel) : false}
                   onSelect={() => {
                     setIsOpen(false);
                     setSearch("");

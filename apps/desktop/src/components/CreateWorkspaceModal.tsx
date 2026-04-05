@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { BranchInfo, CreateWorkspaceInput } from "../lib/bindings";
-import { commands } from "../lib/bindings";
+import type { CreateWorkspaceInput } from "../lib/bindings";
+import { useGitBranches } from "../hooks/useGitBranches";
 import { GlassSelect } from "./GlassSelect";
 
 let openDialog: typeof import("@tauri-apps/plugin-dialog").open | null = null;
@@ -21,10 +21,9 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
     execution_target: "local",
   });
   const [error, setError] = useState<string | null>(null);
-  const [branches, setBranches] = useState<BranchInfo[]>([]);
-  const [loadingBranches, setLoadingBranches] = useState(false);
   const backdropRef = useRef<HTMLDivElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const { branches, localBranches, loading } = useGitBranches(form.repo_path || null, Boolean(form.repo_path));
 
   // Focus name input when modal opens
   useEffect(() => {
@@ -53,9 +52,16 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
         execution_target: "local",
       });
       setError(null);
-      setBranches([]);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!form.repo_path) return;
+    const current = branches.find((branch) => branch.is_current);
+    if (current) {
+      setForm((prev) => ({ ...prev, branch: current.name }));
+    }
+  }, [branches, form.repo_path]);
 
   async function pickFolder() {
     if (!openDialog) {
@@ -66,20 +72,6 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
       const selected = await openDialog({ directory: true, multiple: false, title: "Select git repository" });
       if (selected && typeof selected === "string") {
         setForm((prev) => ({ ...prev, repo_path: selected }));
-        setLoadingBranches(true);
-        setBranches([]);
-        try {
-          const branchList = await commands.gitListBranches(selected);
-          setBranches(branchList);
-          const current = branchList.find((b) => b.is_current);
-          if (current) {
-            setForm((prev) => ({ ...prev, branch: current.name }));
-          }
-        } catch {
-          // Not a valid repo — branches stay empty
-        } finally {
-          setLoadingBranches(false);
-        }
       }
     } catch (err) {
       setError(String(err));
@@ -225,15 +217,15 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
           {/* Default branch */}
           <div className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-              Default branch {loadingBranches && <span className="text-[var(--text-muted)]">(loading...)</span>}
+              Default branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
             </span>
-            {branches.length > 0 ? (
+            {localBranches.length > 0 ? (
               <GlassSelect
                 value={form.branch ?? ""}
                 onChange={(v) => setForm((prev) => ({ ...prev, branch: v || undefined }))}
                 options={[
                   { value: "", label: "Use current branch" },
-                  ...branches.filter((b) => !b.is_remote).map((b) => ({
+                  ...localBranches.map((b) => ({
                     value: b.name,
                     label: `${b.name}${b.is_current ? " (current)" : ""}`,
                   })),
