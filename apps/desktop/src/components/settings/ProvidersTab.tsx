@@ -91,6 +91,14 @@ function ProviderGroup({ label, providers, onRefresh }: { label: string; provide
   );
 }
 
+function invalidateModelQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: desktopQueryKeys.providerStatuses }),
+    queryClient.invalidateQueries({ queryKey: desktopQueryKeys.khadimActiveModel }),
+    queryClient.invalidateQueries({ queryKey: ["workspace-models"] }),
+  ]);
+}
+
 function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderStatus; onRefresh: () => Promise<void> }) {
   const queryClient = useQueryClient();
   const meta = STATUS_META[provider.status] ?? STATUS_META.inactive;
@@ -240,7 +248,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
       }
 
       setKeyInput("");
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.providerStatuses });
+      await invalidateModelQueries(queryClient);
       await onRefresh();
       void loadProviderModels();
     } catch (err: unknown) {
@@ -259,7 +267,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
       await commands.khadimDeleteProviderApiKey(provider.id);
       setKeyInput("");
       setConfirmRemoveAll(false);
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.providerStatuses });
+      await invalidateModelQueries(queryClient);
       await onRefresh();
       void loadProviderModels();
     } catch (err: unknown) {
@@ -280,7 +288,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
       setKeyInput("");
       setConfirmRemoveAll(false);
       setExpanded(false);
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.providerStatuses });
+      await invalidateModelQueries(queryClient);
       await onRefresh();
     } catch (err: unknown) {
       const message = err && typeof err === "object" && "message" in err ? (err as { message: string }).message : "Failed to remove";
@@ -294,7 +302,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
     setRemovingModel(modelId);
     try {
       await commands.khadimDeleteModelConfig(modelId);
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.providerStatuses });
+      await invalidateModelQueries(queryClient);
       await onRefresh();
       void loadProviderModels();
     } catch (err: unknown) {

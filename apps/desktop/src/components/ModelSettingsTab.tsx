@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   KhadimConfiguredModel,
   KhadimCodexSession,
@@ -8,6 +9,7 @@ import type {
   OpenCodeModelOption,
 } from "../lib/bindings";
 import { commands } from "../lib/bindings";
+import { desktopQueryKeys } from "../lib/queries";
 import { ModelSelector } from "./ModelSelector";
 import { getProviderIconUrl, resolveModelIcon, isMonochromeProvider } from "../assets/model-icons";
 
@@ -175,6 +177,7 @@ function ConfiguredModelCard({
 }
 
 export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => void }) {
+  const queryClient = useQueryClient();
   const [providers, setProviders] = useState<KhadimProviderOption[]>([]);
   const [providerStatuses, setProviderStatuses] = useState<Record<string, KhadimProviderStatus>>({});
   const [models, setModels] = useState<KhadimConfiguredModel[]>([]);
@@ -219,10 +222,13 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
       if (providers.length > 0 && !providers.some((provider) => provider.type === form.provider)) {
         setForm((prev) => ({ ...prev, provider: providers[0].type }));
       }
+      // Invalidate model selector queries so the selector updates without restart
+      void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.khadimActiveModel });
+      void queryClient.invalidateQueries({ queryKey: ["workspace-models"] });
     } finally {
       setLoading(false);
     }
-  }, [form.provider]);
+  }, [form.provider, queryClient]);
 
   useEffect(() => {
     void refresh();
