@@ -932,6 +932,51 @@ fn normalize_part_updated(
                 _ => vec![],
             }
         }
+        Some("subtask") => {
+            let agent = part
+                .get("agent")
+                .and_then(|value| value.as_str())
+                .unwrap_or("subagent");
+            let description = part
+                .get("description")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let prompt = part
+                .get("prompt")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+
+            let title = match description {
+                Some(description) => format!("{agent}: {description}"),
+                None => format!("Subagent: {agent}"),
+            };
+            let content = [
+                description.map(|value| value.to_string()),
+                Some(format!("subagent: {agent}")),
+                prompt.map(|value| truncate_text(value, 420)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+            vec![stream_event(
+                workspace_id,
+                session_id,
+                "step_start",
+                (!content.is_empty()).then_some(content),
+                Some(serde_json::json!({
+                    "id": part_id,
+                    "title": title,
+                    "tool": "subtask",
+                    "subagentType": agent,
+                    "taskDescription": description,
+                    "taskPrompt": prompt,
+                })),
+            )]
+        }
         Some("tool") => {
             let tool = part
                 .get("tool")
@@ -991,15 +1036,46 @@ fn normalize_part_updated(
                 )];
             }
 
+            let file_path = tool_file_path(input);
             let filename = tool_filename(input);
-            let title = tool_title(tool, filename.as_deref());
+            let title = tool_title(tool, input, filename.as_deref());
+            let subagent_type = (tool == "task")
+                .then(|| {
+                    input
+                        .and_then(|value| value.get("subagent_type"))
+                        .and_then(|value| value.as_str())
+                })
+                .flatten();
+            let task_description = (tool == "task")
+                .then(|| {
+                    input
+                        .and_then(|value| value.get("description"))
+                        .and_then(|value| value.as_str())
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                })
+                .flatten();
+            let task_prompt = (tool == "task")
+                .then(|| {
+                    input
+                        .and_then(|value| value.get("prompt"))
+                        .and_then(|value| value.as_str())
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                })
+                .flatten();
 
             let metadata = serde_json::json!({
                 "id": part_id,
                 "title": title,
                 "tool": tool,
                 "filename": filename,
+                "filePath": file_path,
                 "result": summarize_tool_result(state),
+                "subagentType": subagent_type,
+                "taskDescription": task_description,
+                "taskPrompt": task_prompt,
+                "is_error": matches!(status, "error" | "failed"),
             });
 
             match status {
@@ -1007,7 +1083,7 @@ fn normalize_part_updated(
                     workspace_id,
                     session_id,
                     "step_start",
-                    summarize_tool_input(input),
+                    summarize_tool_input(tool, input),
                     Some(metadata),
                 )],
                 "completed" => vec![stream_event(
@@ -1066,35 +1142,105 @@ fn extract_reasoning_title(text: &str) -> String {
         .unwrap_or_else(|| "Thinking".to_string())
 }
 
-fn tool_filename(input: Option<&serde_json::Value>) -> Option<String> {
+fn tool_file_path(input: Option<&serde_json::Value>) -> Option<String> {
     input
         .and_then(|value| value.get("filePath").or_else(|| value.get("path")))
         .and_then(|value| value.as_str())
-        .map(path_basename)
+        .map(|value| value.to_string())
 }
 
-fn tool_title(tool: &str, filename: Option<&str>) -> String {
-    match (tool, filename) {
-        ("read", Some(filename)) => format!("Reading {filename}"),
-        ("write", Some(filename)) => format!("Writing {filename}"),
-        ("bash", _) => "Running command".to_string(),
-        (_, Some(filename)) => format!("{} {filename}", tool.replace('_', " ")),
-        _ => tool.replace('_', " "),
+fn tool_filename(input: Option<&serde_json::Value>) -> Option<String> {
+    tool_file_path(input).map(|path| path_basename(&path))
+}
+
+fn tool_title(tool: &str, input: Option<&serde_json::Value>, filename: Option<&str>) -> String {
+    match tool {
+        "task" => {
+            let subagent_type = input
+                .and_then(|value| value.get("subagent_type"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("subagent");
+            let description = input
+                .and_then(|value| value.get("description"))
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+
+            match description {
+                Some(description) => format!("Launching {subagent_type}: {description}"),
+                None => format!("Launching {subagent_type}"),
+            }
+        }
+        "question" => "Question".to_string(),
+        _ => match (tool, filename) {
+            ("read", Some(filename)) => format!("Reading {filename}"),
+            ("write", Some(filename)) => format!("Writing {filename}"),
+            ("bash", _) => "Running command".to_string(),
+            (_, Some(filename)) => format!("{} {filename}", tool.replace('_', " ")),
+            _ => tool.replace('_', " "),
+        },
     }
 }
 
-fn summarize_tool_input(input: Option<&serde_json::Value>) -> Option<String> {
+fn summarize_tool_input(tool: &str, input: Option<&serde_json::Value>) -> Option<String> {
     let input = input?.as_object()?;
+    if tool == "task" {
+        let description = input
+            .get("description")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let subagent_type = input
+            .get("subagent_type")
+            .and_then(|value| value.as_str())
+            .map(|value| format!("subagent: {value}"));
+        let prompt = input
+            .get("prompt")
+            .and_then(|value| value.as_str())
+            .map(|value| truncate_text(value, 420));
+
+        let summary = [description, subagent_type, prompt]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if !summary.is_empty() {
+            return Some(summary);
+        }
+    }
+
     if let Some(command) = input.get("command").and_then(|value| value.as_str()) {
         return Some(command.to_string());
     }
     if let Some(file_path) = input.get("filePath").and_then(|value| value.as_str()) {
         return Some(file_path.to_string());
     }
-    None
+    if let Some(path) = input.get("path").and_then(|value| value.as_str()) {
+        return Some(path.to_string());
+    }
+
+    serde_json::to_string_pretty(input)
+        .ok()
+        .map(|value| truncate_text(&value, 420))
 }
 
 fn summarize_tool_result(state: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    if let Some(output) = state.get("output").and_then(|value| value.as_object()) {
+        for key in ["result", "message", "text", "summary"] {
+            if let Some(value) = output.get(key).and_then(|value| value.as_str()) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    return Some(truncate_text(trimmed, 420));
+                }
+            }
+        }
+
+        if let Some(task_id) = output.get("task_id").and_then(|value| value.as_str()) {
+            return Some(format!("Task started: {task_id}"));
+        }
+    }
+
     state
         .get("metadata")
         .and_then(|value| value.get("preview"))
@@ -1104,15 +1250,16 @@ fn summarize_tool_result(state: &serde_json::Map<String, serde_json::Value>) -> 
             state
                 .get("output")
                 .and_then(|value| value.as_str())
-                .map(|value| {
-                    let trimmed = value.trim();
-                    if trimmed.len() > 240 {
-                        format!("{}...", &trimmed[..240])
-                    } else {
-                        trimmed.to_string()
-                    }
-                })
+                .map(|value| truncate_text(value.trim(), 240))
         })
+}
+
+fn truncate_text(value: &str, max_len: usize) -> String {
+    if value.len() > max_len {
+        format!("{}...", value[..max_len].trim_end())
+    } else {
+        value.to_string()
+    }
 }
 
 fn path_basename(path: &str) -> String {

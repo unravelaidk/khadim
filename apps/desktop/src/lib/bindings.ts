@@ -91,6 +91,9 @@ export interface ThinkingStepData {
   fileContent?: string;
   /** Full (absolute or repo-relative) path to the file touched by this step. */
   filePath?: string;
+  subagentType?: string;
+  taskDescription?: string;
+  taskPrompt?: string;
 }
 
 // ── Question types (from OpenCode's question tool) ───────────────────

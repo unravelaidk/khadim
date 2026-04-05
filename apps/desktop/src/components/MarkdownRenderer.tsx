@@ -74,9 +74,12 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
     );
   }
 
-  // Inline code — defer to .prose-gb code styles
+  // Inline code
   return (
-    <code className={className} {...props}>
+    <code
+      className="bg-[var(--surface-card)] border border-[var(--glass-border)] px-1.5 py-0.5 rounded-md font-mono text-[0.85em] text-[var(--text-primary)] break-words"
+      {...props}
+    >
       {children}
     </code>
   );
@@ -88,15 +91,94 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
  * base element styling; only the fenced code block gets custom treatment
  * (syntax highlighting + copy button).
  */
+
+const remarkPlugins = [remarkGfm];
+
+const markdownComponents = {
+  code: CodeBlock as any,
+  h1: ({ children }: { children?: ReactNode }) => (
+    <h1 className="text-xl font-bold mt-6 mb-3 text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }: { children?: ReactNode }) => (
+    <h2 className="text-lg font-semibold mt-5 mb-2 text-[var(--text-primary)]">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }: { children?: ReactNode }) => (
+    <h3 className="text-base font-semibold mt-4 mb-2 text-[var(--text-primary)]">
+      {children}
+    </h3>
+  ),
+  h4: ({ children }: { children?: ReactNode }) => (
+    <h4 className="text-sm font-semibold mt-3 mb-1.5 text-[var(--text-primary)]">
+      {children}
+    </h4>
+  ),
+  p: ({ children }: { children?: ReactNode }) => (
+    <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>
+  ),
+  ul: ({ children }: { children?: ReactNode }) => (
+    <ul className="list-disc pl-5 mb-3 space-y-1">{children}</ul>
+  ),
+  ol: ({ children }: { children?: ReactNode }) => (
+    <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol>
+  ),
+  li: ({ children }: { children?: ReactNode }) => (
+    <li className="leading-relaxed pl-0.5">{children}</li>
+  ),
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-[var(--color-accent)] underline underline-offset-2 decoration-[var(--color-accent-muted)] hover:text-[var(--color-accent-hover)] hover:decoration-[var(--color-accent)] transition-colors"
+    >
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }: { children?: ReactNode }) => (
+    <blockquote className="border-l-3 border-[var(--color-accent)] pl-4 my-3 italic text-[var(--text-secondary)]">
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }: { children?: ReactNode }) => (
+    <div className="overflow-x-auto my-4 rounded-xl border border-[var(--glass-border)]" style={{ WebkitOverflowScrolling: "touch" }}>
+      <table className="w-full border-collapse text-sm">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }: { children?: ReactNode }) => (
+    <thead className="bg-[var(--surface-card)]">{children}</thead>
+  ),
+  th: ({ children }: { children?: ReactNode }) => (
+    <th className="border-b border-[var(--glass-border)] px-3 py-2 text-left font-semibold text-xs uppercase tracking-wide text-[var(--text-secondary)]">
+      {children}
+    </th>
+  ),
+  td: ({ children }: { children?: ReactNode }) => (
+    <td className="border-b border-[var(--glass-border)] px-3 py-2 text-sm">
+      {children}
+    </td>
+  ),
+  hr: () => (
+    <hr className="my-6 border-none h-px bg-[var(--glass-border)]" />
+  ),
+  strong: ({ children }: { children?: ReactNode }) => (
+    <strong className="font-semibold text-[var(--text-primary)]">{children}</strong>
+  ),
+  em: ({ children }: { children?: ReactNode }) => <em className="italic">{children}</em>,
+  del: ({ children }: { children?: ReactNode }) => (
+    <del className="line-through text-[var(--text-muted)]">{children}</del>
+  ),
+};
+
 export function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
   return (
     <div className={`prose-gb ${className}`.trim()}>
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code: CodeBlock as any,
-        }}
-      >
+      <Markdown remarkPlugins={remarkPlugins} components={markdownComponents}>
         {content}
       </Markdown>
     </div>

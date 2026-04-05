@@ -54,6 +54,9 @@ export function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStre
   const fileContent = typeof metadata.fileContent === "string" ? metadata.fileContent : undefined;
   const filePath = typeof metadata.filePath === "string" ? metadata.filePath : undefined;
   const nextResult = typeof metadata.result === "string" ? metadata.result : undefined;
+  const subagentType = typeof metadata.subagentType === "string" ? metadata.subagentType : undefined;
+  const taskDescription = typeof metadata.taskDescription === "string" ? metadata.taskDescription : undefined;
+  const taskPrompt = typeof metadata.taskPrompt === "string" ? metadata.taskPrompt : undefined;
   const isError = metadata.is_error === true;
   const index = prev.findIndex((step) => step.id === stepId);
   const current = index >= 0 ? prev[index] : { id: stepId, title, status: "running" as const };
@@ -64,6 +67,9 @@ export function applyStreamingStepEvent(prev: ThinkingStepData[], evt: AgentStre
     filename: filename ?? current.filename,
     fileContent: fileContent ?? current.fileContent,
     filePath: filePath ?? current.filePath,
+    subagentType: subagentType ?? current.subagentType,
+    taskDescription: taskDescription ?? current.taskDescription,
+    taskPrompt: taskPrompt ?? current.taskPrompt,
   };
 
   if (evt.event_type === "step_start") {
@@ -102,6 +108,7 @@ export function deriveCurrentActivity(steps: ThinkingStepData[]): string | null 
   const running = steps.filter((step) => step.status === "running");
   if (running.length === 0) return null;
   const last = running[running.length - 1];
+  if (last.tool === "subtask" && last.subagentType) return `${last.subagentType}...`;
   if (last.tool && last.filename) return `${last.tool}: ${last.filename}`;
   if (last.tool) return `${last.tool}...`;
   return last.title;
