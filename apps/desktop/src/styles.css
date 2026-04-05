@@ -283,25 +283,140 @@ body {
   100% { background-position: -200% 0; }
 }
 
-/* ─── Code blocks in markdown ──────────────────────────────────────── */
+/* ─── Prose / Markdown ──────────────────────────────────────────────── */
+.prose-gb {
+  color: var(--text-primary);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose-gb h1,
+.prose-gb h2,
+.prose-gb h3,
+.prose-gb h4 {
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.prose-gb h1 { font-size: 1.25rem; margin-top: 1.5em; margin-bottom: 0.75em; }
+.prose-gb h2 { font-size: 1.125rem; margin-top: 1.25em; margin-bottom: 0.5em; }
+.prose-gb h3 { font-size: 1rem; margin-top: 1em; margin-bottom: 0.5em; }
+.prose-gb h4 { font-size: 0.875rem; margin-top: 0.75em; margin-bottom: 0.375em; }
+
+.prose-gb p {
+  margin-bottom: 0.75em;
+}
+.prose-gb p:last-child { margin-bottom: 0; }
+
+.prose-gb ul,
+.prose-gb ol {
+  margin: 0.5em 0;
+  padding-left: 1.25em;
+}
+
+.prose-gb ul { list-style-type: disc; }
+.prose-gb ol { list-style-type: decimal; }
+.prose-gb li { margin: 0.25em 0; }
+.prose-gb li > ul,
+.prose-gb li > ol { margin-top: 0.25em; }
+
+/* Inline code */
+.prose-gb code {
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  padding: 0.125em 0.375em;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+  border-radius: 6px;
+  color: var(--text-primary);
+}
+
+/* Fenced code blocks */
 .prose-gb pre {
   background: var(--surface-bg-subtle);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 1em;
   overflow-x: auto;
+  margin: 0.75em 0;
   font-size: 13px;
   line-height: 1.6;
-}
-
-.prose-gb code {
-  background: var(--glass-bg);
-  padding: 0.15em 0.35em;
-  border-radius: 4px;
-  font-size: 0.9em;
+  box-shadow: var(--shadow-glass-sm);
 }
 
 .prose-gb pre code {
   background: none;
+  border: none;
   padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Links */
+.prose-gb a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-gb a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Blockquotes */
+.prose-gb blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.prose-gb blockquote p:last-child { margin-bottom: 0; }
+
+/* Horizontal rules */
+.prose-gb hr {
+  border: none;
+  height: 1px;
+  background: var(--glass-border);
+  margin: 1.5em 0;
+}
+
+/* Tables */
+.prose-gb table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.875em;
+}
+
+.prose-gb th,
+.prose-gb td {
+  border: 1px solid var(--glass-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.prose-gb th {
+  background: var(--surface-card);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Strong / emphasis */
+.prose-gb strong { font-weight: 600; }
+.prose-gb del { text-decoration: line-through; color: var(--text-muted); }
+
+/* Task lists (GFM) */
+.prose-gb input[type="checkbox"] {
+  margin-right: 0.5em;
+  accent-color: var(--color-accent);
+}
+
+/* Images */
+.prose-gb img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.75em 0;
 }

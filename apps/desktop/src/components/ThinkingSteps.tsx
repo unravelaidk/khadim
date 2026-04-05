@@ -1,6 +1,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ThinkingStepData } from "../lib/bindings";
 import { commands } from "../lib/bindings";
+import { MarkdownRenderer } from "./MarkdownRenderer";
+
+const ASCII_BOT_FRAMES = ["[o_o]", "[O_o]", "[o_O]", "[^_^]"];
 
 interface ThinkingStepsProps {
   steps: ThinkingStepData[];
@@ -78,6 +81,17 @@ function ToolGlyph({ tool, running, complete, errored }: { tool?: string; runnin
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 19h8" />
         </svg>
       );
+    case "task":
+      return (
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6h11" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h11" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18h11" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m3 6 1.5 1.5L6.5 5" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m3 12 1.5 1.5L6.5 11" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m3 18 1.5 1.5L6.5 17" />
+        </svg>
+      );
     default:
       return (
         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -85,6 +99,64 @@ function ToolGlyph({ tool, running, complete, errored }: { tool?: string; runnin
         </svg>
       );
   }
+}
+
+function AsciiSubagentBadge() {
+  const [frameIndex, setFrameIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setFrameIndex((current) => (current + 1) % ASCII_BOT_FRAMES.length);
+    }, 220);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent)]/12 px-2 py-0.5 font-mono text-[10px] font-medium text-[var(--color-accent)]">
+      <span className="inline-block min-w-[5ch] text-center">{ASCII_BOT_FRAMES[frameIndex]}</span>
+      <span>subagent</span>
+    </span>
+  );
+}
+
+function TaskStepDetails({ step }: { step: ThinkingStepData }) {
+  return (
+    <div className="space-y-2 rounded-lg bg-[var(--surface-card)]/60 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        <span>{step.tool === "subtask" ? "Delegated To" : "Subagent"}</span>
+        {step.subagentType ? (
+          <span className="rounded-full bg-[var(--glass-bg)] px-2 py-0.5 font-mono normal-case tracking-normal text-[var(--text-secondary)]">
+            {step.subagentType}
+          </span>
+        ) : null}
+      </div>
+      {step.taskDescription ? (
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">Task</p>
+          <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--text-secondary)]">{step.taskDescription}</p>
+        </div>
+      ) : null}
+      {step.taskPrompt ? (
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">Prompt</p>
+          <pre className="whitespace-pre-wrap break-words rounded-lg bg-[var(--glass-bg)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            {step.taskPrompt}
+          </pre>
+        </div>
+      ) : null}
+      {step.result ? (
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            {step.status === "running" ? "Latest" : "Result"}
+          </p>
+          <div className="rounded-lg bg-[var(--glass-bg)] px-2.5 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+            <MarkdownRenderer content={step.result} className="text-[12px]" />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ThinkingStep({ step, basePath }: ThinkingStepProps) {
@@ -108,6 +180,9 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
   }, [step.status]);
 
   const detail = step.content?.trim() || step.result?.trim() || "";
+  const hasTaskDetails = (step.tool === "task" || step.tool === "subtask")
+    && Boolean(step.taskDescription || step.taskPrompt || step.result || step.subagentType);
+  const canToggle = Boolean(detail || hasTaskDetails);
   const running = step.status === "running";
   const complete = step.status === "complete";
   const errored = step.status === "error";
@@ -140,7 +215,7 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
     <div className="overflow-hidden rounded-xl transition-colors duration-150 bg-transparent hover:bg-[var(--glass-bg)]/40">
       <button
         type="button"
-        onClick={() => detail && setIsExpanded((value) => !value)}
+        onClick={() => canToggle && setIsExpanded((value) => !value)}
         className="flex w-full items-start gap-2.5 px-0 py-0 text-left"
       >
         <div className={`mt-2 h-8 w-1 shrink-0 rounded-full ${accent}`} />
@@ -161,6 +236,9 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
               <span className="font-mono text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
                 {step.tool ?? "step"}
               </span>
+              {running && (step.tool === "task" || step.tool === "subtask") && (
+                <AsciiSubagentBadge />
+              )}
               {step.filename && (
                 <span className="truncate font-mono text-[11px] text-[var(--text-secondary)]">
                   {step.filename}
@@ -181,10 +259,10 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
                   Open
                 </button>
               )}
-              {detail && !running && (
-                <span className="ml-auto text-[var(--text-muted)]">
-                  <svg className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : "rotate-0"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+               {canToggle && !running && (
+                 <span className="ml-auto text-[var(--text-muted)]">
+                   <svg className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : "rotate-0"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                     <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
                   </svg>
                 </span>
               )}
@@ -192,22 +270,24 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
             <p className={`mt-0.5 text-[13px] leading-snug ${running ? "font-medium text-[var(--text-primary)]" : errored ? "text-[var(--color-danger)]" : "text-[var(--text-secondary)]"}`}>
               {step.title}
             </p>
-            {detail && (!isExpanded || running) && (
-              <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--text-muted)]">
-                {detail}
-              </p>
+            {detail && !isExpanded && !running && (
+               <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--text-muted)]">
+                 {detail}
+               </p>
             )}
           </div>
         </div>
       </button>
 
-      {detail && isExpanded && !running && (
+      {(hasTaskDetails || detail) && isExpanded && (
         <div className="ml-[3px] border-l border-[var(--glass-border)] pl-5 pr-3 pb-3">
-            <div className="rounded-lg bg-[var(--surface-card)]/60 px-3 py-2">
-            <pre className="whitespace-pre-wrap break-all text-[11px] leading-relaxed text-[var(--text-secondary)]">
-              {detail}
-            </pre>
-          </div>
+          {step.tool === "task" || step.tool === "subtask" ? (
+            <TaskStepDetails step={step} />
+          ) : (
+            <div className="rounded-lg bg-[var(--surface-card)]/60 px-3 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+              <MarkdownRenderer content={detail} className="text-[12px]" />
+            </div>
+          )}
         </div>
       )}
     </div>

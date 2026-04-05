@@ -107,7 +107,7 @@ export function StandaloneChatView({
               <div className="rounded-3xl p-5 glass-card-static">
                 <div className="space-y-5">
                   {displayMessages.map((message) => (
-                    <ChatMessage key={message.id} message={message} />
+                    <ChatMessage key={message.id} message={message} basePath={chatDirectory ?? undefined} />
                   ))}
                   {isProcessing && (streamingContent || streamingSteps.length > 0) ? (
                     <ChatMessage
@@ -121,6 +121,7 @@ export function StandaloneChatView({
                         thinkingSteps: streamingSteps,
                       }}
                       isStreaming
+                      basePath={chatDirectory ?? undefined}
                     />
                   ) : null}
                   {isProcessing && !streamingContent && streamingSteps.length === 0 ? <TypingIndicator /> : null}

@@ -6,6 +6,100 @@ import { useSetSettingMutation, useSettingQuery, useWorkspaceModelsQuery } from 
 import { getModelSettingKey, parseStoredModel, resolvePreferredModel, selectModelByKey } from "../lib/model-selection";
 import { createLocalConversation, createLocalMessage } from "../lib/types";
 
+const STANDALONE_CHAT_STATE_KEY = "khadim:standalone_chat_state";
+
+function finalizePersistedSteps(steps: ThinkingStepData[]): ThinkingStepData[] {
+  return steps.map((step) => step.status === "running" ? { ...step, status: "complete" as const } : step);
+}
+
+function restorePersistedMessage(value: unknown): LocalChatMessage | null {
+  if (!value || typeof value !== "object") return null;
+  const message = value as Partial<LocalChatMessage>;
+  if (message.role !== "user" && message.role !== "assistant") return null;
+  if (typeof message.content !== "string") return null;
+
+  return {
+    id: typeof message.id === "string" && message.id ? message.id : crypto.randomUUID(),
+    role: message.role,
+    content: message.content,
+    createdAt: typeof message.createdAt === "string" && message.createdAt ? message.createdAt : new Date().toISOString(),
+    thinkingSteps: Array.isArray(message.thinkingSteps)
+      ? finalizePersistedSteps(message.thinkingSteps.filter((step): step is ThinkingStepData => Boolean(step && typeof step === "object")))
+      : undefined,
+  };
+}
+
+function restorePersistedConversation(value: unknown): LocalChatConversation | null {
+  if (!value || typeof value !== "object") return null;
+  const conversation = value as Partial<LocalChatConversation>;
+  if (typeof conversation.id !== "string" || typeof conversation.title !== "string") return null;
+
+  const messages = Array.isArray(conversation.messages)
+    ? conversation.messages
+      .map(restorePersistedMessage)
+      .filter((message): message is LocalChatMessage => message !== null)
+    : [];
+  const restoredStreamingContent = typeof conversation.streamingContent === "string" ? conversation.streamingContent : "";
+  const restoredStreamingSteps = Array.isArray(conversation.streamingSteps)
+    ? finalizePersistedSteps(conversation.streamingSteps.filter((step): step is ThinkingStepData => Boolean(step && typeof step === "object")))
+    : [];
+
+  if ((conversation.isProcessing ?? false) && (restoredStreamingContent.trim() || restoredStreamingSteps.length > 0)) {
+    const interruptedMessage = createLocalMessage("assistant", restoredStreamingContent || "(interrupted)");
+    if (restoredStreamingSteps.length > 0) {
+      interruptedMessage.thinkingSteps = restoredStreamingSteps;
+    }
+    interruptedMessage.createdAt = typeof conversation.updatedAt === "string" && conversation.updatedAt
+      ? conversation.updatedAt
+      : interruptedMessage.createdAt;
+    messages.push(interruptedMessage);
+  }
+
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    sessionId: null,
+    messages,
+    isProcessing: false,
+    streamingContent: "",
+    streamingSteps: [],
+    createdAt: typeof conversation.createdAt === "string" && conversation.createdAt ? conversation.createdAt : new Date().toISOString(),
+    updatedAt: typeof conversation.updatedAt === "string" && conversation.updatedAt ? conversation.updatedAt : new Date().toISOString(),
+  };
+}
+
+function restoreStandaloneChatState(raw: string | null | undefined) {
+  if (!raw) {
+    return { conversations: [] as LocalChatConversation[], activeChatId: null as string | null };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      conversations?: unknown[];
+      activeChatId?: string | null;
+    };
+    const conversations = Array.isArray(parsed.conversations)
+      ? parsed.conversations
+        .map(restorePersistedConversation)
+        .filter((conversation): conversation is LocalChatConversation => conversation !== null)
+      : [];
+    const activeChatId = typeof parsed.activeChatId === "string" && conversations.some((conversation) => conversation.id === parsed.activeChatId)
+      ? parsed.activeChatId
+      : conversations[0]?.id ?? null;
+
+    return { conversations, activeChatId };
+  } catch {
+    return { conversations: [] as LocalChatConversation[], activeChatId: null as string | null };
+  }
+}
+
+function serializeStandaloneChatState(conversations: LocalChatConversation[], activeChatId: string | null) {
+  return JSON.stringify({
+    activeChatId,
+    conversations,
+  });
+}
+
 export interface StandaloneChatController {
   chatConversations: LocalChatConversation[];
   setChatConversations: React.Dispatch<React.SetStateAction<LocalChatConversation[]>>;
@@ -70,7 +164,9 @@ export function useStandaloneChat({
   const [chatDirectory, setChatDirectory] = useState<string | null>(null);
   const { data: chatAvailableModels = [] } = useWorkspaceModelsQuery(standaloneWorkspaceId, "khadim", false);
   const { data: storedChatModel = null } = useSettingQuery(getModelSettingKey(standaloneWorkspaceId));
+  const standaloneChatStateQuery = useSettingQuery(STANDALONE_CHAT_STATE_KEY);
   const setSettingMutation = useSetSettingMutation();
+  const hasHydratedStandaloneChatsRef = useRef(false);
 
   const activeChatConv = useMemo(
     () => chatConversations.find((conversation) => conversation.id === activeChatId) ?? null,
@@ -90,8 +186,36 @@ export function useStandaloneChat({
   }, [chatConversations]);
 
   useEffect(() => {
+    if (hasHydratedStandaloneChatsRef.current || standaloneChatStateQuery.isLoading) return;
+    hasHydratedStandaloneChatsRef.current = true;
+
+    const restored = restoreStandaloneChatState(standaloneChatStateQuery.data);
+    setChatConversations(restored.conversations);
+    setActiveChatId(restored.activeChatId);
+  }, [standaloneChatStateQuery.data, standaloneChatStateQuery.isLoading]);
+
+  useEffect(() => {
     chatActiveConvIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  useEffect(() => {
+    chatSessionIdRef.current = activeChatConv?.sessionId ?? null;
+  }, [activeChatConv?.sessionId]);
+
+  const serializedStandaloneChatState = useMemo(
+    () => serializeStandaloneChatState(chatConversations, activeChatId),
+    [activeChatId, chatConversations],
+  );
+
+  useEffect(() => {
+    if (!hasHydratedStandaloneChatsRef.current) return;
+
+    const timeout = window.setTimeout(() => {
+      void commands.setSetting(STANDALONE_CHAT_STATE_KEY, serializedStandaloneChatState).catch(() => undefined);
+    }, 150);
+
+    return () => window.clearTimeout(timeout);
+  }, [serializedStandaloneChatState]);
 
   useEffect(() => {
     const activeConversation = activeChatConv;
@@ -202,6 +326,13 @@ export function useStandaloneChat({
 
         await commands.khadimSendStreaming(standaloneWorkspaceId, sessionId, null, text, modelForSend);
       } catch (error) {
+        if (conversationId) {
+          setChatConversations((prev) => prev.map((conversation) =>
+            conversation.id === conversationId
+              ? { ...conversation, isProcessing: false, streamingContent: "", streamingSteps: [] }
+              : conversation,
+          ));
+        }
         setChatIsProcessing(false);
         setChatStreamingContent("");
         setChatStreamingSteps([]);

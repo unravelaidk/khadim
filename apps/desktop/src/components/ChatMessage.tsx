@@ -6,6 +6,129 @@ import { ThinkingSteps } from "./ThinkingSteps";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 /** Reconstruct tool-call steps from the raw OpenCode message JSON stored in metadata. */
+function truncateText(text: string, maxLength = 280) {
+  return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
+}
+
+function stringifyValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function pathBasename(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+function toolFilePath(input: Record<string, unknown> | undefined) {
+  const raw = input?.filePath ?? input?.path;
+  return typeof raw === "string" ? raw : undefined;
+}
+
+function toolTitle(tool: string, input: Record<string, unknown> | undefined, filename: string | undefined) {
+  if (tool === "task") {
+    const subagentType = typeof input?.subagent_type === "string" ? input.subagent_type : "subagent";
+    const description = typeof input?.description === "string" ? input.description.trim() : "";
+    return description ? `Launching ${subagentType}: ${description}` : `Launching ${subagentType}`;
+  }
+
+  if (tool === "subtask") {
+    const subagentType = typeof input?.agent === "string" ? input.agent : "subagent";
+    const description = typeof input?.description === "string" ? input.description.trim() : "";
+    return description ? `${subagentType}: ${description}` : `Subagent: ${subagentType}`;
+  }
+
+  if (tool === "question") {
+    return "Question";
+  }
+
+  if (filename) {
+    if (tool === "read") return `Reading ${filename}`;
+    if (tool === "write") return `Writing ${filename}`;
+    return `${tool.replace(/_/g, " ")} ${filename}`;
+  }
+
+  if (tool === "bash") return "Running command";
+  return tool.replace(/_/g, " ");
+}
+
+function taskDescription(input: Record<string, unknown> | undefined) {
+  return typeof input?.description === "string" && input.description.trim()
+    ? input.description.trim()
+    : undefined;
+}
+
+function taskPrompt(input: Record<string, unknown> | undefined) {
+  return typeof input?.prompt === "string" && input.prompt.trim()
+    ? input.prompt.trim()
+    : undefined;
+}
+
+function taskSubagentType(input: Record<string, unknown> | undefined) {
+  const raw = typeof input?.subagent_type === "string"
+    ? input.subagent_type
+    : typeof input?.agent === "string"
+      ? input.agent
+      : undefined;
+  return raw && raw.trim()
+    ? raw.trim()
+    : undefined;
+}
+
+function toolContent(tool: string, input: Record<string, unknown> | undefined) {
+  if (!input) return undefined;
+  if (tool === "task") {
+    const description = typeof input.description === "string" ? input.description.trim() : "";
+    const prompt = typeof input.prompt === "string" ? truncateText(input.prompt, 420) : "";
+    const subagentType = typeof input.subagent_type === "string" ? input.subagent_type : "";
+    return [description, subagentType ? `subagent: ${subagentType}` : "", prompt]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
+  }
+
+  if (tool === "subtask") {
+    const description = typeof input.description === "string" ? input.description.trim() : "";
+    const prompt = typeof input.prompt === "string" ? truncateText(input.prompt, 420) : "";
+    const subagentType = typeof input.agent === "string" ? input.agent : "";
+    return [description, subagentType ? `subagent: ${subagentType}` : "", prompt]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
+  }
+
+  if (typeof input.command === "string") return input.command;
+  if (typeof input.filePath === "string") return input.filePath;
+  if (typeof input.path === "string") return input.path;
+  return stringifyValue(input);
+}
+
+function toolResult(state: Record<string, unknown>) {
+  const metadata = state.metadata as Record<string, unknown> | undefined;
+  if (typeof metadata?.preview === "string" && metadata.preview.trim()) {
+    return metadata.preview;
+  }
+
+  const output = state.output;
+  if (output && typeof output === "object") {
+    const outputObject = output as Record<string, unknown>;
+    for (const key of ["result", "message", "text", "summary"]) {
+      if (typeof outputObject[key] === "string" && outputObject[key].trim()) {
+        return truncateText(outputObject[key] as string, 420);
+      }
+    }
+    if (typeof outputObject.task_id === "string" && outputObject.task_id) {
+      return `Task started: ${outputObject.task_id}`;
+    }
+  }
+
+  const text = stringifyValue(output).trim();
+  return text ? truncateText(text, 420) : undefined;
+}
+
 function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
   if (!metadata) return [];
   try {
@@ -22,29 +145,30 @@ function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
         const tool = (p.tool as string | undefined) ?? "tool";
         const state = (p.state as Record<string, unknown> | undefined) ?? {};
         const input = state.input as Record<string, unknown> | undefined;
-        const filename = (input?.filePath ?? input?.path) as string | undefined;
-        const basename = filename ? filename.split("/").pop() : undefined;
-
-        const title = filename
-          ? tool === "read"  ? `Reading ${basename}`
-          : tool === "write" ? `Writing ${basename}`
-          : `${tool.replace(/_/g, " ")} ${basename}`
-          : tool === "bash" ? "Running command"
-          : tool.replace(/_/g, " ");
-
-        const content = input
-          ? (input.command as string | undefined) ?? (input.filePath as string | undefined) ?? JSON.stringify(input, null, 2)
-          : undefined;
-
-        const result = typeof state.output === "string"
-          ? state.output
-          : state.output != null
-          ? JSON.stringify(state.output, null, 2)
-          : undefined;
+        const filePath = toolFilePath(input);
+        const basename = filePath ? pathBasename(filePath) : undefined;
+        const title = toolTitle(tool, input, basename);
+        const content = toolContent(tool, input);
+        const result = toolResult(state);
+        const subagentType = tool === "task" || tool === "subtask" ? taskSubagentType(input) : undefined;
+        const description = tool === "task" || tool === "subtask" ? taskDescription(input) : undefined;
+        const prompt = tool === "task" || tool === "subtask" ? taskPrompt(input) : undefined;
 
         const status = state.status === "error" ? "error" : "complete";
 
-        steps.push({ id, title, tool, status, content, result, filename: basename, filePath: filename });
+        steps.push({
+          id,
+          title,
+          tool,
+          status,
+          content,
+          result,
+          filename: basename,
+          filePath,
+          subagentType,
+          taskDescription: description,
+          taskPrompt: prompt,
+        });
       } else if (type === "reasoning") {
         const text = (p.text as string | undefined) ?? "";
         if (text.trim()) {
@@ -58,6 +182,22 @@ function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
             steps.push({ id, title: "Working", tool: "commentary", status: "complete", content: text, result: text });
           }
         }
+      } else if (type === "subtask") {
+        const input = {
+          agent: p.agent,
+          description: p.description,
+          prompt: p.prompt,
+        } as Record<string, unknown>;
+        steps.push({
+          id,
+          title: toolTitle("subtask", input, undefined),
+          tool: "subtask",
+          status: "complete",
+          content: toolContent("subtask", input),
+          subagentType: taskSubagentType(input),
+          taskDescription: taskDescription(input),
+          taskPrompt: taskPrompt(input),
+        });
       }
     }
 
