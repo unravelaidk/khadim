@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::khadim_ai::env_api_keys::get_env_api_key;
-use crate::khadim_ai::oauth::get_openai_codex_api_key;
+use crate::khadim_ai::oauth::{get_openai_codex_api_key, has_openai_codex_auth_sync};
 use crate::khadim_ai::models::builtin_models;
 use crate::khadim_ai::providers::request_headers::build_codex_request_headers;
 use crate::db::Database;
@@ -610,6 +610,171 @@ pub fn configured_model_override(db: &Database, provider: &str, model_id: &str) 
         populate_runtime_secrets(config)?;
     }
     Ok(config)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderStatus {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub has_api_key: bool,
+    pub has_env_key: bool,
+    pub configured_models: u32,
+}
+
+pub fn provider_statuses(db: &Database) -> Result<Vec<ProviderStatus>, AppError> {
+    let configs = load_configs(db)?;
+    let providers = supported_providers();
+    let mut statuses = Vec::with_capacity(providers.len());
+
+    for provider in &providers {
+        let model_count = configs.iter().filter(|c| c.provider == provider.r#type).count() as u32;
+
+        let has_saved_key = get_saved_provider_api_key(&provider.r#type)
+            .ok()
+            .flatten()
+            .is_some();
+        let has_env_key = get_env_api_key(&provider.r#type).is_some();
+        let has_oauth_key = provider.r#type == "openai-codex"
+            && has_openai_codex_auth_sync().unwrap_or(false);
+        let has_key = has_saved_key || has_env_key || has_oauth_key;
+
+        let status = if model_count > 0 && has_key {
+            "active"
+        } else if has_key {
+            "configured"
+        } else if model_count > 0 {
+            "no_key"
+        } else {
+            "inactive"
+        };
+
+        statuses.push(ProviderStatus {
+            id: provider.r#type.clone(),
+            name: provider.name.clone(),
+            status: status.to_string(),
+            has_api_key: has_key,
+            has_env_key,
+            configured_models: model_count,
+        });
+    }
+
+    Ok(statuses)
+}
+
+pub fn save_provider_api_key(provider: &str, api_key: &str) -> Result<(), AppError> {
+    if api_key.trim().is_empty() {
+        return Err(AppError::invalid_input("API key cannot be empty"));
+    }
+    set_secret(&provider_key_name(provider), api_key)
+}
+
+pub fn delete_provider_api_key(provider: &str) -> Result<(), AppError> {
+    delete_secret(&provider_key_name(provider))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BulkModelEntry {
+    pub model_id: String,
+    pub model_name: String,
+}
+
+/// Create ModelConfig entries for a list of models belonging to a single provider.
+/// Skips models that already have a config for the same (provider, model) pair.
+/// The first model created becomes active+default if no configs exist yet.
+/// Returns the number of configs actually created.
+pub fn bulk_create_provider_models(
+    db: &Database,
+    provider: &str,
+    models: &[BulkModelEntry],
+) -> Result<u32, AppError> {
+    if models.is_empty() {
+        return Ok(0);
+    }
+    let mut configs = load_configs(db)?;
+    let has_provider_key = get_saved_provider_api_key(provider)?.is_some()
+        || get_env_api_key(provider).is_some();
+    let was_empty = configs.is_empty();
+    let mut created = 0u32;
+
+    for entry in models.iter() {
+        if entry.model_id.trim().is_empty() {
+            continue;
+        }
+        // Skip duplicates.
+        let already_exists = configs
+            .iter()
+            .any(|c| c.provider == provider && c.model == entry.model_id);
+        if already_exists {
+            continue;
+        }
+
+        let is_first = was_empty && created == 0;
+        let config = ModelConfig {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: entry.model_name.trim().to_string(),
+            provider: provider.to_string(),
+            model: entry.model_id.trim().to_string(),
+            api_key: None,
+            base_url: None,
+            temperature: None,
+            has_api_key: has_provider_key,
+            is_default: is_first,
+            is_active: is_first,
+        };
+
+        if is_first {
+            for existing in &mut configs {
+                existing.is_default = false;
+                existing.is_active = false;
+            }
+        }
+
+        configs.push(config);
+        created += 1;
+    }
+
+    if created > 0 {
+        save_configs(db, &configs)?;
+    }
+    Ok(created)
+}
+
+/// Remove all ModelConfig entries for a given provider.
+/// Returns the number of configs removed.
+pub fn remove_provider_models(db: &Database, provider: &str) -> Result<u32, AppError> {
+    let mut configs = load_configs(db)?;
+    let before = configs.len();
+    let removed_ids: Vec<String> = configs
+        .iter()
+        .filter(|c| c.provider == provider)
+        .map(|c| c.id.clone())
+        .collect();
+    configs.retain(|c| c.provider != provider);
+    let removed = (before - configs.len()) as u32;
+
+    // Clean up keyring entries for removed configs.
+    for id in &removed_ids {
+        let _ = delete_secret(&model_key_name(id));
+    }
+
+    // Reassign flags if needed.
+    if removed > 0 {
+        let has_default = configs.iter().any(|c| c.is_default);
+        let has_active = configs.iter().any(|c| c.is_active);
+        if !has_default {
+            if let Some(first) = configs.first_mut() {
+                first.is_default = true;
+            }
+        }
+        if !has_active {
+            if let Some(first) = configs.first_mut() {
+                first.is_active = true;
+            }
+        }
+        save_configs(db, &configs)?;
+    }
+    Ok(removed)
 }
 
 pub fn active_model_option(db: &Database) -> Result<Option<crate::khadim_ai::models::CatalogModelOption>, AppError> {

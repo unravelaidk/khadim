@@ -192,6 +192,17 @@ export interface KhadimProviderOption {
   needs_base_url: boolean;
 }
 
+export interface KhadimProviderStatus {
+  id: string;
+  name: string;
+  /** "active" | "configured" | "no_key" | "inactive" */
+  status: string;
+  has_api_key: boolean;
+  /** True when the key comes from an environment variable (read-only, not deletable). */
+  has_env_key: boolean;
+  configured_models: number;
+}
+
 export interface KhadimConfiguredModel {
   id: string;
   name: string;
@@ -218,6 +229,11 @@ export interface KhadimModelConfigInput {
 export interface KhadimDiscoveredModel {
   id: string;
   name: string;
+}
+
+export interface KhadimBulkModelEntry {
+  model_id: string;
+  model_name: string;
 }
 
 export interface KhadimCodexSession {
@@ -567,6 +583,27 @@ export const commands = {
 
   khadimListProviders: () =>
     invoke<KhadimProviderOption[]>("khadim_list_providers"),
+
+  khadimListProviderStatuses: () =>
+    invoke<KhadimProviderStatus[]>("khadim_list_provider_statuses"),
+
+  khadimSaveProviderApiKey: (provider: string, apiKey: string) =>
+    invoke<void>("khadim_save_provider_api_key", { provider, apiKey }),
+
+  khadimGetProviderApiKeyMasked: (provider: string) =>
+    invoke<string | null>("khadim_get_provider_api_key_masked", { provider }),
+
+  khadimGetProviderApiKey: (provider: string) =>
+    invoke<string | null>("khadim_get_provider_api_key", { provider }),
+
+  khadimDeleteProviderApiKey: (provider: string) =>
+    invoke<void>("khadim_delete_provider_api_key", { provider }),
+
+  khadimBulkCreateProviderModels: (provider: string, models: KhadimBulkModelEntry[]) =>
+    invoke<number>("khadim_bulk_create_provider_models", { provider, models }),
+
+  khadimRemoveProviderModels: (provider: string) =>
+    invoke<number>("khadim_remove_provider_models", { provider }),
 
   khadimDiscoverModels: (provider: string, apiKey?: string | null, baseUrl?: string | null) =>
     invoke<KhadimDiscoveredModel[]>("khadim_discover_models", { provider, apiKey, baseUrl }),
