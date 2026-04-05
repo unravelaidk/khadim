@@ -35,10 +35,10 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
       <div className="relative group my-2 -mx-1">
         <div className="overflow-x-auto rounded-2xl border border-[var(--glass-border)]" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="absolute top-0 right-0 flex items-center gap-2 px-3 py-1.5 text-[10px] z-10">
-            {language && <span className="text-gray-400 uppercase font-medium">{language}</span>}
+            {language && <span className="text-[var(--text-muted)] uppercase font-medium">{language}</span>}
             <button
               onClick={handleCopy}
-              className="text-gray-400 transition-colors hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
+              className="text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] sm:opacity-0 sm:group-hover:opacity-100"
               title="Copy code"
             >
               {copied ? (

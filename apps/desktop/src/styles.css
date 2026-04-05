@@ -53,7 +53,8 @@
   filter: invert(1);
 }
 
-[data-theme-mode="light"] .model-icon-mono {
+[data-theme-variant="light"] .model-icon-mono,
+[data-theme-variant="latte"] .model-icon-mono {
   filter: none;
 }
 
@@ -88,7 +89,7 @@ body {
 
 ::selection {
   background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 /* ─── Page Shell ────────────────────────────────────────────────────── */
@@ -96,6 +97,7 @@ body {
   position: relative;
   isolation: isolate;
   background: var(--surface-bg);
+  color: var(--text-primary);
 }
 
 .glass-page-shell::before {
@@ -184,7 +186,8 @@ body {
 }
 
 .btn-ink:hover {
-  background: #0a0a09;
+  background: var(--surface-ink-solid);
+  filter: brightness(0.85);
 }
 
 .btn-glass {

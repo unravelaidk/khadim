@@ -200,9 +200,38 @@ export default function App() {
     localStorage.setItem("khadim:themeFamily", next);
   }, []);
 
+  const prevDarkCatppuccinVariant = useRef<"mocha" | "macchiato" | "frappe">(
+    (["mocha", "macchiato", "frappe"] as const).includes(
+      (localStorage.getItem("khadim:catppuccinVariant") ?? "mocha") as "mocha" | "macchiato" | "frappe"
+    )
+      ? (localStorage.getItem("khadim:catppuccinVariant") as "mocha" | "macchiato" | "frappe")
+      : "mocha"
+  );
+
   const handleSetThemeMode = useCallback((next: "dark" | "light") => {
     setThemeMode(next);
     localStorage.setItem("khadim:themeMode", next);
+    // Sync catppuccin variant when toggling light/dark via the mode buttons
+    setThemeFamily((currentFamily) => {
+      if (currentFamily === "catppuccin") {
+        if (next === "light") {
+          // Remember the current dark variant before switching to latte
+          setCatppuccinVariant((prev) => {
+            if (prev !== "latte") {
+              prevDarkCatppuccinVariant.current = prev;
+            }
+            localStorage.setItem("khadim:catppuccinVariant", "latte");
+            return "latte";
+          });
+        } else {
+          // Restore the previous dark variant
+          const restored = prevDarkCatppuccinVariant.current;
+          setCatppuccinVariant(restored);
+          localStorage.setItem("khadim:catppuccinVariant", restored);
+        }
+      }
+      return currentFamily;
+    });
   }, []);
 
   const handleSetCatppuccinVariant = useCallback((next: "mocha" | "macchiato" | "frappe" | "latte") => {

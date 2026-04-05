@@ -97,7 +97,7 @@ function ProviderSelector({
               onClick={() => onSelect(provider.type)}
               className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all ${
                 isActive
-                  ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
+                   ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
               }`}
             >
@@ -152,12 +152,12 @@ function ConfiguredModelCard({
           </p>
           <div className="mt-1.5 flex gap-1.5">
             {model.is_active && (
-              <span className="rounded-full bg-[#10150a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
+              <span className="rounded-full bg-[var(--surface-ink-solid)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
                 Active
               </span>
             )}
             {model.is_default && (
-              <span className="rounded-full bg-[#10150a]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
+              <span className="rounded-full bg-[var(--surface-ink-solid)]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
                 Default
               </span>
             )}
@@ -575,7 +575,7 @@ export function ModelSettingsTab() {
             type="button"
             onClick={() => void submit()}
             disabled={saving || !form.model.trim() || !form.name.trim()}
-            className="rounded-xl bg-[#10150a] px-5 py-2.5 text-sm font-semibold text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[#1c2214] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-xl bg-[var(--surface-ink-solid)] px-5 py-2.5 text-sm font-semibold text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? "Saving..." : editingId ? "Update Model" : "Add Model"}
           </button>
