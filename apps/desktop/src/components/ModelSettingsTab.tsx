@@ -4,6 +4,7 @@ import type {
   KhadimCodexSession,
   KhadimCodexStatus,
   KhadimProviderOption,
+  KhadimProviderStatus,
   OpenCodeModelOption,
 } from "../lib/bindings";
 import { commands } from "../lib/bindings";
@@ -14,7 +15,6 @@ type FormState = {
   name: string;
   provider: string;
   model: string;
-  apiKey: string;
   baseUrl: string;
   temperature: string;
 };
@@ -26,7 +26,6 @@ const EMPTY_FORM: FormState = {
   name: "",
   provider: "openai",
   model: "",
-  apiKey: "",
   baseUrl: "",
   temperature: "0.2",
 };
@@ -123,19 +122,17 @@ function ProviderSelector({
 
 function ConfiguredModelCard({
   model,
-  onSetActive,
   onSetDefault,
   onEdit,
   onDelete,
 }: {
   model: KhadimConfiguredModel;
-  onSetActive: (id: string) => void;
   onSetDefault: (id: string) => void;
   onEdit: (model: KhadimConfiguredModel) => void;
   onDelete: (id: string) => void;
 }) {
   return (
-    <article className={`rounded-xl glass-panel p-4 transition-all ${model.is_active ? "ring-1 ring-[var(--color-accent)]" : ""}`}>
+    <article className="rounded-xl glass-panel p-4 transition-all">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -151,11 +148,6 @@ function ConfiguredModelCard({
             {model.provider} · {model.model}
           </p>
           <div className="mt-1.5 flex gap-1.5">
-            {model.is_active && (
-              <span className="rounded-full bg-[var(--surface-ink-solid)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
-                Active
-              </span>
-            )}
             {model.is_default && (
               <span className="rounded-full bg-[var(--surface-ink-solid)]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
                 Default
@@ -165,11 +157,6 @@ function ConfiguredModelCard({
         </div>
 
         <div className="flex flex-wrap gap-1.5 sm:shrink-0">
-          {!model.is_active && (
-            <button onClick={() => onSetActive(model.id)} type="button" className="rounded-lg btn-glass px-2.5 py-1.5 text-xs font-medium">
-              Activate
-            </button>
-          )}
           {!model.is_default && (
             <button onClick={() => onSetDefault(model.id)} type="button" className="rounded-lg btn-glass px-2.5 py-1.5 text-xs font-medium">
               Default
@@ -187,8 +174,9 @@ function ConfiguredModelCard({
   );
 }
 
-export function ModelSettingsTab() {
+export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => void }) {
   const [providers, setProviders] = useState<KhadimProviderOption[]>([]);
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, KhadimProviderStatus>>({});
   const [models, setModels] = useState<KhadimConfiguredModel[]>([]);
   const [activeModelName, setActiveModelName] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -198,8 +186,6 @@ export function ModelSettingsTab() {
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [existingApiKey, setExistingApiKey] = useState(false);
   const [codexConnected, setCodexConnected] = useState(false);
   const [codexConnecting, setCodexConnecting] = useState(false);
   const [codexSession, setCodexSession] = useState<KhadimCodexSession | null>(null);
@@ -212,17 +198,21 @@ export function ModelSettingsTab() {
   );
 
   const providerModelOptions = useMemo(() => discoveredModels, [discoveredModels]);
+  const providerStatus = providerStatuses[form.provider] ?? null;
+  const providerHasCredentials = providerStatus?.has_api_key ?? false;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [providers, models, activeModel, codexConnected] = await Promise.all([
+      const [providers, providerStatuses, models, activeModel, codexConnected] = await Promise.all([
         commands.khadimListProviders(),
+        commands.khadimListProviderStatuses(),
         commands.khadimListModelConfigs(),
         commands.khadimActiveModel(),
         commands.khadimCodexAuthConnected(),
       ]);
       setProviders(providers);
+      setProviderStatuses(Object.fromEntries(providerStatuses.map((provider) => [provider.id, provider])));
       setModels(models);
       setActiveModelName(activeModel?.model_name ?? null);
       setCodexConnected(codexConnected);
@@ -264,12 +254,12 @@ export function ModelSettingsTab() {
   useEffect(() => {
     setDiscoverError(null);
     setDiscoveredModels([]);
-    const canDiscover = form.apiKey.trim().length > 0 || existingApiKey || DISCOVERY_WITHOUT_API_KEY.has(form.provider);
+    const canDiscover = providerHasCredentials || DISCOVERY_WITHOUT_API_KEY.has(form.provider);
     if (!canDiscover) return;
     const timeout = window.setTimeout(() => {
       setDiscovering(true);
       void commands
-        .khadimDiscoverModels(form.provider, form.apiKey, form.baseUrl || null)
+        .khadimDiscoverModels(form.provider, null, form.baseUrl || null)
         .then((discovered) => {
           setDiscoveredModels(
             discovered.map((model) =>
@@ -286,13 +276,7 @@ export function ModelSettingsTab() {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [existingApiKey, form.provider, form.apiKey, form.baseUrl, providerInfo?.name]);
-
-  useEffect(() => {
-    if (editingId) return;
-    const providerConfig = models.find((model) => model.provider === form.provider && model.has_api_key);
-    setExistingApiKey(Boolean(providerConfig));
-  }, [editingId, form.provider, models]);
+  }, [form.provider, form.baseUrl, providerHasCredentials, providerInfo?.name]);
 
   const handleSelectModel = useCallback(
     (modelKey: string) => {
@@ -312,7 +296,6 @@ export function ModelSettingsTab() {
     setForm({ ...EMPTY_FORM, provider: providers[0]?.type ?? "openai" });
     setDiscoveredModels([]);
     setDiscoverError(null);
-    setExistingApiKey(false);
   }, [providers]);
 
   const submit = useCallback(async () => {
@@ -323,7 +306,7 @@ export function ModelSettingsTab() {
         name: form.name,
         provider: form.provider,
         model: form.model,
-        api_key: form.apiKey || null,
+        api_key: null,
         base_url: form.baseUrl || null,
         temperature: form.temperature || null,
         is_default: editingId ? false : null,
@@ -347,27 +330,25 @@ export function ModelSettingsTab() {
         name: model.name,
         provider: model.provider,
         model: model.model,
-        apiKey: "",
-      baseUrl: model.base_url ?? "",
-      temperature: model.temperature ?? "0.2",
-    });
+        baseUrl: model.base_url ?? "",
+        temperature: model.temperature ?? "0.2",
+      });
       setDiscoveredModels([]);
       setDiscoverError(null);
-      setExistingApiKey(model.has_api_key);
   }, []);
 
-  const activeModel = models.find((model) => model.is_active);
+  const defaultModel = models.find((model) => model.is_default);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <div className="rounded-2xl glass-card-static p-5">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">Model Settings</h2>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">Configure AI providers and models for your desktop agent.</p>
-        {activeModel && (
+        {defaultModel && (
           <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl glass-panel px-3 py-2 text-xs">
-            <span className="text-[var(--text-muted)]">Currently using:</span>
-            <span className="font-medium text-[var(--text-primary)]">{activeModel.name}</span>
-            <span className="text-[var(--text-muted)]">({activeModel.provider} / {activeModel.model})</span>
+            <span className="text-[var(--text-muted)]">Default model:</span>
+            <span className="font-medium text-[var(--text-primary)]">{defaultModel.name}</span>
+            <span className="text-[var(--text-muted)]">({defaultModel.provider} / {defaultModel.model})</span>
           </div>
         )}
       </div>
@@ -375,8 +356,8 @@ export function ModelSettingsTab() {
       <div className="rounded-2xl glass-card-static p-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
-            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">Pick a provider, enter credentials, and select a model.</p>
+             <h3 className="text-base font-semibold text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
+            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">Pick a provider and select a model. Provider credentials are managed in the Providers tab.</p>
           </div>
         </div>
 
@@ -473,38 +454,22 @@ export function ModelSettingsTab() {
             </div>
           )}
 
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
-              API Key {form.provider === "openai-codex" ? "(optional if connected)" : ""}
-            </label>
-            <div className="relative">
-              <input
-                type={showApiKey ? "text" : "password"}
-                value={form.apiKey}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setForm((prev) => ({ ...prev, apiKey: value }));
-                  if (value.trim().length > 0) {
-                    setExistingApiKey(true);
-                  }
-                }}
-                className={`${inputClass} pr-10`}
-                placeholder={existingApiKey ? "Saved key available" : "sk-..."}
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey((value) => !value)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                {showApiKey ? "Hide" : "Show"}
-              </button>
+          {!providerHasCredentials && (
+            <div className="rounded-xl glass-panel px-3.5 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Add your {providerInfo?.name ?? form.provider} credentials in the Providers tab before selecting a model here.
+                </p>
+                <button
+                  type="button"
+                  onClick={onOpenProviders}
+                  className="rounded-lg btn-glass px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+                >
+                  Go to Providers
+                </button>
+              </div>
             </div>
-            {existingApiKey && !form.apiKey.trim() && (
-              <p className="mt-1.5 text-xs text-[var(--text-muted)]">
-                A saved API key will be reused for this provider unless you enter a replacement.
-              </p>
-            )}
-          </div>
+          )}
 
           {providerInfo?.needs_base_url && (
             <div>
@@ -532,10 +497,9 @@ export function ModelSettingsTab() {
             {discoverError && <p className="mt-1.5 text-xs text-red-400">{discoverError}</p>}
             {!discovering && !discoverError && providerModelOptions.length === 0 && (
               <p className="mt-1.5 text-xs text-[var(--text-muted)]">
-                {form.apiKey.trim().length > 0 || DISCOVERY_WITHOUT_API_KEY.has(form.provider)
-                  || existingApiKey
+                {providerHasCredentials || DISCOVERY_WITHOUT_API_KEY.has(form.provider)
                   ? "No models found for this provider."
-                  : "Enter API key to browse models."}
+                  : "Add provider credentials in the Providers tab to browse models."}
               </p>
             )}
           </div>
@@ -594,7 +558,6 @@ export function ModelSettingsTab() {
               <ConfiguredModelCard
                 key={model.id}
                 model={model}
-                onSetActive={(id) => void commands.khadimSetActiveModelConfig(id).then(refresh)}
                 onSetDefault={(id) => void commands.khadimSetDefaultModelConfig(id).then(refresh)}
                 onEdit={editModel}
                 onDelete={(id) => void commands.khadimDeleteModelConfig(id).then(async () => {
@@ -606,7 +569,7 @@ export function ModelSettingsTab() {
           </div>
         )}
         {activeModelName && (
-          <p className="mt-4 text-xs text-[var(--text-muted)]">Active desktop default: {activeModelName}</p>
+          <p className="mt-4 text-xs text-[var(--text-muted)]">Desktop default: {activeModelName}</p>
         )}
       </div>
     </div>

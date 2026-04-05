@@ -305,6 +305,10 @@ pub async fn has_openai_codex_auth() -> Result<bool, AppError> {
     Ok(read_auth_file()?.contains_key("openai-codex"))
 }
 
+pub fn has_openai_codex_auth_sync() -> Result<bool, AppError> {
+    Ok(read_auth_file()?.contains_key("openai-codex"))
+}
+
 pub async fn get_openai_codex_api_key() -> Result<String, AppError> {
     if let Ok(api_key) = std::env::var("OPENAI_CODEX_TOKEN") {
         if !api_key.trim().is_empty() {

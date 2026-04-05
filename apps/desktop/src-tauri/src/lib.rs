@@ -14,7 +14,7 @@ mod process;
 use db::{ChatMessage, Conversation, Database, Workspace};
 use error::AppError;
 use khadim_agent::KhadimManager;
-use khadim_ai::model_settings::{DiscoveredProviderModel, ModelConfig, ModelConfigInput, ProviderOption};
+use khadim_ai::model_settings::{BulkModelEntry, DiscoveredProviderModel, ModelConfig, ModelConfigInput, ProviderOption, ProviderStatus};
 use khadim_ai::models::CatalogModelOption;
 use khadim_ai::oauth::{CodexLoginStatusResponse, CodexSessionInfo};
 use khadim_ai::types::ModelSelection;
@@ -121,6 +121,21 @@ fn extract_assistant_message(
         content,
         serde_json::to_string(message).ok().filter(|value| !value.is_empty()),
     ))
+}
+
+/// Mask an API key, showing only the first 4 and last 4 characters.
+fn mask_api_key(key: &str) -> String {
+    let len = key.len();
+    if len <= 8 {
+        "*".repeat(len)
+    } else {
+        format!(
+            "{}{}{}",
+            &key[..4],
+            "*".repeat(len - 8),
+            &key[len - 4..],
+        )
+    }
 }
 
 async fn fetch_assistant_message_with_retry(
@@ -976,6 +991,49 @@ fn khadim_list_providers() -> Vec<ProviderOption> {
 }
 
 #[tauri::command]
+fn khadim_list_provider_statuses(state: State<'_, Arc<AppState>>) -> Result<Vec<ProviderStatus>, AppError> {
+    khadim_ai::model_settings::provider_statuses(&state.db)
+}
+
+#[tauri::command]
+fn khadim_save_provider_api_key(provider: String, api_key: String) -> Result<(), AppError> {
+    khadim_ai::model_settings::save_provider_api_key(&provider, &api_key)
+}
+
+#[tauri::command]
+fn khadim_get_provider_api_key_masked(provider: String) -> Result<Option<String>, AppError> {
+    let key = khadim_ai::model_settings::saved_provider_api_key(&provider)?;
+    Ok(key.map(|k| mask_api_key(&k)))
+}
+
+#[tauri::command]
+fn khadim_get_provider_api_key(provider: String) -> Result<Option<String>, AppError> {
+    khadim_ai::model_settings::saved_provider_api_key(&provider)
+}
+
+#[tauri::command]
+fn khadim_delete_provider_api_key(provider: String) -> Result<(), AppError> {
+    khadim_ai::model_settings::delete_provider_api_key(&provider)
+}
+
+#[tauri::command]
+fn khadim_bulk_create_provider_models(
+    state: State<'_, Arc<AppState>>,
+    provider: String,
+    models: Vec<BulkModelEntry>,
+) -> Result<u32, AppError> {
+    khadim_ai::model_settings::bulk_create_provider_models(&state.db, &provider, &models)
+}
+
+#[tauri::command]
+fn khadim_remove_provider_models(
+    state: State<'_, Arc<AppState>>,
+    provider: String,
+) -> Result<u32, AppError> {
+    khadim_ai::model_settings::remove_provider_models(&state.db, &provider)
+}
+
+#[tauri::command]
 async fn khadim_discover_models(
     provider: String,
     api_key: Option<String>,
@@ -1323,6 +1381,13 @@ pub fn run() {
             khadim_list_models,
             khadim_list_model_configs,
             khadim_list_providers,
+            khadim_list_provider_statuses,
+            khadim_save_provider_api_key,
+            khadim_get_provider_api_key_masked,
+            khadim_get_provider_api_key,
+            khadim_delete_provider_api_key,
+            khadim_bulk_create_provider_models,
+            khadim_remove_provider_models,
             khadim_discover_models,
             khadim_create_model_config,
             khadim_update_model_config,
