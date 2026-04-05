@@ -1554,15 +1554,47 @@ export default function App() {
     if (!sessionId) return;
     try {
       await commands.khadimAbort(sessionId);
-      setChatIsProcessing(false);
-      setChatStreamingContent("");
-      setChatStreamingSteps([]);
-      chatStreamingContentRef.current = "";
-      chatStreamingStepsRef.current = [];
-      chatErroredSessionsRef.current.delete(sessionId);
-    } catch (err) {
-      setError(getErrorMessage(err));
+    } catch {
+      // Abort may fail if the run already finished — ignore and still reset UI state.
     }
+
+    // Save any partial streaming content as an assistant message
+    const convId = chatActiveConvIdRef.current;
+    const partialContent = chatStreamingContentRef.current;
+    const partialSteps = finalizeSteps(chatStreamingStepsRef.current);
+
+    if (convId && (partialContent || partialSteps.length > 0)) {
+      const assistantMsg = createLocalMessage("assistant", partialContent || "(aborted)");
+      (assistantMsg as LocalChatMessage).thinkingSteps = partialSteps;
+      setChatConversations((convs) =>
+        convs.map((c) => {
+          if (c.id !== convId) return c;
+          return {
+            ...c,
+            messages: [...c.messages, assistantMsg],
+            isProcessing: false,
+            streamingContent: "",
+            streamingSteps: [],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      );
+    } else if (convId) {
+      setChatConversations((convs) =>
+        convs.map((c) =>
+          c.id === convId
+            ? { ...c, isProcessing: false, streamingContent: "", streamingSteps: [] }
+            : c,
+        ),
+      );
+    }
+
+    setChatIsProcessing(false);
+    setChatStreamingContent("");
+    setChatStreamingSteps([]);
+    chatStreamingContentRef.current = "";
+    chatStreamingStepsRef.current = [];
+    chatErroredSessionsRef.current.delete(sessionId);
   }, []);
 
   const handleChatSelectModel = useCallback(async (modelKey: string) => {
