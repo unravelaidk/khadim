@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { commands, type Conversation, type GitHubAuthStatus, type OpenCodeConnection, type ProcessOutput, type RepoSlug, type Workspace } from "../lib/bindings";
+import { memo, useEffect, useMemo, useState } from "react";
+import { type Conversation, type GitHubAuthStatus, type OpenCodeConnection, type ProcessOutput, type RepoSlug, type Workspace } from "../lib/bindings";
+import { useGitBranches } from "../hooks/useGitBranches";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
 import { GlassSelect } from "./GlassSelect";
@@ -63,30 +64,21 @@ export function WorkspaceView({
   onGitHubSlugChange,
 }: WorkspaceViewProps) {
   const [tab, setTab] = useState<Tab>("overview");
-  const [branchOptions, setBranchOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [branchDraft, setBranchDraft] = useState(workspace.branch ?? "");
   const [branchBusy, setBranchBusy] = useState(false);
   const runningCount = agents.filter((a) => a.status === "running").length;
+  const { localBranches } = useGitBranches(workspace.repo_path, true);
+  const branchOptions = useMemo(
+    () => localBranches.map((branch) => ({
+      value: branch.name,
+      label: `${branch.name}${branch.is_current ? " (current)" : ""}`,
+    })),
+    [localBranches],
+  );
 
   useEffect(() => {
     setBranchDraft(workspace.branch ?? "");
   }, [workspace.branch, workspace.id]);
-
-  useEffect(() => {
-    let alive = true;
-    void commands.gitListBranches(workspace.repo_path)
-      .then((branches) => {
-        if (!alive) return;
-        setBranchOptions(branches.filter((branch) => !branch.is_remote).map((branch) => ({
-          value: branch.name,
-          label: `${branch.name}${branch.is_current ? " (current)" : ""}`,
-        })));
-      })
-      .catch(() => {
-        if (alive) setBranchOptions([]);
-      });
-    return () => { alive = false; };
-  }, [workspace.repo_path]);
 
   async function handleBranchChange(nextBranch: string) {
     setBranchDraft(nextBranch);
@@ -267,70 +259,9 @@ export function WorkspaceView({
 
         {tab === "agents" && (
           <div className="space-y-3">
-            {agents.map((agent) => {
-              return (
-                <div
-                  key={agent.id}
-                  className="rounded-2xl glass-card p-4 transition-all duration-200 hover:shadow-[var(--shadow-glass-sm)]"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">
-                        {agent.label}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[10px] ${agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"} truncate`}>
-                          {agent.status === "running" && agent.currentActivity ? agent.currentActivity : agent.status === "running" ? "Working..." : agent.status === "complete" ? "Done" : agent.status === "error" ? (agent.errorMessage ?? "Error") : "Idle"}
-                        </span>
-                        {agent.branch && (
-                          <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                            {agent.branch}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => onFocusAgent(agent.id)}
-                        className="h-7 px-2.5 rounded-xl btn-glass text-[10px] font-semibold"
-                      >
-                        Chat
-                      </button>
-                      <button
-                        onClick={() => onManageAgent(agent.id)}
-                        className="h-7 w-7 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
-                        title="Agent settings"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Status / activity line */}
-                  <p className={`text-[10px] mt-2 ml-12 truncate ${
-                    agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"
-                  }`}>
-                    {statusText(agent)}
-                  </p>
-
-                  {agent.worktreePath && (
-                    <p className="text-[10px] font-mono text-[var(--text-muted)] opacity-75 mt-1 ml-12 truncate">
-                      {agent.worktreePath}
-                    </p>
-                  )}
-
-                  {/* Elapsed time for running agents */}
-                  {agent.status === "running" && agent.startedAt && (
-                    <p className="text-[9px] text-[var(--text-muted)] mt-1 ml-12 tabular-nums">
-                      Started {relTime(agent.startedAt)}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+            {agents.map((agent) => (
+              <AgentListRow key={agent.id} agent={agent} onFocusAgent={onFocusAgent} onManageAgent={onManageAgent} />
+            ))}
 
             {/* Conversation list as secondary section */}
             {conversations.length > 0 && (
@@ -339,23 +270,7 @@ export function WorkspaceView({
                   Conversations
                 </h3>
                 {conversations.map((conversation) => (
-                  <button
-                    key={conversation.id}
-                    onClick={() => onSelectConversation(conversation.id)}
-                    className="w-full rounded-2xl glass-card p-3 text-left mb-1.5"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[12px] font-semibold text-[var(--text-primary)]">
-                          {conversation.title ?? "Untitled conversation"}
-                        </p>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                          {backendLabel(conversation.backend)}{conversation.is_active ? " · active" : ""}
-                        </p>
-                      </div>
-                      <span className="text-[10px] text-[var(--text-muted)]">{relTime(conversation.updated_at)}</span>
-                    </div>
-                  </button>
+                  <ConversationRow key={conversation.id} conversation={conversation} onSelectConversation={onSelectConversation} />
                 ))}
               </div>
             )}
@@ -412,3 +327,67 @@ export function WorkspaceView({
     </div>
   );
 }
+
+const AgentListRow = memo(function AgentListRow({
+  agent,
+  onFocusAgent,
+  onManageAgent,
+}: {
+  agent: AgentInstance;
+  onFocusAgent: (id: string) => void;
+  onManageAgent: (id: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl glass-card p-4 transition-all duration-200 hover:shadow-[var(--shadow-glass-sm)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{agent.label}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className={`text-[10px] ${agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"} truncate`}>
+              {agent.status === "running" && agent.currentActivity ? agent.currentActivity : agent.status === "running" ? "Working..." : agent.status === "complete" ? "Done" : agent.status === "error" ? (agent.errorMessage ?? "Error") : "Idle"}
+            </span>
+            {agent.branch && <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">{agent.branch}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button onClick={() => onFocusAgent(agent.id)} className="h-7 px-2.5 rounded-xl btn-glass text-[10px] font-semibold">Chat</button>
+          <button onClick={() => onManageAgent(agent.id)} className="h-7 w-7 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors" title="Agent settings">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <p className={`text-[10px] mt-2 ml-12 truncate ${agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"}`}>
+        {statusText(agent)}
+      </p>
+
+      {agent.worktreePath && <p className="text-[10px] font-mono text-[var(--text-muted)] opacity-75 mt-1 ml-12 truncate">{agent.worktreePath}</p>}
+      {agent.status === "running" && agent.startedAt && <p className="text-[9px] text-[var(--text-muted)] mt-1 ml-12 tabular-nums">Started {relTime(agent.startedAt)}</p>}
+    </div>
+  );
+});
+
+const ConversationRow = memo(function ConversationRow({
+  conversation,
+  onSelectConversation,
+}: {
+  conversation: Conversation;
+  onSelectConversation: (id: string) => void;
+}) {
+  return (
+    <button onClick={() => onSelectConversation(conversation.id)} className="w-full rounded-2xl glass-card p-3 text-left mb-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-semibold text-[var(--text-primary)]">{conversation.title ?? "Untitled conversation"}</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+            {backendLabel(conversation.backend)}{conversation.is_active ? " · active" : ""}
+          </p>
+        </div>
+        <span className="text-[10px] text-[var(--text-muted)]">{relTime(conversation.updated_at)}</span>
+      </div>
+    </button>
+  );
+});

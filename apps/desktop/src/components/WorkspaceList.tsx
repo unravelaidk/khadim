@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { Workspace } from "../lib/bindings";
 import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
 
@@ -31,74 +31,15 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
         {/* Grid */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {/* Workspace cards */}
-          {workspaces.map((ws) => (
-            <div
-              key={ws.id}
-              className="group relative text-left rounded-3xl glass-card p-4 flex flex-col cursor-pointer"
-              onClick={() => onSelect(ws.id)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(ws.id); }}
-              tabIndex={0}
-              role="button"
-            >
-              {/* Delete button — top-right, visible on hover */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirmDeleteId === ws.id) {
-                    onDelete(ws.id);
-                    setConfirmDeleteId(null);
-                  } else {
-                    setConfirmDeleteId(ws.id);
-                  }
-                }}
-                onBlur={() => setConfirmDeleteId((prev) => (prev === ws.id ? null : prev))}
-                className={`absolute top-2.5 right-2.5 z-10 rounded-xl px-2 py-1 text-[10px] font-semibold transition-all duration-150 ${
-                  confirmDeleteId === ws.id
-                    ? "bg-[var(--color-danger-muted)] text-[var(--color-danger)] border border-[var(--color-danger-border)] opacity-100"
-                    : "opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)] border border-transparent"
-                }`}
-                title={confirmDeleteId === ws.id ? "Click again to confirm" : "Delete workspace"}
-              >
-                {confirmDeleteId === ws.id ? (
-                  "Delete?"
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                )}
-              </button>
-
-              <div className="flex items-center justify-between mb-3 gap-3">
-                <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-bold"
-                  style={{
-                    background: "var(--color-accent-subtle)",
-                    border: "1px solid var(--glass-border)",
-                  }}
-                >
-                  {ws.name.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
-                  {relTime(ws.updated_at)}
-                </span>
-              </div>
-              <h3 className="text-[14px] font-bold text-[var(--text-primary)] leading-snug truncate mb-1">
-                {ws.name}
-              </h3>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                {backendLabel(ws.backend)} · {executionTargetLabel(ws.execution_target)}
-              </p>
-              {ws.branch && (
-                <p className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
-                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0a3 3 0 103 3H6m0-3h12a3 3 0 003-3V6a3 3 0 00-3-3H9a3 3 0 00-3 3v6z" />
-                  </svg>
-                  <span className="truncate">{ws.branch}</span>
-                </p>
-              )}
-              <p className="text-[10px] text-[var(--text-muted)] mt-auto pt-3 truncate font-mono opacity-80">
-                {ws.worktree_path ?? ws.repo_path}
-              </p>
-            </div>
+          {workspaces.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.id}
+              workspace={workspace}
+              confirmDelete={confirmDeleteId === workspace.id}
+              onSelect={onSelect}
+              onDelete={onDelete}
+              onConfirmDeleteChange={setConfirmDeleteId}
+            />
           ))}
 
           {/* + New workspace card */}
@@ -146,3 +87,70 @@ export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: P
     </div>
   );
 }
+
+const WorkspaceCard = memo(function WorkspaceCard({
+  workspace,
+  confirmDelete,
+  onSelect,
+  onDelete,
+  onConfirmDeleteChange,
+}: {
+  workspace: Workspace;
+  confirmDelete: boolean;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onConfirmDeleteChange: (id: string | null) => void;
+}) {
+  return (
+    <div
+      className="group relative text-left rounded-3xl glass-card p-4 flex flex-col cursor-pointer"
+      onClick={() => onSelect(workspace.id)}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(workspace.id); }}
+      tabIndex={0}
+      role="button"
+    >
+      <button
+        onClick={(event) => {
+          event.stopPropagation();
+          if (confirmDelete) {
+            onDelete(workspace.id);
+            onConfirmDeleteChange(null);
+          } else {
+            onConfirmDeleteChange(workspace.id);
+          }
+        }}
+        onBlur={() => onConfirmDeleteChange(confirmDelete ? null : workspace.id)}
+        className={`absolute top-2.5 right-2.5 z-10 rounded-xl px-2 py-1 text-[10px] font-semibold transition-all duration-150 ${
+          confirmDelete
+            ? "bg-[var(--color-danger-muted)] text-[var(--color-danger)] border border-[var(--color-danger-border)] opacity-100"
+            : "opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)] border border-transparent"
+        }`}
+        title={confirmDelete ? "Click again to confirm" : "Delete workspace"}
+      >
+        {confirmDelete ? "Delete?" : (
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        )}
+      </button>
+
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-bold" style={{ background: "var(--color-accent-subtle)", border: "1px solid var(--glass-border)" }}>
+          {workspace.name.charAt(0).toUpperCase()}
+        </div>
+        <span className="text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">{relTime(workspace.updated_at)}</span>
+      </div>
+      <h3 className="text-[14px] font-bold text-[var(--text-primary)] leading-snug truncate mb-1">{workspace.name}</h3>
+      <p className="text-[11px] text-[var(--text-muted)]">{backendLabel(workspace.backend)} · {executionTargetLabel(workspace.execution_target)}</p>
+      {workspace.branch && (
+        <p className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
+          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0a3 3 0 103 3H6m0-3h12a3 3 0 003-3V6a3 3 0 00-3-3H9a3 3 0 00-3 3v6z" />
+          </svg>
+          <span className="truncate">{workspace.branch}</span>
+        </p>
+      )}
+      <p className="text-[10px] text-[var(--text-muted)] mt-auto pt-3 truncate font-mono opacity-80">{workspace.worktree_path ?? workspace.repo_path}</p>
+    </div>
+  );
+});
