@@ -285,10 +285,9 @@ impl SkillManager {
             .unwrap_or(true) // enabled by default
     }
 
-    // ── Skill tool support ───────────────────────────────────────────
+    // ── Prompt & tool integration ─────────────────────────────────
 
-    /// Return lightweight summaries of enabled skills for the prompt.
-    /// Just (id, name, description) — the agent reads full content via the tool.
+    /// Return lightweight summaries of enabled skills.
     pub fn active_skill_summaries(&self) -> Vec<(String, String, String)> {
         let skills = self.skills.read().unwrap();
         let mut results = Vec::new();
@@ -308,13 +307,57 @@ impl SkillManager {
         results
     }
 
-    /// Resolve a skill id to its directory, if it's enabled.
-    pub fn resolve_skill_dir(&self, skill_id: &str) -> Option<PathBuf> {
+    /// Get the absolute directory paths of all enabled skills.
+    /// Used by the read tool to whitelist access.
+    pub fn enabled_skill_dirs(&self) -> Vec<PathBuf> {
         let skills = self.skills.read().unwrap();
         skills
-            .get(skill_id)
+            .values()
             .filter(|s| s.enabled)
             .map(|s| PathBuf::from(&s.dir))
+            .collect()
+    }
+
+    /// Build the skills section for the system prompt, pi-style.
+    /// Lists name, description, and absolute SKILL.md location so the
+    /// agent can use the regular `read` tool to load skill content.
+    pub fn build_prompt_section(&self) -> String {
+        let skills = self.skills.read().unwrap();
+        let visible: Vec<_> = skills.values().filter(|s| s.enabled).collect();
+        if visible.is_empty() {
+            return String::new();
+        }
+
+        let mut lines = vec![
+            String::new(),
+            String::new(),
+            "The following skills provide specialized instructions for specific tasks.".into(),
+            "Use the read tool to load a skill's file when the task matches its description.".into(),
+            "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md) and use that absolute path in tool commands.".into(),
+            String::new(),
+            "<available_skills>".into(),
+        ];
+
+        let mut sorted: Vec<_> = visible.into_iter().collect();
+        sorted.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+        for skill in sorted {
+            let skill_md = PathBuf::from(&skill.dir).join("SKILL.md");
+            lines.push("  <skill>".into());
+            lines.push(format!("    <name>{}</name>", xml_escape(&skill.name)));
+            lines.push(format!(
+                "    <description>{}</description>",
+                xml_escape(&skill.description)
+            ));
+            lines.push(format!(
+                "    <location>{}</location>",
+                xml_escape(&skill_md.to_string_lossy())
+            ));
+            lines.push("  </skill>".into());
+        }
+
+        lines.push("</available_skills>".into());
+        lines.join("\n")
     }
 }
 
@@ -327,4 +370,12 @@ fn default_skills_dir() -> String {
         .join("skills")
         .to_string_lossy()
         .to_string()
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }

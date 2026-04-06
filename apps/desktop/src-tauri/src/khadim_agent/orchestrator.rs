@@ -117,19 +117,15 @@ pub async fn run_prompt_with_plugins(
         .map(|pm| crate::plugins::collect_plugin_tools(pm))
         .unwrap_or_default();
 
-    let skill_tools: Vec<Arc<dyn Tool>> = skill_manager
-        .map(|sm| {
-            vec![Arc::new(crate::skills::tool::SkillReadTool::new(Arc::clone(sm))) as Arc<dyn Tool>]
-        })
+    // Collect skill dirs for the read tool whitelist and the prompt section
+    let (skill_dirs, skills_prompt) = skill_manager
+        .map(|sm| (sm.enabled_skill_dirs(), sm.build_prompt_section()))
         .unwrap_or_default();
 
-    let mut extra_tools = plugin_tools;
-    extra_tools.extend(skill_tools);
-
-    let runtime = if extra_tools.is_empty() {
+    let runtime = if plugin_tools.is_empty() && skill_dirs.is_empty() && skills_prompt.is_empty() {
         AgentRuntime::new(&session.cwd)
     } else {
-        AgentRuntime::with_plugin_tools(&session.cwd, extra_tools)
+        AgentRuntime::with_extras(&session.cwd, plugin_tools, skill_dirs, skills_prompt)
     };
     let mode = if session.workspace_id == "__chat__" {
         chat_mode()

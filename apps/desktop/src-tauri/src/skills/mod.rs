@@ -6,6 +6,5 @@
 //! `~/.agents/skills`) and toggle individual skills on/off.
 
 pub mod scanner;
-pub mod tool;
 
 pub use scanner::{SkillEntry, SkillManager};
