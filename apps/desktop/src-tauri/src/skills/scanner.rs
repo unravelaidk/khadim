@@ -307,15 +307,32 @@ impl SkillManager {
         results
     }
 
-    /// Get the absolute directory paths of all enabled skills.
-    /// Used by the read tool to whitelist access.
+    /// Get directories the read tool is allowed to access.
+    /// Includes both individual skill directories AND their parent scan directories.
     pub fn enabled_skill_dirs(&self) -> Vec<PathBuf> {
         let skills = self.skills.read().unwrap();
-        skills
-            .values()
-            .filter(|s| s.enabled)
-            .map(|s| PathBuf::from(&s.dir))
-            .collect()
+        let mut dirs: Vec<PathBuf> = Vec::new();
+
+        for skill in skills.values() {
+            if !skill.enabled {
+                continue;
+            }
+            let skill_dir = PathBuf::from(&skill.dir);
+            // Add the skill dir itself
+            if !dirs.contains(&skill_dir) {
+                dirs.push(skill_dir);
+            }
+        }
+
+        // Also add the scan directories so the agent can list them
+        for scan_dir in self.list_dirs() {
+            let p = PathBuf::from(&scan_dir);
+            if !dirs.contains(&p) {
+                dirs.push(p);
+            }
+        }
+
+        dirs
     }
 
     /// Build the skills section for the system prompt, pi-style.
