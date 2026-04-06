@@ -96,6 +96,64 @@ fn emit_tool_step_complete(
     });
 }
 
+/// Try to repair truncated JSON from models that hit output token limits.
+/// Handles common cases like `{"path":"foo.html","content":"<div>...` (unclosed string/object).
+fn try_repair_json(raw: &str) -> Option<Value> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // If it already parses, nothing to repair
+    if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
+        return Some(v);
+    }
+    // Try appending closing chars for truncated JSON objects
+    // Count unclosed braces/brackets and unterminated strings
+    let mut in_string = false;
+    let mut escape = false;
+    let mut brace_depth: i32 = 0;
+    let mut bracket_depth: i32 = 0;
+    for ch in trimmed.chars() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if ch == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if !in_string {
+            match ch {
+                '{' => brace_depth += 1,
+                '}' => brace_depth -= 1,
+                '[' => bracket_depth += 1,
+                ']' => bracket_depth -= 1,
+                _ => {}
+            }
+        }
+    }
+    let mut repaired = trimmed.to_string();
+    // Close unterminated string
+    if in_string {
+        repaired.push('"');
+    }
+    // Close brackets then braces
+    for _ in 0..bracket_depth {
+        repaired.push(']');
+    }
+    for _ in 0..brace_depth {
+        repaired.push('}');
+    }
+    serde_json::from_str::<Value>(&repaired).ok().or_else(|| {
+        log::debug!("JSON repair also failed for: {:?}", &repaired[..repaired.len().min(200)]);
+        None
+    })
+}
+
 pub async fn run_prompt(
     session: &mut KhadimSession,
     prompt: &str,
@@ -166,7 +224,7 @@ pub async fn run_prompt_with_plugins(
         })),
     });
 
-    for turn_index in 0..12 {
+    for turn_index in 0..30 {
         let context = Context {
             messages: session.messages.clone(),
             tools: runtime
@@ -336,8 +394,19 @@ pub async fn run_prompt_with_plugins(
 
             for tool_call in reply.tool_calls {
                 let step_id = tool_call.id.clone();
-                let args = serde_json::from_str::<Value>(&tool_call.function.arguments)
-                    .unwrap_or_else(|_| json!({}));
+                let raw_args = &tool_call.function.arguments;
+                let args = serde_json::from_str::<Value>(raw_args)
+                    .unwrap_or_else(|err| {
+                        log::warn!(
+                            "Failed to parse tool call arguments for '{}': {} (raw len={}, preview={:?})",
+                            tool_call.function.name,
+                            err,
+                            raw_args.len(),
+                            &raw_args[..raw_args.len().min(200)]
+                        );
+                        // Try to salvage truncated JSON by closing open braces
+                        try_repair_json(raw_args).unwrap_or_else(|| json!({}))
+                    });
                 let _ = tx.send(AgentStreamEvent {
                     workspace_id: session.workspace_id.clone(),
                     session_id: session.id.clone(),
@@ -372,13 +441,15 @@ pub async fn run_prompt_with_plugins(
                             content: error.message.clone(),
                             tool_call_id: step_id,
                         }));
-                        return Err(error);
+                        continue;
                     }
                 };
 
                 let result = match tool.execute(args).await {
                     Ok(result) => result,
                     Err(error) => {
+                        // Feed the error back as a tool result so the model can adapt,
+                        // rather than aborting the entire agent loop.
                         emit_tool_step_complete(
                             tx,
                             session,
@@ -388,10 +459,10 @@ pub async fn run_prompt_with_plugins(
                             true,
                         );
                         session.messages.push(ChatMessage::Tool(ToolMessage {
-                            content: error.message.clone(),
+                            content: format!("Error: {}", error.message),
                             tool_call_id: step_id,
                         }));
-                        return Err(error);
+                        continue;
                     }
                 };
                 let _ = tx.send(AgentStreamEvent {

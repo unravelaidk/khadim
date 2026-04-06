@@ -1,0 +1,21 @@
+[plugin]
+name = "hello-world"
+version = "0.1.0"
+description = "A simple example plugin that demonstrates the Khadim plugin system"
+author = "Khadim"
+license = "MIT"
+homepage = "https://github.com/khadim/khadim"
+wasm = "target/wasm32-unknown-unknown/release/khadim_plugin_hello_world.wasm"
+
+[[config]]
+key = "greeting_prefix"
+description = "Custom prefix for greetings (default: 'Hello')"
+field_type = "string"
+required = false
+default_value = "Hello"
+
+[permissions]
+fs = false
+http = false
+store = false
+allowed_hosts = []

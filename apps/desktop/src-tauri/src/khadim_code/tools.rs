@@ -223,26 +223,51 @@ impl Tool for WriteTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "write".to_string(),
-            description: "Write a full file to disk, creating parent directories when needed."
-                .to_string(),
+            description: format!(
+                "Write a full file to disk, creating parent directories when needed. \
+                 CRITICAL: 'path' MUST be the FIRST key in the JSON arguments — before 'content'. \
+                 The path must include subdirectories relative to workspace root (e.g. \"pong/index.html\", not just \"index.html\"). \
+                 Workspace root: {}",
+                self.root.display()
+            ),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "File path to write to (relative to workspace root)"},
+                    "path": {"type": "string", "description": "REQUIRED FIRST — file path including subdirectories, relative to workspace root (e.g. 'myproject/src/main.rs')"},
                     "content": {"type": "string", "description": "The full file content to write"}
                 },
-                "required": ["path", "content"]
+                "required": ["path", "content"],
+                "propertyOrder": ["path", "content"]
             }),
-            prompt_snippet: "- write: Write or replace a file".to_string(),
+            prompt_snippet: format!(
+                "- write({{\"path\": \"subdir/file.ext\", \"content\": \"...\"}}): Write a file. \
+                 Path MUST be first and include subdirectories relative to workspace root: {}",
+                self.root.display()
+            ),
         }
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        // Check canonical names first, then common aliases models may use
         let path = input
             .get("path")
+            .or_else(|| input.get("file_path"))
+            .or_else(|| input.get("filepath"))
+            .or_else(|| input.get("filename"))
+            .or_else(|| input.get("file"))
             .and_then(|value| value.as_str());
         let content = input
             .get("content")
+            .or_else(|| input.get("text"))
+            .or_else(|| input.get("body"))
+            .or_else(|| input.get("data"))
+            .and_then(|value| value.as_str());
+        // Optional target_dir hint — used when path is missing to place the file
+        // in the correct subdirectory instead of the workspace root.
+        let target_dir = input
+            .get("target_dir")
+            .or_else(|| input.get("directory"))
+            .or_else(|| input.get("dir"))
             .and_then(|value| value.as_str());
 
         // If path is missing, try to recover or return a helpful soft error
@@ -264,25 +289,37 @@ impl Tool for WriteTool {
                         content: format!(
                             "Error: write requires both 'path' and 'content' parameters.\n\
                              You provided path=\"{}\" but no content.\n\
-                             Usage: write(path=\"index.html\", content=\"<html>...</html>\")",
-                            p
+                             Usage: write({{\"path\": \"subdir/file.ext\", \"content\": \"...\"}})\n\
+                             IMPORTANT: path MUST come FIRST in the JSON and include the full relative path from workspace root: {}",
+                            p, self.root.display()
                         ),
                         metadata: Some(json!({"error": "missing_content"})),
                     }),
                 }
             }
             (None, Some(c)) => {
-                // Model sent content but no path — try to guess a filename from the content
-                let guessed = guess_filename(c);
+                // Model sent content but no path. This often happens when the model
+                // generates {"content":"...huge file...","path":"foo.html"} and output
+                // gets truncated before "path" is emitted.
+                // Return an error asking the model to retry with path FIRST.
+                // Do NOT guess the filename — guessing loses the intended directory
+                // and writes to the wrong location.
+                let workspace = self.root.display();
+                let dir_hint = target_dir
+                    .map(|d| format!(" The user wanted the file in directory: {d}."))
+                    .unwrap_or_default();
                 return Ok(ToolResult {
                     content: format!(
-                        "Error: write requires a 'path' parameter.\n\
-                         You provided content but no file path.\n\
-                         Usage: write(path=\"{}\"  content=\"...\")\n\
-                         Please retry with an explicit path.",
-                        guessed.unwrap_or("filename.ext")
+                        "Error: write is missing the 'path' parameter — the file was NOT written.\n\
+                         This usually happens when 'content' appears before 'path' in the JSON \
+                         and the output gets truncated.\n\
+                         IMPORTANT: You MUST call write again with 'path' as the FIRST key.\n\
+                         Workspace root: {workspace}\n\
+                         {dir_hint}\n\
+                         Usage: write({{\"path\": \"subdir/filename.ext\", \"content\": \"...\"}})\n\
+                         Include the full relative path (e.g. \"pong/index.html\", not just \"index.html\")."
                     ),
-                    metadata: Some(json!({"error": "missing_path"})),
+                    metadata: Some(json!({"error": "missing_path_truncated"})),
                 });
             }
             (None, None) => {
@@ -296,8 +333,11 @@ impl Tool for WriteTool {
                     content: format!(
                         "Error: write requires 'path' and 'content' parameters.\n\
                          Received keys: [{}]\n\
-                         Usage: write(path=\"index.html\", content=\"<html>...</html>\")",
-                        keys.join(", ")
+                         Workspace root: {}\n\
+                         Usage: write({{\"path\": \"subdir/filename.ext\", \"content\": \"...\"}})\n\
+                         IMPORTANT: 'path' MUST be the FIRST key and include subdirectories.",
+                        keys.join(", "),
+                        self.root.display()
                     ),
                     metadata: Some(json!({"error": "missing_params"})),
                 });
@@ -323,14 +363,29 @@ impl Tool for WriteTool {
 /// Try to guess a reasonable filename from the file content.
 fn guess_filename(content: &str) -> Option<&str> {
     let trimmed = content.trim();
-    if trimmed.starts_with("<!DOCTYPE") || trimmed.starts_with("<html") {
+    if trimmed.starts_with("<!DOCTYPE") || trimmed.starts_with("<html") || trimmed.starts_with("<HTML") {
         Some("index.html")
-    } else if trimmed.starts_with("{") || trimmed.starts_with("[") {
-        Some("data.json")
+    } else if trimmed.starts_with("<?xml") || trimmed.starts_with("<svg") {
+        Some("index.svg")
+    } else if trimmed.starts_with("<") && trimmed.contains("className=") {
+        // JSX/TSX component
+        Some("page.tsx")
+    } else if trimmed.starts_with("import ") || trimmed.starts_with("export ") {
+        if trimmed.contains("React") || trimmed.contains("jsx") || trimmed.contains("className") {
+            Some("page.tsx")
+        } else {
+            Some("index.ts")
+        }
     } else if trimmed.contains("export ") || trimmed.contains("import ") {
         Some("index.ts")
+    } else if trimmed.starts_with("{") || trimmed.starts_with("[") {
+        Some("data.json")
     } else if trimmed.starts_with("---") {
         Some("document.md")
+    } else if trimmed.starts_with("@") || trimmed.starts_with(":root") || trimmed.starts_with("body") || trimmed.starts_with("*") || trimmed.contains("--color") {
+        Some("styles.css")
+    } else if trimmed.starts_with("// @ts-") || trimmed.starts_with("'use ") || trimmed.starts_with("\"use ") {
+        Some("index.ts")
     } else {
         None
     }
@@ -338,11 +393,52 @@ fn guess_filename(content: &str) -> Option<&str> {
 
 pub struct ListFilesTool {
     root: PathBuf,
+    /// Additional directories the ls tool is allowed to access (e.g. skill dirs).
+    extra_allowed: Vec<PathBuf>,
 }
 
 impl ListFilesTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self { root, extra_allowed: default_skill_read_dirs() }
+    }
+
+    pub fn with_extra_allowed(root: PathBuf, mut extra_allowed: Vec<PathBuf>) -> Self {
+        for dir in default_skill_read_dirs() {
+            if !extra_allowed.contains(&dir) {
+                extra_allowed.push(dir);
+            }
+        }
+        Self { root, extra_allowed }
+    }
+
+    /// Check if an absolute path falls within one of the extra allowed directories.
+    fn resolve_extra_allowed(&self, raw: &str) -> Result<PathBuf, AppError> {
+        let candidate = Path::new(raw);
+        if !candidate.is_absolute() {
+            return Err(AppError::invalid_input(format!(
+                "Path is outside the allowed workspace: {raw}"
+            )));
+        }
+
+        let normalized = candidate.components().fold(PathBuf::new(), |mut acc, c| {
+            use std::path::Component;
+            match c {
+                Component::CurDir => {}
+                Component::ParentDir => { acc.pop(); }
+                other => acc.push(other.as_os_str()),
+            }
+            acc
+        });
+
+        for allowed in &self.extra_allowed {
+            if normalized.starts_with(allowed) {
+                return Ok(normalized);
+            }
+        }
+
+        Err(AppError::invalid_input(format!(
+            "Path is outside the allowed workspace: {raw}"
+        )))
     }
 }
 
@@ -364,7 +460,10 @@ impl Tool for ListFilesTool {
 
     async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
         let path = input.get("path").and_then(|value| value.as_str()).unwrap_or(".");
-        let target = normalize_path(&self.root, path)?;
+        let target = match normalize_path(&self.root, path) {
+            Ok(p) => p,
+            Err(_) => self.resolve_extra_allowed(path)?,
+        };
         let mut entries = std::fs::read_dir(&target)?
             .filter_map(Result::ok)
             .map(|entry| {
@@ -495,9 +594,9 @@ pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
 
 pub fn default_tools_with_skill_dirs(root: &Path, skill_dirs: Vec<PathBuf>) -> Vec<Arc<dyn Tool>> {
     vec![
-        Arc::new(ReadTool::with_extra_allowed(root.to_path_buf(), skill_dirs)),
+        Arc::new(ReadTool::with_extra_allowed(root.to_path_buf(), skill_dirs.clone())),
         Arc::new(WriteTool::new(root.to_path_buf())),
-        Arc::new(ListFilesTool::new(root.to_path_buf())),
+        Arc::new(ListFilesTool::with_extra_allowed(root.to_path_buf(), skill_dirs)),
         Arc::new(BashTool::new(root.to_path_buf())),
     ]
 }
