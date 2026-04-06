@@ -165,10 +165,16 @@ impl ReadTool {
 
         for allowed in &self.extra_allowed {
             if normalized.starts_with(allowed) {
+                log::debug!("read: path {:?} allowed by extra dir {:?}", normalized, allowed);
                 return Ok(normalized);
             }
         }
 
+        log::debug!(
+            "read: path {:?} rejected. extra_allowed={:?}",
+            normalized,
+            self.extra_allowed
+        );
         Err(AppError::invalid_input(format!(
             "Path is outside the allowed workspace: {raw}"
         )))
