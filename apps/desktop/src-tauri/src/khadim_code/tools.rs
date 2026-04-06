@@ -166,17 +166,75 @@ impl Tool for WriteTool {
     async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
         let path = input
             .get("path")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| AppError::invalid_input("write requires a path"))?;
+            .and_then(|value| value.as_str());
         let content = input
             .get("content")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| AppError::invalid_input("write requires content"))?;
-        let target = normalize_path(&self.root, path)?;
+            .and_then(|value| value.as_str());
+
+        // If path is missing, try to recover or return a helpful soft error
+        let (path, content) = match (path, content) {
+            (Some(p), Some(c)) => (p.to_string(), c.to_string()),
+            (Some(p), None) => {
+                // Model sent path but no content — maybe it put content in another field
+                // Check all string values that aren't "path"
+                let fallback_content = input
+                    .as_object()
+                    .and_then(|obj| {
+                        obj.iter()
+                            .find(|(k, v)| *k != "path" && v.is_string())
+                            .and_then(|(_, v)| v.as_str())
+                    });
+                match fallback_content {
+                    Some(c) => (p.to_string(), c.to_string()),
+                    None => return Ok(ToolResult {
+                        content: format!(
+                            "Error: write requires both 'path' and 'content' parameters.\n\
+                             You provided path=\"{}\" but no content.\n\
+                             Usage: write(path=\"index.html\", content=\"<html>...</html>\")",
+                            p
+                        ),
+                        metadata: Some(json!({"error": "missing_content"})),
+                    }),
+                }
+            }
+            (None, Some(c)) => {
+                // Model sent content but no path — try to guess a filename from the content
+                let guessed = guess_filename(c);
+                return Ok(ToolResult {
+                    content: format!(
+                        "Error: write requires a 'path' parameter.\n\
+                         You provided content but no file path.\n\
+                         Usage: write(path=\"{}\"  content=\"...\")\n\
+                         Please retry with an explicit path.",
+                        guessed.unwrap_or("filename.ext")
+                    ),
+                    metadata: Some(json!({"error": "missing_path"})),
+                });
+            }
+            (None, None) => {
+                // Check if the model sent a single string with everything in it
+                // or used non-standard parameter names
+                let obj = input.as_object();
+                let keys: Vec<String> = obj
+                    .map(|o| o.keys().cloned().collect())
+                    .unwrap_or_default();
+                return Ok(ToolResult {
+                    content: format!(
+                        "Error: write requires 'path' and 'content' parameters.\n\
+                         Received keys: [{}]\n\
+                         Usage: write(path=\"index.html\", content=\"<html>...</html>\")",
+                        keys.join(", ")
+                    ),
+                    metadata: Some(json!({"error": "missing_params"})),
+                });
+            }
+        };
+
+        let target = normalize_path(&self.root, &path)?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&target, content)?;
+        std::fs::write(&target, &content)?;
         Ok(ToolResult {
             content: format!("Wrote {} bytes to {}", content.len(), target.display()),
             metadata: Some(json!({
@@ -185,6 +243,22 @@ impl Tool for WriteTool {
                 "fileContent": content,
             })),
         })
+    }
+}
+
+/// Try to guess a reasonable filename from the file content.
+fn guess_filename(content: &str) -> Option<&str> {
+    let trimmed = content.trim();
+    if trimmed.starts_with("<!DOCTYPE") || trimmed.starts_with("<html") {
+        Some("index.html")
+    } else if trimmed.starts_with("{") || trimmed.starts_with("[") {
+        Some("data.json")
+    } else if trimmed.contains("export ") || trimmed.contains("import ") {
+        Some("index.ts")
+    } else if trimmed.starts_with("---") {
+        Some("document.md")
+    } else {
+        None
     }
 }
 
