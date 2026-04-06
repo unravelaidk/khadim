@@ -1,0 +1,14 @@
+{
+  "name": "khadim-plugin-ts-hello-world",
+  "version": "0.1.0",
+  "description": "Example Khadim plugin written in TypeScript (AssemblyScript)",
+  "license": "MIT",
+  "scripts": {
+    "build": "asc assembly/index.ts --target release",
+    "build:debug": "asc assembly/index.ts --target debug",
+    "deploy": "npm run build && node scripts/install.mjs"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.32"
+  }
+}
