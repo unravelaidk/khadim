@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::khadim_ai::providers::transform_messages::finalize_tool_call;
+use crate::khadim_ai::providers::transform_messages::{finalize_tool_call, to_openai_responses_input};
 use crate::khadim_ai::streaming::for_each_sse_event;
 use crate::khadim_ai::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
@@ -38,36 +38,7 @@ fn headers(model: &Model, api_key: &str) -> reqwest::header::HeaderMap {
 }
 
 fn convert_input(context: &Context) -> Vec<serde_json::Value> {
-    context
-        .messages
-        .iter()
-        .map(|message| match message {
-            crate::khadim_ai::types::ChatMessage::System { content } => json!({"role": "system", "content": content}),
-            crate::khadim_ai::types::ChatMessage::User { content } => json!({"role": "user", "content": content}),
-            crate::khadim_ai::types::ChatMessage::Assistant { content, tool_calls, .. } => {
-                let mut blocks = Vec::new();
-                if let Some(content) = content {
-                    if !content.is_empty() {
-                        blocks.push(json!({"type": "output_text", "text": content}));
-                    }
-                }
-                for call in tool_calls {
-                    blocks.push(json!({
-                        "type": "function_call",
-                        "call_id": call.id,
-                        "name": call.function.name,
-                        "arguments": call.function.arguments,
-                    }));
-                }
-                json!({"role": "assistant", "content": blocks})
-            }
-            crate::khadim_ai::types::ChatMessage::Tool(tool) => json!({
-                "type": "function_call_output",
-                "call_id": tool.tool_call_id,
-                "output": tool.content,
-            }),
-        })
-        .collect()
+    to_openai_responses_input(&context.messages, true)
 }
 
 fn convert_tools(context: &Context) -> Vec<serde_json::Value> {

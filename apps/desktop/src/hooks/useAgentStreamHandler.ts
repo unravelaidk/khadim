@@ -1,17 +1,84 @@
 import { useEffectEvent } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import type { AgentStreamEvent, PendingQuestion, ThinkingStepData } from "../lib/bindings";
+import type { AgentStreamEvent, PendingQuestion, QuestionItem, QuestionOption, ThinkingStepData } from "../lib/bindings";
 import { desktopQueryKeys } from "../lib/queries";
 import type { AgentInstance, LocalChatConversation, LocalChatMessage } from "../lib/types";
 import { createLocalMessage } from "../lib/types";
 
+function normalizeQuestionOption(value: unknown): QuestionOption | null {
+  if (typeof value === "string") {
+    const label = value.trim();
+    return label ? { label, description: "" } : null;
+  }
+
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const label = typeof record.label === "string"
+    ? record.label.trim()
+    : typeof record.value === "string"
+      ? record.value.trim()
+      : "";
+  if (!label) return null;
+
+  return {
+    label,
+    description: typeof record.description === "string" ? record.description : "",
+  };
+}
+
+function normalizeQuestionItem(value: unknown): QuestionItem | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+
+  const question = typeof record.question === "string"
+    ? record.question.trim()
+    : typeof record.prompt === "string"
+      ? record.prompt.trim()
+      : typeof record.text === "string"
+        ? record.text.trim()
+        : "";
+  if (!question) return null;
+
+  const header = typeof record.header === "string" && record.header.trim()
+    ? record.header.trim()
+    : typeof record.title === "string" && record.title.trim()
+      ? record.title.trim()
+      : "Question";
+
+  const rawOptions = Array.isArray(record.options)
+    ? record.options
+    : Array.isArray(record.choices)
+      ? record.choices
+      : [];
+  const options = rawOptions
+    .map((option) => normalizeQuestionOption(option))
+    .filter((option): option is QuestionOption => option != null);
+
+  return {
+    header,
+    question,
+    options,
+    multiple: record.multiple === true,
+    custom: typeof record.custom === "boolean" ? record.custom : true,
+  };
+}
+
+function normalizeQuestionPayload(value: unknown): QuestionItem[] {
+  const items = Array.isArray(value) ? value : value != null ? [value] : [];
+  return items
+    .map((item) => normalizeQuestionItem(item))
+    .filter((item): item is QuestionItem => item != null);
+}
+
 interface UseAgentStreamHandlerArgs {
   queryClient: QueryClient;
   selectedWorkspaceId: string | null;
+  selectedWorkspaceBackend: string | null;
   selectedConversationId: string | null;
   activeConversationBackendSessionId: string | null;
   activeConversationId: string | null;
+  agents: AgentInstance[];
   setPendingQuestion: Dispatch<SetStateAction<PendingQuestion | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setIsProcessing: Dispatch<SetStateAction<boolean>>;
@@ -40,9 +107,11 @@ interface UseAgentStreamHandlerArgs {
 export function useAgentStreamHandler({
   queryClient,
   selectedWorkspaceId,
+  selectedWorkspaceBackend,
   selectedConversationId,
   activeConversationBackendSessionId,
   activeConversationId,
+  agents,
   setPendingQuestion,
   setError,
   setIsProcessing,
@@ -104,6 +173,22 @@ export function useAgentStreamHandler({
         if (chatActiveConvIdRef.current === standaloneConversation?.id) {
           chatStreamingStepsRef.current = applyStreamingStepEvent(chatStreamingStepsRef.current, evt);
           setChatStreamingSteps(chatStreamingStepsRef.current);
+        }
+      } else if (evt.event_type === "question" && evt.metadata) {
+        const meta = evt.metadata as Record<string, unknown>;
+        const id = typeof meta.id === "string" ? meta.id : "";
+        const questions = normalizeQuestionPayload(meta.questions);
+        if (id && questions.length > 0) {
+          setPendingQuestion({
+            id,
+            sessionId: evt.session_id,
+            workspaceId: evt.workspace_id,
+            conversationId: standaloneConversation?.id ?? null,
+            backend: "khadim",
+            questions,
+          });
+        } else {
+          console.warn("Received malformed question event", evt);
         }
       } else if (evt.event_type === "done" || evt.event_type === "error") {
         if (evt.event_type === "done" && chatErroredSessionsRef.current.has(evt.session_id)) {
@@ -206,16 +291,37 @@ export function useAgentStreamHandler({
         });
         return changed ? next : prev;
       });
-    } else if (evt.event_type === "question" && isActiveSession && evt.metadata) {
+    } else if (evt.event_type === "question" && evt.metadata) {
       const meta = evt.metadata as Record<string, unknown>;
       const id = typeof meta.id === "string" ? meta.id : "";
-      const questions = Array.isArray(meta.questions) ? meta.questions : [];
-      if (id && questions.length > 0) {
+      const questions = normalizeQuestionPayload(meta.questions);
+      const matchedAgent = agents.find((agent) => agent.sessionId === evt.session_id);
+      if (id && questions.length > 0 && selectedWorkspaceBackend) {
         setPendingQuestion({
           id,
-          questions: questions as PendingQuestion["questions"],
+          sessionId: evt.session_id,
+          workspaceId: evt.workspace_id,
+          conversationId: matchedAgent?.id ?? (isActiveSession ? selectedConversationId : null),
+          backend: selectedWorkspaceBackend === "khadim" ? "khadim" : "opencode",
+          questions,
         });
+      } else {
+        console.warn("Received malformed question event", evt);
       }
+
+      setAgents((prev) => {
+        let changed = false;
+        const next = prev.map((agent) => {
+          if (agent.sessionId !== evt.session_id) return agent;
+          changed = true;
+          return {
+            ...agent,
+            status: "running" as const,
+            currentActivity: "Waiting for your input",
+          };
+        });
+        return changed ? next : prev;
+      });
     } else if (evt.event_type === "done") {
       if (erroredAgentSessionsRef.current.has(evt.session_id)) {
         erroredAgentSessionsRef.current.delete(evt.session_id);

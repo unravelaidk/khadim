@@ -116,6 +116,14 @@ export interface QuestionItem {
 export interface PendingQuestion {
   /** Part ID — used to correlate the answer. */
   id: string;
+  /** Backend session that is waiting on the user's answer. */
+  sessionId: string;
+  /** Workspace that emitted the question event. */
+  workspaceId: string;
+  /** Workspace conversation ID when available. */
+  conversationId: string | null;
+  /** Backend that emitted the question. */
+  backend: "khadim" | "opencode";
   questions: QuestionItem[];
 }
 
