@@ -64,12 +64,29 @@ pub struct ReadTool {
 
 impl ReadTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root, extra_allowed: Vec::new() }
+        Self { root, extra_allowed: default_skill_read_dirs() }
     }
 
-    pub fn with_extra_allowed(root: PathBuf, extra_allowed: Vec<PathBuf>) -> Self {
+    pub fn with_extra_allowed(root: PathBuf, mut extra_allowed: Vec<PathBuf>) -> Self {
+        // Always include default skill directories
+        for dir in default_skill_read_dirs() {
+            if !extra_allowed.contains(&dir) {
+                extra_allowed.push(dir);
+            }
+        }
         Self { root, extra_allowed }
     }
+}
+
+/// Default directories the read tool should always be able to access for skills.
+fn default_skill_read_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        dirs.push(home.join(".agents").join("skills"));
+        dirs.push(home.join(".claude").join("skills"));
+        dirs.push(home.join(".pi").join("agent").join("skills"));
+    }
+    dirs
 }
 
 #[async_trait]
