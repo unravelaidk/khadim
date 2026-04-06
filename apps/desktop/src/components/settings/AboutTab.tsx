@@ -1,6 +1,6 @@
 import type { RuntimeSummary } from "../../lib/bindings";
 
-const APP_VERSION = "alpha";
+const APP_VERSION = "alpha 1.0";
 
 export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
   return (
@@ -37,12 +37,6 @@ export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
             >
               Unravel AI
             </a>
-          </p>
-          <p className="text-[var(--text-muted)]">
-            Built with Tauri, React, and Tailwind CSS.
-          </p>
-          <p className="text-[var(--text-muted)]">
-            Theme families from Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, and One Dark communities.
           </p>
         </div>
       </div>
