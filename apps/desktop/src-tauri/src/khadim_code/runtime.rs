@@ -64,13 +64,13 @@ impl AgentRuntime {
             .collect()
     }
 
-    pub fn build_prompt(&self, mode: &AgentModeDefinition, skills_section: &str) -> String {
+    pub fn build_prompt(&self, mode: &AgentModeDefinition) -> String {
         let snippets = self
             .definitions()
             .into_iter()
             .map(|tool| tool.prompt_snippet)
             .collect::<Vec<_>>();
-        build_system_prompt(self.root.to_string_lossy().as_ref(), mode, &snippets, skills_section)
+        build_system_prompt(self.root.to_string_lossy().as_ref(), mode, &snippets)
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
