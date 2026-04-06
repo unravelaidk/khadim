@@ -633,8 +633,8 @@ export const commands = {
     }),
 
   // Khadim backend
-  khadimCreateSession: (workspaceId?: string | null) =>
-    invoke<KhadimSessionCreated>("khadim_create_session", { workspaceId }),
+  khadimCreateSession: (workspaceId?: string | null, cwdOverride?: string | null) =>
+    invoke<KhadimSessionCreated>("khadim_create_session", { workspaceId, cwdOverride }),
 
   khadimListModels: () =>
     invoke<KhadimModelOption[]>("khadim_list_models"),
