@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::khadim_ai::providers::request_headers::build_codex_request_headers;
-use crate::khadim_ai::providers::transform_messages::finalize_tool_call;
+use crate::khadim_ai::providers::transform_messages::{finalize_tool_call, to_openai_responses_input};
 use crate::khadim_ai::streaming::for_each_sse_event;
 use crate::khadim_ai::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use base64::Engine;
@@ -79,19 +79,7 @@ fn websocket_endpoint(base_url: &str) -> String {
 }
 
 fn convert_input(context: &Context) -> Vec<serde_json::Value> {
-    context.messages.iter().filter_map(|message| match message {
-        crate::khadim_ai::types::ChatMessage::System { .. } => None,
-        crate::khadim_ai::types::ChatMessage::User { content } => Some(json!({"role":"user","content":content})),
-        crate::khadim_ai::types::ChatMessage::Assistant { content, tool_calls, .. } => {
-            let mut blocks = Vec::new();
-            if let Some(content) = content { if !content.is_empty() { blocks.push(json!({"type":"output_text","text":content})); } }
-            for call in tool_calls {
-                blocks.push(json!({"type":"function_call","call_id":call.id,"name":call.function.name,"arguments":call.function.arguments}));
-            }
-            Some(json!({"role":"assistant","content":blocks}))
-        }
-        crate::khadim_ai::types::ChatMessage::Tool(tool) => Some(json!({"type":"function_call_output","call_id":tool.tool_call_id,"output":tool.content})),
-    }).collect()
+    to_openai_responses_input(&context.messages, false)
 }
 
 fn convert_tools(context: &Context) -> Vec<serde_json::Value> {

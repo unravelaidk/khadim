@@ -129,7 +129,6 @@ export default function App() {
     handleFocusAgentFromHome,
     handleOpenSettingsFromWorkspace,
     handleRenameAgent,
-    handleQuestionDismiss,
     handleManageWorkspace,
     handleManageAgent,
     handleSwitchMode,
@@ -326,6 +325,7 @@ export default function App() {
     setStreamingContent,
     setStreamingSteps,
     setError,
+    pendingQuestion,
     setPendingQuestion,
     setAgents,
     erroredAgentSessionsRef,
@@ -335,9 +335,11 @@ export default function App() {
   const handleAgentStreamEvent = useAgentStreamHandler({
     queryClient,
     selectedWorkspaceId,
+    selectedWorkspaceBackend: selectedWorkspace?.backend ?? null,
     selectedConversationId,
     activeConversationBackendSessionId: activeConversation?.backend_session_id ?? null,
     activeConversationId: activeConversation?.id ?? null,
+    agents,
     setPendingQuestion,
     setError,
     setIsProcessing,
@@ -791,11 +793,7 @@ export default function App() {
           question={pendingQuestion}
           onAnswer={(answers) => void handleQuestionAnswer(answers)}
           onDismiss={() => {
-            // For khadim, resolve the pending oneshot so the agent doesn't hang.
-            if (selectedWorkspace?.backend === "khadim" && activeConversation?.backend_session_id) {
-              void commands.khadimAnswerQuestion(activeConversation.backend_session_id, "(skipped)").catch(() => undefined);
-            }
-            handleQuestionDismiss();
+            void handleQuestionAnswer(["(skipped)"]);
           }}
         />
       )}

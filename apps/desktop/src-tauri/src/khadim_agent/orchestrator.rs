@@ -258,11 +258,25 @@ pub async fn run_prompt_with_plugins(
         let session_id = session.id.clone();
         let stream_tx = tx.clone();
         let thinking_step_id = format!("llm-thinking-{turn_index}");
+        let prepend_text_break = session.messages.iter().any(|message| {
+            matches!(message, ChatMessage::Assistant { content: Some(content), .. } if !content.trim().is_empty())
+        });
         let reply = client
             .stream(
                 &context,
                 mode.temperature,
                 Arc::new(move |event| match event {
+                    AssistantStreamEvent::TextStart => {
+                        if prepend_text_break {
+                            let _ = stream_tx.send(AgentStreamEvent {
+                                workspace_id: workspace_id.clone(),
+                                session_id: session_id.clone(),
+                                event_type: "text_delta".to_string(),
+                                content: Some("\n\n".to_string()),
+                                metadata: None,
+                            });
+                        }
+                    }
                     AssistantStreamEvent::TextDelta(delta) => {
                         let _ = stream_tx.send(AgentStreamEvent {
                             workspace_id: workspace_id.clone(),

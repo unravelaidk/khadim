@@ -1,5 +1,5 @@
 use crate::khadim_ai::types::{ChatMessage, Context, ToolCall};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
 pub fn normalize_tool_call_id(id: &str, max_len: usize) -> String {
@@ -108,7 +108,7 @@ pub fn to_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
 }
 
 fn flush_orphaned_tool_results(
-    converted: &mut Vec<serde_json::Value>,
+    converted: &mut Vec<Value>,
     pending_tool_calls: &[String],
     existing_tool_results: &HashSet<String>,
 ) {
@@ -122,6 +122,123 @@ fn flush_orphaned_tool_results(
             "tool_call_id": tool_call_id,
         }));
     }
+}
+
+pub fn to_openai_responses_input(messages: &[ChatMessage], include_system: bool) -> Vec<Value> {
+    let mut converted = Vec::new();
+    let mut tool_call_id_map = HashMap::<String, String>::new();
+    let mut pending_tool_calls = Vec::<String>::new();
+    let mut existing_tool_results = HashSet::<String>::new();
+
+    let flush_orphaned_response_outputs = |
+        converted: &mut Vec<Value>,
+        pending_tool_calls: &[String],
+        existing_tool_results: &HashSet<String>,
+    | {
+        for tool_call_id in pending_tool_calls {
+            if existing_tool_results.contains(tool_call_id) {
+                continue;
+            }
+            converted.push(json!({
+                "type": "function_call_output",
+                "call_id": tool_call_id,
+                "output": "No result provided",
+            }));
+        }
+    };
+
+    for message in messages {
+        match message {
+            ChatMessage::System { content } => {
+                flush_orphaned_response_outputs(
+                    &mut converted,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+                if include_system {
+                    converted.push(json!({ "role": "system", "content": content }));
+                }
+            }
+            ChatMessage::User { content } => {
+                flush_orphaned_response_outputs(
+                    &mut converted,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+                converted.push(json!({ "role": "user", "content": content }));
+            }
+            ChatMessage::Assistant {
+                content,
+                tool_calls,
+                reasoning_content: _,
+            } => {
+                flush_orphaned_response_outputs(
+                    &mut converted,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+
+                let normalized_tool_calls = tool_calls
+                    .iter()
+                    .cloned()
+                    .map(|mut tool_call| {
+                        let normalized_id = normalize_tool_call_id(&tool_call.id, 64);
+                        tool_call_id_map.insert(tool_call.id.clone(), normalized_id.clone());
+                        tool_call.id = normalized_id;
+                        tool_call
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut blocks = Vec::new();
+                if let Some(content) = content {
+                    if !content.trim().is_empty() {
+                        blocks.push(json!({ "type": "output_text", "text": content }));
+                    }
+                }
+                for call in &normalized_tool_calls {
+                    blocks.push(json!({
+                        "type": "function_call",
+                        "call_id": call.id,
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    }));
+                }
+
+                if blocks.is_empty() {
+                    continue;
+                }
+
+                if !normalized_tool_calls.is_empty() {
+                    pending_tool_calls = normalized_tool_calls
+                        .iter()
+                        .map(|tool_call| tool_call.id.clone())
+                        .collect();
+                }
+
+                converted.push(json!({ "role": "assistant", "content": blocks }));
+            }
+            ChatMessage::Tool(tool) => {
+                let normalized_id = tool_call_id_map
+                    .get(&tool.tool_call_id)
+                    .cloned()
+                    .unwrap_or_else(|| normalize_tool_call_id(&tool.tool_call_id, 64));
+                existing_tool_results.insert(normalized_id.clone());
+                converted.push(json!({
+                    "type": "function_call_output",
+                    "call_id": normalized_id,
+                    "output": tool.content,
+                }));
+            }
+        }
+    }
+
+    converted
 }
 
 pub fn to_openai_tools(context: &Context) -> Vec<serde_json::Value> {
@@ -219,7 +336,7 @@ pub fn finalize_tool_call(id: String, name: String, arguments: String) -> ToolCa
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_tool_call_id, to_openai_messages};
+    use super::{normalize_tool_call_id, to_openai_messages, to_openai_responses_input};
     use crate::khadim_ai::types::{ChatMessage, ToolCall, ToolFunction, ToolMessage};
 
     #[test]
@@ -354,6 +471,82 @@ mod tests {
         assert_eq!(
             converted[0].get("role").and_then(|value| value.as_str()),
             Some("user")
+        );
+    }
+
+    #[test]
+    fn responses_input_normalizes_tool_call_ids_and_tool_outputs_together() {
+        let original_id = "call:with spaces/and?symbols";
+        let expected_id = normalize_tool_call_id(original_id, 64);
+        let messages = vec![
+            ChatMessage::Assistant {
+                content: None,
+                tool_calls: vec![ToolCall {
+                    id: original_id.to_string(),
+                    call_type: "function".to_string(),
+                    function: ToolFunction {
+                        name: "read_file".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }],
+                reasoning_content: None,
+            },
+            ChatMessage::Tool(ToolMessage {
+                content: "ok".to_string(),
+                tool_call_id: original_id.to_string(),
+            }),
+        ];
+
+        let converted = to_openai_responses_input(&messages, true);
+        assert_eq!(
+            converted[0]
+                .get("content")
+                .and_then(|value| value.as_array())
+                .and_then(|parts| parts.first())
+                .and_then(|part| part.get("call_id"))
+                .and_then(|value| value.as_str()),
+            Some(expected_id.as_str())
+        );
+        assert_eq!(
+            converted[1].get("call_id").and_then(|value| value.as_str()),
+            Some(expected_id.as_str())
+        );
+    }
+
+    #[test]
+    fn responses_input_flushes_missing_tool_outputs() {
+        let messages = vec![
+            ChatMessage::Assistant {
+                content: None,
+                tool_calls: vec![ToolCall {
+                    id: "call_123".to_string(),
+                    call_type: "function".to_string(),
+                    function: ToolFunction {
+                        name: "read_file".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }],
+                reasoning_content: None,
+            },
+            ChatMessage::User {
+                content: "continue".to_string(),
+            },
+        ];
+
+        let converted = to_openai_responses_input(&messages, true);
+
+        assert_eq!(converted.len(), 3);
+        assert_eq!(
+            converted[1].get("type").and_then(|value| value.as_str()),
+            Some("function_call_output")
+        );
+        assert_eq!(
+            converted[1].get("call_id").and_then(|value| value.as_str()),
+            Some("call_123")
+        );
+        assert_eq!(
+            converted[1].get("output").and_then(|value| value.as_str()),
+            Some("No result provided")
         );
     }
 }

@@ -22,6 +22,7 @@ interface UseAgentChatActionsArgs {
   setStreamingContent: Dispatch<SetStateAction<string>>;
   setStreamingSteps: Dispatch<SetStateAction<ThinkingStepData[]>>;
   setError: Dispatch<SetStateAction<string | null>>;
+  pendingQuestion: import("../lib/bindings").PendingQuestion | null;
   setPendingQuestion: Dispatch<SetStateAction<import("../lib/bindings").PendingQuestion | null>>;
   setAgents: Dispatch<SetStateAction<AgentInstance[]>>;
   erroredAgentSessionsRef: MutableRefObject<Set<string>>;
@@ -44,6 +45,7 @@ export function useAgentChatActions({
   setStreamingContent,
   setStreamingSteps,
   setError,
+  pendingQuestion,
   setPendingQuestion,
   setAgents,
   erroredAgentSessionsRef,
@@ -193,65 +195,73 @@ export function useAgentChatActions({
   ]);
 
   const handleQuestionAnswer = useCallback(async (answers: string[]) => {
-    setPendingQuestion(null);
-    if (!selectedWorkspace || !activeConversation?.backend_session_id) return;
+    const currentQuestion = pendingQuestion;
 
     const reply = answers.filter(Boolean).join("\n");
-    if (!reply) return;
+    if (!currentQuestion || !reply) return;
 
-    // For the khadim backend the agent loop is still running — the question
-    // tool is awaiting a oneshot channel.  Just resolve it; the loop continues.
-    if (selectedWorkspace.backend === "khadim") {
+    if (currentQuestion.backend === "khadim") {
       try {
-        await commands.khadimAnswerQuestion(activeConversation.backend_session_id, reply);
+        setError(null);
+        await commands.khadimAnswerQuestion(currentQuestion.sessionId, reply);
+        setPendingQuestion(null);
       } catch (error) {
         setError(getErrorMessage(error));
       }
       return;
     }
 
-    // OpenCode path — sends a follow-up message to resume the session.
-    setAgentChatInput("");
-    setIsProcessing(true);
-    setStreamingContent("");
-    setStreamingSteps([]);
-    erroredAgentSessionsRef.current.delete(activeConversation.backend_session_id);
-    setError(null);
-
-    if (focusedAgentId) {
-      setAgents((prev) => prev.map((agent) => {
-        if (agent.id !== focusedAgentId) return agent;
-        return {
-          ...agent,
-          status: "running",
-          streamingContent: "",
-          streamPreview: [],
-          streamingSteps: [],
-          currentActivity: "Answering question...",
-        };
-      }));
+    if (!currentQuestion.conversationId) {
+      setError("Unable to resume this question because its conversation could not be resolved.");
+      return;
     }
+
+    const isActiveQuestion = activeConversation?.backend_session_id === currentQuestion.sessionId;
+
+    if (isActiveQuestion) {
+      setAgentChatInput("");
+      setIsProcessing(true);
+      setStreamingContent("");
+      setStreamingSteps([]);
+      erroredAgentSessionsRef.current.delete(currentQuestion.sessionId);
+      setError(null);
+    }
+
+    setAgents((prev) => prev.map((agent) => {
+      if (agent.sessionId !== currentQuestion.sessionId) return agent;
+      return {
+        ...agent,
+        status: "running",
+        streamingContent: "",
+        streamPreview: [],
+        streamingSteps: [],
+        currentActivity: "Answering question...",
+      };
+    }));
 
     try {
       await commands.opencodeSendStreaming(
-        selectedWorkspace.id,
-        activeConversation.backend_session_id,
-        activeConversation.id,
+        currentQuestion.workspaceId,
+        currentQuestion.sessionId,
+        currentQuestion.conversationId,
         reply,
-        selectedModel,
+        selectedWorkspace?.id === currentQuestion.workspaceId ? selectedModel : null,
       );
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(activeConversation.id) });
+      setPendingQuestion(null);
+      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(currentQuestion.conversationId) });
     } catch (error) {
       setError(getErrorMessage(error));
-      setIsProcessing(false);
-      setStreamingContent("");
-      setStreamingSteps([]);
+      if (isActiveQuestion) {
+        setIsProcessing(false);
+        setStreamingContent("");
+        setStreamingSteps([]);
+      }
     }
   }, [
     activeConversation,
     erroredAgentSessionsRef,
-    focusedAgentId,
     getErrorMessage,
+    pendingQuestion,
     queryClient,
     selectedModel,
     selectedWorkspace,
