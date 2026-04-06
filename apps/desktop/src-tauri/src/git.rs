@@ -138,6 +138,14 @@ pub fn create_worktree(
     new_branch: bool,
     base_branch: Option<&str>,
 ) -> Result<WorktreeInfo, AppError> {
+    // Check that the repo has at least one commit – worktrees cannot be created
+    // from a branch that has no commits yet.
+    if run_git(repo_path, &["rev-parse", "HEAD"]).is_err() {
+        return Err(AppError::git(
+            "This repository has no commits yet. Make an initial commit before creating an agent worktree.".to_string(),
+        ));
+    }
+
     if new_branch {
         if let Some(base_branch) = base_branch.filter(|value| !value.trim().is_empty()) {
             run_git(
