@@ -46,6 +46,8 @@ export type AgentStatus = "idle" | "running" | "complete" | "error";
 export interface AgentInstance {
   /** Local ID — typically the conversation ID */
   id: string;
+  /** Workspace ID this agent belongs to */
+  workspaceId: string;
   /** Display label, e.g. "Agent 1" or conversation title */
   label: string;
   /** Current status */
@@ -118,6 +120,7 @@ export function createLocalMessage(role: "user" | "assistant", content: string):
 /** Creates a new blank agent instance */
 export function createAgentInstance(
   id: string,
+  workspaceId: string,
   label: string,
   sessionId: string | null,
   modelLabel: string | null,
@@ -126,6 +129,7 @@ export function createAgentInstance(
 ): AgentInstance {
   return {
     id,
+    workspaceId,
     label,
     sessionId,
     status: "idle",

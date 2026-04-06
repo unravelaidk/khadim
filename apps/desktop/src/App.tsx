@@ -42,6 +42,7 @@ import { findSelectedModelOption, getModelKey, getModelSettingKey, parseStoredMo
 import type { AgentInstance, InteractionMode, WorkHomeView } from "./lib/types";
 import { createAgentInstance, createLocalConversation } from "./lib/types";
 import { useStandaloneChat } from "./hooks/useStandaloneChat";
+import { useAgentPersistence } from "./hooks/useAgentPersistence";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
@@ -86,6 +87,9 @@ export default function App() {
   const [agents, setAgents] = useState<AgentInstance[]>([]);
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
 
+  // Persist agent state across app restarts
+  useAgentPersistence(agents, setAgents);
+
   // ── GitHub ──────────────────────────────────────────────────────
   // ── Chat / streaming (for the focused agent) ────────────────────
   const [agentChatInput, setAgentChatInput] = useState("");
@@ -122,6 +126,7 @@ export default function App() {
     handleOpenNewAgent,
     handleOpenSettings,
     handleSelectWorkspaceConversation,
+    handleFocusAgentFromHome,
     handleOpenSettingsFromWorkspace,
     handleRenameAgent,
     handleQuestionDismiss,
@@ -222,6 +227,11 @@ export default function App() {
     setGlobalError: setError,
     onCloseSettings: handleCloseSettings,
   });
+
+  const handleNewAgentForWorkspace = useCallback((workspaceId: string) => {
+    handleEnterWorkspace(workspaceId);
+    setShowNewAgentModal(true);
+  }, [handleEnterWorkspace, setShowNewAgentModal]);
 
   useEffect(() => {
     if (!focusedAgent || focusedAgent.status !== "running") return;
@@ -366,25 +376,29 @@ export default function App() {
           .catch((err) => console.warn("[auto-start] OpenCode start failed:", err));
       }
 
-      // Build agent instances from existing conversations, restoring persisted token usage.
-      const agentInstances = nextConversations.map((conv, i) => {
-        const instance = createAgentInstance(
-          conv.id,
-          conv.title ?? `Agent ${i + 1}`,
-          conv.backend_session_id ?? null,
-          null,
-        );
-        if (conv.input_tokens > 0 || conv.output_tokens > 0) {
-          instance.tokenUsage = {
-            inputTokens: conv.input_tokens,
-            outputTokens: conv.output_tokens,
-            cacheReadTokens: 0,
-            cacheWriteTokens: 0,
-          };
-        }
-        return instance;
+      // Update agents for this workspace in the global list
+      setAgents((prev) => {
+        const otherWorkspaceAgents = prev.filter((a) => a.workspaceId !== workspace.id);
+        const workspaceAgents = nextConversations.map((conv, i) => {
+          const instance = createAgentInstance(
+            conv.id,
+            workspace.id,
+            conv.title ?? `Agent ${i + 1}`,
+            conv.backend_session_id ?? null,
+            null,
+          );
+          if (conv.input_tokens > 0 || conv.output_tokens > 0) {
+            instance.tokenUsage = {
+              inputTokens: conv.input_tokens,
+              outputTokens: conv.output_tokens,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            };
+          }
+          return instance;
+        });
+        return [...otherWorkspaceAgents, ...workspaceAgents];
       });
-      setAgents(agentInstances);
 
       const preferredConversation = nextConversations.find((item) => item.is_active) ?? nextConversations[0] ?? null;
       const preferredId = preferredConversation?.id ?? null;
@@ -406,6 +420,43 @@ export default function App() {
     })();
   }, []);
 
+  // Load agents for all workspaces on startup
+  useEffect(() => {
+    if (workspaces.length === 0) return;
+    
+    void (async () => {
+      const allAgents: AgentInstance[] = [];
+      
+      for (const workspace of workspaces) {
+        try {
+          const conversations = await commands.listConversations(workspace.id);
+          for (const conv of conversations) {
+            const instance = createAgentInstance(
+              conv.id,
+              workspace.id,
+              conv.title ?? `Agent`,
+              conv.backend_session_id ?? null,
+              null,
+            );
+            if (conv.input_tokens > 0 || conv.output_tokens > 0) {
+              instance.tokenUsage = {
+                inputTokens: conv.input_tokens,
+                outputTokens: conv.output_tokens,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+              };
+            }
+            allAgents.push(instance);
+          }
+        } catch {
+          // Skip workspaces that fail to load
+        }
+      }
+      
+      setAgents(allAgents);
+    })();
+  }, [workspaces]);
+
   useEffect(() => {
     setChatDirectory(storedChatDirectory ?? null);
   }, [setChatDirectory, storedChatDirectory]);
@@ -414,7 +465,6 @@ export default function App() {
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedWorkspace) {
       setSelectedModelOverride(null);
-      setAgents([]);
       setFocusedAgentId(null);
       return;
     }
@@ -551,10 +601,12 @@ export default function App() {
         onSelectWorkspace={handleEnterWorkspace}
         onNavigateWork={handleNavigateWork}
         onNewWorkspace={handleOpenCreateWorkspace}
+        onNewAgentForWorkspace={handleNewAgentForWorkspace}
+        onFocusAgentFromHome={handleFocusAgentFromHome}
+        agents={agents}
         // Work mode — workspace props
         activeWorkspace={selectedWorkspace}
         onExitWorkspace={handleExitWorkspace}
-        agents={agents}
         focusedAgentId={focusedAgentId}
         onFocusAgent={handleFocusAgent}
         onNewAgent={handleOpenNewAgent}
@@ -694,6 +746,7 @@ export default function App() {
             selectedModel={selectedModel}
             onSelectModel={(key) => void handleSelectModel(key)}
             chatEndRef={chatEndRef}
+            backend={selectedWorkspace?.backend ?? "khadim"}
           />
         )}
       </div>

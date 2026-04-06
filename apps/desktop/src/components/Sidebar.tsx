@@ -1,7 +1,7 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
 import type { Workspace } from "../lib/bindings";
-import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import { backendLabel, relTime } from "../lib/ui";
 import type { AgentInstance, InteractionMode, LocalChatConversation, WorkHomeView } from "../lib/types";
 import type { ThemeMode } from "./SettingsPanel";
 import { AgentCard } from "./AgentCard";
@@ -80,11 +80,13 @@ interface SidebarProps {
   onSelectWorkspace: (id: string) => void;
   onNavigateWork: (v: WorkHomeView) => void;
   onNewWorkspace: () => void;
+  onNewAgentForWorkspace: (workspaceId: string) => void;
+  onFocusAgentFromHome: (workspaceId: string, agentId: string) => void;
+  agents: AgentInstance[];
 
   // Work mode — workspace props
   activeWorkspace: Workspace | null;
   onExitWorkspace: () => void;
-  agents: AgentInstance[];
   focusedAgentId: string | null;
   onFocusAgent: (id: string) => void;
   onNewAgent: () => void;
@@ -114,9 +116,11 @@ export function Sidebar({
   onSelectWorkspace,
   onNavigateWork,
   onNewWorkspace,
+  onNewAgentForWorkspace,
+  onFocusAgentFromHome,
+  agents,
   activeWorkspace,
   onExitWorkspace,
-  agents,
   focusedAgentId,
   onFocusAgent,
   onNewAgent,
@@ -163,11 +167,14 @@ export function Sidebar({
         ) : (
           <WorkHomeSidebar
             workspaces={workspaces}
+            agents={agents}
             selectedWorkspaceId={selectedWorkspaceId}
             onSelectWorkspace={onSelectWorkspace}
+            onFocusAgentFromHome={onFocusAgentFromHome}
             currentView={workView}
             onNavigate={onNavigateWork}
             onNewWorkspace={onNewWorkspace}
+            onNewAgent={onNewAgentForWorkspace}
             activeWorkspaceConnected={activeWorkspaceConnected}
           />
         )}
@@ -353,21 +360,27 @@ const ChatSidebarItem = memo(function ChatSidebarItem({
 
 interface WorkHomeSidebarProps {
   workspaces: Workspace[];
+  agents: AgentInstance[];
   selectedWorkspaceId: string | null;
   onSelectWorkspace: (id: string) => void;
+  onFocusAgentFromHome: (workspaceId: string, agentId: string) => void;
   currentView: WorkHomeView;
   onNavigate: (v: WorkHomeView) => void;
   onNewWorkspace: () => void;
+  onNewAgent: (workspaceId: string) => void;
   activeWorkspaceConnected: boolean;
 }
 
 function WorkHomeSidebar({
   workspaces,
+  agents,
   selectedWorkspaceId,
   onSelectWorkspace,
+  onFocusAgentFromHome,
   currentView,
   onNavigate,
   onNewWorkspace,
+  onNewAgent,
   activeWorkspaceConnected,
 }: WorkHomeSidebarProps) {
   return (
@@ -412,14 +425,20 @@ function WorkHomeSidebar({
         </div>
         <div className="flex-1 overflow-y-auto scrollbar-thin px-1.5 pb-2">
           <div className="flex flex-col gap-0.5">
-            {workspaces.map((workspace) => (
-              <WorkspaceSidebarItem
-                key={workspace.id}
-                workspace={workspace}
-                isSelected={workspace.id === selectedWorkspaceId}
-                onSelectWorkspace={onSelectWorkspace}
-              />
-            ))}
+            {workspaces.map((workspace) => {
+              const workspaceAgents = agents.filter((a) => a.workspaceId === workspace.id);
+              return (
+                <WorkspaceSidebarItem
+                  key={workspace.id}
+                  workspace={workspace}
+                  agents={workspaceAgents}
+                  isSelected={workspace.id === selectedWorkspaceId}
+                  onSelectWorkspace={onSelectWorkspace}
+                  onFocusAgent={(agentId) => onFocusAgentFromHome(workspace.id, agentId)}
+                  onNewAgent={() => onNewAgent(workspace.id)}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
@@ -429,32 +448,161 @@ function WorkHomeSidebar({
 
 const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   workspace,
+  agents,
   isSelected,
   onSelectWorkspace,
+  onFocusAgent,
+  onNewAgent,
 }: {
   workspace: Workspace;
+  agents: AgentInstance[];
   isSelected: boolean;
   onSelectWorkspace: (id: string) => void;
+  onFocusAgent: (id: string) => void;
+  onNewAgent: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasAgents = agents.length > 0;
+  const runningCount = agents.filter((a) => a.status === "running").length;
+
   return (
-    <button
-      onClick={() => onSelectWorkspace(workspace.id)}
-      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all duration-150 ${
-        isSelected
-          ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
-      }`}
-    >
-      <div className={`w-6 h-6 shrink-0 rounded-lg flex items-center justify-center text-[11px] font-bold ${isSelected ? "bg-[var(--surface-white-15)]" : "bg-[var(--glass-bg)]"}`}>
-        {workspace.name.charAt(0).toUpperCase()}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold truncate leading-tight">{workspace.name}</p>
-        <p className={`text-[11px] mt-0.5 truncate ${isSelected ? "text-[var(--text-inverse)] opacity-70" : "text-[var(--text-muted)]"}`}>
-          {backendLabel(workspace.backend)} · {executionTargetLabel(workspace.execution_target)}
-        </p>
-      </div>
-    </button>
+    <div className="relative">
+      <button
+        onClick={() => {
+          if (hasAgents) {
+            setExpanded(!expanded);
+          } else {
+            onSelectWorkspace(workspace.id);
+          }
+        }}
+        className={`group w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all duration-200 ${
+          isSelected
+            ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
+            : expanded
+            ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]"
+            : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
+        }`}
+      >
+        <div className={`w-6 h-6 shrink-0 rounded-lg flex items-center justify-center text-[11px] font-bold transition-colors duration-200 ${
+          isSelected ? "bg-[var(--surface-white-15)]" : expanded ? "bg-[var(--color-accent-subtle)]" : "bg-[var(--glass-bg)]"
+        }`}>
+          {workspace.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold truncate leading-tight">{workspace.name}</p>
+          <p className={`text-[11px] truncate mt-0.5 ${isSelected ? "text-[var(--text-inverse)] opacity-70" : "text-[var(--text-muted)]"}`}>
+            {backendLabel(workspace.backend)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {hasAgents && (
+            <div className="flex items-center gap-1">
+              <span className={`text-[11px] font-medium tabular-nums ${isSelected ? "text-[var(--text-inverse)] opacity-80" : "text-[var(--text-muted)]"}`}>
+                {agents.length}
+              </span>
+              {runningCount > 0 && (
+                <span className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-accent)]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-pulse" />
+                  {runningCount}
+                </span>
+              )}
+            </div>
+          )}
+          {hasAgents && (
+            <div className={`w-5 h-5 flex items-center justify-center rounded-md transition-all duration-200 ${
+              isSelected ? "text-[var(--text-inverse)] opacity-70" : expanded ? "text-[var(--text-primary)] bg-[var(--glass-bg)]" : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] group-hover:bg-[var(--glass-bg)]"
+            }`}>
+              <svg
+                className={`w-3 h-3 transition-transform duration-200 ease-out ${expanded ? "rotate-90" : ""}`}
+                fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          )}
+        </div>
+      </button>
+
+      {/* Agent dropdown */}
+      {expanded && hasAgents && (
+        <div className="mt-1.5 ml-3 overflow-hidden rounded-xl bg-[var(--surface-card)] border border-[var(--glass-border)] shadow-[var(--shadow-glass-sm)]">
+          <div className="p-1.5 space-y-0.5">
+            {agents.slice(0, 3).map((agent, index) => {
+              const isRunning = agent.status === "running";
+              const isComplete = agent.status === "complete";
+              const isError = agent.status === "error";
+              const statusText = isRunning && agent.currentActivity
+                ? agent.currentActivity
+                : isRunning ? "Working..."
+                : isComplete ? "Done"
+                : isError ? (agent.errorMessage ?? "Error")
+                : "Idle";
+
+              return (
+                <button
+                  key={agent.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFocusAgent(agent.id);
+                    setExpanded(false);
+                  }}
+                  className="group/agent w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[var(--glass-bg-strong)] transition-all duration-150 text-left"
+                  style={{
+                    animationDelay: `${index * 40}ms`,
+                    animation: "animate-in 0.2s ease-out both",
+                  }}
+                >
+                  <div className={`relative flex shrink-0`}>
+                    <div className={`w-2 h-2 rounded-full ${
+                      isRunning ? "bg-[var(--color-accent)]" : isError ? "bg-[var(--color-danger)]" : isComplete ? "bg-[var(--color-success)]" : "bg-[var(--scrollbar-thumb)]"
+                    }`} />
+                    {isRunning && (
+                      <span className="absolute inset-0 w-2 h-2 rounded-full bg-[var(--color-accent)] animate-ping opacity-40" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">{agent.label}</p>
+                    <p className={`text-[10px] truncate mt-0.5 ${
+                      isError ? "text-[var(--color-danger-text-light)]" : isRunning ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"
+                    }`}>
+                      {statusText}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 opacity-0 group-hover/agent:opacity-100 transition-opacity duration-150">
+                    <span className="text-[10px] text-[var(--color-accent)] font-medium">Chat</span>
+                    <svg className="w-3 h-3 text-[var(--color-accent)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Footer with count and new agent button */}
+          <div className="border-t border-[var(--glass-border)] px-1.5 py-1.5 flex items-center gap-2">
+            {agents.length > 3 && (
+              <span className="flex-1 text-[10px] text-[var(--text-muted)] pl-1">
+                +{agents.length - 3} more
+              </span>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewAgent();
+                setExpanded(false);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--surface-ink-3)] hover:bg-[var(--surface-ink-4)] text-[var(--text-primary)] transition-colors flex-1 justify-center"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="text-[11px] font-semibold">New Agent</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 });
 
@@ -490,7 +638,10 @@ function WorkspaceSidebar({
   connected,
   githubAuthenticated,
 }: WorkspaceSidebarProps) {
-  const runningCount = agents.filter((a) => a.status === "running").length;
+  const workspaceAgents = workspace
+    ? agents.filter((a) => a.workspaceId === workspace.id)
+    : [];
+  const runningCount = workspaceAgents.filter((a) => a.status === "running").length;
 
   return (
     <>
@@ -577,7 +728,7 @@ function WorkspaceSidebar({
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-1.5 pb-2">
           <div className="flex flex-col gap-1">
-            {agents.map((agent) => (
+            {workspaceAgents.map((agent) => (
               <AgentCard
                 key={agent.id}
                 agent={agent}
@@ -587,7 +738,7 @@ function WorkspaceSidebar({
                 onManage={() => onManageAgent(agent.id)}
               />
             ))}
-            {agents.length === 0 && (
+            {workspaceAgents.length === 0 && (
               <div className="py-10 text-center">
                 <div className="w-10 h-10 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
                   <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
