@@ -18,6 +18,7 @@ export const desktopQueryKeys = {
   workspaceModels: (workspaceId: string | null, backend: string | null, connected: boolean) => ["workspace-models", workspaceId, backend, connected] as const,
   khadimActiveModel: ["khadim-active-model"] as const,
   githubSlug: (repoPath: string | null) => ["github-slug", repoPath] as const,
+  githubIssues: (owner: string, repo: string, state: string) => ["github-issues", owner, repo, state] as const,
 };
 
 export function useRuntimeSummaryQuery() {
@@ -287,5 +288,21 @@ export function useSetSettingMutation() {
     onSuccess: async (_, { key }) => {
       await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.setting(key) });
     },
+  });
+}
+
+export function useGitHubIssuesQuery(
+  owner: string | null,
+  repo: string | null,
+  state: "open" | "closed" | "all" = "open",
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: desktopQueryKeys.githubIssues(owner ?? "", repo ?? "", state),
+    queryFn: () => {
+      if (!owner || !repo) return Promise.resolve([]);
+      return commands.githubIssueList(owner, repo, state, 1, 50);
+    },
+    enabled: enabled && Boolean(owner) && Boolean(repo),
   });
 }

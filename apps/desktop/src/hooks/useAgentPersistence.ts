@@ -13,6 +13,7 @@ type PersistedAgentState = {
   finishedAt: string | null;
   errorMessage: string | null;
   modelLabel: string | null;
+  issueUrl: string | null;
 };
 
 function toPersistedState(agent: AgentInstance): PersistedAgentState {
@@ -25,6 +26,7 @@ function toPersistedState(agent: AgentInstance): PersistedAgentState {
     finishedAt: agent.finishedAt,
     errorMessage: agent.errorMessage,
     modelLabel: agent.modelLabel,
+    issueUrl: agent.issueUrl,
   };
 }
 
@@ -44,6 +46,7 @@ function mergePersistedState(
       finishedAt: saved.finishedAt,
       errorMessage: saved.errorMessage,
       modelLabel: saved.modelLabel ?? agent.modelLabel,
+      issueUrl: saved.issueUrl ?? agent.issueUrl,
     };
   });
 }

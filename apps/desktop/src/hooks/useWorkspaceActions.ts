@@ -260,7 +260,7 @@ export function useWorkspaceActions({
     setSelectedConversationId,
   ]);
 
-  const handleCreateAgentWithWorktree = useCallback(async (branch: string, worktreePath: string, label: string) => {
+  const handleCreateAgentWithWorktree = useCallback(async (branch: string, worktreePath: string, label: string, issueUrl: string | null) => {
     if (!selectedWorkspace) return;
     setIsCreatingAgent(true);
     setError(null);
@@ -304,9 +304,32 @@ export function useWorkspaceActions({
         modelLabel,
         branch,
         worktreePath,
+        issueUrl,
       );
-      setAgents((prev) => [...prev, newAgent]);
-      setFocusedAgentId(updatedConversation.id);
+      setAgents((prev) => [...prev, { ...newAgent, status: issueUrl ? "running" : "idle", startedAt: issueUrl ? new Date().toISOString() : null }]);
+
+      // Send initial message with issue context if provided
+      if (issueUrl && updatedConversation.backend_session_id) {
+        const issuePrompt = `Please work on this GitHub issue:\n\n${issueUrl}\n\nRead the issue, understand what needs to be done, and implement a solution. Create a branch if needed, make the necessary changes, and ensure the code is working.`;
+        
+        if (selectedWorkspace.backend === "khadim") {
+          await commands.khadimSendStreaming(
+            selectedWorkspace.id,
+            updatedConversation.backend_session_id,
+            updatedConversation.id,
+            issuePrompt,
+            modelLabel ? { provider_id: "", model_id: modelLabel } : null,
+          );
+        } else {
+          await commands.opencodeSendStreaming(
+            selectedWorkspace.id,
+            updatedConversation.backend_session_id,
+            updatedConversation.id,
+            issuePrompt,
+            modelLabel ? { provider_id: "", model_id: modelLabel } : null,
+          );
+        }
+      }
 
       if (!inWorkspace) {
         setInWorkspace(true);

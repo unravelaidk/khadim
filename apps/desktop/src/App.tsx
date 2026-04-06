@@ -765,7 +765,7 @@ export default function App() {
           isOpen={showNewAgentModal}
           workspace={selectedWorkspace}
           onClose={() => setShowNewAgentModal(false)}
-          onCreateAgent={(branch, worktreePath, label) => void handleCreateAgentWithWorktree(branch, worktreePath, label)}
+          onCreateAgent={(branch, worktreePath, label, issueUrl) => void handleCreateAgentWithWorktree(branch, worktreePath, label, issueUrl)}
           isCreating={isCreatingAgent}
         />
       )}
