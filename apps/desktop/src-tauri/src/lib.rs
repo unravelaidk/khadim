@@ -216,7 +216,7 @@ pub struct AppState {
     db: Database,
     process_runner: ProcessRunner,
     opencode: OpenCodeManager,
-    khadim: KhadimManager,
+    khadim: Arc<KhadimManager>,
     github: github::GitHubClient,
     plugins: Arc<PluginManager>,
     skills: Arc<SkillManager>,
@@ -1139,6 +1139,7 @@ async fn khadim_send_streaming(
 
     let plugins = state.plugins.clone();
     let skills = state.skills.clone();
+    let khadim_mgr = state.khadim.clone();
     let handle = tokio::spawn(async move {
         let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
         let emit_handle = app_handle.clone();
@@ -1159,6 +1160,7 @@ async fn khadim_send_streaming(
                         &tx,
                         Some(&plugins),
                         Some(&skills),
+                        Some(&khadim_mgr),
                     )
                     .await
                 }
@@ -1221,6 +1223,7 @@ async fn khadim_send_message(
     let selection = resolve_khadim_selection(state.inner(), model.as_ref())?;
     let plugins = state.plugins.clone();
     let skills = state.skills.clone();
+    let khadim_mgr = state.khadim.clone();
     let text = {
         let mut session = session.lock().await;
         khadim_agent::orchestrator::run_prompt_with_plugins(
@@ -1230,6 +1233,7 @@ async fn khadim_send_message(
             &tx,
             Some(&plugins),
             Some(&skills),
+            Some(&khadim_mgr),
         )
         .await?
     };
@@ -1248,6 +1252,15 @@ async fn khadim_abort(
     session_id: String,
 ) -> Result<(), AppError> {
     state.khadim.abort(&session_id).await
+}
+
+#[tauri::command]
+fn khadim_answer_question(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+    answer: String,
+) -> Result<(), AppError> {
+    state.khadim.answer_question(&session_id, answer)
 }
 
 // ─── Settings ────────────────────────────────────────────────────────
@@ -1469,7 +1482,7 @@ pub fn run() {
     let db = Database::open().expect("Failed to open database");
     let process_runner = ProcessRunner::new();
     let opencode = OpenCodeManager::new();
-    let khadim = KhadimManager::new();
+    let khadim = Arc::new(KhadimManager::new());
     let github = github::GitHubClient::new();
     let db_arc = Arc::new(db);
     let plugin_manager = Arc::new(PluginManager::new(Arc::clone(&db_arc)));
@@ -1579,6 +1592,7 @@ pub fn run() {
             khadim_send_streaming,
             khadim_send_message,
             khadim_abort,
+            khadim_answer_question,
             // Settings
             get_setting,
             set_setting,

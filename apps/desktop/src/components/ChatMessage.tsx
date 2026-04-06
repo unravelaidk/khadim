@@ -150,6 +150,10 @@ function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
         const title = toolTitle(tool, input, basename);
         const content = toolContent(tool, input);
         const result = toolResult(state);
+        const fileContent = (tool === "write" || tool === "edit")
+          && typeof input?.content === "string"
+          ? input.content
+          : undefined;
         const subagentType = tool === "task" || tool === "subtask" ? taskSubagentType(input) : undefined;
         const description = tool === "task" || tool === "subtask" ? taskDescription(input) : undefined;
         const prompt = tool === "task" || tool === "subtask" ? taskPrompt(input) : undefined;
@@ -165,6 +169,7 @@ function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
           result,
           filename: basename,
           filePath,
+          fileContent,
           subagentType,
           taskDescription: description,
           taskPrompt: prompt,

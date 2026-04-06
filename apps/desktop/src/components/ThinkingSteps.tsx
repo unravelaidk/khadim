@@ -3,6 +3,23 @@ import type { ThinkingStepData } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
+/** Guess a syntax-highlight language from a filename extension. */
+function guessLanguage(filename: string | undefined): string {
+  if (!filename) return "text";
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx",
+    py: "python", rb: "ruby", rs: "rust", go: "go",
+    java: "java", kt: "kotlin", swift: "swift", c: "c", cpp: "cpp", h: "c",
+    cs: "csharp", css: "css", scss: "scss", html: "html", xml: "xml",
+    json: "json", yaml: "yaml", yml: "yaml", toml: "toml",
+    md: "markdown", sql: "sql", sh: "bash", bash: "bash", zsh: "bash",
+    dockerfile: "dockerfile", makefile: "makefile",
+    vue: "html", svelte: "html", astro: "html",
+  };
+  return map[ext] ?? "text";
+}
+
 const ASCII_BOT_FRAMES = ["[o_o]", "[O_o]", "[o_O]", "[^_^]"];
 
 interface ThinkingStepsProps {
@@ -159,6 +176,83 @@ function TaskStepDetails({ step }: { step: ThinkingStepData }) {
   );
 }
 
+/** Displays the full file content written/edited by a tool step. */
+function FileContentBlock({
+  fileContent,
+  filename,
+  filePath,
+  result,
+  running,
+}: {
+  fileContent: string;
+  filename?: string;
+  filePath?: string;
+  result?: string;
+  running: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const lang = guessLanguage(filename);
+  const lineCount = fileContent.split("\n").length;
+  const displayPath = filePath ?? filename;
+
+  return (
+    <div className="space-y-2">
+      {/* File header */}
+      <div className="flex items-center justify-between gap-2 rounded-t-lg bg-[var(--surface-ink-4)] px-3 py-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+          </svg>
+          {displayPath && (
+            <span className="truncate font-mono text-[11px] text-[var(--text-secondary)]" title={displayPath}>
+              {displayPath}
+            </span>
+          )}
+          <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+            {lineCount} line{lineCount !== 1 ? "s" : ""}
+          </span>
+          {running && (
+            <span className="shrink-0 text-[10px] font-medium text-[var(--color-accent)] animate-pulse">writing…</span>
+          )}
+        </div>
+        <button
+          onClick={async () => {
+            await navigator.clipboard.writeText(fileContent);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          title={copied ? "Copied!" : "Copy file content"}
+        >
+          {copied ? (
+            <svg className="w-3.5 h-3.5 text-[var(--color-success)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* Full file content as a markdown code block for syntax highlighting */}
+      <div className="-mt-2 rounded-b-lg overflow-hidden">
+        <MarkdownRenderer
+          content={`\`\`\`${lang}\n${fileContent}\n\`\`\``}
+          className="text-[12px] [&_pre]:!mt-0 [&_pre]:!rounded-t-none [&>div>div]:!my-0"
+        />
+      </div>
+
+      {/* Tool result summary */}
+      {result && (
+        <p className="text-[11px] text-[var(--text-muted)] px-1">{result}</p>
+      )}
+    </div>
+  );
+}
+
 function ThinkingStep({ step, basePath }: ThinkingStepProps) {
   const [isExpanded, setIsExpanded] = useState(step.status === "running");
   const prevStatusRef = useRef(step.status);
@@ -180,9 +274,10 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
   }, [step.status]);
 
   const detail = step.content?.trim() || step.result?.trim() || "";
+  const hasFileContent = Boolean(step.fileContent);
   const hasTaskDetails = (step.tool === "task" || step.tool === "subtask")
     && Boolean(step.taskDescription || step.taskPrompt || step.result || step.subagentType);
-  const canToggle = Boolean(detail || hasTaskDetails);
+  const canToggle = Boolean(detail || hasTaskDetails || hasFileContent);
   const running = step.status === "running";
   const complete = step.status === "complete";
   const errored = step.status === "error";
@@ -279,10 +374,18 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
         </div>
       </button>
 
-      {(hasTaskDetails || detail) && isExpanded && (
+      {(hasTaskDetails || detail || hasFileContent) && isExpanded && (
         <div className="ml-[3px] border-l border-[var(--glass-border)] pl-5 pr-3 pb-3">
           {step.tool === "task" || step.tool === "subtask" ? (
             <TaskStepDetails step={step} />
+          ) : hasFileContent ? (
+            <FileContentBlock
+              fileContent={step.fileContent!}
+              filename={step.filename}
+              filePath={step.filePath}
+              result={step.result}
+              running={running}
+            />
           ) : (
             <div className="rounded-lg bg-[var(--surface-card)]/60 px-3 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
               <MarkdownRenderer content={detail} className="text-[12px]" />

@@ -1,4 +1,6 @@
 use crate::error::AppError;
+use crate::khadim_agent::KhadimManager;
+use crate::opencode::AgentStreamEvent;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -599,4 +601,139 @@ pub fn default_tools_with_skill_dirs(root: &Path, skill_dirs: Vec<PathBuf>) -> V
         Arc::new(ListFilesTool::with_extra_allowed(root.to_path_buf(), skill_dirs)),
         Arc::new(BashTool::new(root.to_path_buf())),
     ]
+}
+
+// ── Question tool ─────────────────────────────────────────────────────
+
+/// A tool that lets the agent ask the user a question and wait for an answer.
+/// The tool emits a `"question"` stream event, then parks on a oneshot channel
+/// until the frontend calls `khadim_answer_question`.
+pub struct QuestionTool {
+    session_id: String,
+    workspace_id: String,
+    tx: tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    manager: Arc<KhadimManager>,
+}
+
+impl QuestionTool {
+    pub fn new(
+        session_id: String,
+        workspace_id: String,
+        tx: tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+        manager: Arc<KhadimManager>,
+    ) -> Self {
+        Self { session_id, workspace_id, tx, manager }
+    }
+}
+
+#[async_trait]
+impl Tool for QuestionTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "question".to_string(),
+            description: "Ask the user a question when you need clarification or a decision. \
+                          Provide a list of questions, each with a header, the question text, \
+                          and a set of option labels. The user's answer is returned as text."
+                .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "array",
+                        "description": "One or more questions to present to the user",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "header": {
+                                    "type": "string",
+                                    "description": "Short label for the question category"
+                                },
+                                "question": {
+                                    "type": "string",
+                                    "description": "The question text to display"
+                                },
+                                "options": {
+                                    "type": "array",
+                                    "description": "Suggested answer options",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "label": { "type": "string" },
+                                            "description": { "type": "string" }
+                                        },
+                                        "required": ["label"]
+                                    }
+                                },
+                                "multiple": {
+                                    "type": "boolean",
+                                    "description": "Whether the user may select more than one option (default false)"
+                                },
+                                "custom": {
+                                    "type": "boolean",
+                                    "description": "Whether the user may type a free-form answer (default true)"
+                                }
+                            },
+                            "required": ["header", "question", "options"]
+                        }
+                    }
+                },
+                "required": ["questions"]
+            }),
+            prompt_snippet: "- question: Ask the user a question when you need clarification or a decision".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let questions = input
+            .get("questions")
+            .cloned()
+            .unwrap_or(Value::Array(vec![]));
+
+        if !questions.is_array() || questions.as_array().map(|a| a.is_empty()).unwrap_or(true) {
+            return Err(AppError::invalid_input(
+                "question tool requires a non-empty 'questions' array",
+            ));
+        }
+
+        let part_id = uuid::Uuid::new_v4().to_string();
+
+        // Emit the question event so the frontend shows the overlay.
+        let _ = self.tx.send(AgentStreamEvent {
+            workspace_id: self.workspace_id.clone(),
+            session_id: self.session_id.clone(),
+            event_type: "question".to_string(),
+            content: None,
+            metadata: Some(json!({
+                "id": part_id,
+                "questions": questions,
+            })),
+        });
+
+        // Park a oneshot channel and wait for the answer.
+        let (answer_tx, answer_rx) = tokio::sync::oneshot::channel::<String>();
+        self.manager.park_question(self.session_id.clone(), answer_tx);
+
+        let answer = answer_rx.await.map_err(|_| {
+            AppError::backend_busy("Question was cancelled (session aborted or dismissed)")
+        })?;
+
+        // Emit a step_complete so the thinking-steps panel records it.
+        let _ = self.tx.send(AgentStreamEvent {
+            workspace_id: self.workspace_id.clone(),
+            session_id: self.session_id.clone(),
+            event_type: "step_complete".to_string(),
+            content: Some(answer.clone()),
+            metadata: Some(json!({
+                "id": part_id,
+                "title": "Question answered",
+                "tool": "question",
+                "result": answer,
+            })),
+        });
+
+        Ok(ToolResult {
+            content: format!("User answered: {answer}"),
+            metadata: None,
+        })
+    }
 }
