@@ -102,7 +102,7 @@ pub async fn run_prompt(
     selection: Option<ModelSelection>,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
 ) -> Result<String, AppError> {
-    run_prompt_with_plugins(session, prompt, selection, tx, None, "").await
+    run_prompt_with_plugins(session, prompt, selection, tx, None, None).await
 }
 
 pub async fn run_prompt_with_plugins(
@@ -111,16 +111,25 @@ pub async fn run_prompt_with_plugins(
     selection: Option<ModelSelection>,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     plugin_manager: Option<&Arc<PluginManager>>,
-    skills_section: &str,
+    skill_manager: Option<&Arc<crate::skills::SkillManager>>,
 ) -> Result<String, AppError> {
     let plugin_tools: Vec<Arc<dyn Tool>> = plugin_manager
         .map(|pm| crate::plugins::collect_plugin_tools(pm))
         .unwrap_or_default();
 
-    let runtime = if plugin_tools.is_empty() {
+    let skill_tools: Vec<Arc<dyn Tool>> = skill_manager
+        .map(|sm| {
+            vec![Arc::new(crate::skills::tool::SkillReadTool::new(Arc::clone(sm))) as Arc<dyn Tool>]
+        })
+        .unwrap_or_default();
+
+    let mut extra_tools = plugin_tools;
+    extra_tools.extend(skill_tools);
+
+    let runtime = if extra_tools.is_empty() {
         AgentRuntime::new(&session.cwd)
     } else {
-        AgentRuntime::with_plugin_tools(&session.cwd, plugin_tools)
+        AgentRuntime::with_plugin_tools(&session.cwd, extra_tools)
     };
     let mode = if session.workspace_id == "__chat__" {
         chat_mode()
@@ -128,7 +137,7 @@ pub async fn run_prompt_with_plugins(
         build_mode()
     };
     let client = ModelClient::from_selection(selection).await?;
-    let system_prompt = runtime.build_prompt(&mode, skills_section);
+    let system_prompt = runtime.build_prompt(&mode);
 
     repair_session_messages(&mut session.messages);
 

@@ -1132,7 +1132,7 @@ async fn khadim_send_streaming(
     let session_id_for_error = session_id.clone();
 
     let plugins = state.plugins.clone();
-    let skills_section = state.skills.build_prompt_section();
+    let skills = state.skills.clone();
     let handle = tokio::spawn(async move {
         let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
         let emit_handle = app_handle.clone();
@@ -1152,7 +1152,7 @@ async fn khadim_send_streaming(
                         selection,
                         &tx,
                         Some(&plugins),
-                        &skills_section,
+                        Some(&skills),
                     )
                     .await
                 }
@@ -1214,7 +1214,7 @@ async fn khadim_send_message(
     let (tx, _rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
     let selection = resolve_khadim_selection(state.inner(), model.as_ref())?;
     let plugins = state.plugins.clone();
-    let skills_section = state.skills.build_prompt_section();
+    let skills = state.skills.clone();
     let text = {
         let mut session = session.lock().await;
         khadim_agent::orchestrator::run_prompt_with_plugins(
@@ -1223,7 +1223,7 @@ async fn khadim_send_message(
             selection,
             &tx,
             Some(&plugins),
-            &skills_section,
+            Some(&skills),
         )
         .await?
     };

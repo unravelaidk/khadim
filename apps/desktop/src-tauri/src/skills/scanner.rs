@@ -285,10 +285,11 @@ impl SkillManager {
             .unwrap_or(true) // enabled by default
     }
 
-    // ── Content for prompt injection ─────────────────────────────────
+    // ── Skill tool support ───────────────────────────────────────────
 
-    /// Return the full SKILL.md content of all enabled skills.
-    pub fn active_skill_contents(&self) -> Vec<(String, String)> {
+    /// Return lightweight summaries of enabled skills for the prompt.
+    /// Just (id, name, description) — the agent reads full content via the tool.
+    pub fn active_skill_summaries(&self) -> Vec<(String, String, String)> {
         let skills = self.skills.read().unwrap();
         let mut results = Vec::new();
 
@@ -296,36 +297,24 @@ impl SkillManager {
             if !skill.enabled {
                 continue;
             }
-            let skill_md = Path::new(&skill.dir).join("SKILL.md");
-            if let Ok(content) = std::fs::read_to_string(&skill_md) {
-                results.push((skill.name.clone(), content));
-            }
+            results.push((
+                skill.id.clone(),
+                skill.name.clone(),
+                skill.description.clone(),
+            ));
         }
 
-        results.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        results.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
         results
     }
 
-    /// Build the skills section for the system prompt.
-    pub fn build_prompt_section(&self) -> String {
-        let skills = self.active_skill_contents();
-        if skills.is_empty() {
-            return String::new();
-        }
-
-        let mut section = String::from("\n\nThe following skills provide specialized instructions for specific tasks.\nUse the relevant skill when the task matches its description.\n\n");
-
-        section.push_str("<active_skills>\n");
-        for (name, content) in &skills {
-            section.push_str(&format!("<skill name=\"{}\">\n", name));
-            // Strip frontmatter from the content for the prompt
-            let body = strip_frontmatter(content);
-            section.push_str(body.trim());
-            section.push_str("\n</skill>\n\n");
-        }
-        section.push_str("</active_skills>");
-
-        section
+    /// Resolve a skill id to its directory, if it's enabled.
+    pub fn resolve_skill_dir(&self, skill_id: &str) -> Option<PathBuf> {
+        let skills = self.skills.read().unwrap();
+        skills
+            .get(skill_id)
+            .filter(|s| s.enabled)
+            .map(|s| PathBuf::from(&s.dir))
     }
 }
 
@@ -338,16 +327,4 @@ fn default_skills_dir() -> String {
         .join("skills")
         .to_string_lossy()
         .to_string()
-}
-
-fn strip_frontmatter(content: &str) -> &str {
-    let trimmed = content.trim();
-    if !trimmed.starts_with("---") {
-        return content;
-    }
-    let after = &trimmed[3..];
-    match after.find("\n---") {
-        Some(pos) => &after[pos + 4..],
-        None => content,
-    }
 }
