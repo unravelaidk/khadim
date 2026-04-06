@@ -284,7 +284,7 @@ export function useWorkspaceActions({
         });
         updatedConversation = { ...conversation, backend_session_id: sessionId };
       } else if (selectedWorkspace.backend === "khadim") {
-        const session = await commands.khadimCreateSession(selectedWorkspace.id);
+        const session = await commands.khadimCreateSession(selectedWorkspace.id, worktreePath);
         await setConversationBackendSessionMutation.mutateAsync({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,

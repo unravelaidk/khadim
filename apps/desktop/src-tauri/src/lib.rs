@@ -936,17 +936,23 @@ async fn opencode_get_connection(
 async fn khadim_create_session(
     state: State<'_, Arc<AppState>>,
     workspace_id: Option<String>,
+    cwd_override: Option<String>,
 ) -> Result<KhadimSessionCreated, AppError> {
     let (resolved_workspace_id, cwd) = if let Some(workspace_id) = workspace_id {
         let workspace = state.db.get_workspace(&workspace_id)?;
-        (
-            workspace_id,
+        let base_cwd = if let Some(ref override_path) = cwd_override {
+            let p = std::path::PathBuf::from(override_path);
+            if p.is_dir() { p } else {
+                std::path::PathBuf::from(
+                    workspace.worktree_path.unwrap_or(workspace.repo_path),
+                )
+            }
+        } else {
             std::path::PathBuf::from(
-                workspace
-                    .worktree_path
-                    .unwrap_or(workspace.repo_path),
-            ),
-        )
+                workspace.worktree_path.unwrap_or(workspace.repo_path),
+            )
+        };
+        (workspace_id, base_cwd)
     } else {
         // Standalone chat — check if the user configured a chat directory.
         let configured_dir = state
