@@ -4,7 +4,9 @@ import { AboutTab } from "./settings/AboutTab";
 import { AccountsTab } from "./settings/AccountsTab";
 import { TABS } from "./settings/constants";
 import { GeneralTab } from "./settings/GeneralTab";
+import { PluginsTab } from "./settings/PluginsTab";
 import { ProvidersTab } from "./settings/ProvidersTab";
+import { SkillsTab } from "./settings/SkillsTab";
 import type { SettingsPanelProps, SettingsTab } from "./settings/types";
 
 export type { CatppuccinVariant, ThemeFamily, ThemeMode } from "./settings/types";
@@ -81,6 +83,8 @@ export function SettingsPanel({
             <AccountsTab githubAuthStatus={githubAuthStatus} onGitHubAuthChange={onGitHubAuthChange} />
           )}
           {activeTab === "models" && <ModelSettingsTab onOpenProviders={() => setActiveTab("providers")} />}
+          {activeTab === "plugins" && <PluginsTab />}
+          {activeTab === "skills" && <SkillsTab />}
           {activeTab === "about" && <AboutTab runtime={runtime} />}
         </div>
       </div>

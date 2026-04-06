@@ -21,6 +21,25 @@ impl AgentRuntime {
         Self { root, tools }
     }
 
+    /// Create a runtime with both built-in and plugin tools.
+    pub fn with_plugin_tools(
+        root: impl AsRef<Path>,
+        plugin_tools: Vec<Arc<dyn Tool>>,
+    ) -> Self {
+        let root = root.as_ref().to_path_buf();
+        let mut tools: HashMap<String, Arc<dyn Tool>> = default_tools(&root)
+            .into_iter()
+            .map(|tool| (tool.definition().name.clone(), tool))
+            .collect();
+
+        for tool in plugin_tools {
+            let name = tool.definition().name.clone();
+            tools.insert(name, tool);
+        }
+
+        Self { root, tools }
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -45,13 +64,13 @@ impl AgentRuntime {
             .collect()
     }
 
-    pub fn build_prompt(&self, mode: &AgentModeDefinition) -> String {
+    pub fn build_prompt(&self, mode: &AgentModeDefinition, skills_section: &str) -> String {
         let snippets = self
             .definitions()
             .into_iter()
             .map(|tool| tool.prompt_snippet)
             .collect::<Vec<_>>();
-        build_system_prompt(self.root.to_string_lossy().as_ref(), mode, &snippets)
+        build_system_prompt(self.root.to_string_lossy().as_ref(), mode, &snippets, skills_section)
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
