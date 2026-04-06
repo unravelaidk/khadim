@@ -311,10 +311,12 @@ impl SkillManager {
     /// Returns the scan directories themselves (e.g. ~/.agents/skills) so
     /// every skill and its subdirectories are readable.
     pub fn enabled_skill_dirs(&self) -> Vec<PathBuf> {
-        self.list_dirs()
+        let dirs: Vec<PathBuf> = self.list_dirs()
             .into_iter()
             .map(PathBuf::from)
-            .collect()
+            .collect();
+        log::info!("SkillManager::enabled_skill_dirs() -> {:?}", dirs);
+        dirs
     }
 
     /// Build the skills section for the system prompt, pi-style.

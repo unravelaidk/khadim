@@ -122,9 +122,18 @@ pub async fn run_prompt_with_plugins(
         .map(|sm| (sm.enabled_skill_dirs(), sm.build_prompt_section()))
         .unwrap_or_default();
 
+    log::info!(
+        "Orchestrator: plugin_tools={}, skill_dirs={:?}, skills_prompt_len={}",
+        plugin_tools.len(),
+        skill_dirs,
+        skills_prompt.len()
+    );
+
     let runtime = if plugin_tools.is_empty() && skill_dirs.is_empty() && skills_prompt.is_empty() {
+        log::info!("Orchestrator: using basic AgentRuntime (no extras)");
         AgentRuntime::new(&session.cwd)
     } else {
+        log::info!("Orchestrator: using AgentRuntime with extras");
         AgentRuntime::with_extras(&session.cwd, plugin_tools, skill_dirs, skills_prompt)
     };
     let mode = if session.workspace_id == "__chat__" {
