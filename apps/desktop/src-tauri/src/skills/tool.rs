@@ -41,10 +41,12 @@ impl Tool for SkillReadTool {
             name: "read_skill".to_string(),
             description: format!(
                 "Read a file from an enabled skill directory. \
-                 Use this to load skill instructions, rules, and reference material. \
-                 Pass the skill id and a relative file path within that skill.\n\n\
+                 Skills are READ-ONLY reference material — do NOT write files to \
+                 skill directories. Always write output files to the current \
+                 working directory instead.\n\n\
+                 Pass the skill id and a relative file path within that skill. \
                  To get started with a skill, read its SKILL.md first.\n\n\
-                 {}",
+                 {}\n",
                 skill_list
             ),
             parameters: json!({
@@ -156,10 +158,12 @@ impl Tool for SkillReadTool {
             .join("\n");
 
         Ok(ToolResult {
-            content: body,
+            content: format!(
+                "[Skill: {} — read-only reference, write files to your workspace instead]\n\n{}",
+                skill_id, body
+            ),
             metadata: Some(json!({
                 "skill": skill_id,
-                "filePath": canonical_target.to_string_lossy(),
                 "filename": canonical_target.file_name().and_then(|f| f.to_str()),
             })),
         })
