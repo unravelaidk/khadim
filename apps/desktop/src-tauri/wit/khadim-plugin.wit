@@ -1,0 +1,139 @@
+// ─── Khadim Plugin Interface ─────────────────────────────────────────
+// This WIT file defines the contract between the Khadim host and WASM plugins.
+// Plugins export tool definitions and execution logic.
+// The host provides sandboxed capabilities (fs, http, logging).
+
+package khadim:plugin@0.1.0;
+
+// ── Types shared between host and guest ──────────────────────────────
+
+/// JSON-encoded string for flexible data passing.
+type json = string;
+
+/// A tool parameter schema (JSON Schema subset).
+record tool-param {
+    name: string,
+    description: string,
+    param-type: string,           // "string", "integer", "boolean", "number", "array", "object"
+    required: bool,
+    default-value: option<json>,  // JSON-encoded default
+}
+
+/// A tool definition that the plugin exports.
+record tool-def {
+    name: string,
+    description: string,
+    params: list<tool-param>,
+    prompt-snippet: string,
+}
+
+/// Result of executing a tool.
+record tool-result {
+    content: string,
+    is-error: bool,
+    metadata: option<json>,
+}
+
+/// Plugin metadata reported at load time.
+record plugin-info {
+    name: string,
+    version: string,
+    description: string,
+    author: string,
+    license: option<string>,
+    homepage: option<string>,
+    min-host-version: option<string>,
+}
+
+/// A key-value config entry the plugin can declare.
+record config-field {
+    key: string,
+    description: string,
+    field-type: string,       // "string", "secret", "boolean", "number"
+    required: bool,
+    default-value: option<string>,
+}
+
+// ── Host-provided imports ────────────────────────────────────────────
+
+/// Sandboxed filesystem access scoped to the workspace root.
+interface host-fs {
+    /// Read a file's contents. Path is relative to workspace root.
+    read-file: func(path: string) -> result<string, string>;
+
+    /// Write content to a file. Creates parent dirs as needed.
+    write-file: func(path: string, content: string) -> result<_, string>;
+
+    /// List entries in a directory.
+    list-dir: func(path: string) -> result<list<string>, string>;
+
+    /// Check if a path exists.
+    path-exists: func(path: string) -> result<bool, string>;
+
+    /// Get file metadata (size, modified time as unix epoch).
+    file-info: func(path: string) -> result<json, string>;
+}
+
+/// HTTP client for plugins that need external API access.
+interface host-http {
+    /// Make an HTTP request. Returns status code + body.
+    /// Headers is JSON-encoded list of [key, value] pairs.
+    request: func(
+        method: string,
+        url: string,
+        headers: option<json>,
+        body: option<string>,
+    ) -> result<tuple<u16, string>, string>;
+}
+
+/// Logging from the plugin side.
+interface host-log {
+    debug: func(msg: string);
+    info: func(msg: string);
+    warn: func(msg: string);
+    error: func(msg: string);
+}
+
+/// Key-value store scoped to the plugin.
+interface host-store {
+    get: func(key: string) -> option<string>;
+    set: func(key: string, value: string);
+    delete: func(key: string);
+    list-keys: func(prefix: string) -> list<string>;
+}
+
+/// Access to the plugin's own configuration values set by the user.
+interface host-config {
+    get: func(key: string) -> option<string>;
+}
+
+// ── Guest exports (what the plugin must implement) ───────────────────
+
+interface guest-plugin {
+    /// Return plugin metadata.
+    info: func() -> plugin-info;
+
+    /// Declare configuration fields this plugin needs.
+    config-schema: func() -> list<config-field>;
+
+    /// Called once after the plugin is loaded. Config values are passed as JSON object.
+    initialize: func(config: json) -> result<_, string>;
+
+    /// Return the list of tools this plugin provides.
+    list-tools: func() -> list<tool-def>;
+
+    /// Execute a named tool with JSON-encoded arguments.
+    execute-tool: func(tool-name: string, args: json) -> tool-result;
+}
+
+// ── The world that ties it all together ──────────────────────────────
+
+world khadim-plugin {
+    import host-fs;
+    import host-http;
+    import host-log;
+    import host-store;
+    import host-config;
+
+    export guest-plugin;
+}
