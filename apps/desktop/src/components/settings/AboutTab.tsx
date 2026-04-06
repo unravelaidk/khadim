@@ -1,10 +1,17 @@
 import type { RuntimeSummary } from "../../lib/bindings";
 
+const APP_VERSION = "alpha";
+
 export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-3">Khadim Desktop</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[13px] font-bold text-[var(--text-primary)]">Khadim Desktop</h2>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent)] bg-[var(--color-accent-subtle)] px-2 py-0.5 rounded-lg">
+            {APP_VERSION}
+          </span>
+        </div>
         <div className="space-y-2 text-[11px] text-[var(--text-secondary)]">
           {runtime && (
             <>
@@ -18,9 +25,31 @@ export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
       </div>
 
       <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-3">Credits</h2>
-        <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-          Built with Tauri, React, and Tailwind CSS. Theme families from Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, and One Dark communities.
+        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-3">About</h2>
+        <div className="space-y-3 text-[11px] text-[var(--text-secondary)]">
+          <p>
+            Developed by{" "}
+            <a
+              href="https://uai.dk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--color-accent)] hover:underline font-medium"
+            >
+              Unravel AI
+            </a>
+          </p>
+          <p className="text-[var(--text-muted)]">
+            Built with Tauri, React, and Tailwind CSS.
+          </p>
+          <p className="text-[var(--text-muted)]">
+            Theme families from Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, and One Dark communities.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl glass-card-static p-4">
+        <p className="text-[10px] text-[var(--text-muted)] text-center">
+          &copy; {new Date().getFullYear()} Unravel AI. All rights reserved.
         </p>
       </div>
     </div>
