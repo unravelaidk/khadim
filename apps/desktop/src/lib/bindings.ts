@@ -731,6 +731,8 @@ export const commands = {
 
   khadimAbort: (sessionId: string) =>
     invoke<void>("khadim_abort", { sessionId }),
+  khadimAnswerQuestion: (sessionId: string, answer: string) =>
+    invoke<void>("khadim_answer_question", { sessionId, answer }),
 
   // Settings
   getSetting: (key: string) =>

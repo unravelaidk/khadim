@@ -1,12 +1,13 @@
 use crate::error::AppError;
 use crate::khadim_agent::modes::{build_mode, chat_mode};
 use crate::khadim_agent::session::KhadimSession;
+use crate::khadim_agent::KhadimManager;
 use crate::khadim_ai::types::{
     AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolDefinition, ToolMessage,
 };
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
-use crate::khadim_code::tools::Tool;
+use crate::khadim_code::tools::{QuestionTool, Tool};
 use crate::opencode::AgentStreamEvent;
 use crate::plugins::PluginManager;
 use serde_json::{json, Value};
@@ -159,8 +160,9 @@ pub async fn run_prompt(
     prompt: &str,
     selection: Option<ModelSelection>,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    manager: Option<&Arc<KhadimManager>>,
 ) -> Result<String, AppError> {
-    run_prompt_with_plugins(session, prompt, selection, tx, None, None).await
+    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager).await
 }
 
 pub async fn run_prompt_with_plugins(
@@ -170,10 +172,22 @@ pub async fn run_prompt_with_plugins(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     plugin_manager: Option<&Arc<PluginManager>>,
     skill_manager: Option<&Arc<crate::skills::SkillManager>>,
+    khadim_manager: Option<&Arc<KhadimManager>>,
 ) -> Result<String, AppError> {
-    let plugin_tools: Vec<Arc<dyn Tool>> = plugin_manager
+    let mut plugin_tools: Vec<Arc<dyn Tool>> = plugin_manager
         .map(|pm| crate::plugins::collect_plugin_tools(pm))
         .unwrap_or_default();
+
+    // Add the question tool if the manager is available (gives it the
+    // ability to park on a oneshot channel until the frontend answers).
+    if let Some(mgr) = khadim_manager {
+        plugin_tools.push(Arc::new(QuestionTool::new(
+            session.id.clone(),
+            session.workspace_id.clone(),
+            tx.clone(),
+            mgr.clone(),
+        )));
+    }
 
     // Collect skill dirs for the read tool whitelist and the prompt section
     let (skill_dirs, skills_prompt) = skill_manager

@@ -46,8 +46,7 @@ import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
 import { ActivityChart } from "./components/ActivityChart";
-import { AgentChatView } from "./components/chat/AgentChatView";
-import { StandaloneChatView } from "./components/chat/StandaloneChatView";
+import { ChatView } from "./components/chat/ChatView";
 import { CreateWorkspaceModal } from "./components/CreateWorkspaceModal";
 import { NewAgentModal } from "./components/NewAgentModal";
 import { AgentSettingsModal } from "./components/AgentSettingsModal";
@@ -250,11 +249,6 @@ export default function App() {
   }, [focusedAgent, queriedMessages]);
 
   const selectedModelOption = findSelectedModelOption(availableModels, selectedModel);
-  const selectedModelLabel = selectedModelOption
-    ? `${selectedModelOption.provider_name} / ${selectedModelOption.model_name}`
-    : selectedModel
-      ? `${selectedModel.provider_id} / ${selectedModel.model_id}`
-      : null;
   const messages = useMemo(() => {
     if (!selectedConversationId) return [] as StoredMessage[];
     const nextMessages = queriedMessages.map((message) => ({ ...message }));
@@ -608,9 +602,18 @@ export default function App() {
 
         {/* ── CHAT MODE ─────────────────────────────────────────── */}
         {!showSettings && interactionMode === "chat" && (
-          <StandaloneChatView
-            activeChatConv={activeChatConv}
-            chatDirectory={chatDirectory}
+          <ChatView
+            localConversation={activeChatConv}
+            conversationId={activeChatId}
+            title={activeChatConv?.title ?? "Chat"}
+            subtitle={
+              chatDirectory
+                ? chatDirectory
+                : activeChatConv
+                  ? `${activeChatConv.messages.length} messages`
+                  : "Start a new conversation"
+            }
+            basePath={chatDirectory}
             input={standaloneChatInput}
             onInputChange={setStandaloneChatInput}
             onSend={handleStandaloneChatSend}
@@ -670,26 +673,27 @@ export default function App() {
         )}
 
         {!showSettings && interactionMode === "work" && inWorkspace && focusedAgentId && (
-          <AgentChatView
-            focusedAgent={focusedAgent}
-            activeConversation={activeConversation}
-            selectedModelLabel={selectedModelLabel}
-            onNewConversation={() => void handleNewConversation()}
+          <ChatView
             messages={messages}
-            selectedWorkspace={selectedWorkspace}
-            isProcessing={focusedAgentIsProcessing}
-            streamingContent={focusedAgentStreamingContent}
-            streamingSteps={focusedAgentStreamingSteps}
-            selectedConversationId={selectedConversationId}
-            chatEndRef={chatEndRef}
+            conversationId={selectedConversationId}
+            title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
+            subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
+            basePath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
+            agent={focusedAgent}
+            showModifiedFiles
+            onOpenFile={handleOpenFileInEditor}
             input={agentChatInput}
             onInputChange={setAgentChatInput}
             onSend={() => void handleChatSend()}
             onStop={() => void handleAbort()}
+            onNewChat={() => void handleNewConversation()}
+            isProcessing={focusedAgentIsProcessing}
+            streamingContent={focusedAgentStreamingContent}
+            streamingSteps={focusedAgentStreamingSteps}
             availableModels={availableModels}
             selectedModel={selectedModel}
             onSelectModel={(key) => void handleSelectModel(key)}
-            onOpenFile={handleOpenFileInEditor}
+            chatEndRef={chatEndRef}
           />
         )}
       </div>
@@ -733,7 +737,13 @@ export default function App() {
         <QuestionOverlay
           question={pendingQuestion}
           onAnswer={(answers) => void handleQuestionAnswer(answers)}
-          onDismiss={handleQuestionDismiss}
+          onDismiss={() => {
+            // For khadim, resolve the pending oneshot so the agent doesn't hang.
+            if (selectedWorkspace?.backend === "khadim" && activeConversation?.backend_session_id) {
+              void commands.khadimAnswerQuestion(activeConversation.backend_session_id, "(skipped)").catch(() => undefined);
+            }
+            handleQuestionDismiss();
+          }}
         />
       )}
     </div>

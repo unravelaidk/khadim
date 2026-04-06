@@ -199,6 +199,18 @@ export function useAgentChatActions({
     const reply = answers.filter(Boolean).join("\n");
     if (!reply) return;
 
+    // For the khadim backend the agent loop is still running — the question
+    // tool is awaiting a oneshot channel.  Just resolve it; the loop continues.
+    if (selectedWorkspace.backend === "khadim") {
+      try {
+        await commands.khadimAnswerQuestion(activeConversation.backend_session_id, reply);
+      } catch (error) {
+        setError(getErrorMessage(error));
+      }
+      return;
+    }
+
+    // OpenCode path — sends a follow-up message to resume the session.
     setAgentChatInput("");
     setIsProcessing(true);
     setStreamingContent("");
@@ -221,23 +233,13 @@ export function useAgentChatActions({
     }
 
     try {
-      if (selectedWorkspace.backend === "khadim") {
-        await commands.khadimSendStreaming(
-          selectedWorkspace.id,
-          activeConversation.backend_session_id,
-          activeConversation.id,
-          reply,
-          selectedModel,
-        );
-      } else {
-        await commands.opencodeSendStreaming(
-          selectedWorkspace.id,
-          activeConversation.backend_session_id,
-          activeConversation.id,
-          reply,
-          selectedModel,
-        );
-      }
+      await commands.opencodeSendStreaming(
+        selectedWorkspace.id,
+        activeConversation.backend_session_id,
+        activeConversation.id,
+        reply,
+        selectedModel,
+      );
       await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(activeConversation.id) });
     } catch (error) {
       setError(getErrorMessage(error));

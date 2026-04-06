@@ -1065,12 +1065,24 @@ fn normalize_part_updated(
                 })
                 .flatten();
 
+            // For write/edit tools, capture the file content so the
+            // frontend can display the full file instead of just a summary.
+            let file_content = if matches!(tool, "write" | "edit") {
+                input
+                    .and_then(|value| value.get("content"))
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            } else {
+                None
+            };
+
             let metadata = serde_json::json!({
                 "id": part_id,
                 "title": title,
                 "tool": tool,
                 "filename": filename,
                 "filePath": file_path,
+                "fileContent": file_content,
                 "result": summarize_tool_result(state),
                 "subagentType": subagent_type,
                 "taskDescription": task_description,
