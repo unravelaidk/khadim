@@ -76,9 +76,9 @@ impl Tool for ReadTool {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
-                    "offset": {"type": "integer"},
-                    "limit": {"type": "integer"}
+                    "path": {"type": "string", "description": "File or directory path to read (relative to workspace root)"},
+                    "offset": {"type": "integer", "description": "Line number to start reading from (1-indexed, default: 1)"},
+                    "limit": {"type": "integer", "description": "Maximum number of lines to read (default: 200)"}
                 },
                 "required": ["path"]
             }),
@@ -154,8 +154,8 @@ impl Tool for WriteTool {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
-                    "content": {"type": "string"}
+                    "path": {"type": "string", "description": "File path to write to (relative to workspace root)"},
+                    "content": {"type": "string", "description": "The full file content to write"}
                 },
                 "required": ["path", "content"]
             }),
@@ -207,7 +207,7 @@ impl Tool for ListFilesTool {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"}
+                    "path": {"type": "string", "description": "Directory path to list (relative to workspace root, default: '.')"}
                 }
             }),
             prompt_snippet: "- ls: List files in a directory".to_string(),
@@ -255,8 +255,8 @@ impl Tool for BashTool {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string"},
-                    "timeout_ms": {"type": "integer"}
+                    "command": {"type": "string", "description": "The bash command to execute"},
+                    "timeout_ms": {"type": "integer", "description": "Timeout in milliseconds (default: 120000)"}
                 },
                 "required": ["command"]
             }),
