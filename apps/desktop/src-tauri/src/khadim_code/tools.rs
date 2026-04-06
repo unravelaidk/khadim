@@ -58,11 +58,17 @@ fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
 
 pub struct ReadTool {
     root: PathBuf,
+    /// Additional directories the read tool is allowed to access (e.g. skill dirs).
+    extra_allowed: Vec<PathBuf>,
 }
 
 impl ReadTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self { root, extra_allowed: Vec::new() }
+    }
+
+    pub fn with_extra_allowed(root: PathBuf, extra_allowed: Vec<PathBuf>) -> Self {
+        Self { root, extra_allowed }
     }
 }
 
@@ -93,7 +99,10 @@ impl Tool for ReadTool {
             .ok_or_else(|| AppError::invalid_input("read requires a path"))?;
         let offset = input.get("offset").and_then(|value| value.as_u64()).unwrap_or(1) as usize;
         let limit = input.get("limit").and_then(|value| value.as_u64()).unwrap_or(200) as usize;
-        let target = normalize_path(&self.root, path)?;
+
+        // Try workspace root first, then check extra allowed dirs (skill dirs)
+        let target = normalize_path(&self.root, path)
+            .or_else(|_| self.resolve_extra_allowed(path))?;
 
         if target.is_dir() {
             let mut entries = std::fs::read_dir(&target)?
@@ -131,6 +140,38 @@ impl Tool for ReadTool {
                 "filename": target.file_name().and_then(|value| value.to_str()),
             })),
         })
+    }
+}
+
+impl ReadTool {
+    /// Check if an absolute path falls within one of the extra allowed directories.
+    fn resolve_extra_allowed(&self, raw: &str) -> Result<PathBuf, AppError> {
+        let candidate = Path::new(raw);
+        if !candidate.is_absolute() {
+            return Err(AppError::invalid_input(format!(
+                "Path is outside the allowed workspace: {raw}"
+            )));
+        }
+
+        let normalized = candidate.components().fold(PathBuf::new(), |mut acc, c| {
+            use std::path::Component;
+            match c {
+                Component::CurDir => {}
+                Component::ParentDir => { acc.pop(); }
+                other => acc.push(other.as_os_str()),
+            }
+            acc
+        });
+
+        for allowed in &self.extra_allowed {
+            if normalized.starts_with(allowed) {
+                return Ok(normalized);
+            }
+        }
+
+        Err(AppError::invalid_input(format!(
+            "Path is outside the allowed workspace: {raw}"
+        )))
     }
 }
 
@@ -416,8 +457,12 @@ impl Tool for BashTool {
 }
 
 pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
+    default_tools_with_skill_dirs(root, Vec::new())
+}
+
+pub fn default_tools_with_skill_dirs(root: &Path, skill_dirs: Vec<PathBuf>) -> Vec<Arc<dyn Tool>> {
     vec![
-        Arc::new(ReadTool::new(root.to_path_buf())),
+        Arc::new(ReadTool::with_extra_allowed(root.to_path_buf(), skill_dirs)),
         Arc::new(WriteTool::new(root.to_path_buf())),
         Arc::new(ListFilesTool::new(root.to_path_buf())),
         Arc::new(BashTool::new(root.to_path_buf())),
