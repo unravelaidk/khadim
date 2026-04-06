@@ -56,6 +56,8 @@ export interface AgentInstance {
   sessionId: string | null;
   /** Model being used (provider/model display string) */
   modelLabel: string | null;
+  /** GitHub issue URL to work on */
+  issueUrl: string | null;
 
   // ── Worktree / branch ─────────────────────────────────────────
   /** Git branch this agent's worktree is based on */
@@ -126,6 +128,7 @@ export function createAgentInstance(
   modelLabel: string | null,
   branch: string | null = null,
   worktreePath: string | null = null,
+  issueUrl: string | null = null,
 ): AgentInstance {
   return {
     id,
@@ -136,6 +139,7 @@ export function createAgentInstance(
     modelLabel,
     branch,
     worktreePath,
+    issueUrl,
     streamPreview: [],
     currentActivity: null,
     streamingSteps: [],

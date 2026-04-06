@@ -2,15 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import type { Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { useGitBranches } from "../hooks/useGitBranches";
+import { useGitHubIssuesQuery, useGitHubSlugQuery, useGitHubAuthStatusQuery } from "../lib/queries";
 import { GlassSelect } from "./GlassSelect";
 
 interface Props {
   isOpen: boolean;
   workspace: Workspace;
   onClose: () => void;
-  /** Called after worktree is created. Returns the branch name and worktree path. */
-  onCreateAgent: (branch: string, worktreePath: string, label: string) => void;
+  /** Called after worktree is created. Returns the branch name, worktree path, label, and optional issue URL. */
+  onCreateAgent: (branch: string, worktreePath: string, label: string, issueUrl: string | null) => void;
   isCreating: boolean;
+}
+
+function extractIssueNumber(url: string): number | null {
+  const match = url.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
 }
 
 export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCreating }: Props) {
@@ -19,11 +25,25 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
   const [newBranchName, setNewBranchName] = useState("");
   const [branchMode, setBranchMode] = useState<"existing" | "new">("new");
   const [agentLabel, setAgentLabel] = useState("");
+  const [issueUrl, setIssueUrl] = useState("");
+  const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const backdropRef = useRef<HTMLDivElement>(null);
   const labelInputRef = useRef<HTMLInputElement>(null);
   const { branches, localBranches, loading } = useGitBranches(workspace.repo_path, isOpen);
+
+  // GitHub integration
+  const { data: githubSlug } = useGitHubSlugQuery(workspace.repo_path, isOpen);
+  const { data: githubAuth } = useGitHubAuthStatusQuery(isOpen && !!githubSlug);
+  const { data: issues = [] } = useGitHubIssuesQuery(
+    githubSlug?.owner ?? null,
+    githubSlug?.repo ?? null,
+    "open",
+    isOpen && !!githubSlug && !!githubAuth?.authenticated,
+  );
+
+  const hasGitHubIssues = !!githubSlug && !!githubAuth?.authenticated && issues.length > 0;
 
   // Load branches when modal opens
   useEffect(() => {
@@ -31,6 +51,8 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     setError(null);
     setNewBranchName("");
     setAgentLabel("");
+    setIssueUrl("");
+    setSelectedIssueNumber(null);
     setBranchMode("new");
     setCreating(false);
 
@@ -70,6 +92,14 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
       return;
     }
 
+    // Determine issue URL from either selection or manual input
+    let issue: string | null = null;
+    if (selectedIssueNumber && githubSlug) {
+      issue = `https://github.com/${githubSlug.owner}/${githubSlug.repo}/issues/${selectedIssueNumber}`;
+    } else if (issueUrl.trim()) {
+      issue = issueUrl.trim();
+    }
+
     setError(null);
     setCreating(true);
 
@@ -83,7 +113,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
       const isNew = branchMode === "new";
       await commands.gitCreateWorktree(workspace.repo_path, worktreePath, branch, isNew, baseBranch || undefined);
 
-      onCreateAgent(branch, worktreePath, label);
+      onCreateAgent(branch, worktreePath, label, issue);
       onClose();
     } catch (err) {
       const msg = err && typeof err === "object" && "message" in err
@@ -156,6 +186,71 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               placeholder="e.g. Fix auth flow"
             />
           </label>
+
+          {/* Issue URL */}
+          <div className="block">
+            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              GitHub issue <span className="text-[var(--text-muted)] font-normal">(optional)</span>
+            </span>
+            {hasGitHubIssues ? (
+              <div className="mt-1.5">
+                <GlassSelect
+                  value={selectedIssueNumber?.toString() ?? ""}
+                  onChange={(v) => {
+                    setSelectedIssueNumber(v ? parseInt(v, 10) : null);
+                    setIssueUrl("");
+                  }}
+                  options={[
+                    { value: "", label: "Select an issue..." },
+                    ...issues.map((issue) => ({
+                      value: issue.number.toString(),
+                      label: `#${issue.number} ${issue.title.slice(0, 50)}${issue.title.length > 50 ? "..." : ""}`,
+                    })),
+                  ]}
+                />
+                {selectedIssueNumber && (
+                  <p className="text-[10px] text-[var(--color-accent)] mt-1.5">
+                    #{selectedIssueNumber} will be loaded when the agent starts
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-1.5">
+                <input
+                  value={issueUrl}
+                  onChange={(e) => {
+                    setIssueUrl(e.target.value);
+                    setSelectedIssueNumber(null);
+                  }}
+                  className="w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                  placeholder="https://github.com/owner/repo/issues/123"
+                />
+                {!githubSlug && (
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    No GitHub remote detected for this repo
+                  </p>
+                )}
+                {githubSlug && !githubAuth?.authenticated && (
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void commands.githubAuthLogin();
+                      }}
+                      className="text-[var(--color-accent)] hover:underline"
+                    >
+                      Sign in to GitHub
+                    </a>{" "}
+                    to select issues from this repo
+                  </p>
+                )}
+              </div>
+            )}
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+              Agent will work on this issue automatically
+            </p>
+          </div>
 
           <div className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
