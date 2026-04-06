@@ -111,12 +111,26 @@ impl Tool for SkillReadTool {
 
         // Resolve and validate path stays inside the skill directory
         let target = skill_dir.join(relative);
+
+        // Check the file exists before canonicalizing
+        if !target.exists() {
+            // List what IS available so the agent can self-correct
+            let available = list_available_files(&skill_dir, 2);
+            return Ok(ToolResult {
+                content: format!(
+                    "File not found: {}\n\nAvailable files in this skill:\n{}",
+                    relative, available
+                ),
+                metadata: Some(json!({ "error": "not_found", "skill": skill_id })),
+            });
+        }
+
         let canonical_dir = skill_dir
             .canonicalize()
             .unwrap_or_else(|_| skill_dir.clone());
         let canonical_target = target
             .canonicalize()
-            .map_err(|_| AppError::not_found(format!("File not found: {relative}")))?;
+            .map_err(|e| AppError::io(format!("Cannot resolve path: {e}")))?;
 
         if !canonical_target.starts_with(&canonical_dir) {
             return Err(AppError::invalid_input(
@@ -168,4 +182,36 @@ fn list_skill_dir(dir: &Path) -> Result<ToolResult, AppError> {
         content: entries.join("\n"),
         metadata: None,
     })
+}
+
+/// Recursively list files in a skill directory up to `max_depth` levels.
+fn list_available_files(dir: &Path, max_depth: usize) -> String {
+    let mut files = Vec::new();
+    collect_files(dir, dir, max_depth, &mut files);
+    files.sort();
+    files.join("\n")
+}
+
+fn collect_files(base: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(base)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_string();
+        if path.is_dir() {
+            if depth > 0 {
+                collect_files(base, &path, depth - 1, out);
+            } else {
+                out.push(format!("  {}/", relative));
+            }
+        } else {
+            out.push(format!("  {}", relative));
+        }
+    }
 }
