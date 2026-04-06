@@ -1,0 +1,22 @@
+[plugin]
+name = "TS Hello World"
+version = "0.1.0"
+description = "Example plugin written in TypeScript (AssemblyScript)"
+author = "Khadim"
+license = "MIT"
+wasm = "plugin.wasm"
+
+# Declare a user-configurable field.
+# The value is passed as JSON to khadim_initialize().
+[[config]]
+key = "greeting_prefix"
+description = "Custom prefix for greetings (default: Hello)"
+field_type = "string"
+required = false
+default_value = "Hello"
+
+[permissions]
+fs = false
+http = true
+store = false
+allowed_hosts = ["*"]   # the fetch_title tool can reach any host
