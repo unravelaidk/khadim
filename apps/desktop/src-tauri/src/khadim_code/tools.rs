@@ -101,8 +101,18 @@ impl Tool for ReadTool {
         let limit = input.get("limit").and_then(|value| value.as_u64()).unwrap_or(200) as usize;
 
         // Try workspace root first, then check extra allowed dirs (skill dirs)
-        let target = normalize_path(&self.root, path)
-            .or_else(|_| self.resolve_extra_allowed(path))?;
+        let target = match normalize_path(&self.root, path) {
+            Ok(p) => p,
+            Err(_) => {
+                log::info!(
+                    "read: path {:?} not in workspace {:?}, trying {} extra dirs",
+                    path,
+                    self.root,
+                    self.extra_allowed.len()
+                );
+                self.resolve_extra_allowed(path)?
+            }
+        };
 
         if target.is_dir() {
             let mut entries = std::fs::read_dir(&target)?
