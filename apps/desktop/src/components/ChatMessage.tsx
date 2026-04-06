@@ -1,9 +1,19 @@
 import { useMemo, useState, memo } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
+import OpenCodeLogo from "../assets/model-icons/opencode-color.svg";
 import type { ChatMessage as Message, ThinkingStepData } from "../lib/bindings";
 import { formatMessageTime } from "../lib/ui";
 import { ThinkingSteps } from "./ThinkingSteps";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+
+type BackendType = "khadim" | "opencode" | "claude_code" | string;
+
+function getBackendLabel(backend: BackendType): string {
+  if (backend === "opencode") return "OpenCode";
+  if (backend === "claude_code") return "Claude Code";
+  if (backend === "khadim") return "Khadim";
+  return backend.charAt(0).toUpperCase() + backend.slice(1);
+}
 
 /** Reconstruct tool-call steps from the raw OpenCode message JSON stored in metadata. */
 function truncateText(text: string, maxLength = 280) {
@@ -243,9 +253,11 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   /** Workspace base path for resolving relative file paths in tool steps. */
   basePath?: string;
+  /** Backend type to show appropriate logo/name. */
+  backend?: BackendType;
 }
 
-function ChatMessageComponent({ message, isStreaming = false, basePath }: ChatMessageProps) {
+function ChatMessageComponent({ message, isStreaming = false, basePath, backend = "khadim" }: ChatMessageProps) {
   const isUser = message.role === "user";
   const time = formatMessageTime(message.created_at);
   const hasContent = message.content.trim().length > 0;
@@ -284,16 +296,19 @@ function ChatMessageComponent({ message, isStreaming = false, basePath }: ChatMe
   }
 
   // Assistant message
+  const backendLabel = getBackendLabel(backend);
+  const BackendLogo = backend === "opencode" ? OpenCodeLogo : KhadimLogo;
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 group/msg">
       {/* Header: avatar + name + timestamp */}
       <div className="flex items-center gap-2 mb-1.5 md:mb-2">
         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xl md:h-7 md:w-7 overflow-hidden">
           <div className="logo-adaptive h-full w-full [&>svg]:w-full [&>svg]:h-full text-[var(--text-primary)]">
-            <KhadimLogo />
+            <BackendLogo />
           </div>
         </div>
-        <span className="text-[11px] font-semibold text-[var(--text-primary)] md:text-xs tracking-wide">Khadim</span>
+        <span className="text-[11px] font-semibold text-[var(--text-primary)] md:text-xs tracking-wide">{backendLabel}</span>
         {time && <span className="text-[9px] font-mono text-[var(--text-muted)] opacity-80 md:text-[10px]">{time}</span>}
       </div>
 
@@ -322,14 +337,17 @@ function ChatMessageComponent({ message, isStreaming = false, basePath }: ChatMe
 
 export const ChatMessage = memo(ChatMessageComponent);
 
-export function TypingIndicator() {
+export function TypingIndicator({ backend = "khadim" }: { backend?: BackendType }) {
+  const backendLabel = getBackendLabel(backend);
+  const BackendLogo = backend === "opencode" ? OpenCodeLogo : KhadimLogo;
+
   return (
     <div className="flex gap-2.5 justify-start animate-in fade-in duration-300">
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl overflow-hidden">
-        <div className="logo-adaptive h-full w-full [&>svg]:w-full [&>svg]:h-full text-[var(--text-primary)]"><KhadimLogo /></div>
+        <div className="logo-adaptive h-full w-full [&>svg]:w-full [&>svg]:h-full text-[var(--text-primary)]"><BackendLogo /></div>
       </div>
       <div className="flex flex-col items-start">
-        <span className="mb-1 px-1 text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">Khadim</span>
+        <span className="mb-1 px-1 text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">{backendLabel}</span>
         <div className="rounded-3xl rounded-tl-lg glass-card-static px-4 py-3">
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-[var(--text-muted)] animate-bounce [animation-delay:-0.3s]" />

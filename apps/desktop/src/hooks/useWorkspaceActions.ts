@@ -171,6 +171,7 @@ export function useWorkspaceActions({
       const modelLabel = selectedModelOption ? selectedModelOption.model_name : null;
       const newAgent = createAgentInstance(
         updatedConversation.id,
+        selectedWorkspaceId!,
         `Agent ${agents.length + 1}`,
         updatedConversation.backend_session_id ?? null,
         modelLabel,
@@ -297,6 +298,7 @@ export function useWorkspaceActions({
       const modelLabel = selectedModelOption ? selectedModelOption.model_name : null;
       const newAgent = createAgentInstance(
         updatedConversation.id,
+        selectedWorkspaceId!,
         label,
         updatedConversation.backend_session_id ?? null,
         modelLabel,

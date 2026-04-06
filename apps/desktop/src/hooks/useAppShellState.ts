@@ -47,6 +47,14 @@ export function useAppShellState({
     setShowSettings(false);
   }, [setFocusedAgentId, setSelectedConversationId]);
 
+  const handleFocusAgentFromHome = useCallback((workspaceId: string, agentId: string) => {
+    setSelectedWorkspaceId(workspaceId);
+    setInWorkspace(true);
+    setFocusedAgentId(agentId);
+    setSelectedConversationId(agentId);
+    setShowSettings(false);
+  }, [setSelectedWorkspaceId, setFocusedAgentId, setSelectedConversationId]);
+
   const handleOpenCreateWorkspace = useCallback(() => {
     setShowCreateModal(true);
     setShowSettings(false);
@@ -116,6 +124,7 @@ export function useAppShellState({
     handleEnterWorkspace,
     handleExitWorkspace,
     handleFocusAgent,
+    handleFocusAgentFromHome,
     handleOpenCreateWorkspace,
     handleOpenNewAgent,
     handleOpenSettings,

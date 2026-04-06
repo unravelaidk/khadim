@@ -74,6 +74,9 @@ interface ChatViewProps {
   // ── Optional: modified files side-panel (workspace chat) ──────
   showModifiedFiles?: boolean;
   onOpenFile?: (path: string) => void;
+
+  // ── Backend type for logo/name display ────────────────────────
+  backend?: string;
 }
 
 export function ChatView({
@@ -98,6 +101,7 @@ export function ChatView({
   agent,
   showModifiedFiles = false,
   onOpenFile,
+  backend = "khadim",
 }: ChatViewProps) {
   // ── Normalise messages ────────────────────────────────────────
   const displayMessages = useMemo(() => {
@@ -204,7 +208,7 @@ export function ChatView({
               <div className="rounded-3xl p-5 glass-card-static">
                 <div className="space-y-5">
                   {displayMessages.map((message) => (
-                    <ChatMessage key={message.id} message={message} basePath={effectiveBasePath} />
+                    <ChatMessage key={message.id} message={message} basePath={effectiveBasePath} backend={backend} />
                   ))}
 
                   {/* Streaming message */}
@@ -221,12 +225,13 @@ export function ChatView({
                       }}
                       isStreaming
                       basePath={effectiveBasePath}
+                      backend={backend}
                     />
                   ) : null}
 
                   {/* Typing indicator */}
                   {isProcessing && !streamingContent && streamingSteps.length === 0 ? (
-                    <TypingIndicator />
+                    <TypingIndicator backend={backend} />
                   ) : null}
 
                   <div ref={chatEndRef} />
