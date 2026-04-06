@@ -1,0 +1,15 @@
+[package]
+name = "khadim-plugin-web-search"
+version = "0.1.0"
+edition = "2021"
+description = "DuckDuckGo web search plugin for Khadim"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

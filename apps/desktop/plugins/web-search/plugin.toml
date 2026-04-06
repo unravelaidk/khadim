@@ -1,0 +1,18 @@
+[plugin]
+name = "Web Search"
+version = "0.1.0"
+description = "Search the web using DuckDuckGo — gives the agent access to up-to-date information"
+author = "Khadim"
+license = "MIT"
+wasm = "plugin.wasm"
+
+[permissions]
+fs = false
+http = true
+store = false
+allowed_hosts = [
+    "html.duckduckgo.com",
+    "api.duckduckgo.com",
+    "duckduckgo.com",
+    "*.duckduckgo.com",
+]
