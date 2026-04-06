@@ -265,6 +265,64 @@ export interface ProcessInfo {
   running: boolean;
 }
 
+// ── Plugin types ─────────────────────────────────────────────────────
+
+export interface PluginPermissionsSummary {
+  fs: boolean;
+  http: boolean;
+  store: boolean;
+  allowed_hosts: string[];
+}
+
+export interface PluginEntry {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  license: string | null;
+  homepage: string | null;
+  dir: string;
+  enabled: boolean;
+  tool_count: number;
+  permissions: PluginPermissionsSummary;
+  error: string | null;
+}
+
+export interface PluginToolParam {
+  name: string;
+  description: string;
+  param_type: string;
+  required: boolean;
+  default_value: string | null;
+}
+
+export interface PluginToolDef {
+  name: string;
+  description: string;
+  params: PluginToolParam[];
+  prompt_snippet: string;
+}
+
+export interface PluginToolInfo {
+  plugin_id: string;
+  plugin_name: string;
+  tool: PluginToolDef;
+}
+
+// ── Skill types ──────────────────────────────────────────────────────
+
+export interface SkillEntry {
+  id: string;
+  name: string;
+  description: string;
+  dir: string;
+  source_dir: string;
+  enabled: boolean;
+  author: string | null;
+  version: string | null;
+}
+
 export interface ProcessOutput {
   process_id: string;
   stream: "stdout" | "stderr";
@@ -684,6 +742,56 @@ export const commands = {
   // Processes
   listProcesses: () =>
     invoke<ProcessInfo[]>("list_processes"),
+
+  // Plugins
+  pluginList: () =>
+    invoke<PluginEntry[]>("plugin_list"),
+
+  pluginGet: (pluginId: string) =>
+    invoke<PluginEntry>("plugin_get", { pluginId }),
+
+  pluginEnable: (pluginId: string, workspaceRoot?: string) =>
+    invoke<PluginEntry>("plugin_enable", { pluginId, workspaceRoot }),
+
+  pluginDisable: (pluginId: string) =>
+    invoke<PluginEntry>("plugin_disable", { pluginId }),
+
+  pluginInstall: (sourceDir: string, workspaceRoot?: string) =>
+    invoke<PluginEntry>("plugin_install", { sourceDir, workspaceRoot }),
+
+  pluginUninstall: (pluginId: string) =>
+    invoke<void>("plugin_uninstall", { pluginId }),
+
+  pluginListTools: () =>
+    invoke<PluginToolInfo[]>("plugin_list_tools"),
+
+  pluginSetConfig: (pluginId: string, key: string, value: string) =>
+    invoke<void>("plugin_set_config", { pluginId, key, value }),
+
+  pluginGetConfig: (pluginId: string, key: string) =>
+    invoke<string | null>("plugin_get_config", { pluginId, key }),
+
+  pluginDiscover: (workspaceRoot?: string) =>
+    invoke<PluginEntry[]>("plugin_discover", { workspaceRoot }),
+
+  pluginDir: () =>
+    invoke<string>("plugin_dir"),
+
+  // Skills
+  skillDiscover: () =>
+    invoke<SkillEntry[]>("skill_discover"),
+
+  skillToggle: (skillId: string, enabled: boolean) =>
+    invoke<void>("skill_toggle", { skillId, enabled }),
+
+  skillListDirs: () =>
+    invoke<string[]>("skill_list_dirs"),
+
+  skillAddDir: (dir: string) =>
+    invoke<string[]>("skill_add_dir", { dir }),
+
+  skillRemoveDir: (dir: string) =>
+    invoke<string[]>("skill_remove_dir", { dir }),
 
   // Editor
   openInEditor: (filePath: string) =>

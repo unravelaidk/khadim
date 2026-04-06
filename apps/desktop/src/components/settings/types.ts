@@ -4,7 +4,7 @@ export type ThemeFamily = "default" | "catppuccin" | "nord" | "tokyo-night" | "g
 export type ThemeMode = "dark" | "light";
 export type CatppuccinVariant = "mocha" | "macchiato" | "frappe" | "latte";
 
-export type SettingsTab = "general" | "providers" | "accounts" | "models" | "about";
+export type SettingsTab = "general" | "providers" | "accounts" | "models" | "plugins" | "skills" | "about";
 
 export interface ThemeFamilyOption {
   id: ThemeFamily;

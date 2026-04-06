@@ -9,7 +9,9 @@ mod khadim_agent;
 mod khadim_ai;
 mod khadim_code;
 mod opencode;
+mod plugins;
 mod process;
+mod skills;
 
 use db::{ChatMessage, Conversation, Database, Workspace};
 use error::AppError;
@@ -19,7 +21,9 @@ use khadim_ai::models::CatalogModelOption;
 use khadim_ai::oauth::{CodexLoginStatusResponse, CodexSessionInfo};
 use khadim_ai::types::ModelSelection;
 use opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
+use plugins::{PluginEntry, PluginManager, PluginToolInfo};
 use process::{ProcessOutput, ProcessRunner};
+use skills::{SkillEntry, SkillManager};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -214,6 +218,8 @@ pub struct AppState {
     opencode: OpenCodeManager,
     khadim: KhadimManager,
     github: github::GitHubClient,
+    plugins: Arc<PluginManager>,
+    skills: Arc<SkillManager>,
 }
 
 // ── Tauri commands ───────────────────────────────────────────────────
@@ -1125,6 +1131,8 @@ async fn khadim_send_streaming(
     let session_id_for_cleanup = session_id.clone();
     let session_id_for_error = session_id.clone();
 
+    let plugins = state.plugins.clone();
+    let skills_section = state.skills.build_prompt_section();
     let handle = tokio::spawn(async move {
         let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
         let emit_handle = app_handle.clone();
@@ -1138,11 +1146,13 @@ async fn khadim_send_streaming(
             let mut session = session.lock().await;
             match resolve_khadim_selection(&state_arc, model.as_ref()) {
                 Ok(selection) => {
-                    khadim_agent::orchestrator::run_prompt(
+                    khadim_agent::orchestrator::run_prompt_with_plugins(
                         &mut session,
                         &content,
                         selection,
                         &tx,
+                        Some(&plugins),
+                        &skills_section,
                     )
                     .await
                 }
@@ -1203,13 +1213,17 @@ async fn khadim_send_message(
     let session = state.khadim.get_session(&session_id)?;
     let (tx, _rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
     let selection = resolve_khadim_selection(state.inner(), model.as_ref())?;
+    let plugins = state.plugins.clone();
+    let skills_section = state.skills.build_prompt_section();
     let text = {
         let mut session = session.lock().await;
-        khadim_agent::orchestrator::run_prompt(
+        khadim_agent::orchestrator::run_prompt_with_plugins(
             &mut session,
             &content,
             selection,
             &tx,
+            Some(&plugins),
+            &skills_section,
         )
         .await?
     };
@@ -1251,6 +1265,134 @@ fn set_setting(
 #[tauri::command]
 fn list_processes(state: State<'_, Arc<AppState>>) -> Vec<process::ProcessInfo> {
     state.process_runner.list()
+}
+
+// ─── Plugins ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn plugin_list(state: State<'_, Arc<AppState>>) -> Vec<PluginEntry> {
+    state.plugins.list_plugins()
+}
+
+#[tauri::command]
+fn plugin_get(state: State<'_, Arc<AppState>>, plugin_id: String) -> Result<PluginEntry, AppError> {
+    state
+        .plugins
+        .get_plugin(&plugin_id)
+        .ok_or_else(|| AppError::not_found(format!("Plugin not found: {plugin_id}")))
+}
+
+#[tauri::command]
+fn plugin_enable(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+    workspace_root: Option<String>,
+) -> Result<PluginEntry, AppError> {
+    let root = workspace_root
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir());
+    state.plugins.enable_plugin(&plugin_id, &root)
+}
+
+#[tauri::command]
+fn plugin_disable(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+) -> Result<PluginEntry, AppError> {
+    state.plugins.disable_plugin(&plugin_id)
+}
+
+#[tauri::command]
+fn plugin_install(
+    state: State<'_, Arc<AppState>>,
+    source_dir: String,
+    workspace_root: Option<String>,
+) -> Result<PluginEntry, AppError> {
+    let root = workspace_root
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir());
+    state
+        .plugins
+        .install_from_dir(std::path::Path::new(&source_dir), &root)
+}
+
+#[tauri::command]
+fn plugin_uninstall(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+) -> Result<(), AppError> {
+    state.plugins.uninstall(&plugin_id)
+}
+
+#[tauri::command]
+fn plugin_list_tools(state: State<'_, Arc<AppState>>) -> Vec<PluginToolInfo> {
+    state.plugins.all_plugin_tools()
+}
+
+#[tauri::command]
+fn plugin_set_config(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+    key: String,
+    value: String,
+) -> Result<(), AppError> {
+    state.plugins.set_plugin_config(&plugin_id, &key, &value)
+}
+
+#[tauri::command]
+fn plugin_get_config(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+    key: String,
+) -> Result<Option<String>, AppError> {
+    state.plugins.get_plugin_config(&plugin_id, &key)
+}
+
+#[tauri::command]
+fn plugin_discover(
+    state: State<'_, Arc<AppState>>,
+    workspace_root: Option<String>,
+) -> Vec<PluginEntry> {
+    let root = workspace_root
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir());
+    state.plugins.discover_and_load(&root)
+}
+
+#[tauri::command]
+fn plugin_dir(state: State<'_, Arc<AppState>>) -> String {
+    state.plugins.plugins_dir().to_string_lossy().to_string()
+}
+
+// ─── Skills ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn skill_discover(state: State<'_, Arc<AppState>>) -> Vec<SkillEntry> {
+    state.skills.discover()
+}
+
+#[tauri::command]
+fn skill_toggle(
+    state: State<'_, Arc<AppState>>,
+    skill_id: String,
+    enabled: bool,
+) -> Result<(), AppError> {
+    state.skills.set_enabled(&skill_id, enabled)
+}
+
+#[tauri::command]
+fn skill_list_dirs(state: State<'_, Arc<AppState>>) -> Vec<String> {
+    state.skills.list_dirs()
+}
+
+#[tauri::command]
+fn skill_add_dir(state: State<'_, Arc<AppState>>, dir: String) -> Result<Vec<String>, AppError> {
+    state.skills.add_dir(&dir)
+}
+
+#[tauri::command]
+fn skill_remove_dir(state: State<'_, Arc<AppState>>, dir: String) -> Result<Vec<String>, AppError> {
+    state.skills.remove_dir(&dir)
 }
 
 // ─── Editor ──────────────────────────────────────────────────────────
@@ -1323,13 +1465,42 @@ pub fn run() {
     let opencode = OpenCodeManager::new();
     let khadim = KhadimManager::new();
     let github = github::GitHubClient::new();
+    let db_arc = Arc::new(db);
+    let plugin_manager = Arc::new(PluginManager::new(Arc::clone(&db_arc)));
+
+    // Discover plugins at startup
+    let startup_plugins = plugin_manager.discover_and_load(&std::env::temp_dir());
+    if !startup_plugins.is_empty() {
+        log::info!(
+            "Discovered {} plugin(s): {}",
+            startup_plugins.len(),
+            startup_plugins
+                .iter()
+                .map(|p| format!("{}@{}", p.name, p.version))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    let skill_manager = Arc::new(SkillManager::new(Arc::clone(&db_arc)));
+    {
+        let discovered = skill_manager.discover();
+        let enabled_count = discovered.iter().filter(|s| s.enabled).count();
+        log::info!(
+            "Discovered {} skill(s) ({} enabled)",
+            discovered.len(),
+            enabled_count,
+        );
+    }
 
     let app_state = Arc::new(AppState {
-        db,
+        db: Database::open().expect("Failed to reopen database"),
         process_runner,
         opencode,
         khadim,
         github,
+        plugins: plugin_manager,
+        skills: skill_manager,
     });
 
     tauri::Builder::default()
@@ -1407,6 +1578,24 @@ pub fn run() {
             set_setting,
             // Processes
             list_processes,
+            // Plugins
+            plugin_list,
+            plugin_get,
+            plugin_enable,
+            plugin_disable,
+            plugin_install,
+            plugin_uninstall,
+            plugin_list_tools,
+            plugin_set_config,
+            plugin_get_config,
+            plugin_discover,
+            plugin_dir,
+            // Skills
+            skill_discover,
+            skill_toggle,
+            skill_list_dirs,
+            skill_add_dir,
+            skill_remove_dir,
             // Editor
             open_in_editor,
             // GitHub Auth

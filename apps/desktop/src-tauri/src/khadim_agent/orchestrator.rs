@@ -6,7 +6,9 @@ use crate::khadim_ai::types::{
 };
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
+use crate::khadim_code::tools::Tool;
 use crate::opencode::AgentStreamEvent;
+use crate::plugins::PluginManager;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -100,14 +102,33 @@ pub async fn run_prompt(
     selection: Option<ModelSelection>,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
 ) -> Result<String, AppError> {
-    let runtime = AgentRuntime::new(&session.cwd);
+    run_prompt_with_plugins(session, prompt, selection, tx, None, "").await
+}
+
+pub async fn run_prompt_with_plugins(
+    session: &mut KhadimSession,
+    prompt: &str,
+    selection: Option<ModelSelection>,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    plugin_manager: Option<&Arc<PluginManager>>,
+    skills_section: &str,
+) -> Result<String, AppError> {
+    let plugin_tools: Vec<Arc<dyn Tool>> = plugin_manager
+        .map(|pm| crate::plugins::collect_plugin_tools(pm))
+        .unwrap_or_default();
+
+    let runtime = if plugin_tools.is_empty() {
+        AgentRuntime::new(&session.cwd)
+    } else {
+        AgentRuntime::with_plugin_tools(&session.cwd, plugin_tools)
+    };
     let mode = if session.workspace_id == "__chat__" {
         chat_mode()
     } else {
         build_mode()
     };
     let client = ModelClient::from_selection(selection).await?;
-    let system_prompt = runtime.build_prompt(&mode);
+    let system_prompt = runtime.build_prompt(&mode, skills_section);
 
     repair_session_messages(&mut session.messages);
 
