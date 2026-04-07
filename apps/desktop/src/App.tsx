@@ -332,6 +332,7 @@ export default function App() {
     selectedWorkspace,
     activeConversation,
     focusedAgentId,
+    agents,
     selectedModel,
     agentChatInput,
     availableModels,
@@ -399,19 +400,41 @@ export default function App() {
           .catch((err) => console.warn("[auto-start] OpenCode start failed:", err));
       }
 
-      // Update agents for this workspace in the global list
+      // Merge DB conversations into agents, preserving any live streaming state
       setAgents((prev) => {
         const otherWorkspaceAgents = prev.filter((a) => a.workspaceId !== workspace.id);
+        const existingByConvId = new Map(prev.filter((a) => a.workspaceId === workspace.id).map((a) => [a.id, a]));
+
         const workspaceAgents = nextConversations.map((conv, i) => {
+          const existing = existingByConvId.get(conv.id);
+          // If agent already exists and is running/streaming, preserve its live state
+          if (existing && (existing.status === "running" || existing.streamingContent || existing.streamingSteps.length > 0)) {
+            // Still update sessionId from DB in case it was set after initial creation
+            return {
+              ...existing,
+              sessionId: conv.backend_session_id ?? existing.sessionId,
+              branch: conv.branch ?? existing.branch,
+              worktreePath: conv.worktree_path ?? existing.worktreePath,
+            };
+          }
+          // Otherwise rebuild from DB, but keep label/modelLabel if already set
           const instance = createAgentInstance(
             conv.id,
             workspace.id,
-            conv.title ?? `Agent ${i + 1}`,
+            existing?.label ?? conv.title ?? `Agent ${i + 1}`,
             conv.backend_session_id ?? null,
-            null,
+            existing?.modelLabel ?? null,
             conv.branch ?? null,
             conv.worktree_path ?? null,
           );
+          if (existing) {
+            instance.status = existing.status;
+            instance.currentActivity = existing.currentActivity;
+            instance.startedAt = existing.startedAt;
+            instance.finishedAt = existing.finishedAt;
+            instance.errorMessage = existing.errorMessage;
+            instance.issueUrl = existing.issueUrl;
+          }
           if (conv.input_tokens > 0 || conv.output_tokens > 0) {
             instance.tokenUsage = {
               inputTokens: conv.input_tokens,
@@ -422,7 +445,14 @@ export default function App() {
           }
           return instance;
         });
-        return [...otherWorkspaceAgents, ...workspaceAgents];
+
+        // Also keep any agents that exist locally but aren't in DB yet
+        // (e.g., just created but mutation hasn't propagated)
+        const dbConvIds = new Set(nextConversations.map((c) => c.id));
+        const orphanedLocalAgents = prev
+          .filter((a) => a.workspaceId === workspace.id && !dbConvIds.has(a.id));
+
+        return [...otherWorkspaceAgents, ...workspaceAgents, ...orphanedLocalAgents];
       });
 
       const preferredConversation = nextConversations.find((item) => item.is_active) ?? nextConversations[0] ?? null;
@@ -445,9 +475,11 @@ export default function App() {
     })();
   }, []);
 
-  // Load agents for all workspaces on startup
+  // Load agents for all workspaces on startup (only once)
+  const hasLoadedStartupAgentsRef = useRef(false);
   useEffect(() => {
-    if (workspaces.length === 0) return;
+    if (workspaces.length === 0 || hasLoadedStartupAgentsRef.current) return;
+    hasLoadedStartupAgentsRef.current = true;
     
     void (async () => {
       const allAgents: AgentInstance[] = [];
@@ -489,6 +521,8 @@ export default function App() {
   }, [setChatDirectory, storedChatDirectory]);
 
   // Load workspace state when entering a workspace
+  // Note: Only run when workspace ID changes, not when connection changes
+  // to avoid reloading agents during streaming
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedWorkspace) {
       setSelectedModelOverride(null);
@@ -498,7 +532,8 @@ export default function App() {
     void loadWorkspaceState(selectedWorkspace).catch((error) => {
       setError(getErrorMessage(error));
     });
-  }, [connection, selectedWorkspaceId, selectedWorkspace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkspaceId, selectedWorkspace?.id]);
 
   useEffect(() => {
     if (!selectedWorkspaceId) return;
@@ -807,6 +842,7 @@ export default function App() {
             />
           <ChatView
             conversationId={selectedConversationId}
+            messages={messages}
             title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
             subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
             basePath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
