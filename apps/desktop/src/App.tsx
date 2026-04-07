@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   AgentStreamEvent,
@@ -7,6 +8,7 @@ import type {
   OpenCodeStarted,
   OpenCodeModelOption,
   OpenCodeModelRef,
+  PendingApproval,
   PendingQuestion,
   ProcessOutput,
   RepoSlug,
@@ -52,6 +54,7 @@ import { CreateWorkspaceModal } from "./components/CreateWorkspaceModal";
 import { NewAgentModal } from "./components/NewAgentModal";
 import { AgentSettingsModal } from "./components/AgentSettingsModal";
 import { QuestionOverlay } from "./components/QuestionOverlay";
+import { ApprovalOverlay } from "./components/ApprovalOverlay";
 import { SettingsPanel } from "./components/SettingsPanel";
 
 initWebviewZoom();
@@ -103,6 +106,7 @@ export default function App() {
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const {
@@ -311,6 +315,7 @@ export default function App() {
     handleAbort,
     handleQuestionAnswer,
     handleQuestionDismiss,
+    handleApprovalDecision,
   } = useAgentChatActions({
     queryClient,
     selectedWorkspace,
@@ -329,6 +334,8 @@ export default function App() {
     setError,
     pendingQuestion,
     setPendingQuestion,
+    pendingApproval,
+    setPendingApproval,
     setAgents,
     erroredAgentSessionsRef,
     handleNewConversation,
@@ -343,6 +350,7 @@ export default function App() {
     activeConversationId: activeConversation?.id ?? null,
     agents,
     setPendingQuestion,
+    setPendingApproval,
     setError,
     setIsProcessing,
     setStreamingContent,
@@ -390,6 +398,8 @@ export default function App() {
             conv.title ?? `Agent ${i + 1}`,
             conv.backend_session_id ?? null,
             null,
+            conv.branch ?? null,
+            conv.worktree_path ?? null,
           );
           if (conv.input_tokens > 0 || conv.output_tokens > 0) {
             instance.tokenUsage = {
@@ -441,6 +451,8 @@ export default function App() {
               conv.title ?? `Agent`,
               conv.backend_session_id ?? null,
               null,
+              conv.branch ?? null,
+              conv.worktree_path ?? null,
             );
             if (conv.input_tokens > 0 || conv.output_tokens > 0) {
               instance.tokenUsage = {
@@ -790,14 +802,29 @@ export default function App() {
       })()}
 
       {/* Question overlay — shown when the agent asks a question */}
-      {pendingQuestion && (
+      {pendingQuestion && createPortal(
         <QuestionOverlay
           question={pendingQuestion}
           onAnswer={(answers) => void handleQuestionAnswer(answers)}
           onDismiss={() => {
             void handleQuestionDismiss();
           }}
-        />
+        />,
+        document.body,
+      )}
+
+      {/* Approval overlay — shown when Claude Code needs permission */}
+      {pendingApproval && createPortal(
+        <ApprovalOverlay
+          approval={pendingApproval}
+          onApprove={(remember) => {
+            void handleApprovalDecision(true, remember);
+          }}
+          onDeny={() => {
+            void handleApprovalDecision(false, false);
+          }}
+        />,
+        document.body,
       )}
     </div>
   );

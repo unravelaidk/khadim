@@ -32,6 +32,9 @@ pub struct Conversation {
     pub workspace_id: String,
     pub backend: String,
     pub backend_session_id: Option<String>,
+    pub backend_session_cwd: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
     pub title: Option<String>,
     pub is_active: bool,
     pub created_at: String,
@@ -119,6 +122,9 @@ impl Database {
                 workspace_id        TEXT NOT NULL REFERENCES workspaces(id),
                 backend             TEXT NOT NULL,
                 backend_session_id  TEXT,
+                backend_session_cwd TEXT,
+                branch              TEXT,
+                worktree_path       TEXT,
                 title               TEXT,
                 is_active           INTEGER NOT NULL DEFAULT 1,
                 created_at          TEXT NOT NULL,
@@ -153,6 +159,18 @@ impl Database {
         );
         let _ = conn.execute(
             "ALTER TABLE conversations ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN backend_session_cwd TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN branch TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN worktree_path TEXT",
             [],
         );
 
@@ -279,13 +297,16 @@ impl Database {
     pub fn create_conversation(&self, conv: &Conversation) -> Result<(), AppError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO conversations (id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at, input_tokens, output_tokens)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO conversations (id, workspace_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 conv.id,
                 conv.workspace_id,
                 conv.backend,
                 conv.backend_session_id,
+                conv.backend_session_cwd,
+                conv.branch,
+                conv.worktree_path,
                 conv.title,
                 conv.is_active as i32,
                 conv.created_at,
@@ -330,7 +351,7 @@ impl Database {
     pub fn list_conversations(&self, workspace_id: &str) -> Result<Vec<Conversation>, AppError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at, input_tokens, output_tokens
+            "SELECT id, workspace_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens
              FROM conversations WHERE workspace_id = ?1 ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map(params![workspace_id], |row| {
@@ -339,12 +360,15 @@ impl Database {
                 workspace_id: row.get(1)?,
                 backend: row.get(2)?,
                 backend_session_id: row.get(3)?,
-                title: row.get(4)?,
-                is_active: row.get::<_, i32>(5)? != 0,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-                input_tokens: row.get::<_, i64>(8).unwrap_or(0),
-                output_tokens: row.get::<_, i64>(9).unwrap_or(0),
+                backend_session_cwd: row.get(4)?,
+                branch: row.get(5)?,
+                worktree_path: row.get(6)?,
+                title: row.get(7)?,
+                is_active: row.get::<_, i32>(8)? != 0,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                input_tokens: row.get::<_, i64>(11).unwrap_or(0),
+                output_tokens: row.get::<_, i64>(12).unwrap_or(0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -354,7 +378,7 @@ impl Database {
     pub fn get_conversation(&self, id: &str) -> Result<Conversation, AppError> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, workspace_id, backend, backend_session_id, title, is_active, created_at, updated_at, input_tokens, output_tokens
+            "SELECT id, workspace_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens
              FROM conversations WHERE id = ?1",
             params![id],
             |row| {
@@ -363,12 +387,15 @@ impl Database {
                     workspace_id: row.get(1)?,
                     backend: row.get(2)?,
                     backend_session_id: row.get(3)?,
-                    title: row.get(4)?,
-                    is_active: row.get::<_, i32>(5)? != 0,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
-                    input_tokens: row.get::<_, i64>(8).unwrap_or(0),
-                    output_tokens: row.get::<_, i64>(9).unwrap_or(0),
+                    backend_session_cwd: row.get(4)?,
+                    branch: row.get(5)?,
+                    worktree_path: row.get(6)?,
+                    title: row.get(7)?,
+                    is_active: row.get::<_, i32>(8)? != 0,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                    input_tokens: row.get::<_, i64>(11).unwrap_or(0),
+                    output_tokens: row.get::<_, i64>(12).unwrap_or(0),
                 })
             },
         )
@@ -389,12 +416,15 @@ impl Database {
         &self,
         id: &str,
         backend_session_id: &str,
+        backend_session_cwd: Option<&str>,
+        branch: Option<&str>,
+        worktree_path: Option<&str>,
     ) -> Result<(), AppError> {
         let now = Utc::now().to_rfc3339();
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE conversations SET backend_session_id = ?1, updated_at = ?2 WHERE id = ?3",
-            params![backend_session_id, now, id],
+            "UPDATE conversations SET backend_session_id = ?1, backend_session_cwd = ?2, branch = ?3, worktree_path = ?4, updated_at = ?5 WHERE id = ?6",
+            params![backend_session_id, backend_session_cwd, branch, worktree_path, now, id],
         )?;
         Ok(())
     }
