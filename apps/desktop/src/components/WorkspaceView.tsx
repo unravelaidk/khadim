@@ -28,6 +28,7 @@ interface WorkspaceViewProps {
   gitStatus: string;
   gitDiffStat: string;
   agents: AgentInstance[];
+
   onSelectConversation: (id: string) => void;
   onStartOpenCode: () => void;
   onStopOpenCode: () => void;
@@ -305,6 +306,8 @@ export function WorkspaceView({
 
         {tab === "logs" && (
           <div className="rounded-3xl bg-[var(--log-bg)] text-[var(--text-inverse)] p-4 min-h-[420px]">
+            {/* Process output is still here for backend stdout/stderr; the live native
+                terminal lives in the dock at the bottom of the workspace. */}
             <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--scrollbar-thumb)] mb-3">
               Process Output
             </div>
@@ -324,6 +327,7 @@ export function WorkspaceView({
           </div>
         )}
       </div>
+
     </div>
   );
 }

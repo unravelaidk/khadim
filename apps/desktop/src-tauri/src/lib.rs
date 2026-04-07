@@ -3,16 +3,21 @@
 mod claude_code;
 mod db;
 mod error;
+mod file_index;
 mod git;
 mod github;
 mod health;
 mod khadim_agent;
 mod khadim_ai;
 mod khadim_code;
+mod lsp;
 mod opencode;
 mod plugins;
 mod process;
 mod skills;
+mod syntax;
+mod terminal;
+mod workspace_context;
 
 use claude_code::{ClaudeCodeManager, ClaudeCodeSessionCreated};
 use db::{ChatMessage, Conversation, Database, Workspace};
@@ -26,6 +31,9 @@ use opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
 use plugins::{PluginEntry, PluginManager, PluginToolInfo};
 use process::{ProcessOutput, ProcessRunner};
 use skills::{SkillEntry, SkillManager};
+use file_index::FileIndexManager;
+use lsp::LspManager;
+use terminal::{TerminalManager, TerminalSession};
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -226,6 +234,9 @@ pub struct AppState {
     github: github::GitHubClient,
     plugins: Arc<PluginManager>,
     skills: Arc<SkillManager>,
+    terminals: Arc<TerminalManager>,
+    file_index: Arc<FileIndexManager>,
+    lsp: Arc<LspManager>,
 }
 
 // ── Tauri commands ───────────────────────────────────────────────────
@@ -395,6 +406,199 @@ fn git_remove_worktree(
     force: bool,
 ) -> Result<(), AppError> {
     git::remove_worktree(&repo_path, &worktree_path, force)
+}
+
+// ─── Workspace context ───────────────────────────────────────────────
+
+// ─── Terminal dock ───────────────────────────────────────────────────
+
+#[tauri::command]
+fn terminal_create(
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    workspace_id: String,
+    conversation_id: Option<String>,
+    cwd: Option<String>,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> Result<TerminalSession, AppError> {
+    // Resolve cwd from the workspace context unless the caller forced one.
+    let resolved_cwd = match cwd {
+        Some(value) if std::path::Path::new(&value).is_dir() => value,
+        _ => {
+            let context = workspace_context::resolve(
+                &state.db,
+                &workspace_id,
+                conversation_id.as_deref(),
+            )?;
+            context.cwd
+        }
+    };
+
+    state.terminals.create(
+        &app,
+        workspace_id,
+        conversation_id,
+        resolved_cwd,
+        cols,
+        rows,
+    )
+}
+
+#[tauri::command]
+fn terminal_write(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+    data: String,
+) -> Result<(), AppError> {
+    state.terminals.write(&session_id, &data)
+}
+
+#[tauri::command]
+fn terminal_resize(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), AppError> {
+    state.terminals.resize(&session_id, cols, rows)
+}
+
+#[tauri::command]
+fn terminal_close(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+) -> Result<(), AppError> {
+    state.terminals.close(&session_id)
+}
+
+#[tauri::command]
+fn terminal_list(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: Option<String>,
+) -> Vec<TerminalSession> {
+    match workspace_id {
+        Some(id) => state.terminals.list_for_workspace(&id),
+        None => state.terminals.list(),
+    }
+}
+
+#[tauri::command]
+fn workspace_context_get(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: String,
+    conversation_id: Option<String>,
+) -> Result<workspace_context::DesktopWorkspaceContext, AppError> {
+    workspace_context::resolve(&state.db, &workspace_id, conversation_id.as_deref())
+}
+
+// ─── File Finder ─────────────────────────────────────────────────────
+
+#[tauri::command]
+fn file_index_build(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+) -> Result<file_index::FileIndexStatus, AppError> {
+    state.file_index.build(&root)
+}
+
+#[tauri::command]
+fn file_search(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+    query: String,
+    max_results: Option<usize>,
+) -> Result<Vec<file_index::FileSearchResult>, AppError> {
+    state.file_index.search(&root, &query, max_results)
+}
+
+#[tauri::command]
+fn file_read_preview(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+    relative_path: String,
+    max_bytes: Option<usize>,
+) -> Result<file_index::FilePreview, AppError> {
+    state.file_index.read_preview(&root, &relative_path, max_bytes)
+}
+
+#[tauri::command]
+fn file_index_status(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+) -> Option<file_index::FileIndexStatus> {
+    state.file_index.status(&root)
+}
+
+// ─── LSP ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn lsp_hover(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+    file_path: String,
+    line: u32,
+    character: u32,
+) -> Result<Option<lsp::LspHoverResult>, AppError> {
+    state.lsp.hover(&root, &file_path, line, character)
+}
+
+#[tauri::command]
+fn lsp_definition(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+    file_path: String,
+    line: u32,
+    character: u32,
+) -> Result<Vec<lsp::LspLocation>, AppError> {
+    state.lsp.definition(&root, &file_path, line, character)
+}
+
+#[tauri::command]
+fn lsp_document_symbols(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+    file_path: String,
+) -> Result<Vec<lsp::LspSymbol>, AppError> {
+    state.lsp.document_symbols(&root, &file_path)
+}
+
+#[tauri::command]
+fn lsp_workspace_symbols(
+    state: State<'_, Arc<AppState>>,
+    root: String,
+    query: String,
+    language_hint: Option<String>,
+) -> Result<Vec<lsp::LspWorkspaceSymbol>, AppError> {
+    state.lsp.workspace_symbols(&root, &query, language_hint.as_deref())
+}
+
+#[tauri::command]
+fn lsp_list_servers(
+    state: State<'_, Arc<AppState>>,
+) -> Vec<lsp::LspServerStatus> {
+    state.lsp.list_servers()
+}
+
+#[tauri::command]
+fn lsp_stop(
+    state: State<'_, Arc<AppState>>,
+    root: Option<String>,
+) {
+    match root {
+        Some(r) => state.lsp.stop_for_root(&r),
+        None => state.lsp.stop_all(),
+    }
+}
+
+// ─── Syntax Highlighting (tree-sitter) ───────────────────────────────
+
+#[tauri::command]
+fn syntax_highlight(
+    source: String,
+    filename: String,
+) -> syntax::HighlightResult {
+    syntax::highlight(&source, &filename)
 }
 
 // ─── Conversations ───────────────────────────────────────────────────
@@ -1925,14 +2129,77 @@ fn skill_remove_dir(state: State<'_, Arc<AppState>>, dir: String) -> Result<Vec<
 
 // ─── Editor ──────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Serialize)]
+struct DetectedEditor {
+    /// Unique key for the editor (e.g. "code", "cursor", "zed").
+    id: String,
+    /// Human-readable name.
+    name: String,
+    /// Binary name / path found on $PATH.
+    binary: String,
+    /// True when the binary was actually found on $PATH.
+    available: bool,
+}
+
+const KNOWN_EDITORS: &[(&str, &str, &[&str])] = &[
+    ("code",            "Visual Studio Code",     &["code"]),
+    ("code-insiders",   "VS Code Insiders",       &["code-insiders"]),
+    ("cursor",          "Cursor",                 &["cursor"]),
+    ("zed",             "Zed",                    &["zed"]),
+    ("windsurf",        "Windsurf",               &["windsurf"]),
+    ("sublime",         "Sublime Text",           &["subl"]),
+    ("neovim",          "Neovim",                 &["nvim"]),
+    ("vim",             "Vim",                    &["vim"]),
+    ("emacs",           "Emacs",                  &["emacs"]),
+    ("helix",           "Helix",                  &["hx"]),
+    ("fleet",           "JetBrains Fleet",        &["fleet"]),
+    ("idea",            "IntelliJ IDEA",          &["idea"]),
+    ("webstorm",        "WebStorm",               &["webstorm"]),
+    ("rustrover",       "RustRover",              &["rustrover"]),
+    ("pycharm",         "PyCharm",                &["pycharm"]),
+    ("goland",          "GoLand",                 &["goland"]),
+    ("clion",           "CLion",                  &["clion"]),
+    ("lapce",           "Lapce",                  &["lapce"]),
+    ("kate",            "Kate",                   &["kate"]),
+    ("gedit",           "GNOME Text Editor",      &["gedit", "gnome-text-editor"]),
+    ("nano",            "Nano",                   &["nano"]),
+    ("xdg",             "System Default",         &["xdg-open"]),
+];
+
+/// Detect which editors are installed by probing $PATH.
+#[tauri::command]
+fn detect_editors() -> Vec<DetectedEditor> {
+    KNOWN_EDITORS
+        .iter()
+        .filter_map(|(id, name, binaries)| {
+            for bin in *binaries {
+                if which::which(bin).is_ok() {
+                    return Some(DetectedEditor {
+                        id: id.to_string(),
+                        name: name.to_string(),
+                        binary: bin.to_string(),
+                        available: true,
+                    });
+                }
+            }
+            None
+        })
+        .collect()
+}
+
 /// Open a file in the user's preferred code editor.
 ///
 /// Resolution order:
-///   1. `$VISUAL` / `$EDITOR` environment variable
-///   2. Well-known GUI editors on `$PATH`: code, cursor, zed
-///   3. Platform default opener (xdg-open / open / start)
+///   1. `preferred_editor` setting (editor id from detect_editors)
+///   2. `$VISUAL` / `$EDITOR` environment variable
+///   3. First available GUI editor on `$PATH`
+///   4. Platform default opener (xdg-open / open / start)
 #[tauri::command]
-async fn open_in_editor(file_path: String) -> Result<(), AppError> {
+async fn open_in_editor(
+    state: State<'_, Arc<AppState>>,
+    file_path: String,
+    editor_id: Option<String>,
+) -> Result<(), AppError> {
     use std::process::Command;
 
     let path = std::path::Path::new(&file_path);
@@ -1942,7 +2209,24 @@ async fn open_in_editor(file_path: String) -> Result<(), AppError> {
         )));
     }
 
-    // 1. Check $VISUAL / $EDITOR
+    // 1. Explicit editor id (from arg or setting)
+    let effective_id = editor_id
+        .or_else(|| state.db.get_setting("khadim:preferred_editor").ok().flatten());
+
+    if let Some(ref id) = effective_id {
+        if let Some((_, _, binaries)) = KNOWN_EDITORS.iter().find(|(eid, _, _)| eid == id) {
+            for bin in *binaries {
+                if which::which(bin).is_ok() {
+                    let result = Command::new(bin).arg(&file_path).spawn();
+                    if result.is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Check $VISUAL / $EDITOR
     for var in ["VISUAL", "EDITOR"] {
         if let Ok(editor) = std::env::var(var) {
             let editor = editor.trim().to_string();
@@ -1955,15 +2239,16 @@ async fn open_in_editor(file_path: String) -> Result<(), AppError> {
         }
     }
 
-    // 2. Try well-known GUI editors
-    for editor in ["code", "cursor", "zed"] {
-        let result = Command::new(editor).arg(&file_path).spawn();
-        if result.is_ok() {
-            return Ok(());
+    // 3. Try first available GUI editor
+    for (_, _, binaries) in KNOWN_EDITORS.iter().take(6) {
+        for bin in *binaries {
+            if let Ok(_) = Command::new(bin).arg(&file_path).spawn() {
+                return Ok(());
+            }
         }
     }
 
-    // 3. Platform default opener
+    // 4. Platform default opener
     #[cfg(target_os = "linux")]
     let opener = "xdg-open";
     #[cfg(target_os = "macos")]
@@ -1979,6 +2264,58 @@ async fn open_in_editor(file_path: String) -> Result<(), AppError> {
                 "Failed to open {file_path} in any editor: {e}"
             ))
         })?;
+
+    Ok(())
+}
+
+/// Open a directory (project root) in the user's preferred editor.
+#[tauri::command]
+async fn open_project_in_editor(
+    state: State<'_, Arc<AppState>>,
+    project_path: String,
+) -> Result<(), AppError> {
+    use std::process::Command;
+
+    let path = std::path::Path::new(&project_path);
+    if !path.is_dir() {
+        return Err(AppError::not_found(format!(
+            "Directory does not exist: {project_path}"
+        )));
+    }
+
+    let editor_id = state.db.get_setting("khadim:preferred_editor").ok().flatten();
+
+    if let Some(ref id) = editor_id {
+        if let Some((_, _, binaries)) = KNOWN_EDITORS.iter().find(|(eid, _, _)| eid == id) {
+            for bin in *binaries {
+                if which::which(bin).is_ok() {
+                    let result = Command::new(bin).arg(&project_path).spawn();
+                    if result.is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: try GUI editors that support opening folders
+    for bin in ["code", "cursor", "zed", "windsurf", "subl", "idea", "webstorm", "fleet", "lapce"] {
+        if let Ok(_) = Command::new(bin).arg(&project_path).spawn() {
+            return Ok(());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    let opener = "xdg-open";
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(target_os = "windows")]
+    let opener = "start";
+
+    Command::new(opener)
+        .arg(&project_path)
+        .spawn()
+        .map_err(|e| AppError::io(format!("Failed to open project: {e}")))?;
 
     Ok(())
 }
@@ -2031,6 +2368,9 @@ pub fn run() {
         github,
         plugins: plugin_manager,
         skills: skill_manager,
+        terminals: Arc::new(TerminalManager::new()),
+        file_index: Arc::new(FileIndexManager::new()),
+        lsp: Arc::new(LspManager::new()),
     });
 
     tauri::Builder::default()
@@ -2046,6 +2386,26 @@ pub fn run() {
             create_workspace,
             set_workspace_branch,
             delete_workspace,
+            workspace_context_get,
+            terminal_create,
+            terminal_write,
+            terminal_resize,
+            terminal_close,
+            terminal_list,
+            // File Finder
+            file_index_build,
+            file_search,
+            file_read_preview,
+            file_index_status,
+            // LSP
+            lsp_hover,
+            lsp_definition,
+            lsp_document_symbols,
+            lsp_workspace_symbols,
+            lsp_list_servers,
+            lsp_stop,
+            // Syntax highlighting
+            syntax_highlight,
             // Git
             git_repo_info,
             git_list_branches,
@@ -2136,7 +2496,9 @@ pub fn run() {
             skill_add_dir,
             skill_remove_dir,
             // Editor
+            detect_editors,
             open_in_editor,
+            open_project_in_editor,
             // GitHub Auth
             github::github_auth_status,
             github::github_auth_login,

@@ -7,6 +7,8 @@ export const desktopQueryKeys = {
   githubAuthStatus: ["github-auth-status"] as const,
   workspaces: ["workspaces"] as const,
   workspace: (workspaceId: string | null) => ["workspace", workspaceId] as const,
+  workspaceContext: (workspaceId: string | null, conversationId: string | null) =>
+    ["workspace-context", workspaceId, conversationId] as const,
   workspaceConnection: (workspaceId: string | null) => ["workspace-connection", workspaceId] as const,
   providerStatuses: ["provider-statuses"] as const,
   conversations: (workspaceId: string | null) => ["conversations", workspaceId] as const,
@@ -49,6 +51,21 @@ export function useWorkspaceQuery(workspaceId: string | null, enabled = true) {
     queryFn: () => {
       if (!workspaceId) return Promise.resolve(null);
       return commands.getWorkspace(workspaceId);
+    },
+    enabled: enabled && Boolean(workspaceId),
+  });
+}
+
+export function useWorkspaceContextQuery(
+  workspaceId: string | null,
+  conversationId: string | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: desktopQueryKeys.workspaceContext(workspaceId, conversationId),
+    queryFn: () => {
+      if (!workspaceId) return Promise.resolve(null);
+      return commands.workspaceContextGet(workspaceId, conversationId);
     },
     enabled: enabled && Boolean(workspaceId),
   });

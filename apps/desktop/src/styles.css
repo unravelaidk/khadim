@@ -1,5 +1,21 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
+
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/NerdFontsSymbolsOnly/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Symbols Nerd Font";
+  src: url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/NerdFontsSymbolsOnly/SymbolsNerdFont-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 @import "./styles/themes/default.css";
 @import "./styles/themes/catppuccin.css";
 @import "./styles/themes/nord.css";
@@ -223,6 +239,14 @@ body {
   background: var(--text-muted);
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* ─── Animations ────────────────────────────────────────────────────── */
 @keyframes animate-in {
   from {
@@ -281,6 +305,29 @@ body {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ─── Terminal / xterm ──────────────────────────────────────────────── */
+.terminal-host,
+.terminal-host .xterm,
+.terminal-host .xterm-viewport,
+.terminal-host .xterm-screen,
+.terminal-host .xterm-helpers {
+  background: transparent !important;
+}
+
+.terminal-host .xterm-viewport {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.terminal-host .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-host .xterm a,
+.terminal-host .xterm .xterm-link {
+  cursor: pointer;
 }
 
 /* ─── Prose / Markdown ──────────────────────────────────────────────── */
@@ -420,3 +467,84 @@ body {
   border-radius: 8px;
   margin: 0.75em 0;
 }
+/* ── Tree-sitter syntax highlighting ──────────────────────────────── */
+/* Token classes emitted by the Rust tree-sitter highlighter.          */
+/* Color palette inspired by One Dark Pro.                             */
+
+.ts-preview {
+  background: var(--log-bg);
+  overflow: auto;
+  min-height: 100%;
+}
+.ts-code {
+  font-family: "IBM Plex Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.65;
+  padding: 0.5rem 0;
+}
+.ts-line {
+  display: flex;
+  padding: 0 0.75rem;
+}
+.ts-line:hover {
+  background: rgba(255,255,255,0.03);
+}
+.ts-ln {
+  flex-shrink: 0;
+  min-width: 3em;
+  padding-right: 1em;
+  text-align: right;
+  color: var(--scrollbar-thumb);
+  opacity: 0.5;
+  user-select: none;
+  font-size: 0.65rem;
+}
+.ts-lc {
+  white-space: pre;
+  color: var(--text-secondary);
+}
+
+/* ── Token colors (One Dark inspired) ── */
+.ts-keyword       { color: #c678dd; }
+.ts-function,
+.ts-function-builtin { color: #61afef; }
+.ts-type,
+.ts-type-builtin  { color: #e5c07b; }
+.ts-string,
+.ts-string-escape,
+.ts-string-regexp,
+.ts-string-special { color: #98c379; }
+.ts-number        { color: #d19a66; }
+.ts-boolean       { color: #d19a66; }
+.ts-comment,
+.ts-comment-documentation { color: #5c6370; font-style: italic; }
+.ts-variable      { color: #e06c75; }
+.ts-variable-builtin { color: #e06c75; }
+.ts-variable-member { color: #e06c75; }
+.ts-variable-parameter { color: #e06c75; font-style: italic; }
+.ts-constant,
+.ts-constant-builtin { color: #d19a66; }
+.ts-property,
+.ts-property-builtin { color: #e06c75; }
+.ts-constructor   { color: #e5c07b; }
+.ts-operator      { color: #56b6c2; }
+.ts-punctuation,
+.ts-punctuation-bracket,
+.ts-punctuation-delimiter,
+.ts-punctuation-special { color: #abb2bf; }
+.ts-tag           { color: #e06c75; }
+.ts-attribute     { color: #d19a66; }
+.ts-module        { color: #e5c07b; }
+.ts-escape        { color: #56b6c2; }
+.ts-embedded      { color: #abb2bf; }
+.ts-error         { color: #f44747; text-decoration: underline wavy; }
+.ts-markup        { color: #abb2bf; }
+.ts-markup-heading { color: #e06c75; font-weight: bold; }
+.ts-markup-bold   { font-weight: bold; }
+.ts-markup-italic { font-style: italic; }
+.ts-markup-link   { color: #61afef; text-decoration: underline; }
+.ts-markup-link-url { color: #56b6c2; }
+.ts-markup-list   { color: #e06c75; }
+.ts-markup-quote  { color: #5c6370; font-style: italic; }
+.ts-markup-raw    { color: #98c379; }
+.ts-markup-strikethrough { text-decoration: line-through; }

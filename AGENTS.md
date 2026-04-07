@@ -87,27 +87,39 @@ This should stay a narrow integration:
 
 ### Implemented So Far
 
-- Replaced the placeholder Tauri backend with a real Rust module structure:
+- Replaced the placeholder Tauri backend with a real Rust module structure, including:
   - `apps/desktop/src-tauri/src/db.rs`
   - `apps/desktop/src-tauri/src/error.rs`
   - `apps/desktop/src-tauri/src/git.rs`
   - `apps/desktop/src-tauri/src/health.rs`
   - `apps/desktop/src-tauri/src/opencode.rs`
   - `apps/desktop/src-tauri/src/process.rs`
+  - `apps/desktop/src-tauri/src/claude_code.rs`
 - Added SQLite persistence using `rusqlite`.
-- Added database tables for:
+- Added database tables and persisted metadata for:
   - `workspaces`
   - `conversations`
   - `messages`
   - `settings`
+- Expanded conversation persistence to store desktop-specific runtime context needed for recovery:
+  - `backend_session_id`
+  - `backend_session_cwd`
+  - `branch`
+  - `worktree_path`
 - Added native git support for:
   - repo validation
   - repo info
   - branch listing
   - worktree listing
   - worktree create/remove
+  - branch → worktree association
   - git status summary
   - diff stat
+  - changed file listing
+- Improved worktree behavior in a t3code-like direction:
+  - stable default worktree paths under `.khadim-worktrees/<repo>/<branch>`
+  - reuse of existing non-main worktrees for an existing branch
+  - shared-worktree-safe deletion logic when removing an agent
 - Added managed process spawning and cleanup for long-lived backend processes.
 - Added health checking with retry logic for local backend services.
 - Added OpenCode sidecar management:
@@ -126,30 +138,50 @@ This should stay a narrow integration:
   - list session messages
   - get diff
   - get session statuses
+  - reply to question requests
+  - reject question requests
+- Added OpenCode streaming integration using:
+  - `POST /session/:id/prompt_async`
+  - `GET /event`
+- Normalized OpenCode live events into the desktop app streaming model, including:
+  - `text_delta`
+  - `step_start`
+  - `step_update`
+  - `step_complete`
+  - `question`
+  - `done`
+  - `error`
+- Fixed OpenCode question handling to use the dedicated question reply/reject API instead of sending question answers back as plain follow-up prompts.
+- Added Claude Code desktop integration via a native bridge process.
+- Added Claude Code approval handling:
+  - SDK `canUseTool` permission interception
+  - desktop approval overlay
+  - approve / deny / remember decision flow
+  - live response back into the running Claude Code bridge
+- Added best-effort Claude Code session recovery on restart by rebuilding in-memory session state from persisted conversation metadata.
 - Added process output event emission to the frontend via Tauri events:
   - `process-output`
   - `opencode-ready`
-- Expanded Tauri commands in `apps/desktop/src-tauri/src/lib.rs` for:
-  - runtime summary
-  - workspace CRUD
-  - git queries
-  - conversation CRUD
-  - message listing
-  - OpenCode lifecycle and session operations
-  - settings get/set
-  - process listing
-- Updated `apps/desktop/src/lib/bindings.ts` to include typed frontend bindings for the new Tauri commands and events.
-- Rust side currently passes `cargo check` cleanly with no warnings.
+  - `agent-stream`
+- Updated the desktop frontend to support:
+  - question overlays rendered above the app shell via portals
+  - approval overlays rendered above the app shell via portals
+  - typed bindings for the expanded Tauri command/event surface
+- Wired the Tauri dialog plugin so desktop workspace creation can use a native folder picker.
+- Rust side currently passes `cargo check` cleanly, with only unrelated pre-existing warnings in plugin code.
 
 ### Current State
 
-- Desktop backend foundation is in place and remains stable.
-- Frontend runtime wiring has progressed beyond the original mock shell, but the UI migration is not complete.
-- The desktop app is being aligned to the web app's glassmorphic design system instead of maintaining a separate visual language.
-- The current desktop priority is:
-  - finish the remaining UI migration to web-aligned styles
-  - add a native folder picker for workspace creation
-  - replace blocking message sends with async streaming updates from OpenCode
+- Desktop backend foundation is now solid and increasingly transport-aware.
+- OpenCode async streaming and question reply handling are implemented.
+- Claude Code native bridge, approval prompts, and best-effort session restore are implemented.
+- Worktree management is no longer purely ad hoc; it now has stable paths, reuse behavior, and shared-deletion safeguards.
+- The main remaining desktop gap is no longer basic backend wiring; it is turning workspace mode into a stronger native coding surface.
+- The highest-value next desktop priority is:
+  - redesign workspace mode around native tools
+  - add a native terminal in workspace mode
+  - add a native-speed file finder
+  - replace the current lightweight git snapshot with a richer diff workspace
 
 ### Recent Desktop Update
 
@@ -164,41 +196,224 @@ This should stay a narrow integration:
   - `apps/desktop/src/components/ChatMessage.tsx`
   - `apps/desktop/src/components/ChatInput.tsx`
   - `apps/desktop/src/components/WelcomeScreen.tsx`
-- `ChatMessage.tsx` was also made streaming-ready with support for an `isStreaming` presentation state.
+- Added new desktop overlays/components for interactive runtime control:
+  - `apps/desktop/src/components/QuestionOverlay.tsx`
+  - `apps/desktop/src/components/ApprovalOverlay.tsx`
+- Updated `apps/desktop/src/components/NewAgentModal.tsx` and git backend behavior to support stable and reusable worktrees.
+- Updated `apps/desktop/src/hooks/useAgentStreamHandler.ts` and `apps/desktop/src/hooks/useAgentChatActions.ts` to support OpenCode question replies and Claude Code approval requests.
 
 ### Remaining Desktop Work
 
-1. Finish the remaining frontend migration in:
+1. Finish the remaining workspace-mode frontend migration in:
    - `apps/desktop/src/components/WorkspaceView.tsx`
    - `apps/desktop/src/App.tsx`
 2. Integrate `WelcomeScreen` into the empty chat state and remove the remaining inline desktop-only styling.
-3. Install and wire the Tauri dialog plugin so workspace creation can use a native folder picker.
-4. After folder selection, call `git_list_branches` and populate the branch dropdown from the selected repository.
-5. Replace the blocking OpenCode message flow with async send plus event streaming from OpenCode.
-6. Consume OpenCode's `/event` stream on the Rust side and forward normalized live events to the frontend via Tauri events.
-7. Update frontend bindings and chat state so text deltas, steps, tool activity, completion, and errors render live.
-8. Delete stale `apps/desktop/src/lib/mock-data.ts` once the remaining references are fully gone.
-9. Re-run `cargo check` and `pnpm build` after the remaining desktop changes land.
+3. Remove stale `apps/desktop/src/lib/mock-data.ts` once all remaining references are gone.
+4. Add a native PTY-backed terminal for workspace mode.
+5. Add a native file finder / workspace search surface.
+6. Replace the current lightweight git snapshot with a structured diff workspace.
+7. Add richer worktree-aware context switching so terminal, finder, and diff follow the active agent/worktree.
+8. Re-run `cargo check` and `pnpm build` after each major desktop milestone.
+
+### Native Workspace Build Plan
+
+This plan is informed by how `pingdotgg/t3code` treats worktree-aware terminal state, indexed workspace search, and branch/worktree context — but is adapted to take stronger advantage of Rust in Tauri.
+
+#### Product Direction
+
+Turn workspace mode into a native coding cockpit with four coordinated surfaces:
+
+1. **Header / context rail**
+   - workspace name
+   - backend
+   - active branch
+   - active worktree badge
+   - active agent selector
+2. **Center panel**
+   - agent chat
+   - thinking steps
+   - activity / execution status
+3. **Bottom dock**
+   - native terminal
+4. **Right dock**
+   - changed files
+   - structured git diff
+5. **Fast overlay / left utility surface**
+   - file finder
+   - recent files
+   - changed-file jump list
+
+All three native tools should resolve their context from the active agent first:
+
+- `agent.worktreePath ?? workspace.worktree_path ?? workspace.repo_path`
+
+#### Phase 1 — Workspace Context Layer
+
+Create a shared desktop context model that all native tools use.
+
+Planned Rust module:
+- `apps/desktop/src-tauri/src/workspace_context.rs`
+
+Responsibilities:
+- resolve effective cwd for the active workspace / conversation / agent
+- normalize repo path vs worktree path
+- expose worktree-aware metadata to terminal, file finder, and diff APIs
+
+Frontend bindings should expose a lightweight context type with:
+- `workspaceId`
+- `conversationId`
+- `agentId`
+- `repoPath`
+- `branch`
+- `cwd`
+- `worktreePath`
+
+#### Phase 2 — Native Terminal Dock
+
+Goal:
+- replace the current process output panel with a real terminal surface in workspace mode
+
+Planned Rust module:
+- `apps/desktop/src-tauri/src/terminal.rs`
+
+Suggested implementation details:
+- use a PTY-backed shell process per terminal session
+- strongly consider `portable-pty`
+- manage lifecycle with `tokio`
+- store scrollback and terminal session metadata in Rust
+- support one default terminal per active agent/worktree, plus optional shared workspace terminal tabs
+
+Planned Tauri commands:
+- `terminal_create`
+- `terminal_write`
+- `terminal_resize`
+- `terminal_close`
+- `terminal_list`
+- `terminal_focus_context`
+
+Planned Tauri events:
+- `terminal-output`
+- `terminal-exit`
+- `terminal-title`
+- `terminal-status`
+
+Frontend milestones:
+- add a bottom dock component in `WorkspaceView.tsx`
+- support collapsed / expanded / resized states
+- support terminal tabs keyed by workspace / agent / worktree
+- scope default terminal cwd to active worktree context
+
+#### Phase 3 — Native File Finder
+
+Goal:
+- provide a native-speed fuzzy file finder for the active workspace/worktree
+
+Planned Rust module:
+- `apps/desktop/src-tauri/src/file_index.rs`
+
+Suggested implementation details:
+- use `ignore` + `walkdir` for indexing
+- use `notify` for incremental invalidation
+- use a fuzzy matcher such as `nucleo-matcher` or similar
+- maintain separate indexes per root so worktrees can diverge cleanly
+- bias ranking toward:
+  - basename matches
+  - changed files
+  - recently opened files
+  - active worktree files
+
+Planned Tauri commands:
+- `file_index_build`
+- `file_search`
+- `file_read_preview`
+- `file_open_meta`
+
+Planned Tauri events:
+- `file-index-status`
+- `file-index-updated`
+
+Frontend milestones:
+- open finder with `Cmd/Ctrl+P`
+- render file name + relative path + git status + worktree-aware location
+- allow keyboard-only open / preview / jump into diff
+
+#### Phase 4 — Structured Git Diff Workspace
+
+Goal:
+- replace the current `git diff --stat` snapshot with a richer native diff inspector
+
+Planned Rust module:
+- `apps/desktop/src-tauri/src/diff.rs`
+
+Suggested implementation details:
+- start by parsing git CLI output into structured models
+- expose:
+  - diff summary
+  - changed files
+  - per-file hunks
+- later consider moving more logic to `gix` / `git2` if needed
+- diff queries should be worktree-aware and scoped to the active agent context
+
+Planned Tauri commands:
+- `git_diff_summary`
+- `git_diff_files`
+- `git_diff_file`
+- `git_diff_refresh`
+
+Planned Tauri events:
+- `git-status-updated`
+- `diff-updated`
+
+Frontend milestones:
+- right dock with:
+  - summary header
+  - changed file list
+  - hunk viewer
+- allow clicking a changed file from finder or agent card
+- later add hunk/file revert actions if useful
+
+#### Phase 5 — WorkspaceView Redesign
+
+Rework `apps/desktop/src/components/WorkspaceView.tsx` from the current tabbed overview into a tool-oriented coding workspace.
+
+Target layout:
+- top context header
+- center chat / activity panel
+- bottom terminal dock
+- right diff dock
+- fast file finder overlay
+
+This is preferred over adding more tabs because it makes the desktop app feel like a native coding environment rather than a settings dashboard.
+
+#### Phase 6 — Worktree Lifecycle UX
+
+Build on the new stable/reused worktree model with better UI affordances.
+
+Planned improvements:
+- explicitly show when an agent is reusing a shared worktree
+- show shared-worktree warnings in deletion UI
+- add branch/worktree badges in workspace lists and agent cards
+- allow focusing the workspace tools on a selected agent/worktree explicitly
+- add orphaned worktree cleanup checks similar in spirit to t3code's thread cleanup flow
 
 ### Streaming Direction
 
-- The desktop app should not keep the current blocking synchronous send path as the primary UX.
-- OpenCode request flow should be based on:
+- The desktop app should not use a blocking synchronous path as the primary OpenCode UX.
+- OpenCode request flow should remain based on:
   - `POST /session/:id/prompt_async`
   - `GET /event`
-- The desktop frontend should receive normalized live events through Tauri in a shape consistent with the web app streaming model:
+- The desktop frontend should continue consuming normalized live events in a shape consistent with the web app streaming model:
   - `text_delta`
   - `step_start`
   - `step_update`
   - `step_complete`
+  - `question`
   - `done`
   - `error`
+- Claude Code should continue using its bridge process, but the surrounding desktop UI should treat approvals, terminal context, file search, and diff as first-class native workspace tools.
 
 ### Notes
 
-- Tauri dialog plugin support still needs to be added in:
-  - `apps/desktop/src-tauri/Cargo.toml`
-  - `apps/desktop/package.json`
-  - `apps/desktop/src-tauri/src/lib.rs`
-  - `apps/desktop/src-tauri/capabilities/default.json`
-- `apps/desktop/src/lib/mock-data.ts` is stale and should be removed as part of the frontend cleanup.
+- The Tauri dialog plugin is now wired and available for native folder picking.
+- `apps/desktop/src/lib/mock-data.ts` remains stale and should be removed during the remaining frontend cleanup.
+- The current Rust warnings reported by `cargo check` are unrelated pre-existing warnings in plugin code and not part of the desktop transport/worktree changes.
