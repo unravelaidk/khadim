@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import type { Conversation, OpenCodeModelOption, OpenCodeModelRef, PendingQuestion, ThinkingStepData, Workspace } from "../lib/bindings";
+import type { Conversation, OpenCodeModelOption, OpenCodeModelRef, PendingApproval, PendingQuestion, ThinkingStepData, Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { desktopQueryKeys } from "../lib/queries";
 import { getModelSettingKey } from "../lib/model-selection";
@@ -25,6 +25,8 @@ interface UseAgentChatActionsArgs {
   setError: Dispatch<SetStateAction<string | null>>;
   pendingQuestion: PendingQuestion | null;
   setPendingQuestion: Dispatch<SetStateAction<PendingQuestion | null>>;
+  pendingApproval: PendingApproval | null;
+  setPendingApproval: Dispatch<SetStateAction<PendingApproval | null>>;
   setAgents: Dispatch<SetStateAction<AgentInstance[]>>;
   erroredAgentSessionsRef: MutableRefObject<Set<string>>;
   handleNewConversation: () => Promise<Conversation | null>;
@@ -55,6 +57,8 @@ export function useAgentChatActions({
   setError,
   pendingQuestion,
   setPendingQuestion,
+  pendingApproval,
+  setPendingApproval,
   setAgents,
   erroredAgentSessionsRef,
   handleNewConversation,
@@ -309,10 +313,38 @@ export function useAgentChatActions({
     }
   }, [getErrorMessage, handleQuestionAnswer, pendingQuestion, setError, setPendingQuestion]);
 
+  const handleApprovalDecision = useCallback(async (allow: boolean, remember = false) => {
+    const currentApproval = pendingApproval;
+    if (!currentApproval) return;
+
+    try {
+      setError(null);
+      await commands.claudeCodeRespondPermission(
+        currentApproval.sessionId,
+        currentApproval.id,
+        allow,
+        allow && remember && currentApproval.canRemember,
+      );
+      setPendingApproval(null);
+
+      setAgents((prev) => prev.map((agent) => {
+        if (agent.sessionId !== currentApproval.sessionId) return agent;
+        return {
+          ...agent,
+          status: "running",
+          currentActivity: allow ? "Resuming…" : "Approval denied",
+        };
+      }));
+    } catch (error) {
+      setError(getErrorMessage(error));
+    }
+  }, [getErrorMessage, pendingApproval, setAgents, setError, setPendingApproval]);
+
   return {
     handleChatSend,
     handleAbort,
     handleQuestionAnswer,
     handleQuestionDismiss,
+    handleApprovalDecision,
   };
 }

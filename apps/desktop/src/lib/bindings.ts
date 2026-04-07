@@ -61,6 +61,9 @@ export interface Conversation {
   workspace_id: string;
   backend: string;
   backend_session_id: string | null;
+  backend_session_cwd: string | null;
+  branch: string | null;
+  worktree_path: string | null;
   title: string | null;
   is_active: boolean;
   created_at: string;
@@ -127,6 +130,21 @@ export interface PendingQuestion {
   questions: QuestionItem[];
 }
 
+export interface PendingApproval {
+  id: string;
+  sessionId: string;
+  workspaceId: string;
+  conversationId: string | null;
+  backend: "claude_code";
+  toolName: string;
+  displayName: string;
+  title: string;
+  description: string;
+  blockedPath?: string | null;
+  canRemember: boolean;
+  input?: Record<string, unknown> | null;
+}
+
 // ── Git types ────────────────────────────────────────────────────────
 
 export interface RepoInfo {
@@ -141,6 +159,7 @@ export interface BranchInfo {
   is_current: boolean;
   is_remote: boolean;
   commit: string;
+  worktree_path: string | null;
 }
 
 export interface WorktreeInfo {
@@ -515,7 +534,7 @@ export const commands = {
 
   gitCreateWorktree: (
     repoPath: string,
-    worktreePath: string,
+    worktreePath: string | null | undefined,
     branch: string,
     newBranch: boolean,
     baseBranch?: string,
@@ -552,10 +571,19 @@ export const commands = {
   deleteConversation: (id: string) =>
     invoke<void>("delete_conversation", { id }),
 
-  setConversationBackendSession: (id: string, backendSessionId: string) =>
+  setConversationBackendSession: (
+    id: string,
+    backendSessionId: string,
+    backendSessionCwd?: string | null,
+    branch?: string | null,
+    worktreePath?: string | null,
+  ) =>
     invoke<void>("set_conversation_backend_session", {
       id,
       backendSessionId,
+      backendSessionCwd,
+      branch,
+      worktreePath,
     }),
 
   // Messages
@@ -687,6 +715,19 @@ export const commands = {
 
   claudeCodeAbort: (sessionId: string) =>
     invoke<void>("claude_code_abort", { sessionId }),
+
+  claudeCodeRespondPermission: (
+    sessionId: string,
+    requestId: string,
+    allow: boolean,
+    remember = false,
+  ) =>
+    invoke<void>("claude_code_respond_permission", {
+      sessionId,
+      requestId,
+      allow,
+      remember,
+    }),
 
   // Khadim backend
   khadimCreateSession: (workspaceId?: string | null, cwdOverride?: string | null) =>

@@ -274,8 +274,26 @@ export function useDeleteConversationMutation() {
 export function useSetConversationBackendSessionMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, backendSessionId }: { workspaceId: string; id: string; backendSessionId: string }) =>
-      commands.setConversationBackendSession(id, backendSessionId),
+    mutationFn: ({
+      id,
+      backendSessionId,
+      backendSessionCwd,
+      branch,
+      worktreePath,
+    }: {
+      workspaceId: string;
+      id: string;
+      backendSessionId: string;
+      backendSessionCwd?: string | null;
+      branch?: string | null;
+      worktreePath?: string | null;
+    }) => commands.setConversationBackendSession(
+      id,
+      backendSessionId,
+      backendSessionCwd,
+      branch,
+      worktreePath,
+    ),
     onSuccess: async (_, { workspaceId }) => {
       await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.conversations(workspaceId) });
     },

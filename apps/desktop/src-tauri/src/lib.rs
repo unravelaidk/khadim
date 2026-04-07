@@ -374,14 +374,14 @@ fn git_diff_files(repo_path: String) -> Result<Vec<git::DiffFileEntry>, AppError
 #[tauri::command]
 fn git_create_worktree(
     repo_path: String,
-    worktree_path: String,
+    worktree_path: Option<String>,
     branch: String,
     new_branch: bool,
     base_branch: Option<String>,
 ) -> Result<git::WorktreeInfo, AppError> {
     git::create_worktree(
         &repo_path,
-        &worktree_path,
+        worktree_path.as_deref(),
         &branch,
         new_branch,
         base_branch.as_deref(),
@@ -433,6 +433,9 @@ fn create_conversation(
         workspace_id: workspace_id.clone(),
         backend: ws.backend.clone(),
         backend_session_id: None,
+        backend_session_cwd: None,
+        branch: None,
+        worktree_path: None,
         title: None,
         is_active: true,
         created_at: now.clone(),
@@ -450,10 +453,17 @@ fn set_conversation_backend_session(
     state: State<'_, Arc<AppState>>,
     id: String,
     backend_session_id: String,
+    backend_session_cwd: Option<String>,
+    branch: Option<String>,
+    worktree_path: Option<String>,
 ) -> Result<(), AppError> {
-    state
-        .db
-        .set_conversation_backend_session(&id, &backend_session_id)
+    state.db.set_conversation_backend_session(
+        &id,
+        &backend_session_id,
+        backend_session_cwd.as_deref(),
+        branch.as_deref(),
+        worktree_path.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -1035,7 +1045,30 @@ async fn claude_code_send_streaming(
     persist_user_message(state.inner(), &conversation_id, &content)?;
 
     state.claude_code.ensure_bridge_available()?;
-    let session = state.claude_code.get_session(&session_id)?;
+    let session = match state.claude_code.get_session(&session_id) {
+        Ok(session) => session,
+        Err(_) => {
+            let conversation = state.db.get_conversation(&conversation_id)?;
+            let workspace = state.db.get_workspace(&workspace_id)?;
+            let cwd = conversation
+                .backend_session_cwd
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .filter(|path| path.is_dir())
+                .or_else(|| {
+                    workspace
+                        .worktree_path
+                        .as_ref()
+                        .map(std::path::PathBuf::from)
+                        .filter(|path| path.is_dir())
+                })
+                .unwrap_or_else(|| std::path::PathBuf::from(&workspace.repo_path));
+
+            state
+                .claude_code
+                .restore_session(session_id.clone(), workspace_id.clone(), cwd, true)
+        }
+    };
     if session.workspace_id != workspace_id {
         return Err(AppError::invalid_input(format!(
             "Claude Code session {session_id} does not belong to workspace {workspace_id}"
@@ -1096,30 +1129,91 @@ async fn claude_code_send_streaming(
             "resume": session.started,
         });
 
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(error) = stdin.write_all(payload.to_string().as_bytes()).await {
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id: workspace_id.clone(),
-                        session_id: session_id.clone(),
-                        event_type: "error".to_string(),
-                        content: Some(format!("Failed to send prompt to Claude Code bridge: {error}")),
-                        metadata: None,
-                    },
-                );
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id,
-                        session_id,
-                        event_type: "done".to_string(),
-                        content: None,
-                        metadata: None,
-                    },
-                );
-                return;
+        let stdin = child.stdin.take();
+        let Some(mut stdin) = stdin else {
+            let _ = app_handle.emit(
+                "agent-stream",
+                &AgentStreamEvent {
+                    workspace_id: workspace_id.clone(),
+                    session_id: session_id.clone(),
+                    event_type: "error".to_string(),
+                    content: Some("Claude Code bridge did not expose stdin".to_string()),
+                    metadata: None,
+                },
+            );
+            let _ = app_handle.emit(
+                "agent-stream",
+                &AgentStreamEvent {
+                    workspace_id,
+                    session_id,
+                    event_type: "done".to_string(),
+                    content: None,
+                    metadata: None,
+                },
+            );
+            return;
+        };
+
+        let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let writer_workspace_id = workspace_id.clone();
+        let writer_session_id = session_id.clone();
+        let writer_app = app_handle.clone();
+        tokio::spawn(async move {
+            while let Some(message) = input_rx.recv().await {
+                if let Err(error) = stdin.write_all(message.as_bytes()).await {
+                    let _ = writer_app.emit(
+                        "agent-stream",
+                        &AgentStreamEvent {
+                            workspace_id: writer_workspace_id.clone(),
+                            session_id: writer_session_id.clone(),
+                            event_type: "error".to_string(),
+                            content: Some(format!("Failed to send input to Claude Code bridge: {error}")),
+                            metadata: None,
+                        },
+                    );
+                    break;
+                }
+                if let Err(error) = stdin.write_all(b"\n").await {
+                    let _ = writer_app.emit(
+                        "agent-stream",
+                        &AgentStreamEvent {
+                            workspace_id: writer_workspace_id.clone(),
+                            session_id: writer_session_id.clone(),
+                            event_type: "error".to_string(),
+                            content: Some(format!("Failed to finalize input for Claude Code bridge: {error}")),
+                            metadata: None,
+                        },
+                    );
+                    break;
+                }
+                if let Err(error) = stdin.flush().await {
+                    let _ = writer_app.emit(
+                        "agent-stream",
+                        &AgentStreamEvent {
+                            workspace_id: writer_workspace_id.clone(),
+                            session_id: writer_session_id.clone(),
+                            event_type: "error".to_string(),
+                            content: Some(format!("Failed to flush Claude Code bridge input: {error}")),
+                            metadata: None,
+                        },
+                    );
+                    break;
+                }
             }
+        });
+
+        if input_tx.send(payload.to_string()).is_err() {
+            let _ = app_handle.emit(
+                "agent-stream",
+                &AgentStreamEvent {
+                    workspace_id,
+                    session_id,
+                    event_type: "error".to_string(),
+                    content: Some("Failed to queue prompt for Claude Code bridge".to_string()),
+                    metadata: None,
+                },
+            );
+            return;
         }
 
         let stdout = match child.stdout.take() {
@@ -1151,7 +1245,9 @@ async fn claude_code_send_streaming(
 
         let stderr = child.stderr.take();
         let child = Arc::new(tokio::sync::Mutex::new(child));
-        state_arc.claude_code.track_run(session_id.clone(), child.clone());
+        state_arc
+            .claude_code
+            .track_run(session_id.clone(), child.clone(), input_tx.clone());
 
         let stderr_task = tokio::spawn(async move {
             let mut lines_out = Vec::new();
@@ -1328,6 +1424,19 @@ async fn claude_code_abort(
     session_id: String,
 ) -> Result<(), AppError> {
     state.claude_code.abort(&session_id).await
+}
+
+#[tauri::command]
+fn claude_code_respond_permission(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+    request_id: String,
+    allow: bool,
+    remember: bool,
+) -> Result<(), AppError> {
+    state
+        .claude_code
+        .respond_permission(&session_id, &request_id, allow, remember)
 }
 
 // ─── Khadim Backend ──────────────────────────────────────────────────
@@ -1975,6 +2084,7 @@ pub fn run() {
             claude_code_list_models,
             claude_code_send_streaming,
             claude_code_abort,
+            claude_code_respond_permission,
             // Khadim
             khadim_create_session,
             khadim_list_models,

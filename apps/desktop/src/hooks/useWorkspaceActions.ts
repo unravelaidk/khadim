@@ -24,6 +24,12 @@ import type { AgentInstance, WorkHomeView } from "../lib/types";
 import { createAgentInstance } from "../lib/types";
 import { extractSessionId } from "../lib/ui";
 
+function normalizeWorktreePath(path: string | null): string | null {
+  const trimmed = path?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
 interface UseWorkspaceActionsArgs {
   selectedWorkspace: Workspace | null;
   selectedWorkspaceId: string | null;
@@ -155,6 +161,9 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: sessionId,
+          backendSessionCwd: selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path,
+          branch: selectedWorkspace.branch ?? null,
+          worktreePath: selectedWorkspace.worktree_path ?? null,
         });
         updatedConversation = { ...conversation, backend_session_id: sessionId };
       } else if (selectedWorkspace.backend === "claude_code") {
@@ -163,6 +172,9 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: session.id,
+          backendSessionCwd: selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path,
+          branch: selectedWorkspace.branch ?? null,
+          worktreePath: selectedWorkspace.worktree_path ?? null,
         });
         updatedConversation = { ...conversation, backend_session_id: session.id };
       } else if (selectedWorkspace.backend === "khadim") {
@@ -171,6 +183,9 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: session.id,
+          backendSessionCwd: selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path,
+          branch: selectedWorkspace.branch ?? null,
+          worktreePath: selectedWorkspace.worktree_path ?? null,
         });
         updatedConversation = { ...conversation, backend_session_id: session.id };
       }
@@ -183,6 +198,8 @@ export function useWorkspaceActions({
         `Agent ${agents.length + 1}`,
         updatedConversation.backend_session_id ?? null,
         modelLabel,
+        selectedWorkspace.branch ?? null,
+        selectedWorkspace.worktree_path ?? null,
       );
       setAgents((prev) => [...prev, newAgent]);
       setFocusedAgentId(updatedConversation.id);
@@ -228,6 +245,12 @@ export function useWorkspaceActions({
     const agent = agents.find((item) => item.id === agentId);
     if (!agent) return;
 
+    const normalizedWorktreePath = normalizeWorktreePath(agent.worktreePath);
+    const nextAgents = agents.filter((candidate) => candidate.id !== agentId);
+    const sharedWorktreeCount = normalizedWorktreePath == null
+      ? 0
+      : nextAgents.filter((candidate) => normalizeWorktreePath(candidate.worktreePath) === normalizedWorktreePath).length;
+
     if (agent.status === "running" && agent.sessionId && selectedWorkspace) {
       if (selectedWorkspace.backend === "khadim") {
         await commands.khadimAbort(agent.sessionId).catch(() => {});
@@ -242,12 +265,15 @@ export function useWorkspaceActions({
       await deleteConversationMutation.mutateAsync({ workspaceId: selectedWorkspace.id, id: agentId }).catch(() => {});
     }
 
-    if (deleteWorktree && agent.worktreePath && selectedWorkspace) {
-      await commands.gitRemoveWorktree(selectedWorkspace.repo_path, agent.worktreePath, false).catch(() => {});
+    if (deleteWorktree && normalizedWorktreePath && selectedWorkspace && sharedWorktreeCount === 0) {
+      await commands.gitRemoveWorktree(selectedWorkspace.repo_path, normalizedWorktreePath, false).catch(() => {});
     }
 
-    const nextAgents = agents.filter((candidate) => candidate.id !== agentId);
     setAgents(nextAgents);
+
+    if (deleteWorktree && normalizedWorktreePath && sharedWorktreeCount > 0) {
+      setError(`Agent deleted. Kept shared worktree because ${sharedWorktreeCount} other agent${sharedWorktreeCount === 1 ? " still uses it" : "s still use it"}.`);
+    }
 
     if (focusedAgentId === agentId) {
       const nextFocusId = nextAgents.length > 0 ? nextAgents[nextAgents.length - 1].id : null;
@@ -266,6 +292,7 @@ export function useWorkspaceActions({
     selectedWorkspace,
     setAgentSettingsTarget,
     setAgents,
+    setError,
     setFocusedAgentId,
     setSelectedConversationId,
   ]);
@@ -292,6 +319,9 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: sessionId,
+          backendSessionCwd: worktreePath,
+          branch,
+          worktreePath,
         });
         updatedConversation = { ...conversation, backend_session_id: sessionId };
       } else if (selectedWorkspace.backend === "claude_code") {
@@ -300,6 +330,9 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: session.id,
+          backendSessionCwd: worktreePath,
+          branch,
+          worktreePath,
         });
         updatedConversation = { ...conversation, backend_session_id: session.id };
       } else if (selectedWorkspace.backend === "khadim") {
@@ -308,6 +341,9 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: session.id,
+          backendSessionCwd: worktreePath,
+          branch,
+          worktreePath,
         });
         updatedConversation = { ...conversation, backend_session_id: session.id };
       }

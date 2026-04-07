@@ -1,7 +1,7 @@
 import { useEffectEvent } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import type { AgentStreamEvent, PendingQuestion, QuestionItem, QuestionOption, ThinkingStepData } from "../lib/bindings";
+import type { AgentStreamEvent, PendingApproval, PendingQuestion, QuestionItem, QuestionOption, ThinkingStepData } from "../lib/bindings";
 import { desktopQueryKeys } from "../lib/queries";
 import type { AgentInstance, LocalChatConversation, LocalChatMessage } from "../lib/types";
 import { createLocalMessage } from "../lib/types";
@@ -80,6 +80,7 @@ interface UseAgentStreamHandlerArgs {
   activeConversationId: string | null;
   agents: AgentInstance[];
   setPendingQuestion: Dispatch<SetStateAction<PendingQuestion | null>>;
+  setPendingApproval: Dispatch<SetStateAction<PendingApproval | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setIsProcessing: Dispatch<SetStateAction<boolean>>;
   setStreamingContent: Dispatch<SetStateAction<string>>;
@@ -113,6 +114,7 @@ export function useAgentStreamHandler({
   activeConversationId,
   agents,
   setPendingQuestion,
+  setPendingApproval,
   setError,
   setIsProcessing,
   setStreamingContent,
@@ -322,6 +324,49 @@ export function useAgentStreamHandler({
         });
         return changed ? next : prev;
       });
+    } else if (evt.event_type === "permission_request" && evt.metadata) {
+      const meta = evt.metadata as Record<string, unknown>;
+      const id = typeof meta.id === "string" ? meta.id : "";
+      const toolName = typeof meta.toolName === "string" ? meta.toolName : "tool";
+      const displayName = typeof meta.displayName === "string" ? meta.displayName : toolName;
+      const title = typeof meta.title === "string" ? meta.title : `Approve ${displayName}`;
+      const description = typeof meta.description === "string" ? meta.description : "";
+      const blockedPath = typeof meta.blockedPath === "string" ? meta.blockedPath : null;
+      const canRemember = meta.canRemember === true;
+      const matchedAgent = agents.find((agent) => agent.sessionId === evt.session_id);
+
+      if (id) {
+        setPendingApproval({
+          id,
+          sessionId: evt.session_id,
+          workspaceId: evt.workspace_id,
+          conversationId: matchedAgent?.id ?? (isActiveSession ? selectedConversationId : null),
+          backend: "claude_code",
+          toolName,
+          displayName,
+          title,
+          description,
+          blockedPath,
+          canRemember,
+          input: meta.input && typeof meta.input === "object" ? meta.input as Record<string, unknown> : null,
+        });
+      } else {
+        console.warn("Received malformed permission request event", evt);
+      }
+
+      setAgents((prev) => {
+        let changed = false;
+        const next = prev.map((agent) => {
+          if (agent.sessionId !== evt.session_id) return agent;
+          changed = true;
+          return {
+            ...agent,
+            status: "running" as const,
+            currentActivity: "Waiting for approval",
+          };
+        });
+        return changed ? next : prev;
+      });
     } else if (evt.event_type === "done") {
       if (erroredAgentSessionsRef.current.has(evt.session_id)) {
         erroredAgentSessionsRef.current.delete(evt.session_id);
@@ -337,6 +382,7 @@ export function useAgentStreamHandler({
         setIsProcessing(false);
         setStreamingContent("");
         setPendingQuestion(null);
+        setPendingApproval(null);
         void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(selectedConversationId) }).catch(() => undefined);
       }
 
@@ -388,6 +434,7 @@ export function useAgentStreamHandler({
         setIsProcessing(false);
         setStreamingContent("");
         setPendingQuestion(null);
+        setPendingApproval(null);
         setError(formatStreamingError(evt.content));
         void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(selectedConversationId) }).catch(() => undefined);
       }

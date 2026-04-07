@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { useGitBranches } from "../hooks/useGitBranches";
@@ -79,6 +79,16 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
+  const selectedExistingBranch = useMemo(
+    () => localBranches.find((branch) => branch.name === selectedBranch) ?? null,
+    [localBranches, selectedBranch],
+  );
+  const reusableWorktreePath = branchMode === "existing"
+    && selectedExistingBranch?.worktree_path
+    && selectedExistingBranch.worktree_path !== workspace.repo_path
+    ? selectedExistingBranch.worktree_path
+    : null;
+
   async function submit() {
     const label = agentLabel.trim() || (branchMode === "new" ? newBranchName.trim() : selectedBranch);
     if (!label) {
@@ -104,16 +114,18 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     setCreating(true);
 
     try {
-      // Build a unique worktree path so multiple agents can reuse the same branch.
-      const slug = branch.replace(/\//g, "-");
-      const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      const worktreePath = `${workspace.repo_path}/.khadim-worktrees/${slug}-${suffix}`;
-
-      // Create the worktree
       const isNew = branchMode === "new";
-      await commands.gitCreateWorktree(workspace.repo_path, worktreePath, branch, isNew, baseBranch || undefined);
+      const worktree = reusableWorktreePath
+        ? { path: reusableWorktreePath }
+        : await commands.gitCreateWorktree(
+            workspace.repo_path,
+            undefined,
+            branch,
+            isNew,
+            baseBranch || undefined,
+          );
 
-      onCreateAgent(branch, worktreePath, label, issue);
+      onCreateAgent(branch, worktree.path, label, issue);
       onClose();
     } catch (err) {
       const msg = err && typeof err === "object" && "message" in err
@@ -274,6 +286,11 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
             <p className="text-[10px] text-[var(--text-muted)] mt-1">
               This is the workspace default branch. You can still change it here for this agent.
             </p>
+            {reusableWorktreePath && (
+              <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                Reusing existing worktree: <span className="font-mono">{reusableWorktreePath}</span>
+              </p>
+            )}
           </div>
 
           {/* Branch mode toggle */}

@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import readline from "node:readline";
 
 function emit(event) {
   process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -111,18 +112,125 @@ function emitToolComplete(toolStates, id, result, isError = false) {
   });
 }
 
-async function readInput() {
-  const chunks = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(Buffer.from(chunk));
+async function createInputChannel() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    crlfDelay: Infinity,
+  });
+
+  const firstLine = await new Promise((resolve, reject) => {
+    rl.once("line", resolve);
+    rl.once("close", () => reject(new Error("Missing Claude Code bridge input payload")));
+    rl.once("error", reject);
+  });
+
+  if (typeof firstLine !== "string" || !firstLine.trim()) {
+    throw new Error("Missing Claude Code bridge input payload");
   }
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
-  if (!raw) throw new Error("Missing Claude Code bridge input payload");
-  return JSON.parse(raw);
+
+  const pendingPermissionRequests = new Map();
+
+  rl.on("line", (line) => {
+    const raw = typeof line === "string" ? line.trim() : "";
+    if (!raw) return;
+
+    let message;
+    try {
+      message = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    if (message?.type !== "permission_response" || typeof message.requestId !== "string") {
+      return;
+    }
+
+    const pending = pendingPermissionRequests.get(message.requestId);
+    if (!pending) return;
+    pendingPermissionRequests.delete(message.requestId);
+
+    pending.cleanup();
+
+    if (message.behavior === "allow") {
+      pending.resolve({
+        behavior: "allow",
+        updatedInput: {},
+        updatedPermissions: message.remember ? pending.suggestions : undefined,
+        toolUseID: pending.toolUseID,
+        decisionClassification: message.remember ? "user_permanent" : "user_temporary",
+      });
+      return;
+    }
+
+    pending.resolve({
+      behavior: "deny",
+      message: "Permission denied by user",
+      toolUseID: pending.toolUseID,
+      decisionClassification: "user_reject",
+    });
+  });
+
+  return {
+    payload: JSON.parse(firstLine),
+    requestPermission({ toolName, input, options }) {
+      const requestId = crypto.randomUUID();
+      const canRemember = Array.isArray(options.suggestions) && options.suggestions.length > 0;
+
+      emit({
+        event_type: "permission_request",
+        content: null,
+        metadata: {
+          id: requestId,
+          toolName,
+          displayName: options.displayName ?? toolName,
+          title: options.title ?? `Claude Code needs approval for ${options.displayName ?? toolName}`,
+          description: options.description ?? options.decisionReason ?? "",
+          blockedPath: options.blockedPath ?? null,
+          canRemember,
+          input: normalizeToolInput(input),
+        },
+      });
+
+      return new Promise((resolve) => {
+        const onAbort = () => {
+          pendingPermissionRequests.delete(requestId);
+          resolve({
+            behavior: "deny",
+            message: "Permission request was cancelled",
+            toolUseID: options.toolUseID,
+            decisionClassification: "user_reject",
+          });
+        };
+
+        options.signal.addEventListener("abort", onAbort, { once: true });
+
+        pendingPermissionRequests.set(requestId, {
+          resolve,
+          toolUseID: options.toolUseID,
+          suggestions: canRemember ? options.suggestions : undefined,
+          cleanup: () => options.signal.removeEventListener("abort", onAbort),
+        });
+      });
+    },
+    close() {
+      for (const pending of pendingPermissionRequests.values()) {
+        pending.cleanup();
+        pending.resolve({
+          behavior: "deny",
+          message: "Claude Code bridge closed before permission was answered",
+          toolUseID: pending.toolUseID,
+          decisionClassification: "user_reject",
+        });
+      }
+      pendingPermissionRequests.clear();
+      rl.close();
+    },
+  };
 }
 
 try {
-  const payload = await readInput();
+  const inputChannel = await createInputChannel();
+  const payload = inputChannel.payload;
   const { cwd, prompt, model, sessionId, resume } = payload ?? {};
 
   if (!cwd || typeof cwd !== "string") {
@@ -149,6 +257,8 @@ try {
       model: typeof model === "string" && model.trim() ? model.trim() : undefined,
       executable: "node",
       permissionMode: "acceptEdits",
+      canUseTool: (toolName, input, options) =>
+        inputChannel.requestPermission({ toolName, input, options }),
       sessionId: resume ? undefined : sessionId,
       resume: resume ? sessionId : undefined,
       env: {
@@ -350,10 +460,12 @@ try {
       } else {
         emit({ event_type: "done", content: null, metadata: null });
       }
+      inputChannel.close();
       process.exit(0);
     }
   }
 
+  inputChannel.close();
   emit({ event_type: "done", content: null, metadata: null });
   process.exit(0);
 } catch (error) {
