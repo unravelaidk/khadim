@@ -670,6 +670,7 @@ async fn opencode_send_message(
     conversation_id: String,
     content: String,
     model: Option<OpenCodeModelRef>,
+    system: Option<String>,
 ) -> Result<serde_json::Value, AppError> {
     let conn = state
         .opencode
@@ -692,7 +693,13 @@ async fn opencode_send_message(
     state.db.insert_message(&user_msg)?;
 
     // Send to OpenCode (this waits for the response)
-    let response = OpenCodeManager::send_message(&conn, &session_id, &content, model.as_ref()).await?;
+    let response = OpenCodeManager::send_message(
+        &conn,
+        &session_id,
+        &content,
+        model.as_ref(),
+        system.as_deref(),
+    ).await?;
 
     // Save assistant response locally
     let assistant_content = extract_text(&response);
@@ -720,6 +727,7 @@ async fn opencode_send_message_async(
     conversation_id: String,
     content: String,
     model: Option<OpenCodeModelRef>,
+    system: Option<String>,
 ) -> Result<(), AppError> {
     let conn = state
         .opencode
@@ -742,7 +750,13 @@ async fn opencode_send_message_async(
     state.db.insert_message(&user_msg)?;
 
     // Send async — frontend will receive updates via SSE
-    OpenCodeManager::send_message_async(&conn, &session_id, &content, model.as_ref()).await
+    OpenCodeManager::send_message_async(
+        &conn,
+        &session_id,
+        &content,
+        model.as_ref(),
+        system.as_deref(),
+    ).await
 }
 
 /// Send a message and stream the response as Tauri events.
@@ -756,6 +770,7 @@ async fn opencode_send_streaming(
     conversation_id: String,
     content: String,
     model: Option<OpenCodeModelRef>,
+    system: Option<String>,
 ) -> Result<(), AppError> {
     let conn = state
         .opencode
@@ -787,7 +802,13 @@ async fn opencode_send_streaming(
     );
 
     // Now send the async prompt
-    OpenCodeManager::send_message_async(&conn, &session_id, &content, model.as_ref()).await?;
+    OpenCodeManager::send_message_async(
+        &conn,
+        &session_id,
+        &content,
+        model.as_ref(),
+        system.as_deref(),
+    ).await?;
 
     // Forward events to frontend
     let app_handle = app.clone();
@@ -934,6 +955,43 @@ async fn opencode_get_connection(
     workspace_id: String,
 ) -> Result<Option<opencode::OpenCodeConnection>, AppError> {
     Ok(state.opencode.get_connection(&workspace_id))
+}
+
+#[tauri::command]
+async fn opencode_reply_question(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: String,
+    request_id: String,
+    answers: Vec<Vec<String>>,
+) -> Result<(), AppError> {
+    let conn = state
+        .opencode
+        .get_connection(&workspace_id)
+        .ok_or_else(|| {
+            AppError::not_found(format!(
+                "No OpenCode server running for workspace {workspace_id}"
+            ))
+        })?;
+
+    OpenCodeManager::reply_question(&conn, &request_id, &answers).await
+}
+
+#[tauri::command]
+async fn opencode_reject_question(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: String,
+    request_id: String,
+) -> Result<(), AppError> {
+    let conn = state
+        .opencode
+        .get_connection(&workspace_id)
+        .ok_or_else(|| {
+            AppError::not_found(format!(
+                "No OpenCode server running for workspace {workspace_id}"
+            ))
+        })?;
+
+    OpenCodeManager::reject_question(&conn, &request_id).await
 }
 
 #[derive(Deserialize)]
@@ -1910,6 +1968,8 @@ pub fn run() {
             opencode_get_diff,
             opencode_session_statuses,
             opencode_get_connection,
+            opencode_reply_question,
+            opencode_reject_question,
             // Claude Code
             claude_code_create_session,
             claude_code_list_models,

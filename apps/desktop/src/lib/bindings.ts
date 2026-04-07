@@ -114,7 +114,7 @@ export interface QuestionItem {
 
 /** Payload delivered via the "question" stream event. */
 export interface PendingQuestion {
-  /** Part ID — used to correlate the answer. */
+  /** OpenCode question request ID or backend-specific correlation ID. */
   id: string;
   /** Backend session that is waiting on the user's answer. */
   sessionId: string;
@@ -584,6 +584,7 @@ export const commands = {
     conversationId: string,
     content: string,
     model?: OpenCodeModelRef | null,
+    system?: string | null,
   ) =>
     invoke<unknown>("opencode_send_message", {
       workspaceId,
@@ -591,6 +592,7 @@ export const commands = {
       conversationId,
       content,
       model,
+      system,
     }),
 
   opencodeSendMessageAsync: (
@@ -599,6 +601,7 @@ export const commands = {
     conversationId: string,
     content: string,
     model?: OpenCodeModelRef | null,
+    system?: string | null,
   ) =>
     invoke<void>("opencode_send_message_async", {
       workspaceId,
@@ -606,6 +609,7 @@ export const commands = {
       conversationId,
       content,
       model,
+      system,
     }),
 
   opencodeSendStreaming: (
@@ -614,6 +618,7 @@ export const commands = {
     conversationId: string,
     content: string,
     model?: OpenCodeModelRef | null,
+    system?: string | null,
   ) =>
     invoke<void>("opencode_send_streaming", {
       workspaceId,
@@ -621,6 +626,7 @@ export const commands = {
       conversationId,
       content,
       model,
+      system,
     }),
 
   opencodeAbort: (workspaceId: string, sessionId: string) =>
@@ -638,6 +644,23 @@ export const commands = {
   opencodeGetConnection: (workspaceId: string) =>
     invoke<OpenCodeConnection | null>("opencode_get_connection", {
       workspaceId,
+    }),
+
+  opencodeReplyQuestion: (
+    workspaceId: string,
+    requestId: string,
+    answers: string[][],
+  ) =>
+    invoke<void>("opencode_reply_question", {
+      workspaceId,
+      requestId,
+      answers,
+    }),
+
+  opencodeRejectQuestion: (workspaceId: string, requestId: string) =>
+    invoke<void>("opencode_reject_question", {
+      workspaceId,
+      requestId,
     }),
 
   // Claude Code backend

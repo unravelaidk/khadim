@@ -3,7 +3,7 @@ import type { PendingQuestion, QuestionItem } from "../lib/bindings";
 
 interface Props {
   question: PendingQuestion;
-  onAnswer: (answers: string[]) => void;
+  onAnswer: (answers: string[][]) => void;
   onDismiss: () => void;
 }
 
@@ -155,7 +155,7 @@ function QuestionCard({
 
 /**
  * Full-screen overlay that presents one or more questions from the agent.
- * Answers are collected per-question and sent back as a formatted string.
+ * Answers are collected per-question and preserved as arrays for the backend.
  */
 export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
   const [answers, setAnswers] = useState<string[][]>(() =>
@@ -175,9 +175,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
   const hasAnswer = answers.some((a) => a.length > 0);
 
   const handleSubmit = useCallback(() => {
-    // Flatten each question's answer into a single string per question
-    const formatted = answers.map((a) => a.join(", "));
-    onAnswer(formatted);
+    onAnswer(answers);
   }, [answers, onAnswer]);
 
   return (
