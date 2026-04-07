@@ -68,6 +68,29 @@
   --color-danger-bg-strong: rgba(239, 68, 68, 0.15);
   --color-danger-ink: #fca5a5;
   --color-warning-text: #fbbf24;
+
+  /* Terminal — ANSI palette */
+  --terminal-bg: #101010;
+  --terminal-fg: #e0e0e0;
+  --terminal-cursor: #e8e8e8;
+  --terminal-cursor-accent: #101010;
+  --terminal-selection: rgba(232, 232, 232, 0.18);
+  --terminal-black: #1a1a1a;
+  --terminal-red: #f87171;
+  --terminal-green: #6ee7b7;
+  --terminal-yellow: #fcd34d;
+  --terminal-blue: #93c5fd;
+  --terminal-magenta: #d8b4fe;
+  --terminal-cyan: #67e8f9;
+  --terminal-white: #e0e0e0;
+  --terminal-bright-black: #525252;
+  --terminal-bright-red: #fca5a5;
+  --terminal-bright-green: #a7f3d0;
+  --terminal-bright-yellow: #fde68a;
+  --terminal-bright-blue: #bfdbfe;
+  --terminal-bright-magenta: #e9d5ff;
+  --terminal-bright-cyan: #a5f3fc;
+  --terminal-bright-white: #fafafa;
 }
 
 /* ─── Default Dark ──────────────────────────────────────────────────── */
@@ -152,6 +175,29 @@
   --color-danger-ink: #fca5a5;
   
   --color-warning-text: #fbbf24;
+
+  /* Terminal — ANSI palette */
+  --terminal-bg: #101010;
+  --terminal-fg: #e0e0e0;
+  --terminal-cursor: #e8e8e8;
+  --terminal-cursor-accent: #101010;
+  --terminal-selection: rgba(232, 232, 232, 0.18);
+  --terminal-black: #1a1a1a;
+  --terminal-red: #f87171;
+  --terminal-green: #6ee7b7;
+  --terminal-yellow: #fcd34d;
+  --terminal-blue: #93c5fd;
+  --terminal-magenta: #d8b4fe;
+  --terminal-cyan: #67e8f9;
+  --terminal-white: #e0e0e0;
+  --terminal-bright-black: #525252;
+  --terminal-bright-red: #fca5a5;
+  --terminal-bright-green: #a7f3d0;
+  --terminal-bright-yellow: #fde68a;
+  --terminal-bright-blue: #bfdbfe;
+  --terminal-bright-magenta: #e9d5ff;
+  --terminal-bright-cyan: #a5f3fc;
+  --terminal-bright-white: #fafafa;
 }
 
 [data-theme-family="default"][data-theme-variant="dark"] .glass-page-shell::before {
@@ -248,6 +294,29 @@
   --color-danger-bg-strong: #fef2f2;
   --color-danger-ink: #7f1d1d;
   --color-warning-text: #92400e;
+
+  /* Terminal — Light ANSI palette */
+  --terminal-bg: #f0efed;
+  --terminal-fg: #1c1c1a;
+  --terminal-cursor: #1c1c1a;
+  --terminal-cursor-accent: #f0efed;
+  --terminal-selection: rgba(20, 20, 18, 0.14);
+  --terminal-black: #1c1c1a;
+  --terminal-red: #dc2626;
+  --terminal-green: #059669;
+  --terminal-yellow: #d97706;
+  --terminal-blue: #2563eb;
+  --terminal-magenta: #9333ea;
+  --terminal-cyan: #0891b2;
+  --terminal-white: #f5f5f4;
+  --terminal-bright-black: #57534e;
+  --terminal-bright-red: #ef4444;
+  --terminal-bright-green: #10b981;
+  --terminal-bright-yellow: #f59e0b;
+  --terminal-bright-blue: #3b82f6;
+  --terminal-bright-magenta: #a855f7;
+  --terminal-bright-cyan: #06b6d4;
+  --terminal-bright-white: #fafaf9;
 }
 
 [data-theme-family="default"][data-theme-variant="light"] .glass-page-shell::before {

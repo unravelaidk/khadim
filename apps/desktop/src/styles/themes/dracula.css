@@ -87,6 +87,29 @@
   --color-danger-ink: #ff6b6b;
   
   --color-warning-text: #ffb86c;
+
+  /* Terminal — Dracula Dark ANSI */
+  --terminal-bg: #1e1f29;
+  --terminal-fg: #f8f8f2;
+  --terminal-cursor: #f8f8f2;
+  --terminal-cursor-accent: #1e1f29;
+  --terminal-selection: rgba(68, 71, 90, 0.60);
+  --terminal-black: #21222c;
+  --terminal-red: #ff5555;
+  --terminal-green: #50fa7b;
+  --terminal-yellow: #f1fa8c;
+  --terminal-blue: #bd93f9;
+  --terminal-magenta: #ff79c6;
+  --terminal-cyan: #8be9fd;
+  --terminal-white: #f8f8f2;
+  --terminal-bright-black: #6272a4;
+  --terminal-bright-red: #ff6e6e;
+  --terminal-bright-green: #69ff94;
+  --terminal-bright-yellow: #ffffa5;
+  --terminal-bright-blue: #d6acff;
+  --terminal-bright-magenta: #ff92df;
+  --terminal-bright-cyan: #a4ffff;
+  --terminal-bright-white: #ffffff;
 }
 
 [data-theme-family="dracula"][data-theme-variant="dark"] .glass-page-shell::before {
@@ -198,6 +221,29 @@
   --color-danger-ink: #9a1d22;
   
   --color-warning-text: #b8750b;
+
+  /* Terminal — Dracula Light ANSI */
+  --terminal-bg: #eff0eb;
+  --terminal-fg: #282a36;
+  --terminal-cursor: #282a36;
+  --terminal-cursor-accent: #eff0eb;
+  --terminal-selection: rgba(40, 42, 54, 0.14);
+  --terminal-black: #282a36;
+  --terminal-red: #c4393c;
+  --terminal-green: #2a9d3c;
+  --terminal-yellow: #b8750b;
+  --terminal-blue: #7c5bbf;
+  --terminal-magenta: #c6508b;
+  --terminal-cyan: #1d9fb5;
+  --terminal-white: #eff0eb;
+  --terminal-bright-black: #6272a4;
+  --terminal-bright-red: #d7595c;
+  --terminal-bright-green: #40c052;
+  --terminal-bright-yellow: #d49b1c;
+  --terminal-bright-blue: #9d7de4;
+  --terminal-bright-magenta: #e06dab;
+  --terminal-bright-cyan: #38b9d4;
+  --terminal-bright-white: #ffffff;
 }
 
 [data-theme-family="dracula"][data-theme-variant="light"] .glass-page-shell::before {

@@ -29,6 +29,7 @@ import {
   useSetSettingMutation,
   useSettingQuery,
   useWorkspaceConnectionQuery,
+  useWorkspaceContextQuery,
   useWorkspaceModelsQuery,
   useWorkspaceQuery,
   useWorkspacesQuery,
@@ -56,6 +57,9 @@ import { AgentSettingsModal } from "./components/AgentSettingsModal";
 import { QuestionOverlay } from "./components/QuestionOverlay";
 import { ApprovalOverlay } from "./components/ApprovalOverlay";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { WorkspaceContextRail } from "./components/WorkspaceContextRail";
+import { TerminalDock } from "./components/TerminalDock";
+import { FileFinder } from "./components/FileFinder";
 
 initWebviewZoom();
 
@@ -107,6 +111,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [finderOpen, setFinderOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const {
@@ -171,6 +177,11 @@ export default function App() {
     Boolean(selectedWorkspaceId),
   );
   const { data: githubSlug = null } = useGitHubSlugQuery(repoPath, Boolean(repoPath));
+  const { data: workspaceContext = null } = useWorkspaceContextQuery(
+    selectedWorkspaceId,
+    selectedConversationId,
+    Boolean(selectedWorkspaceId),
+  );
   const { data: storedChatDirectory = null } = useSettingQuery("khadim:chat_directory");
   const setSettingMutation = useSetSettingMutation();
   // ── Derived state ───────────────────────────────────────────────
@@ -591,11 +602,44 @@ export default function App() {
 
   // ── Actions ─────────────────────────────────────────────────────
 
+  // Global Cmd/Ctrl+P to open file finder
+  // Use refs to avoid stale closures — the listener is registered once.
+  const interactionModeRef = useRef(interactionMode);
+  const inWorkspaceRef = useRef(inWorkspace);
+  const selectedWorkspaceRef = useRef(selectedWorkspace);
+  interactionModeRef.current = interactionMode;
+  inWorkspaceRef.current = inWorkspace;
+  selectedWorkspaceRef.current = selectedWorkspace;
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (interactionModeRef.current === "work" && inWorkspaceRef.current && selectedWorkspaceRef.current) {
+          setFinderOpen((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
+  }, []);
+
+  const handleCloseFinder = useCallback(() => setFinderOpen(false), []);
+
   const handleOpenFileInEditor = useCallback((path: string) => {
     commands.openInEditor(path).catch((err) => {
       console.warn("Failed to open file:", err);
     });
   }, []);
+
+  const handleOpenProjectInEditor = useCallback(() => {
+    const path = workspaceContext?.cwd ?? selectedWorkspace?.worktree_path ?? selectedWorkspace?.repo_path;
+    if (!path) return;
+    commands.openProjectInEditor(path).catch((err) => {
+      console.warn("Failed to open project in editor:", err);
+    });
+  }, [workspaceContext, selectedWorkspace]);
 
   // ── Main render ─────────────────────────────────────────────────
 
@@ -714,6 +758,15 @@ export default function App() {
 
         {/* ── WORK MODE — inside a workspace ────────────────────── */}
         {!showSettings && interactionMode === "work" && inWorkspace && !focusedAgentId && selectedWorkspace && (
+          <>
+            <WorkspaceContextRail
+              context={workspaceContext}
+              connected={Boolean(connection)}
+              terminalOpen={terminalOpen}
+              onToggleTerminal={() => setTerminalOpen((o) => !o)}
+              onOpenFinder={() => setFinderOpen(true)}
+              onOpenInEditor={handleOpenProjectInEditor}
+            />
           <WorkspaceView
             workspace={selectedWorkspace}
             conversations={conversations}
@@ -738,11 +791,21 @@ export default function App() {
               void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.githubSlug(repoPath) }).catch(() => undefined);
             }}
           />
+          </>
         )}
 
         {!showSettings && interactionMode === "work" && inWorkspace && focusedAgentId && (
+          <>
+            <WorkspaceContextRail
+              context={workspaceContext}
+              agentLabel={focusedAgent?.label ?? null}
+              connected={Boolean(connection)}
+              terminalOpen={terminalOpen}
+              onToggleTerminal={() => setTerminalOpen((o) => !o)}
+              onOpenFinder={() => setFinderOpen(true)}
+              onOpenInEditor={handleOpenProjectInEditor}
+            />
           <ChatView
-            messages={messages}
             conversationId={selectedConversationId}
             title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
             subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
@@ -764,8 +827,28 @@ export default function App() {
             chatEndRef={chatEndRef}
             backend={selectedWorkspace?.backend ?? "khadim"}
           />
+          </>
         )}
+
+        {/* Shared terminal dock — floating overlay on the right side of the workspace shell. */}
+        {!showSettings && interactionMode === "work" && inWorkspace && selectedWorkspace && terminalOpen && (
+          <div className="absolute inset-y-0 right-0 z-50">
+            <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
+          </div>
+        )}
+
       </div>
+
+      {/* File finder overlay — rendered outside the z-10 content wrapper via portal so it sits above the sidebar */}
+      {finderOpen && createPortal(
+        <FileFinder
+          context={workspaceContext}
+          isOpen={finderOpen}
+          onClose={handleCloseFinder}
+          onOpenFile={handleOpenFileInEditor}
+        />,
+        document.body,
+      )}
 
       {/* Create workspace modal */}
       <CreateWorkspaceModal

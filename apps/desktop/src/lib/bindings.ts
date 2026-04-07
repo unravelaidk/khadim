@@ -48,6 +48,29 @@ export interface Workspace {
   updated_at: string;
 }
 
+/**
+ * Effective desktop coding context resolved from the active workspace and
+ * (optionally) the focused conversation/agent. Native tools (terminal, file
+ * finder, diff) should drive their cwd from this single source of truth.
+ */
+export interface DesktopWorkspaceContext {
+  workspace_id: string;
+  workspace_name: string;
+  backend: string;
+  /** Conversation ID (= agent ID in the desktop model) when one is focused. */
+  conversation_id: string | null;
+  /** Stable repo path (the original git repo, never the worktree). */
+  repo_path: string;
+  /** Active branch — conversation branch first, then workspace branch. */
+  branch: string | null;
+  /** Effective working directory for native tools. Always exists on disk. */
+  cwd: string;
+  /** Worktree path when running inside a non-main worktree. */
+  worktree_path: string | null;
+  /** True when `cwd` is a non-main worktree (agent is sandboxed off main). */
+  in_worktree: boolean;
+}
+
 export interface CreateWorkspaceInput {
   name: string;
   repo_path: string;
@@ -350,6 +373,128 @@ export interface SkillEntry {
   version: string | null;
 }
 
+// ── File Finder types ─────────────────────────────────────────
+
+export interface FileEntry {
+  relative_path: string;
+  name: string;
+  status: string;
+  is_dir: boolean;
+}
+
+export interface FileSearchResult {
+  entry: FileEntry;
+  score: number;
+  matched_indices: number[];
+}
+
+export interface FileIndexStatus {
+  root: string;
+  file_count: number;
+  built_at_ms: number;
+  building: boolean;
+}
+
+export interface FilePreview {
+  path: string;
+  content: string;
+  is_binary: boolean;
+  size_bytes: number;
+  line_count: number;
+}
+
+// ── LSP types ──────────────────────────────────────────────
+
+export interface LspPosition {
+  line: number;
+  character: number;
+}
+
+export interface LspRange {
+  start: LspPosition;
+  end: LspPosition;
+}
+
+export interface LspHoverResult {
+  contents: string;
+  language: string | null;
+  range: LspRange | null;
+}
+
+export interface LspLocation {
+  uri: string;
+  range: LspRange;
+}
+
+export interface LspSymbol {
+  name: string;
+  kind: string;
+  detail: string | null;
+  range: LspRange;
+  selection_range: LspRange;
+  children: LspSymbol[];
+}
+
+export interface LspWorkspaceSymbol {
+  name: string;
+  kind: string;
+  container_name: string | null;
+  location: LspLocation;
+}
+
+export interface LspServerStatus {
+  language: string;
+  root: string;
+  server_command: string;
+  running: boolean;
+}
+
+// ── Syntax Highlight types ─────────────────────────────────────
+
+export interface SyntaxHighlightResult {
+  /** Pre-tokenized HTML with <span class="ts-*"> wrappers. */
+  html: string;
+  /** Canonical language ID used. */
+  language: string;
+  /** Number of source lines. */
+  line_count: number;
+  /** True when tree-sitter parsed successfully. */
+  parsed: boolean;
+}
+
+// ── Editor types ────────────────────────────────────────────
+
+export interface DetectedEditor {
+  id: string;
+  name: string;
+  binary: string;
+  available: boolean;
+}
+
+// ── Terminal types ─────────────────────────────────────────
+
+export interface TerminalSession {
+  id: string;
+  workspace_id: string;
+  conversation_id: string | null;
+  cwd: string;
+  title: string;
+  cols: number;
+  rows: number;
+  running: boolean;
+}
+
+export interface TerminalOutputEvent {
+  session_id: string;
+  data: string;
+}
+
+export interface TerminalExitEvent {
+  session_id: string;
+  code: number | null;
+  message: string | null;
+}
+
 export interface ProcessOutput {
   process_id: string;
   stream: "stdout" | "stderr";
@@ -512,6 +657,90 @@ export const commands = {
 
   deleteWorkspace: (id: string) =>
     invoke<void>("delete_workspace", { id }),
+
+  workspaceContextGet: (workspaceId: string, conversationId?: string | null) =>
+    invoke<DesktopWorkspaceContext>("workspace_context_get", {
+      workspaceId,
+      conversationId: conversationId ?? null,
+    }),
+
+  // Terminal
+  terminalCreate: (
+    workspaceId: string,
+    conversationId?: string | null,
+    cwd?: string | null,
+    cols?: number | null,
+    rows?: number | null,
+  ) =>
+    invoke<TerminalSession>("terminal_create", {
+      workspaceId,
+      conversationId: conversationId ?? null,
+      cwd: cwd ?? null,
+      cols: cols ?? null,
+      rows: rows ?? null,
+    }),
+
+  terminalWrite: (sessionId: string, data: string) =>
+    invoke<void>("terminal_write", { sessionId, data }),
+
+  terminalResize: (sessionId: string, cols: number, rows: number) =>
+    invoke<void>("terminal_resize", { sessionId, cols, rows }),
+
+  terminalClose: (sessionId: string) =>
+    invoke<void>("terminal_close", { sessionId }),
+
+  terminalList: (workspaceId?: string | null) =>
+    invoke<TerminalSession[]>("terminal_list", {
+      workspaceId: workspaceId ?? null,
+    }),
+
+  // File Finder
+  fileIndexBuild: (root: string) =>
+    invoke<FileIndexStatus>("file_index_build", { root }),
+
+  fileSearch: (root: string, query: string, maxResults?: number | null) =>
+    invoke<FileSearchResult[]>("file_search", {
+      root,
+      query,
+      maxResults: maxResults ?? null,
+    }),
+
+  fileReadPreview: (root: string, relativePath: string, maxBytes?: number | null) =>
+    invoke<FilePreview>("file_read_preview", {
+      root,
+      relativePath,
+      maxBytes: maxBytes ?? null,
+    }),
+
+  fileIndexStatus: (root: string) =>
+    invoke<FileIndexStatus | null>("file_index_status", { root }),
+
+  // LSP
+  lspHover: (root: string, filePath: string, line: number, character: number) =>
+    invoke<LspHoverResult | null>("lsp_hover", { root, filePath, line, character }),
+
+  lspDefinition: (root: string, filePath: string, line: number, character: number) =>
+    invoke<LspLocation[]>("lsp_definition", { root, filePath, line, character }),
+
+  lspDocumentSymbols: (root: string, filePath: string) =>
+    invoke<LspSymbol[]>("lsp_document_symbols", { root, filePath }),
+
+  lspWorkspaceSymbols: (root: string, query: string, languageHint?: string | null) =>
+    invoke<LspWorkspaceSymbol[]>("lsp_workspace_symbols", {
+      root,
+      query,
+      languageHint: languageHint ?? null,
+    }),
+
+  lspListServers: () =>
+    invoke<LspServerStatus[]>("lsp_list_servers"),
+
+  lspStop: (root?: string | null) =>
+    invoke<void>("lsp_stop", { root: root ?? null }),
+
+  // Syntax Highlighting (tree-sitter, native speed)
+  syntaxHighlight: (source: string, filename: string) =>
+    invoke<SyntaxHighlightResult>("syntax_highlight", { source, filename }),
 
   // Git
   gitRepoInfo: (path: string) =>
@@ -893,8 +1122,14 @@ export const commands = {
     invoke<string[]>("skill_remove_dir", { dir }),
 
   // Editor
-  openInEditor: (filePath: string) =>
-    invoke<void>("open_in_editor", { filePath }),
+  detectEditors: () =>
+    invoke<DetectedEditor[]>("detect_editors"),
+
+  openInEditor: (filePath: string, editorId?: string | null) =>
+    invoke<void>("open_in_editor", { filePath, editorId: editorId ?? null }),
+
+  openProjectInEditor: (projectPath: string) =>
+    invoke<void>("open_project_in_editor", { projectPath }),
 
   // GitHub Auth
   githubAuthStatus: () =>
@@ -1176,6 +1411,22 @@ export const events = {
     callback: (event: AgentStreamEvent) => void,
   ): Promise<UnlistenFn> =>
     listen<AgentStreamEvent>("agent-stream", (event) =>
+      callback(event.payload),
+    ),
+
+  /** PTY-backed terminal output chunks. */
+  onTerminalOutput: (
+    callback: (event: TerminalOutputEvent) => void,
+  ): Promise<UnlistenFn> =>
+    listen<TerminalOutputEvent>("terminal-output", (event) =>
+      callback(event.payload),
+    ),
+
+  /** PTY-backed terminal exit notifications. */
+  onTerminalExit: (
+    callback: (event: TerminalExitEvent) => void,
+  ): Promise<UnlistenFn> =>
+    listen<TerminalExitEvent>("terminal-exit", (event) =>
       callback(event.payload),
     ),
 };

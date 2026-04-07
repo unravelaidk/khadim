@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { DetectedEditor } from "../../lib/bindings";
+import { commands } from "../../lib/bindings";
 import type { GeneralTabProps, ThemeFamilyOption, ThemeMode } from "./types";
 import { CATPPUCCIN_VARIANTS, THEME_FAMILIES } from "./constants";
 
@@ -16,7 +18,33 @@ export function GeneralTab({
   onChatDirectoryChange,
 }: GeneralTabProps) {
   const [picking, setPicking] = useState(false);
+  const [detectedEditors, setDetectedEditors] = useState<DetectedEditor[]>([]);
+  const [preferredEditor, setPreferredEditor] = useState<string | null>(null);
+  const [editorLoading, setEditorLoading] = useState(true);
   const selectedFamily = THEME_FAMILIES.find((family) => family.id === themeFamily) ?? THEME_FAMILIES[0];
+
+  // Detect editors and load preference on mount
+  useEffect(() => {
+    Promise.all([
+      commands.detectEditors(),
+      commands.getSetting("khadim:preferred_editor"),
+    ])
+      .then(([editors, pref]) => {
+        setDetectedEditors(editors);
+        setPreferredEditor(pref ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setEditorLoading(false));
+  }, []);
+
+  async function handleSetPreferredEditor(editorId: string | null) {
+    setPreferredEditor(editorId);
+    if (editorId) {
+      await commands.setSetting("khadim:preferred_editor", editorId).catch(() => {});
+    } else {
+      await commands.setSetting("khadim:preferred_editor", "").catch(() => {});
+    }
+  }
 
   async function pickChatDir() {
     if (!openDialog) return;
@@ -160,7 +188,98 @@ export function GeneralTab({
           </p>
         )}
       </div>
+
+      {/* Default Editor */}
+      <div className="rounded-2xl glass-card-static p-5">
+        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Default Editor</h2>
+        <p className="text-[11px] text-[var(--text-muted)] mb-4">
+          Choose which code editor opens files and projects from Khadim.
+        </p>
+
+        {editorLoading ? (
+          <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+            Detecting installed editors…
+          </div>
+        ) : detectedEditors.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-[var(--glass-border)] px-3 py-4 text-center">
+            <p className="text-[11px] text-[var(--text-muted)]">No editors detected on your system.</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">Install an editor and ensure it's on your $PATH.</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {/* Auto option */}
+            <EditorOption
+              id={null}
+              name="Auto-detect"
+              description="Use $VISUAL, $EDITOR, or first available"
+              binary={null}
+              isSelected={!preferredEditor}
+              onSelect={() => void handleSetPreferredEditor(null)}
+            />
+            {detectedEditors.map((editor) => (
+              <EditorOption
+                key={editor.id}
+                id={editor.id}
+                name={editor.name}
+                description={editor.binary}
+                binary={editor.binary}
+                isSelected={preferredEditor === editor.id}
+                onSelect={() => void handleSetPreferredEditor(editor.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+function EditorOption({
+  id,
+  name,
+  description,
+  binary,
+  isSelected,
+  onSelect,
+}: {
+  id: string | null;
+  name: string;
+  description: string;
+  binary: string | null;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 border ${
+        isSelected
+          ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+          : "border-[var(--glass-border)] bg-[var(--glass-bg)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+      }`}
+    >
+      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+        isSelected
+          ? "border-[var(--color-accent)]"
+          : "border-[var(--scrollbar-thumb)]"
+      }`}>
+        {isSelected && (
+          <div className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`text-[11px] font-semibold ${
+          isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+        }`}>{name}</p>
+        <p className="text-[10px] text-[var(--text-muted)] font-mono truncate">{description}</p>
+      </div>
+      {binary && (
+        <span className="text-[9px] text-[var(--text-muted)] bg-[var(--surface-ink-5)] px-1.5 py-0.5 rounded font-mono shrink-0">
+          {binary}
+        </span>
+      )}
+    </button>
   );
 }
 
