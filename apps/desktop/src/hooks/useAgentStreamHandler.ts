@@ -268,6 +268,7 @@ export function useAgentStreamHandler({
             streamingContent: newContent,
             streamPreview: extractStreamPreview(newContent),
             status: "running" as const,
+            currentActivity: agent.currentActivity === "Starting..." ? "Streaming..." : agent.currentActivity,
           };
         });
         return changed ? next : prev;

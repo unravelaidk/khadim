@@ -1008,7 +1008,7 @@ async fn opencode_send_streaming(
 
     // Subscribe to SSE events first
     let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
-    let _handle = OpenCodeManager::subscribe_events(
+    state.opencode.subscribe_events(
         &conn,
         workspace_id.clone(),
         session_id.clone(),
@@ -1029,6 +1029,7 @@ async fn opencode_send_streaming(
     let state_arc = state.inner().clone();
     let conn_for_persist = conn.clone();
     let conv_id = conversation_id.clone();
+    let session_id_for_cleanup = session_id.clone();
     tokio::spawn(async move {
         let mut full_content = String::new();
         let mut assistant_message_id: Option<String> = None;
@@ -1084,6 +1085,8 @@ async fn opencode_send_streaming(
             let _ = app_handle.emit("agent-stream", &evt);
 
             if is_terminal {
+                // Clean up the subscription when the stream ends
+                state_arc.opencode.clear_event_subscription(&session_id_for_cleanup);
                 break;
             }
         }
@@ -1855,10 +1858,18 @@ async fn khadim_send_streaming(
     let khadim_mgr = state.khadim.clone();
     let handle = tokio::spawn(async move {
         let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
+        // Hold back terminal events (done/error) so we can persist the
+        // assistant message before the frontend sees "done" and refetches.
+        let (held_tx, mut held_rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
         let emit_handle = app_handle.clone();
-        tokio::spawn(async move {
+        let emit_task = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
-                let _ = emit_handle.emit("agent-stream", &event);
+                if event.event_type == "done" || event.event_type == "error" {
+                    // Forward to the main task so it can persist first.
+                    let _ = held_tx.send(event);
+                } else {
+                    let _ = emit_handle.emit("agent-stream", &event);
+                }
             }
         });
 
@@ -1881,10 +1892,23 @@ async fn khadim_send_streaming(
             }
         };
 
+        // Drop the sender so the emit task finishes.
+        drop(tx);
+
+        // Wait for the emit task to finish forwarding all events
+        // (including the held done/error events) before draining.
+        let _ = emit_task.await;
+
         match result {
             Ok(text) => {
+                // Persist the assistant message BEFORE emitting "done" so the
+                // frontend query refetch will find the new row.
                 if let Some(conversation_id) = conversation_id {
                     let _ = persist_assistant_message(&state_arc, &conversation_id, &text, None);
+                }
+                // Now emit any held terminal events.
+                while let Ok(event) = held_rx.try_recv() {
+                    let _ = app_handle.emit("agent-stream", &event);
                 }
             }
             Err(error) => {

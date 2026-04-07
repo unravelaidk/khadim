@@ -361,6 +361,7 @@ export function useWorkspaceActions({
         issueUrl,
       );
       setAgents((prev) => [...prev, { ...newAgent, status: issueUrl ? "running" : "idle", startedAt: issueUrl ? new Date().toISOString() : null }]);
+      setFocusedAgentId(updatedConversation.id);
 
       // Send initial message with issue context if provided
       if (issueUrl && updatedConversation.backend_session_id) {

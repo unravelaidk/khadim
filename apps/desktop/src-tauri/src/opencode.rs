@@ -6,7 +6,7 @@ use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -77,6 +77,8 @@ pub struct OpenCodeMessage {
 pub struct OpenCodeManager {
     connections: Mutex<HashMap<String, OpenCodeConnection>>,
     opencode_bin: String,
+    /// Active event subscriptions keyed by session_id to prevent duplicate subscriptions.
+    event_subscriptions: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
 }
 
 impl OpenCodeManager {
@@ -90,6 +92,7 @@ impl OpenCodeManager {
         Self {
             connections: Mutex::new(HashMap::new()),
             opencode_bin,
+            event_subscriptions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -599,17 +602,26 @@ impl OpenCodeManager {
     }
 
     /// Subscribe to OpenCode's /event SSE stream and forward normalized events.
-    /// Returns a JoinHandle so the caller can cancel it.
+    /// Cancels any existing subscription for the same session_id to prevent duplicate events.
     pub fn subscribe_events(
+        &self,
         conn: &OpenCodeConnection,
         workspace_id: String,
         session_id: String,
         tx: mpsc::UnboundedSender<AgentStreamEvent>,
-    ) -> tokio::task::JoinHandle<()> {
+    ) {
+        // Cancel any existing subscription for this session to prevent duplicates
+        if let Some(existing) = self.event_subscriptions.lock().unwrap().remove(&session_id) {
+            existing.abort();
+            log::debug!("Cancelled existing event subscription for session {}", session_id);
+        }
+
         let url = format!("{}/event", conn.base_url);
         let auth = Self::auth_header(conn);
+        let session_id_for_cleanup = session_id.clone();
+        let subscriptions = self.event_subscriptions.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let client = Client::builder().build().unwrap();
 
             let resp = {
@@ -644,6 +656,8 @@ impl OpenCodeManager {
                     Some(response) => response,
                     None => {
                         break_err(&tx, &workspace_id, &session_id, last_error);
+                        // Clean up subscription on error
+                        subscriptions.lock().unwrap().remove(&session_id);
                         return;
                     }
                 }
@@ -677,6 +691,8 @@ impl OpenCodeManager {
 
                         for evt in events {
                             if tx.send(evt).is_err() {
+                                // Channel closed, clean up and exit
+                                subscriptions.lock().unwrap().remove(&session_id);
                                 return;
                             }
                         }
@@ -688,12 +704,26 @@ impl OpenCodeManager {
 
             let _ = tx.send(AgentStreamEvent {
                 workspace_id,
-                session_id,
+                session_id: session_id.clone(),
                 event_type: "done".to_string(),
                 content: None,
                 metadata: None,
             });
-        })
+
+            // Clean up subscription when done
+            subscriptions.lock().unwrap().remove(&session_id);
+        });
+
+        // Store the subscription handle for potential cancellation
+        self.event_subscriptions
+            .lock()
+            .unwrap()
+            .insert(session_id_for_cleanup, handle);
+    }
+
+    /// Clear the event subscription for a session when streaming ends.
+    pub fn clear_event_subscription(&self, session_id: &str) {
+        self.event_subscriptions.lock().unwrap().remove(session_id);
     }
 }
 

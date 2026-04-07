@@ -12,6 +12,7 @@ interface UseAgentChatActionsArgs {
   selectedWorkspace: Workspace | null;
   activeConversation: Conversation | null;
   focusedAgentId: string | null;
+  agents: AgentInstance[];
   selectedModel: OpenCodeModelRef | null;
   agentChatInput: string;
   availableModels: OpenCodeModelOption[];
@@ -44,6 +45,7 @@ export function useAgentChatActions({
   selectedWorkspace,
   activeConversation,
   focusedAgentId,
+  agents,
   selectedModel,
   agentChatInput,
   availableModels,
@@ -87,6 +89,29 @@ export function useAgentChatActions({
     if (!selectedWorkspace || !agentChatInput.trim()) return;
 
     let conversation = activeConversation;
+    if (!conversation && focusedAgentId) {
+      // The conversation may exist but the query hasn't refetched yet.
+      // Look for a matching agent with a sessionId instead of creating a duplicate.
+      const matchedAgent = agents.find((a) => a.id === focusedAgentId);
+      if (matchedAgent?.sessionId) {
+        // Build a minimal conversation-like object so we can proceed
+        conversation = {
+          id: matchedAgent.id,
+          workspace_id: selectedWorkspace.id,
+          backend: selectedWorkspace.backend,
+          backend_session_id: matchedAgent.sessionId,
+          backend_session_cwd: null,
+          branch: matchedAgent.branch ?? null,
+          worktree_path: matchedAgent.worktreePath ?? null,
+          title: matchedAgent.label,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          input_tokens: 0,
+          output_tokens: 0,
+        } as Conversation;
+      }
+    }
     if (!conversation) {
       conversation = await handleNewConversation();
     }
@@ -164,6 +189,7 @@ export function useAgentChatActions({
   }, [
     activeConversation,
     agentChatInput,
+    agents,
     ensureModelForSend,
     completedStepsRef,
     erroredAgentSessionsRef,
