@@ -1,0 +1,27 @@
+[plugin]
+name = "Obsidian Wiki"
+version = "0.1.0"
+description = "Tools for bootstrapping and maintaining an Obsidian-based LLM wiki"
+author = "Khadim"
+license = "MIT"
+wasm = "plugin.wasm"
+
+[[config]]
+key = "wiki_root"
+description = "Root folder for generated wiki pages"
+field_type = "string"
+required = false
+default_value = "Wiki"
+
+[[config]]
+key = "raw_root"
+description = "Root folder for immutable raw source documents"
+field_type = "string"
+required = false
+default_value = "raw"
+
+[permissions]
+fs = true
+http = false
+store = false
+allowed_hosts = []

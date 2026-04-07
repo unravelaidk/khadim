@@ -154,10 +154,11 @@ export function useWorkspaceModelsQuery(
     queryFn: () => {
       if (!workspaceId || !backend) return Promise.resolve([]);
       if (backend === "khadim") return commands.khadimListModels();
+      if (backend === "claude_code") return commands.claudeCodeListModels();
       if (backend === "opencode" && connected) return commands.opencodeListModels(workspaceId);
       return Promise.resolve([]);
     },
-    enabled: enabled && Boolean(workspaceId) && Boolean(backend) && (backend === "khadim" || connected),
+    enabled: enabled && Boolean(workspaceId) && Boolean(backend) && (backend === "khadim" || backend === "claude_code" || connected),
   });
 }
 

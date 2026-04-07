@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod claude_code;
 mod db;
 mod error;
 mod git;
@@ -13,6 +14,7 @@ mod plugins;
 mod process;
 mod skills;
 
+use claude_code::{ClaudeCodeManager, ClaudeCodeSessionCreated};
 use db::{ChatMessage, Conversation, Database, Workspace};
 use error::AppError;
 use khadim_agent::KhadimManager;
@@ -25,8 +27,11 @@ use plugins::{PluginEntry, PluginManager, PluginToolInfo};
 use process::{ProcessOutput, ProcessRunner};
 use skills::{SkillEntry, SkillManager};
 use serde::{Deserialize, Serialize};
+use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::Command;
 use tokio::sync::mpsc;
 
 fn extract_text(value: &serde_json::Value) -> String {
@@ -217,6 +222,7 @@ pub struct AppState {
     process_runner: ProcessRunner,
     opencode: OpenCodeManager,
     khadim: Arc<KhadimManager>,
+    claude_code: Arc<ClaudeCodeManager>,
     github: github::GitHubClient,
     plugins: Arc<PluginManager>,
     skills: Arc<SkillManager>,
@@ -930,6 +936,342 @@ async fn opencode_get_connection(
     Ok(state.opencode.get_connection(&workspace_id))
 }
 
+#[derive(Deserialize)]
+struct ClaudeCodeBridgeEvent {
+    event_type: String,
+    content: Option<String>,
+    metadata: Option<serde_json::Value>,
+}
+
+#[tauri::command]
+async fn claude_code_create_session(
+    state: State<'_, Arc<AppState>>,
+    workspace_id: String,
+    cwd_override: Option<String>,
+) -> Result<ClaudeCodeSessionCreated, AppError> {
+    let workspace = state.db.get_workspace(&workspace_id)?;
+    let cwd = cwd_override
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(|| workspace.worktree_path.as_ref().map(std::path::PathBuf::from))
+        .unwrap_or_else(|| std::path::PathBuf::from(&workspace.repo_path));
+
+    Ok(state.claude_code.create_session(workspace_id, cwd))
+}
+
+#[tauri::command]
+fn claude_code_list_models(state: State<'_, Arc<AppState>>) -> Result<Vec<opencode::OpenCodeModelOption>, AppError> {
+    Ok(state.claude_code.list_models())
+}
+
+#[tauri::command]
+async fn claude_code_send_streaming(
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    workspace_id: String,
+    session_id: String,
+    conversation_id: String,
+    content: String,
+    model: Option<OpenCodeModelRef>,
+) -> Result<(), AppError> {
+    persist_user_message(state.inner(), &conversation_id, &content)?;
+
+    state.claude_code.ensure_bridge_available()?;
+    let session = state.claude_code.get_session(&session_id)?;
+    if session.workspace_id != workspace_id {
+        return Err(AppError::invalid_input(format!(
+            "Claude Code session {session_id} does not belong to workspace {workspace_id}"
+        )));
+    }
+
+    let state_arc = state.inner().clone();
+    let app_handle = app.clone();
+    let bridge_path = state.claude_code.bridge_script_path().to_path_buf();
+    let package_root = state.claude_code.package_root().to_path_buf();
+    let resolved_model = ClaudeCodeManager::resolve_model_id(model.as_ref());
+
+    tokio::spawn(async move {
+        let mut full_content = String::new();
+        let mut saw_terminal = false;
+        let mut terminal_event: Option<AgentStreamEvent> = None;
+        let mut persisted_steps: Vec<serde_json::Value> = Vec::new();
+
+        let mut child = match Command::new("node")
+            .arg(&bridge_path)
+            .current_dir(&package_root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(error) => {
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id: workspace_id.clone(),
+                        session_id: session_id.clone(),
+                        event_type: "error".to_string(),
+                        content: Some(format!("Failed to start Claude Code bridge: {error}")),
+                        metadata: None,
+                    },
+                );
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id,
+                        session_id,
+                        event_type: "done".to_string(),
+                        content: None,
+                        metadata: None,
+                    },
+                );
+                return;
+            }
+        };
+
+        let payload = serde_json::json!({
+            "cwd": session.cwd,
+            "prompt": content,
+            "model": resolved_model,
+            "sessionId": session.id,
+            "resume": session.started,
+        });
+
+        if let Some(mut stdin) = child.stdin.take() {
+            if let Err(error) = stdin.write_all(payload.to_string().as_bytes()).await {
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id: workspace_id.clone(),
+                        session_id: session_id.clone(),
+                        event_type: "error".to_string(),
+                        content: Some(format!("Failed to send prompt to Claude Code bridge: {error}")),
+                        metadata: None,
+                    },
+                );
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id,
+                        session_id,
+                        event_type: "done".to_string(),
+                        content: None,
+                        metadata: None,
+                    },
+                );
+                return;
+            }
+        }
+
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id: workspace_id.clone(),
+                        session_id: session_id.clone(),
+                        event_type: "error".to_string(),
+                        content: Some("Claude Code bridge did not expose stdout".to_string()),
+                        metadata: None,
+                    },
+                );
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id,
+                        session_id,
+                        event_type: "done".to_string(),
+                        content: None,
+                        metadata: None,
+                    },
+                );
+                return;
+            }
+        };
+
+        let stderr = child.stderr.take();
+        let child = Arc::new(tokio::sync::Mutex::new(child));
+        state_arc.claude_code.track_run(session_id.clone(), child.clone());
+
+        let stderr_task = tokio::spawn(async move {
+            let mut lines_out = Vec::new();
+            if let Some(stderr) = stderr {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        lines_out.push(trimmed.to_string());
+                    }
+                }
+            }
+            lines_out
+        });
+
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let parsed = match serde_json::from_str::<ClaudeCodeBridgeEvent>(trimmed) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    log::warn!("Failed to parse Claude Code bridge event: {} :: {}", error, trimmed);
+                    continue;
+                }
+            };
+
+            let event = AgentStreamEvent {
+                workspace_id: workspace_id.clone(),
+                session_id: session_id.clone(),
+                event_type: parsed.event_type.clone(),
+                content: parsed.content.clone(),
+                metadata: parsed.metadata.clone(),
+            };
+
+            if parsed.event_type == "text_delta" {
+                if let Some(text) = parsed.content.as_ref() {
+                    full_content.push_str(text);
+                }
+            }
+
+            if matches!(parsed.event_type.as_str(), "step_start" | "step_update" | "step_complete") {
+                if let Some(metadata) = event.metadata.as_ref().and_then(|value| value.as_object()) {
+                    if let Some(step_id) = metadata.get("id").and_then(|value| value.as_str()) {
+                        let existing_index = persisted_steps.iter().position(|step| {
+                            step.get("id").and_then(|value| value.as_str()) == Some(step_id)
+                        });
+
+                        let mut next_step = existing_index
+                            .and_then(|index| persisted_steps.get(index).cloned())
+                            .unwrap_or_else(|| serde_json::json!({
+                                "id": step_id,
+                                "title": metadata.get("title").and_then(|value| value.as_str()).unwrap_or("Working"),
+                                "status": "running",
+                            }));
+
+                        if let Some(obj) = next_step.as_object_mut() {
+                            if let Some(title) = metadata.get("title").and_then(|value| value.as_str()) {
+                                obj.insert("title".to_string(), serde_json::Value::String(title.to_string()));
+                            }
+                            if let Some(tool) = metadata.get("tool").and_then(|value| value.as_str()) {
+                                obj.insert("tool".to_string(), serde_json::Value::String(tool.to_string()));
+                            }
+                            if let Some(result) = metadata.get("result").and_then(|value| value.as_str()) {
+                                obj.insert("result".to_string(), serde_json::Value::String(result.to_string()));
+                            }
+                            if let Some(content) = event.content.as_ref().filter(|value| !value.trim().is_empty()) {
+                                obj.insert("content".to_string(), serde_json::Value::String(content.clone()));
+                                if parsed.event_type == "step_complete" && !obj.contains_key("result") {
+                                    obj.insert("result".to_string(), serde_json::Value::String(content.clone()));
+                                }
+                            }
+                            let status = match parsed.event_type.as_str() {
+                                "step_complete" => {
+                                    if metadata.get("is_error").and_then(|value| value.as_bool()) == Some(true) {
+                                        "error"
+                                    } else {
+                                        "complete"
+                                    }
+                                }
+                                _ => "running",
+                            };
+                            obj.insert("status".to_string(), serde_json::Value::String(status.to_string()));
+                        }
+
+                        if let Some(index) = existing_index {
+                            persisted_steps[index] = next_step;
+                        } else {
+                            persisted_steps.push(next_step);
+                        }
+                    }
+                }
+            }
+
+            if parsed.event_type == "done" {
+                let _ = state_arc.claude_code.mark_started(&session_id);
+                saw_terminal = true;
+                terminal_event = Some(event);
+                break;
+            }
+
+            if parsed.event_type == "error" {
+                saw_terminal = true;
+                terminal_event = Some(event);
+                break;
+            }
+
+            let _ = app_handle.emit("agent-stream", &event);
+        }
+
+        let stderr_lines = stderr_task.await.unwrap_or_default();
+        let status = child.lock().await.wait().await.ok();
+        let was_aborted = !state_arc.claude_code.is_running(&session_id);
+        state_arc.claude_code.clear_run(&session_id);
+
+        if was_aborted {
+            return;
+        }
+
+        if !saw_terminal {
+            let detail = stderr_lines.join("\n");
+            let message = if !detail.is_empty() {
+                format!("Claude Code run ended unexpectedly: {detail}")
+            } else if let Some(status) = status {
+                format!("Claude Code run ended unexpectedly with status {status}")
+            } else {
+                "Claude Code run ended unexpectedly".to_string()
+            };
+            terminal_event = Some(AgentStreamEvent {
+                workspace_id: workspace_id.clone(),
+                session_id: session_id.clone(),
+                event_type: "error".to_string(),
+                content: Some(message),
+                metadata: None,
+            });
+        }
+
+        if !full_content.trim().is_empty() {
+            let metadata = if persisted_steps.is_empty() {
+                None
+            } else {
+                Some(serde_json::json!({ "thinkingSteps": persisted_steps }).to_string())
+            };
+            let _ = persist_assistant_message(&state_arc, &conversation_id, &full_content, metadata);
+        }
+
+        if let Some(event) = terminal_event {
+            let is_error = event.event_type == "error";
+            let _ = app_handle.emit("agent-stream", &event);
+            if is_error {
+                let _ = app_handle.emit(
+                    "agent-stream",
+                    &AgentStreamEvent {
+                        workspace_id,
+                        session_id,
+                        event_type: "done".to_string(),
+                        content: None,
+                        metadata: None,
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn claude_code_abort(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+) -> Result<(), AppError> {
+    state.claude_code.abort(&session_id).await
+}
+
 // ─── Khadim Backend ──────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1483,6 +1825,7 @@ pub fn run() {
     let process_runner = ProcessRunner::new();
     let opencode = OpenCodeManager::new();
     let khadim = Arc::new(KhadimManager::new());
+    let claude_code = Arc::new(ClaudeCodeManager::new());
     let github = github::GitHubClient::new();
     let db_arc = Arc::new(db);
     let plugin_manager = Arc::new(PluginManager::new(Arc::clone(&db_arc)));
@@ -1517,6 +1860,7 @@ pub fn run() {
         process_runner,
         opencode,
         khadim,
+        claude_code,
         github,
         plugins: plugin_manager,
         skills: skill_manager,
@@ -1566,6 +1910,11 @@ pub fn run() {
             opencode_get_diff,
             opencode_session_statuses,
             opencode_get_connection,
+            // Claude Code
+            claude_code_create_session,
+            claude_code_list_models,
+            claude_code_send_streaming,
+            claude_code_abort,
             // Khadim
             khadim_create_session,
             khadim_list_models,

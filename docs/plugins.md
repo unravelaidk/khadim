@@ -278,6 +278,7 @@ See `examples/plugins/` for complete examples:
 
 - **hello-world** — Minimal plugin with three simple tools
 - **web-search** — Web search plugin demonstrating HTTP permissions and config
+- **obsidian-wiki** — Obsidian vault helper for bootstrapping and maintaining an LLM-authored wiki
 
 ## Roadmap
 

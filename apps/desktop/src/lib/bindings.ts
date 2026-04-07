@@ -640,6 +640,31 @@ export const commands = {
       workspaceId,
     }),
 
+  // Claude Code backend
+  claudeCodeCreateSession: (workspaceId: string, cwdOverride?: string | null) =>
+    invoke<KhadimSessionCreated>("claude_code_create_session", { workspaceId, cwdOverride }),
+
+  claudeCodeListModels: () =>
+    invoke<OpenCodeModelOption[]>("claude_code_list_models"),
+
+  claudeCodeSendStreaming: (
+    workspaceId: string,
+    sessionId: string,
+    conversationId: string,
+    content: string,
+    model?: OpenCodeModelRef | null,
+  ) =>
+    invoke<void>("claude_code_send_streaming", {
+      workspaceId,
+      sessionId,
+      conversationId,
+      content,
+      model,
+    }),
+
+  claudeCodeAbort: (sessionId: string) =>
+    invoke<void>("claude_code_abort", { sessionId }),
+
   // Khadim backend
   khadimCreateSession: (workspaceId?: string | null, cwdOverride?: string | null) =>
     invoke<KhadimSessionCreated>("khadim_create_session", { workspaceId, cwdOverride }),

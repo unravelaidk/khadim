@@ -324,6 +324,7 @@ export default function App() {
     setIsProcessing,
     setStreamingContent,
     setStreamingSteps,
+    completedStepsRef,
     setError,
     pendingQuestion,
     setPendingQuestion,

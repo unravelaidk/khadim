@@ -21,6 +21,7 @@ interface UseAgentChatActionsArgs {
   setIsProcessing: Dispatch<SetStateAction<boolean>>;
   setStreamingContent: Dispatch<SetStateAction<string>>;
   setStreamingSteps: Dispatch<SetStateAction<ThinkingStepData[]>>;
+  completedStepsRef: MutableRefObject<Map<string, ThinkingStepData[]>>;
   setError: Dispatch<SetStateAction<string | null>>;
   pendingQuestion: import("../lib/bindings").PendingQuestion | null;
   setPendingQuestion: Dispatch<SetStateAction<import("../lib/bindings").PendingQuestion | null>>;
@@ -44,6 +45,7 @@ export function useAgentChatActions({
   setIsProcessing,
   setStreamingContent,
   setStreamingSteps,
+  completedStepsRef,
   setError,
   pendingQuestion,
   setPendingQuestion,
@@ -58,7 +60,9 @@ export function useAgentChatActions({
 
     const models = selectedWorkspace.backend === "opencode"
       ? await commands.opencodeListModels(selectedWorkspace.id).catch(() => [])
-      : await commands.khadimListModels().catch(() => []);
+      : selectedWorkspace.backend === "claude_code"
+        ? await commands.claudeCodeListModels().catch(() => [])
+        : await commands.khadimListModels().catch(() => []);
 
     if (models.length === 0) return null;
 
@@ -88,6 +92,7 @@ export function useAgentChatActions({
     setIsProcessing(true);
     setStreamingContent("");
     setStreamingSteps([]);
+    completedStepsRef.current.delete(conversation.id);
     erroredAgentSessionsRef.current.delete(conversation.backend_session_id);
     setError(null);
 
@@ -109,6 +114,14 @@ export function useAgentChatActions({
     try {
       if (selectedWorkspace.backend === "khadim") {
         await commands.khadimSendStreaming(
+          selectedWorkspace.id,
+          conversation.backend_session_id,
+          conversation.id,
+          content,
+          modelForSend,
+        );
+      } else if (selectedWorkspace.backend === "claude_code") {
+        await commands.claudeCodeSendStreaming(
           selectedWorkspace.id,
           conversation.backend_session_id,
           conversation.id,
@@ -142,6 +155,7 @@ export function useAgentChatActions({
     activeConversation,
     agentChatInput,
     ensureModelForSend,
+    completedStepsRef,
     erroredAgentSessionsRef,
     focusedAgentId,
     getErrorMessage,
@@ -161,6 +175,8 @@ export function useAgentChatActions({
     try {
       if (selectedWorkspace.backend === "khadim") {
         await commands.khadimAbort(activeConversation.backend_session_id);
+      } else if (selectedWorkspace.backend === "claude_code") {
+        await commands.claudeCodeAbort(activeConversation.backend_session_id);
       } else {
         await commands.opencodeAbort(selectedWorkspace.id, activeConversation.backend_session_id);
       }
