@@ -3,7 +3,7 @@ use crate::plugins::manifest::{PluginPermissions, ResolvedPlugin};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use wasmtime::{Caller, Engine, Instance, Linker, Memory, Module, Store};
 
@@ -53,6 +53,8 @@ pub struct PluginHostState {
     pub permissions: PluginPermissions,
     pub config: HashMap<String, String>,
     pub store: Arc<Mutex<HashMap<String, String>>>,
+    /// Buffer holding the most recent filesystem read/list result.
+    pub fs_response_buf: Vec<u8>,
     /// Buffer holding the most recent HTTP response body.
     pub http_response_buf: Vec<u8>,
     /// HTTP status code of the most recent response.
@@ -108,6 +110,7 @@ impl WasmPlugin {
             permissions: permissions.clone(),
             config: config.clone(),
             store: plugin_store,
+            fs_response_buf: Vec::new(),
             http_response_buf: Vec::new(),
             http_response_status: 0,
         };
@@ -164,15 +167,296 @@ fn register_host_functions(
     let _store_allowed = permissions.store;
 
     // ─── host-fs ─────────────────────────────────────────────────
+    //
+    // Two-phase protocol mirroring host-http:
+    //   1. Guest calls read-file / list-dir -> host stores bytes in fs_response_buf
+    //   2. Guest calls read-result(buf_ptr, buf_cap) to copy bytes into guest memory
+    //   3. write-file / append-file return 0 on success, -1 on failure
 
     linker
-        .func_wrap("host-fs", "read-file", move |caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32| -> i32 {
-            if !fs_allowed {
-                return -1; // Permission denied
-            }
-            let _ = (caller, path_ptr, path_len);
-            0 // Placeholder - real impl uses component model
-        })
+        .func_wrap(
+            "host-fs",
+            "read-file",
+            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32| -> i32 {
+                if !fs_allowed {
+                    caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
+                    return -1;
+                }
+
+                let rel_path = match read_guest_string(&mut caller, path_ptr, path_len) {
+                    Some(path) => path,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid path".to_vec();
+                        return -1;
+                    }
+                };
+
+                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                    Ok(path) => path,
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = err.into_bytes();
+                        return -1;
+                    }
+                };
+
+                match std::fs::read(&resolved) {
+                    Ok(bytes) => {
+                        let len = bytes.len() as i32;
+                        caller.data_mut().fs_response_buf = bytes;
+                        len
+                    }
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Failed to read {}: {err}",
+                            resolved.display()
+                        )
+                        .into_bytes();
+                        -1
+                    }
+                }
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-fs",
+            "read-result",
+            |mut caller: Caller<'_, PluginHostState>, buf_ptr: i32, buf_cap: i32| -> i32 {
+                let body = caller.data().fs_response_buf.clone();
+                copy_bytes_to_guest(&mut caller, &body, buf_ptr, buf_cap)
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-fs",
+            "write-file",
+            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32, content_ptr: i32, content_len: i32| -> i32 {
+                if !fs_allowed {
+                    caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
+                    return -1;
+                }
+
+                let rel_path = match read_guest_string(&mut caller, path_ptr, path_len) {
+                    Some(path) => path,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid path".to_vec();
+                        return -1;
+                    }
+                };
+                let content = match read_guest_bytes(&mut caller, content_ptr, content_len) {
+                    Some(bytes) => bytes,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid content buffer".to_vec();
+                        return -1;
+                    }
+                };
+
+                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                    Ok(path) => path,
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = err.into_bytes();
+                        return -1;
+                    }
+                };
+
+                if let Some(parent) = resolved.parent() {
+                    if let Err(err) = std::fs::create_dir_all(parent) {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Failed to create parent directory {}: {err}",
+                            parent.display()
+                        )
+                        .into_bytes();
+                        return -1;
+                    }
+                }
+
+                match std::fs::write(&resolved, &content) {
+                    Ok(()) => {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Wrote {} bytes to {}",
+                            content.len(),
+                            resolved.display()
+                        )
+                        .into_bytes();
+                        0
+                    }
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Failed to write {}: {err}",
+                            resolved.display()
+                        )
+                        .into_bytes();
+                        -1
+                    }
+                }
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-fs",
+            "append-file",
+            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32, content_ptr: i32, content_len: i32| -> i32 {
+                if !fs_allowed {
+                    caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
+                    return -1;
+                }
+
+                let rel_path = match read_guest_string(&mut caller, path_ptr, path_len) {
+                    Some(path) => path,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid path".to_vec();
+                        return -1;
+                    }
+                };
+                let content = match read_guest_bytes(&mut caller, content_ptr, content_len) {
+                    Some(bytes) => bytes,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid content buffer".to_vec();
+                        return -1;
+                    }
+                };
+
+                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                    Ok(path) => path,
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = err.into_bytes();
+                        return -1;
+                    }
+                };
+
+                if let Some(parent) = resolved.parent() {
+                    if let Err(err) = std::fs::create_dir_all(parent) {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Failed to create parent directory {}: {err}",
+                            parent.display()
+                        )
+                        .into_bytes();
+                        return -1;
+                    }
+                }
+
+                match std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&resolved)
+                    .and_then(|mut file| std::io::Write::write_all(&mut file, &content))
+                {
+                    Ok(()) => {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Appended {} bytes to {}",
+                            content.len(),
+                            resolved.display()
+                        )
+                        .into_bytes();
+                        0
+                    }
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Failed to append {}: {err}",
+                            resolved.display()
+                        )
+                        .into_bytes();
+                        -1
+                    }
+                }
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-fs",
+            "list-dir",
+            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32| -> i32 {
+                if !fs_allowed {
+                    caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
+                    return -1;
+                }
+
+                let rel_path = match read_guest_string(&mut caller, path_ptr, path_len) {
+                    Some(path) => path,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid path".to_vec();
+                        return -1;
+                    }
+                };
+
+                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                    Ok(path) => path,
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = err.into_bytes();
+                        return -1;
+                    }
+                };
+
+                let mut entries = match std::fs::read_dir(&resolved) {
+                    Ok(entries) => entries
+                        .flatten()
+                        .filter_map(|entry| {
+                            let file_type = entry.file_type().ok()?;
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            Some((file_type.is_dir(), name))
+                        })
+                        .collect::<Vec<_>>(),
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = format!(
+                            "Failed to list {}: {err}",
+                            resolved.display()
+                        )
+                        .into_bytes();
+                        return -1;
+                    }
+                };
+
+                entries.sort_by(|a, b| a.1.cmp(&b.1));
+                let payload = entries
+                    .into_iter()
+                    .map(|(is_dir, name)| format!("{}\t{}", if is_dir { "D" } else { "F" }, name))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let bytes = payload.into_bytes();
+                let len = bytes.len() as i32;
+                caller.data_mut().fs_response_buf = bytes;
+                len
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-fs",
+            "path-exists",
+            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32| -> i32 {
+                if !fs_allowed {
+                    caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
+                    return -1;
+                }
+
+                let rel_path = match read_guest_string(&mut caller, path_ptr, path_len) {
+                    Some(path) => path,
+                    None => {
+                        caller.data_mut().fs_response_buf = b"Invalid path".to_vec();
+                        return -1;
+                    }
+                };
+
+                match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                    Ok(path) => {
+                        caller.data_mut().fs_response_buf.clear();
+                        if path.exists() { 1 } else { 0 }
+                    }
+                    Err(err) => {
+                        caller.data_mut().fs_response_buf = err.into_bytes();
+                        -1
+                    }
+                }
+            },
+        )
         .ok();
 
     // ─── host-http ───────────────────────────────────────────────
@@ -415,8 +699,8 @@ fn register_host_functions(
     Ok(())
 }
 
-/// Read a UTF-8 string from guest memory via a Caller.
-fn read_guest_string(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i32) -> Option<String> {
+/// Read raw bytes from guest memory via a Caller.
+fn read_guest_bytes(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i32) -> Option<Vec<u8>> {
     let memory = match caller.get_export("memory") {
         Some(wasmtime::Extern::Memory(m)) => m,
         _ => return None,
@@ -427,7 +711,70 @@ fn read_guest_string(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i3
     if end > data.len() {
         return None;
     }
-    std::str::from_utf8(&data[start..end]).ok().map(|s| s.to_owned())
+    Some(data[start..end].to_vec())
+}
+
+/// Read a UTF-8 string from guest memory via a Caller.
+fn read_guest_string(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i32) -> Option<String> {
+    read_guest_bytes(caller, ptr, len)
+        .and_then(|bytes| std::str::from_utf8(&bytes).ok().map(|s| s.to_owned()))
+}
+
+fn copy_bytes_to_guest(
+    caller: &mut Caller<'_, PluginHostState>,
+    bytes: &[u8],
+    buf_ptr: i32,
+    buf_cap: i32,
+) -> i32 {
+    let to_copy = bytes.len().min(buf_cap.max(0) as usize);
+    let memory = match caller.get_export("memory") {
+        Some(wasmtime::Extern::Memory(m)) => m,
+        _ => return -1,
+    };
+    let data = memory.data_mut(caller);
+    let start = buf_ptr as usize;
+    let end = start + to_copy;
+    if end > data.len() {
+        return -1;
+    }
+    data[start..end].copy_from_slice(&bytes[..to_copy]);
+    to_copy as i32
+}
+
+fn resolve_workspace_path(workspace_root: &Path, requested: &str) -> Result<PathBuf, String> {
+    if requested.trim().is_empty() {
+        return Ok(workspace_root.to_path_buf());
+    }
+
+    let requested_path = Path::new(requested);
+    if requested_path.is_absolute() {
+        return Err("Absolute paths are not allowed".to_string());
+    }
+
+    let mut resolved = workspace_root.to_path_buf();
+    for component in requested_path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => resolved.push(part),
+            Component::ParentDir => {
+                if !resolved.pop() || !resolved.starts_with(workspace_root) {
+                    return Err(format!(
+                        "Path escapes workspace root: {}",
+                        requested
+                    ));
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("Unsupported path: {}", requested));
+            }
+        }
+    }
+
+    if !resolved.starts_with(workspace_root) {
+        return Err(format!("Path escapes workspace root: {}", requested));
+    }
+
+    Ok(resolved)
 }
 
 // ── Calling plugin exports ───────────────────────────────────────────

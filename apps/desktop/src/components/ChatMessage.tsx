@@ -143,6 +143,26 @@ function stepsFromMetadata(metadata: string | null): ThinkingStepData[] {
   if (!metadata) return [];
   try {
     const msg = JSON.parse(metadata) as Record<string, unknown>;
+    const directSteps = Array.isArray(msg.thinkingSteps) ? msg.thinkingSteps : null;
+    if (directSteps) {
+      return directSteps.filter((step): step is ThinkingStepData => {
+        if (!step || typeof step !== "object") return false;
+        const record = step as Record<string, unknown>;
+        return typeof record.id === "string" && typeof record.title === "string";
+      }).map((step) => {
+        const record = step as unknown as Record<string, unknown>;
+        return {
+          id: record.id as string,
+          title: record.title as string,
+          status: record.status === "error" ? "error" : record.status === "running" ? "running" : "complete",
+          tool: typeof record.tool === "string" ? record.tool : undefined,
+          content: typeof record.content === "string" ? record.content : undefined,
+          result: typeof record.result === "string" ? record.result : undefined,
+          filename: typeof record.filename === "string" ? record.filename : undefined,
+          filePath: typeof record.filePath === "string" ? record.filePath : undefined,
+        };
+      });
+    }
     const parts = (msg.parts as unknown[]) ?? [];
     const steps: ThinkingStepData[] = [];
 

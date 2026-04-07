@@ -157,6 +157,14 @@ export function useWorkspaceActions({
           backendSessionId: sessionId,
         });
         updatedConversation = { ...conversation, backend_session_id: sessionId };
+      } else if (selectedWorkspace.backend === "claude_code") {
+        const session = await commands.claudeCodeCreateSession(selectedWorkspace.id);
+        await setConversationBackendSessionMutation.mutateAsync({
+          workspaceId: selectedWorkspace.id,
+          id: conversation.id,
+          backendSessionId: session.id,
+        });
+        updatedConversation = { ...conversation, backend_session_id: session.id };
       } else if (selectedWorkspace.backend === "khadim") {
         const session = await commands.khadimCreateSession(selectedWorkspace.id);
         await setConversationBackendSessionMutation.mutateAsync({
@@ -223,6 +231,8 @@ export function useWorkspaceActions({
     if (agent.status === "running" && agent.sessionId && selectedWorkspace) {
       if (selectedWorkspace.backend === "khadim") {
         await commands.khadimAbort(agent.sessionId).catch(() => {});
+      } else if (selectedWorkspace.backend === "claude_code") {
+        await commands.claudeCodeAbort(agent.sessionId).catch(() => {});
       } else {
         await commands.opencodeAbort(selectedWorkspace.id, agent.sessionId).catch(() => {});
       }
@@ -284,6 +294,14 @@ export function useWorkspaceActions({
           backendSessionId: sessionId,
         });
         updatedConversation = { ...conversation, backend_session_id: sessionId };
+      } else if (selectedWorkspace.backend === "claude_code") {
+        const session = await commands.claudeCodeCreateSession(selectedWorkspace.id, worktreePath);
+        await setConversationBackendSessionMutation.mutateAsync({
+          workspaceId: selectedWorkspace.id,
+          id: conversation.id,
+          backendSessionId: session.id,
+        });
+        updatedConversation = { ...conversation, backend_session_id: session.id };
       } else if (selectedWorkspace.backend === "khadim") {
         const session = await commands.khadimCreateSession(selectedWorkspace.id, worktreePath);
         await setConversationBackendSessionMutation.mutateAsync({
@@ -311,14 +329,25 @@ export function useWorkspaceActions({
       // Send initial message with issue context if provided
       if (issueUrl && updatedConversation.backend_session_id) {
         const issuePrompt = `Please work on this GitHub issue:\n\n${issueUrl}\n\nRead the issue, understand what needs to be done, and implement a solution. Create a branch if needed, make the necessary changes, and ensure the code is working.`;
-        
+        const modelRef = selectedModelOption
+          ? { provider_id: selectedModelOption.provider_id, model_id: selectedModelOption.model_id }
+          : null;
+
         if (selectedWorkspace.backend === "khadim") {
           await commands.khadimSendStreaming(
             selectedWorkspace.id,
             updatedConversation.backend_session_id,
             updatedConversation.id,
             issuePrompt,
-            modelLabel ? { provider_id: "", model_id: modelLabel } : null,
+            modelRef,
+          );
+        } else if (selectedWorkspace.backend === "claude_code") {
+          await commands.claudeCodeSendStreaming(
+            selectedWorkspace.id,
+            updatedConversation.backend_session_id,
+            updatedConversation.id,
+            issuePrompt,
+            modelRef,
           );
         } else {
           await commands.opencodeSendStreaming(
@@ -326,7 +355,7 @@ export function useWorkspaceActions({
             updatedConversation.backend_session_id,
             updatedConversation.id,
             issuePrompt,
-            modelLabel ? { provider_id: "", model_id: modelLabel } : null,
+            modelRef,
           );
         }
       }
