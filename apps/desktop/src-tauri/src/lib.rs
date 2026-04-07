@@ -35,6 +35,7 @@ use file_index::FileIndexManager;
 use lsp::LspManager;
 use terminal::{TerminalManager, TerminalSession};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -1861,13 +1862,40 @@ async fn khadim_send_streaming(
         // Hold back terminal events (done/error) so we can persist the
         // assistant message before the frontend sees "done" and refetches.
         let (held_tx, mut held_rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
+        // Collect step events so we can persist them as message metadata.
+        let collected_steps = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
+        let steps_for_emit = collected_steps.clone();
         let emit_handle = app_handle.clone();
         let emit_task = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 if event.event_type == "done" || event.event_type == "error" {
-                    // Forward to the main task so it can persist first.
                     let _ = held_tx.send(event);
                 } else {
+                    // Collect step_start / step_update / step_complete into
+                    // a per-step map so we can build complete ThinkingStep
+                    // objects for persistence.
+                    if event.event_type == "step_complete" {
+                        if let Some(ref meta) = event.metadata {
+                            let mut step = meta.clone();
+                            step["status"] = json!("complete");
+                            if let Some(ref c) = event.content {
+                                if step.get("result").is_none() || step["result"].is_null() {
+                                    step["result"] = json!(c);
+                                }
+                                if step.get("content").is_none() || step["content"].is_null() {
+                                    step["content"] = json!(c);
+                                }
+                            }
+                            steps_for_emit.lock().unwrap().push(step);
+                        }
+                    } else if event.event_type == "step_start" {
+                        if let Some(ref meta) = event.metadata {
+                            let mut step = meta.clone();
+                            step["status"] = json!("running");
+                            // Will be replaced if step_complete arrives
+                            steps_for_emit.lock().unwrap().push(step);
+                        }
+                    }
                     let _ = emit_handle.emit("agent-stream", &event);
                 }
             }
@@ -1901,10 +1929,32 @@ async fn khadim_send_streaming(
 
         match result {
             Ok(text) => {
+                // Build metadata with collected thinking steps.
+                let steps = {
+                    let mut raw = collected_steps.lock().unwrap();
+                    // De-duplicate: if step_start was pushed and then step_complete
+                    // arrived for the same id, keep only the complete version.
+                    let mut seen = std::collections::HashSet::new();
+                    let mut deduped = Vec::new();
+                    for step in raw.drain(..).rev() {
+                        let id = step.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        if id.is_empty() || seen.insert(id) {
+                            deduped.push(step);
+                        }
+                    }
+                    deduped.reverse();
+                    deduped
+                };
+                let metadata = if steps.is_empty() {
+                    None
+                } else {
+                    Some(json!({ "thinkingSteps": steps }).to_string())
+                };
+
                 // Persist the assistant message BEFORE emitting "done" so the
                 // frontend query refetch will find the new row.
                 if let Some(conversation_id) = conversation_id {
-                    let _ = persist_assistant_message(&state_arc, &conversation_id, &text, None);
+                    let _ = persist_assistant_message(&state_arc, &conversation_id, &text, metadata);
                 }
                 // Now emit any held terminal events.
                 while let Ok(event) = held_rx.try_recv() {
