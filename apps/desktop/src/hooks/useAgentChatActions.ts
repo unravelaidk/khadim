@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import type { Conversation, OpenCodeModelOption, OpenCodeModelRef, ThinkingStepData, Workspace } from "../lib/bindings";
+import type { Conversation, OpenCodeModelOption, OpenCodeModelRef, PendingQuestion, ThinkingStepData, Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { desktopQueryKeys } from "../lib/queries";
 import { getModelSettingKey } from "../lib/model-selection";
@@ -23,12 +23,18 @@ interface UseAgentChatActionsArgs {
   setStreamingSteps: Dispatch<SetStateAction<ThinkingStepData[]>>;
   completedStepsRef: MutableRefObject<Map<string, ThinkingStepData[]>>;
   setError: Dispatch<SetStateAction<string | null>>;
-  pendingQuestion: import("../lib/bindings").PendingQuestion | null;
-  setPendingQuestion: Dispatch<SetStateAction<import("../lib/bindings").PendingQuestion | null>>;
+  pendingQuestion: PendingQuestion | null;
+  setPendingQuestion: Dispatch<SetStateAction<PendingQuestion | null>>;
   setAgents: Dispatch<SetStateAction<AgentInstance[]>>;
   erroredAgentSessionsRef: MutableRefObject<Set<string>>;
   handleNewConversation: () => Promise<Conversation | null>;
   getErrorMessage: (error: unknown) => string;
+}
+
+function flattenQuestionAnswers(answers: string[][]) {
+  return answers
+    .map((group) => group.map((value) => value.trim()).filter(Boolean).join(", "))
+    .filter(Boolean);
 }
 
 export function useAgentChatActions({
@@ -210,11 +216,15 @@ export function useAgentChatActions({
     setStreamingSteps,
   ]);
 
-  const handleQuestionAnswer = useCallback(async (answers: string[]) => {
+  const handleQuestionAnswer = useCallback(async (answers: string[][]) => {
     const currentQuestion = pendingQuestion;
+    if (!currentQuestion) return;
 
-    const reply = answers.filter(Boolean).join("\n");
-    if (!currentQuestion || !reply) return;
+    const flattenedAnswers = flattenQuestionAnswers(answers);
+    const reply = flattenedAnswers.join("\n");
+    if (!reply) return;
+
+    const isActiveQuestion = activeConversation?.backend_session_id === currentQuestion.sessionId;
 
     if (currentQuestion.backend === "khadim") {
       try {
@@ -226,13 +236,6 @@ export function useAgentChatActions({
       }
       return;
     }
-
-    if (!currentQuestion.conversationId) {
-      setError("Unable to resume this question because its conversation could not be resolved.");
-      return;
-    }
-
-    const isActiveQuestion = activeConversation?.backend_session_id === currentQuestion.sessionId;
 
     if (isActiveQuestion) {
       setAgentChatInput("");
@@ -256,15 +259,15 @@ export function useAgentChatActions({
     }));
 
     try {
-      await commands.opencodeSendStreaming(
+      await commands.opencodeReplyQuestion(
         currentQuestion.workspaceId,
-        currentQuestion.sessionId,
-        currentQuestion.conversationId,
-        reply,
-        selectedWorkspace?.id === currentQuestion.workspaceId ? selectedModel : null,
+        currentQuestion.id,
+        answers.map((group) => group.map((value) => value.trim()).filter(Boolean)),
       );
       setPendingQuestion(null);
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(currentQuestion.conversationId) });
+      if (currentQuestion.conversationId) {
+        await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(currentQuestion.conversationId) });
+      }
     } catch (error) {
       setError(getErrorMessage(error));
       if (isActiveQuestion) {
@@ -279,8 +282,6 @@ export function useAgentChatActions({
     getErrorMessage,
     pendingQuestion,
     queryClient,
-    selectedModel,
-    selectedWorkspace,
     setAgentChatInput,
     setAgents,
     setError,
@@ -290,9 +291,28 @@ export function useAgentChatActions({
     setStreamingSteps,
   ]);
 
+  const handleQuestionDismiss = useCallback(async () => {
+    const currentQuestion = pendingQuestion;
+    if (!currentQuestion) return;
+
+    if (currentQuestion.backend === "khadim") {
+      await handleQuestionAnswer([["(skipped)"]]);
+      return;
+    }
+
+    try {
+      setError(null);
+      await commands.opencodeRejectQuestion(currentQuestion.workspaceId, currentQuestion.id);
+      setPendingQuestion(null);
+    } catch (error) {
+      setError(getErrorMessage(error));
+    }
+  }, [getErrorMessage, handleQuestionAnswer, pendingQuestion, setError, setPendingQuestion]);
+
   return {
     handleChatSend,
     handleAbort,
     handleQuestionAnswer,
+    handleQuestionDismiss,
   };
 }

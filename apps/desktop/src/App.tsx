@@ -310,6 +310,7 @@ export default function App() {
     handleChatSend,
     handleAbort,
     handleQuestionAnswer,
+    handleQuestionDismiss,
   } = useAgentChatActions({
     queryClient,
     selectedWorkspace,
@@ -794,7 +795,7 @@ export default function App() {
           question={pendingQuestion}
           onAnswer={(answers) => void handleQuestionAnswer(answers)}
           onDismiss={() => {
-            void handleQuestionAnswer(["(skipped)"]);
+            void handleQuestionDismiss();
           }}
         />
       )}

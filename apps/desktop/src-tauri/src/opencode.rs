@@ -229,7 +229,11 @@ impl OpenCodeManager {
         format!("Basic {creds}")
     }
 
-    fn text_message_payload(content: &str, model: Option<&OpenCodeModelRef>) -> serde_json::Value {
+    fn text_message_payload(
+        content: &str,
+        model: Option<&OpenCodeModelRef>,
+        system: Option<&str>,
+    ) -> serde_json::Value {
         let mut payload = serde_json::json!({
             "parts": [
                 {
@@ -244,6 +248,10 @@ impl OpenCodeManager {
                 "providerID": model.provider_id,
                 "modelID": model.model_id,
             });
+        }
+
+        if let Some(system) = system.map(str::trim).filter(|value| !value.is_empty()) {
+            payload["system"] = serde_json::json!(system);
         }
 
         payload
@@ -297,6 +305,7 @@ impl OpenCodeManager {
         session_id: &str,
         content: &str,
         model: Option<&OpenCodeModelRef>,
+        system: Option<&str>,
     ) -> Result<serde_json::Value, AppError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(300)) // Long timeout for LLM responses
@@ -307,7 +316,7 @@ impl OpenCodeManager {
             .post(format!("{}/session/{}/message", conn.base_url, session_id))
             .header("Authorization", Self::auth_header(conn))
             .header("Content-Type", "application/json")
-            .json(&Self::text_message_payload(content, model))
+            .json(&Self::text_message_payload(content, model, system))
             .send()
             .await?;
 
@@ -330,6 +339,7 @@ impl OpenCodeManager {
         session_id: &str,
         content: &str,
         model: Option<&OpenCodeModelRef>,
+        system: Option<&str>,
     ) -> Result<(), AppError> {
         let client = Self::client_with_auth(conn);
         let resp = client
@@ -339,7 +349,7 @@ impl OpenCodeManager {
             ))
             .header("Authorization", Self::auth_header(conn))
             .header("Content-Type", "application/json")
-            .json(&Self::text_message_payload(content, model))
+            .json(&Self::text_message_payload(content, model, system))
             .send()
             .await?;
 
@@ -348,6 +358,57 @@ impl OpenCodeManager {
             let body = resp.text().await.unwrap_or_default();
             return Err(AppError::health(format!(
                 "Failed to send async message: HTTP {status} — {body}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Reply to a pending question request.
+    pub async fn reply_question(
+        conn: &OpenCodeConnection,
+        request_id: &str,
+        answers: &[Vec<String>],
+    ) -> Result<(), AppError> {
+        let client = Self::client_with_auth(conn);
+        let resp = client
+            .post(format!("{}/question/{}/reply", conn.base_url, request_id))
+            .header("Authorization", Self::auth_header(conn))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "answers": answers,
+            }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::health(format!(
+                "Failed to reply to question: HTTP {status} — {body}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Reject a pending question request.
+    pub async fn reject_question(
+        conn: &OpenCodeConnection,
+        request_id: &str,
+    ) -> Result<(), AppError> {
+        let client = Self::client_with_auth(conn);
+        let resp = client
+            .post(format!("{}/question/{}/reject", conn.base_url, request_id))
+            .header("Authorization", Self::auth_header(conn))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::health(format!(
+                "Failed to reject question: HTTP {status} — {body}"
             )));
         }
 
@@ -697,6 +758,9 @@ fn normalize_opencode_event(
         "message.part.updated" => {
             normalize_part_updated(workspace_id, session_id, properties, part_kinds, part_buffers)
         }
+        "question.asked" => normalize_question_asked(workspace_id, session_id, properties),
+        "question.replied" => normalize_question_replied(workspace_id, session_id, properties),
+        "question.rejected" => normalize_question_rejected(workspace_id, session_id, properties),
         "session.status" => {
             if properties
                 .get("status")
@@ -711,6 +775,76 @@ fn normalize_opencode_event(
         }
         _ => vec![],
     }
+}
+
+fn normalize_question_asked(
+    workspace_id: &str,
+    session_id: &str,
+    properties: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<AgentStreamEvent> {
+    let request_id = match properties.get("id").and_then(|value| value.as_str()) {
+        Some(request_id) => request_id,
+        None => return vec![],
+    };
+
+    let questions = properties
+        .get("questions")
+        .cloned()
+        .unwrap_or(serde_json::Value::Array(vec![]));
+
+    vec![stream_event(
+        workspace_id,
+        session_id,
+        "question",
+        None,
+        Some(serde_json::json!({
+            "id": request_id,
+            "questions": questions,
+        })),
+    )]
+}
+
+fn normalize_question_replied(
+    workspace_id: &str,
+    session_id: &str,
+    properties: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<AgentStreamEvent> {
+    let request_id = match properties.get("requestID").and_then(|value| value.as_str()) {
+        Some(request_id) => request_id,
+        None => return vec![],
+    };
+
+    vec![stream_event(
+        workspace_id,
+        session_id,
+        "question_replied",
+        None,
+        Some(serde_json::json!({
+            "id": request_id,
+            "answers": properties.get("answers").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        })),
+    )]
+}
+
+fn normalize_question_rejected(
+    workspace_id: &str,
+    session_id: &str,
+    properties: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<AgentStreamEvent> {
+    let request_id = match properties.get("requestID").and_then(|value| value.as_str()) {
+        Some(request_id) => request_id,
+        None => return vec![],
+    };
+
+    vec![stream_event(
+        workspace_id,
+        session_id,
+        "question_rejected",
+        None,
+        Some(serde_json::json!({
+            "id": request_id,
+        })),
+    )]
 }
 
 fn normalize_message_updated(
@@ -992,31 +1126,13 @@ fn normalize_part_updated(
                 .unwrap_or("pending");
             let input = state.get("input");
 
-            // ── Question tool: emit a dedicated "question" event so the
-            //    frontend can render an interactive prompt overlay. ──────
+            // Question prompts are surfaced via dedicated question.* events.
+            // Keep the tool step only for completion state in the timeline.
             if tool == "question" {
                 if status == "pending" || status == "running" {
-                    // Extract the questions array from input and pass it
-                    // through as metadata so the frontend has the full schema.
-                    let questions_payload = input
-                        .and_then(|v| v.get("questions"))
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Array(vec![]));
-
-                    return vec![stream_event(
-                        workspace_id,
-                        session_id,
-                        "question",
-                        None,
-                        Some(serde_json::json!({
-                            "id": part_id,
-                            "questions": questions_payload,
-                        })),
-                    )];
+                    return vec![];
                 }
 
-                // When the question completes, also emit a step_complete so
-                // the thinking-steps panel shows it was answered.
                 let result_text = state
                     .get("output")
                     .and_then(|v| v.as_str())
