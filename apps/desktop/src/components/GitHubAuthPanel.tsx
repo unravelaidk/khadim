@@ -178,7 +178,7 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
               Waiting for browser authentication...
             </p>
             <div className="flex justify-center">
-              <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full dot-spinner" />
             </div>
             <p className="text-[10px] text-[var(--text-muted)] text-center">
               Complete the login in your browser. This window will update automatically.

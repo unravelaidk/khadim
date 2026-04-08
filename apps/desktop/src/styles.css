@@ -307,6 +307,47 @@ body {
   100% { background-position: -200% 0; }
 }
 
+/* ─── Dot Spinner (20 states) ──────────────────────────────────── */
+@keyframes dot-spin {
+  0% { transform: rotate(0deg); }
+  5% { transform: rotate(18deg); }
+  10% { transform: rotate(36deg); }
+  15% { transform: rotate(54deg); }
+  20% { transform: rotate(72deg); }
+  25% { transform: rotate(90deg); }
+  30% { transform: rotate(108deg); }
+  35% { transform: rotate(126deg); }
+  40% { transform: rotate(144deg); }
+  45% { transform: rotate(162deg); }
+  50% { transform: rotate(180deg); }
+  55% { transform: rotate(198deg); }
+  60% { transform: rotate(216deg); }
+  65% { transform: rotate(234deg); }
+  70% { transform: rotate(252deg); }
+  75% { transform: rotate(270deg); }
+  80% { transform: rotate(288deg); }
+  85% { transform: rotate(306deg); }
+  90% { transform: rotate(324deg); }
+  95% { transform: rotate(342deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ─── Dot Spinner Element ─────────────────────────────────────── */
+.dot-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: dot-spin 0.8s linear infinite;
+}
+
+/* ─── Dot Spinner Variants ─────────────────────────────────────── */
+.dot-sm { width: 0.5em; height: 0.5em; border-width: 1px; }
+.dot-lg { width: 1.5em; height: 1.5em; border-width: 3px; }
+.dot-xl { width: 2em; height: 2em; border-width: 4px; }
+
 /* ─── Terminal / xterm ──────────────────────────────────────────────── */
 .terminal-host,
 .terminal-host .xterm,

@@ -397,7 +397,7 @@ const ResultsList = memo(forwardRef<HTMLDivElement, ResultsListProps>(
         {indexing && (
           <div className="px-4 py-12 text-center">
             <div className="inline-flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+              <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent)] border-t-transparent dot-spinner" />
               Building file index…
             </div>
           </div>
@@ -511,7 +511,7 @@ const PreviewContent = memo(function PreviewContent({
     <div className="flex-1 overflow-auto scrollbar-thin relative">
       {isPending && (
         <div className="absolute top-2 right-3 z-10">
-          <span className="inline-block w-3 h-3 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+          <span className="inline-block w-3 h-3 rounded-full border-2 border-[var(--color-accent)] border-t-transparent dot-spinner" />
         </div>
       )}
 

@@ -34,7 +34,7 @@ export function ProvidersTab() {
             className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className={`w-3.5 h-3.5 ${loading ? "dot-spinner" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
@@ -425,7 +425,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
 
                 {discovering && (
                   <div className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] px-3 py-2">
-                    <svg className="w-3.5 h-3.5 animate-spin text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 dot-spinner text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                     <span className="text-[10px] text-[var(--text-secondary)]">Discovering models...</span>
@@ -498,7 +498,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                   <button onClick={() => void handleSave()} disabled={saving || discovering || !keyInput.trim()} className="h-8 px-3.5 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
                     {saving || discovering ? (
                       <span className="flex items-center gap-1.5">
-                        <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <svg className="w-3 h-3 dot-spinner" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                         {discovering ? "Discovering..." : "Saving..."}
@@ -520,7 +520,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                       title="Delete saved API key"
                     >
                       {deleting ? (
-                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5 dot-spinner" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                       ) : (
@@ -619,7 +619,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                             title="Remove this model configuration"
                           >
                             {removingModel === model.id ? (
-                              <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                              <svg className="w-3 h-3 dot-spinner" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                               </svg>
                             ) : (

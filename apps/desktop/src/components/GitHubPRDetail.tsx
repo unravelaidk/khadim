@@ -109,7 +109,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
   if (loading) {
     return (
       <div className="py-12 flex justify-center">
-        <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full dot-spinner" />
       </div>
     );
   }
@@ -302,7 +302,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
             </pre>
           ) : (
             <div className="py-4 flex justify-center">
-              <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full dot-spinner" />
             </div>
           )}
         </div>

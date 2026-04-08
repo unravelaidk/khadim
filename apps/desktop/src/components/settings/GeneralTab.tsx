@@ -198,7 +198,7 @@ export function GeneralTab({
 
         {editorLoading ? (
           <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-            <span className="inline-block w-3 h-3 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-[var(--color-accent)] border-t-transparent dot-spinner" />
             Detecting installed editors…
           </div>
         ) : detectedEditors.length === 0 ? (

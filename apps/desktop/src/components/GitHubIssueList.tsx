@@ -84,7 +84,7 @@ export function GitHubIssueList({ slug, onSelectIssue, onCreateIssue }: GitHubIs
       {/* Loading */}
       {loading && (
         <div className="py-8 flex justify-center">
-          <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-[var(--glass-border-strong)] border-t-[var(--text-primary)] rounded-full dot-spinner" />
         </div>
       )}
 

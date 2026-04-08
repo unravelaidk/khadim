@@ -246,7 +246,7 @@ export function SkillsTab() {
             title="Refresh"
           >
             <svg
-              className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+              className={`w-3.5 h-3.5 ${loading ? "dot-spinner" : ""}`}
               fill="none"
               stroke="currentColor"
               strokeWidth={2}
