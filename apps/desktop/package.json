@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "version:sync": "node ./scripts/sync-version.mjs",
+    "version:set": "node ./scripts/sync-version.mjs",
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc && vite build",
     "build:package": "pnpm tauri build",

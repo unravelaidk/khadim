@@ -1,0 +1,9 @@
+pub(crate) mod file_index;
+pub(crate) mod git;
+pub(crate) mod lsp;
+pub(crate) mod process;
+pub(crate) mod runtime;
+pub(crate) mod settings;
+pub(crate) mod syntax;
+pub(crate) mod terminal;
+pub(crate) mod workspace;

@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::plugins::manifest::{PluginPermissions, ResolvedPlugin};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -145,9 +145,10 @@ impl WasmPlugin {
 
     /// Execute a tool by name with JSON arguments.
     pub fn execute_tool(&self, tool_name: &str, args: &Value) -> Result<WasmToolResult, AppError> {
-        let mut store = self.store.lock().map_err(|e| {
-            AppError::backend_busy(format!("Plugin store lock poisoned: {e}"))
-        })?;
+        let mut store = self
+            .store
+            .lock()
+            .map_err(|e| AppError::backend_busy(format!("Plugin store lock poisoned: {e}")))?;
 
         let args_json = serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string());
 
@@ -191,13 +192,14 @@ fn register_host_functions(
                     }
                 };
 
-                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
-                    Ok(path) => path,
-                    Err(err) => {
-                        caller.data_mut().fs_response_buf = err.into_bytes();
-                        return -1;
-                    }
-                };
+                let resolved =
+                    match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                        Ok(path) => path,
+                        Err(err) => {
+                            caller.data_mut().fs_response_buf = err.into_bytes();
+                            return -1;
+                        }
+                    };
 
                 match std::fs::read(&resolved) {
                     Ok(bytes) => {
@@ -206,11 +208,8 @@ fn register_host_functions(
                         len
                     }
                     Err(err) => {
-                        caller.data_mut().fs_response_buf = format!(
-                            "Failed to read {}: {err}",
-                            resolved.display()
-                        )
-                        .into_bytes();
+                        caller.data_mut().fs_response_buf =
+                            format!("Failed to read {}: {err}", resolved.display()).into_bytes();
                         -1
                     }
                 }
@@ -233,7 +232,12 @@ fn register_host_functions(
         .func_wrap(
             "host-fs",
             "write-file",
-            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32, content_ptr: i32, content_len: i32| -> i32 {
+            move |mut caller: Caller<'_, PluginHostState>,
+                  path_ptr: i32,
+                  path_len: i32,
+                  content_ptr: i32,
+                  content_len: i32|
+                  -> i32 {
                 if !fs_allowed {
                     caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
                     return -1;
@@ -254,13 +258,14 @@ fn register_host_functions(
                     }
                 };
 
-                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
-                    Ok(path) => path,
-                    Err(err) => {
-                        caller.data_mut().fs_response_buf = err.into_bytes();
-                        return -1;
-                    }
-                };
+                let resolved =
+                    match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                        Ok(path) => path,
+                        Err(err) => {
+                            caller.data_mut().fs_response_buf = err.into_bytes();
+                            return -1;
+                        }
+                    };
 
                 if let Some(parent) = resolved.parent() {
                     if let Err(err) = std::fs::create_dir_all(parent) {
@@ -275,20 +280,14 @@ fn register_host_functions(
 
                 match std::fs::write(&resolved, &content) {
                     Ok(()) => {
-                        caller.data_mut().fs_response_buf = format!(
-                            "Wrote {} bytes to {}",
-                            content.len(),
-                            resolved.display()
-                        )
-                        .into_bytes();
+                        caller.data_mut().fs_response_buf =
+                            format!("Wrote {} bytes to {}", content.len(), resolved.display())
+                                .into_bytes();
                         0
                     }
                     Err(err) => {
-                        caller.data_mut().fs_response_buf = format!(
-                            "Failed to write {}: {err}",
-                            resolved.display()
-                        )
-                        .into_bytes();
+                        caller.data_mut().fs_response_buf =
+                            format!("Failed to write {}: {err}", resolved.display()).into_bytes();
                         -1
                     }
                 }
@@ -300,7 +299,12 @@ fn register_host_functions(
         .func_wrap(
             "host-fs",
             "append-file",
-            move |mut caller: Caller<'_, PluginHostState>, path_ptr: i32, path_len: i32, content_ptr: i32, content_len: i32| -> i32 {
+            move |mut caller: Caller<'_, PluginHostState>,
+                  path_ptr: i32,
+                  path_len: i32,
+                  content_ptr: i32,
+                  content_len: i32|
+                  -> i32 {
                 if !fs_allowed {
                     caller.data_mut().fs_response_buf = b"Filesystem permission denied".to_vec();
                     return -1;
@@ -321,13 +325,14 @@ fn register_host_functions(
                     }
                 };
 
-                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
-                    Ok(path) => path,
-                    Err(err) => {
-                        caller.data_mut().fs_response_buf = err.into_bytes();
-                        return -1;
-                    }
-                };
+                let resolved =
+                    match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                        Ok(path) => path,
+                        Err(err) => {
+                            caller.data_mut().fs_response_buf = err.into_bytes();
+                            return -1;
+                        }
+                    };
 
                 if let Some(parent) = resolved.parent() {
                     if let Err(err) = std::fs::create_dir_all(parent) {
@@ -347,20 +352,14 @@ fn register_host_functions(
                     .and_then(|mut file| std::io::Write::write_all(&mut file, &content))
                 {
                     Ok(()) => {
-                        caller.data_mut().fs_response_buf = format!(
-                            "Appended {} bytes to {}",
-                            content.len(),
-                            resolved.display()
-                        )
-                        .into_bytes();
+                        caller.data_mut().fs_response_buf =
+                            format!("Appended {} bytes to {}", content.len(), resolved.display())
+                                .into_bytes();
                         0
                     }
                     Err(err) => {
-                        caller.data_mut().fs_response_buf = format!(
-                            "Failed to append {}: {err}",
-                            resolved.display()
-                        )
-                        .into_bytes();
+                        caller.data_mut().fs_response_buf =
+                            format!("Failed to append {}: {err}", resolved.display()).into_bytes();
                         -1
                     }
                 }
@@ -386,13 +385,14 @@ fn register_host_functions(
                     }
                 };
 
-                let resolved = match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
-                    Ok(path) => path,
-                    Err(err) => {
-                        caller.data_mut().fs_response_buf = err.into_bytes();
-                        return -1;
-                    }
-                };
+                let resolved =
+                    match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
+                        Ok(path) => path,
+                        Err(err) => {
+                            caller.data_mut().fs_response_buf = err.into_bytes();
+                            return -1;
+                        }
+                    };
 
                 let mut entries = match std::fs::read_dir(&resolved) {
                     Ok(entries) => entries
@@ -404,11 +404,8 @@ fn register_host_functions(
                         })
                         .collect::<Vec<_>>(),
                     Err(err) => {
-                        caller.data_mut().fs_response_buf = format!(
-                            "Failed to list {}: {err}",
-                            resolved.display()
-                        )
-                        .into_bytes();
+                        caller.data_mut().fs_response_buf =
+                            format!("Failed to list {}: {err}", resolved.display()).into_bytes();
                         return -1;
                     }
                 };
@@ -448,7 +445,11 @@ fn register_host_functions(
                 match resolve_workspace_path(&caller.data().workspace_root, &rel_path) {
                     Ok(path) => {
                         caller.data_mut().fs_response_buf.clear();
-                        if path.exists() { 1 } else { 0 }
+                        if path.exists() {
+                            1
+                        } else {
+                            0
+                        }
                     }
                     Err(err) => {
                         caller.data_mut().fs_response_buf = err.into_bytes();
@@ -484,8 +485,7 @@ fn register_host_functions(
                     );
                     // Store an error so the guest can still read_body for an error message
                     caller.data_mut().http_response_status = 0;
-                    caller.data_mut().http_response_buf =
-                        b"HTTP permission denied".to_vec();
+                    caller.data_mut().http_response_buf = b"HTTP permission denied".to_vec();
                     return -1;
                 }
 
@@ -619,8 +619,7 @@ fn register_host_functions(
                     Err(_) => {
                         log::error!("[plugin:{plugin_name}] HTTP fetch thread panicked");
                         caller.data_mut().http_response_status = 0;
-                        caller.data_mut().http_response_buf =
-                            b"internal host error".to_vec();
+                        caller.data_mut().http_response_buf = b"internal host error".to_vec();
                         -1
                     }
                 }
@@ -665,42 +664,62 @@ fn register_host_functions(
     // ─── host-log ────────────────────────────────────────────────
 
     linker
-        .func_wrap("host-log", "info", |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
-            let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
-            let name = &caller.data().plugin_name;
-            log::info!("[plugin:{name}] {msg}");
-        })
+        .func_wrap(
+            "host-log",
+            "info",
+            |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
+                let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
+                let name = &caller.data().plugin_name;
+                log::info!("[plugin:{name}] {msg}");
+            },
+        )
         .ok();
 
     linker
-        .func_wrap("host-log", "debug", |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
-            let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
-            let name = &caller.data().plugin_name;
-            log::debug!("[plugin:{name}] {msg}");
-        })
+        .func_wrap(
+            "host-log",
+            "debug",
+            |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
+                let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
+                let name = &caller.data().plugin_name;
+                log::debug!("[plugin:{name}] {msg}");
+            },
+        )
         .ok();
 
     linker
-        .func_wrap("host-log", "warn", |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
-            let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
-            let name = &caller.data().plugin_name;
-            log::warn!("[plugin:{name}] {msg}");
-        })
+        .func_wrap(
+            "host-log",
+            "warn",
+            |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
+                let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
+                let name = &caller.data().plugin_name;
+                log::warn!("[plugin:{name}] {msg}");
+            },
+        )
         .ok();
 
     linker
-        .func_wrap("host-log", "error", |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
-            let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
-            let name = &caller.data().plugin_name;
-            log::error!("[plugin:{name}] {msg}");
-        })
+        .func_wrap(
+            "host-log",
+            "error",
+            |mut caller: Caller<'_, PluginHostState>, ptr: i32, len: i32| {
+                let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
+                let name = &caller.data().plugin_name;
+                log::error!("[plugin:{name}] {msg}");
+            },
+        )
         .ok();
 
     Ok(())
 }
 
 /// Read raw bytes from guest memory via a Caller.
-fn read_guest_bytes(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i32) -> Option<Vec<u8>> {
+fn read_guest_bytes(
+    caller: &mut Caller<'_, PluginHostState>,
+    ptr: i32,
+    len: i32,
+) -> Option<Vec<u8>> {
     let memory = match caller.get_export("memory") {
         Some(wasmtime::Extern::Memory(m)) => m,
         _ => return None,
@@ -715,7 +734,11 @@ fn read_guest_bytes(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i32
 }
 
 /// Read a UTF-8 string from guest memory via a Caller.
-fn read_guest_string(caller: &mut Caller<'_, PluginHostState>, ptr: i32, len: i32) -> Option<String> {
+fn read_guest_string(
+    caller: &mut Caller<'_, PluginHostState>,
+    ptr: i32,
+    len: i32,
+) -> Option<String> {
     read_guest_bytes(caller, ptr, len)
         .and_then(|bytes| std::str::from_utf8(&bytes).ok().map(|s| s.to_owned()))
 }
@@ -758,10 +781,7 @@ fn resolve_workspace_path(workspace_root: &Path, requested: &str) -> Result<Path
             Component::Normal(part) => resolved.push(part),
             Component::ParentDir => {
                 if !resolved.pop() || !resolved.starts_with(workspace_root) {
-                    return Err(format!(
-                        "Path escapes workspace root: {}",
-                        requested
-                    ));
+                    return Err(format!("Path escapes workspace root: {}", requested));
                 }
             }
             Component::RootDir | Component::Prefix(_) => {
@@ -788,12 +808,19 @@ fn resolve_workspace_path(workspace_root: &Path, requested: &str) -> Result<Path
 // For the initial implementation, we use a simpler approach:
 // plugins export functions that work with the WASM memory directly.
 
-fn read_string_from_memory(store: &Store<PluginHostState>, memory: &Memory, ptr: i32, len: i32) -> Result<String, AppError> {
+fn read_string_from_memory(
+    store: &Store<PluginHostState>,
+    memory: &Memory,
+    ptr: i32,
+    len: i32,
+) -> Result<String, AppError> {
     let data = memory.data(store);
     let start = ptr as usize;
     let end = start + len as usize;
     if end > data.len() {
-        return Err(AppError::invalid_input("Plugin returned invalid memory range"));
+        return Err(AppError::invalid_input(
+            "Plugin returned invalid memory range",
+        ));
     }
     String::from_utf8(data[start..end].to_vec())
         .map_err(|e| AppError::invalid_input(format!("Plugin returned invalid UTF-8: {e}")))
@@ -811,7 +838,8 @@ fn write_string_to_memory(
 
     let bytes = s.as_bytes();
     let len = bytes.len() as i32;
-    let ptr = alloc.call(&mut *store, len)
+    let ptr = alloc
+        .call(&mut *store, len)
         .map_err(|e| AppError::invalid_input(format!("Plugin alloc failed: {e}")))?;
 
     let memory = instance
@@ -845,8 +873,9 @@ fn call_info(
 
     match info_fn {
         Ok(func) => {
-            let packed = func.call(&mut *store, ())
-                .map_err(|e| AppError::invalid_input(format!("Plugin {plugin_name} info() failed: {e}")))?;
+            let packed = func.call(&mut *store, ()).map_err(|e| {
+                AppError::invalid_input(format!("Plugin {plugin_name} info() failed: {e}"))
+            })?;
             let (ptr, len) = unpack_i64(packed);
 
             let memory = instance
@@ -855,7 +884,9 @@ fn call_info(
 
             let json_str = read_string_from_memory(store, &memory, ptr, len)?;
             serde_json::from_str(&json_str).map_err(|e| {
-                AppError::invalid_input(format!("Plugin {plugin_name} returned invalid info JSON: {e}"))
+                AppError::invalid_input(format!(
+                    "Plugin {plugin_name} returned invalid info JSON: {e}"
+                ))
             })
         }
         Err(_) => {
@@ -885,8 +916,9 @@ fn call_initialize(
         Ok(func) => {
             let config_json = serde_json::to_string(config).unwrap_or_else(|_| "{}".to_string());
             let (ptr, len) = write_string_to_memory(store, instance, &config_json)?;
-            let result = func.call(&mut *store, (ptr, len))
-                .map_err(|e| AppError::invalid_input(format!("Plugin {plugin_name} initialize() failed: {e}")))?;
+            let result = func.call(&mut *store, (ptr, len)).map_err(|e| {
+                AppError::invalid_input(format!("Plugin {plugin_name} initialize() failed: {e}"))
+            })?;
             if result != 0 {
                 return Err(AppError::invalid_input(format!(
                     "Plugin {plugin_name} initialize() returned error code {result}"
@@ -907,8 +939,9 @@ fn call_list_tools(
 
     match list_fn {
         Ok(func) => {
-            let packed = func.call(&mut *store, ())
-                .map_err(|e| AppError::invalid_input(format!("Plugin {plugin_name} list_tools() failed: {e}")))?;
+            let packed = func.call(&mut *store, ()).map_err(|e| {
+                AppError::invalid_input(format!("Plugin {plugin_name} list_tools() failed: {e}"))
+            })?;
             let (ptr, len) = unpack_i64(packed);
 
             let memory = instance
@@ -917,7 +950,9 @@ fn call_list_tools(
 
             let json_str = read_string_from_memory(store, &memory, ptr, len)?;
             serde_json::from_str(&json_str).map_err(|e| {
-                AppError::invalid_input(format!("Plugin {plugin_name} returned invalid tools JSON: {e}"))
+                AppError::invalid_input(format!(
+                    "Plugin {plugin_name} returned invalid tools JSON: {e}"
+                ))
             })
         }
         Err(_) => Ok(Vec::new()),
@@ -930,7 +965,8 @@ fn call_execute_tool(
     tool_name: &str,
     args_json: &str,
 ) -> Result<WasmToolResult, AppError> {
-    let exec_fn = instance.get_typed_func::<(i32, i32, i32, i32), i64>(&mut *store, "khadim_execute_tool");
+    let exec_fn =
+        instance.get_typed_func::<(i32, i32, i32, i32), i64>(&mut *store, "khadim_execute_tool");
 
     match exec_fn {
         Ok(func) => {
@@ -939,7 +975,9 @@ fn call_execute_tool(
 
             let packed = func
                 .call(&mut *store, (name_ptr, name_len, args_ptr, args_len))
-                .map_err(|e| AppError::invalid_input(format!("Plugin execute_tool({tool_name}) failed: {e}")))?;
+                .map_err(|e| {
+                    AppError::invalid_input(format!("Plugin execute_tool({tool_name}) failed: {e}"))
+                })?;
             let (result_ptr, result_len) = unpack_i64(packed);
 
             let memory = instance
@@ -948,7 +986,9 @@ fn call_execute_tool(
 
             let json_str = read_string_from_memory(store, &memory, result_ptr, result_len)?;
             serde_json::from_str(&json_str).map_err(|e| {
-                AppError::invalid_input(format!("Plugin returned invalid result JSON for {tool_name}: {e}"))
+                AppError::invalid_input(format!(
+                    "Plugin returned invalid result JSON for {tool_name}: {e}"
+                ))
             })
         }
         Err(_) => Err(AppError::not_found(format!(

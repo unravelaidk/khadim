@@ -44,7 +44,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -217,12 +217,11 @@ const KNOWN_SERVERS: &[ServerSpec] = &[
 /// Map file extension to LSP language ID.
 fn ext_to_language_id(filename: &str) -> Option<&'static str> {
     let lower = filename.to_lowercase();
-    if lower == "dockerfile" { return None; }
+    if lower == "dockerfile" {
+        return None;
+    }
 
-    let ext = filename
-        .rsplit('.')
-        .next()
-        .map(|s| s.to_lowercase());
+    let ext = filename.rsplit('.').next().map(|s| s.to_lowercase());
 
     match ext.as_deref() {
         Some("ts") | Some("mts") | Some("cts") => Some("typescript"),
@@ -302,16 +301,23 @@ impl LspServerHandle {
             .map_err(|e| AppError::io(format!("LSP serialize failed: {e}")))?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
 
-        let stdin = self.child.stdin.as_mut()
+        let stdin = self
+            .child
+            .stdin
+            .as_mut()
             .ok_or_else(|| AppError::io("LSP server stdin unavailable"))?;
-        stdin.write_all(header.as_bytes())
+        stdin
+            .write_all(header.as_bytes())
             .and_then(|_| stdin.write_all(body.as_bytes()))
             .and_then(|_| stdin.flush())
             .map_err(|e| AppError::io(format!("LSP write failed: {e}")))
     }
 
     fn read_response(&mut self, expected_id: i64) -> Result<Value, AppError> {
-        let stdout = self.child.stdout.as_mut()
+        let stdout = self
+            .child
+            .stdout
+            .as_mut()
             .ok_or_else(|| AppError::io("LSP server stdout unavailable"))?;
         let mut reader = BufReader::new(stdout);
 
@@ -341,7 +347,9 @@ impl LspServerHandle {
             }
             // Otherwise it's a notification or a response for a different ID — skip
         }
-        Err(AppError::io("LSP response timeout: too many messages without matching ID"))
+        Err(AppError::io(
+            "LSP response timeout: too many messages without matching ID",
+        ))
     }
 
     /// Ensure the file has been opened in the language server.
@@ -401,7 +409,8 @@ fn read_content_length(reader: &mut impl BufRead) -> Result<usize, AppError> {
     let mut content_length: Option<usize> = None;
     loop {
         let mut line = String::new();
-        reader.read_line(&mut line)
+        reader
+            .read_line(&mut line)
             .map_err(|e| AppError::io(format!("LSP header read failed: {e}")))?;
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -559,10 +568,7 @@ impl LspManager {
         let mut servers = self.servers.lock().unwrap();
         let server = self.ensure_server(&mut servers, root, lang)?;
 
-        let result = server.request(
-            "workspace/symbol",
-            json!({ "query": query }),
-        )?;
+        let result = server.request("workspace/symbol", json!({ "query": query }))?;
 
         Ok(parse_workspace_symbols(&result))
     }
@@ -687,7 +693,11 @@ impl LspManager {
         );
 
         if let Err(e) = init_result {
-            log::warn!("LSP initialize failed for {} in {root}: {}", spec.binary, e.message);
+            log::warn!(
+                "LSP initialize failed for {} in {root}: {}",
+                spec.binary,
+                e.message
+            );
             return Err(e);
         }
 
@@ -712,7 +722,10 @@ fn parse_hover_result(result: &Value) -> LspHoverResult {
                 .unwrap_or("")
                 .to_string();
             let kind = obj.get("kind").and_then(|v| v.as_str()).map(String::from);
-            let lang = obj.get("language").and_then(|v| v.as_str()).map(String::from);
+            let lang = obj
+                .get("language")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             (value, lang.or(kind))
         }
         Some(Value::Array(arr)) => {
@@ -764,11 +777,12 @@ fn parse_single_location(value: &Value) -> Option<LspLocation> {
         .or_else(|| value.get("uri"))
         .and_then(|v| v.as_str())?
         .to_string();
-    let range_val = value
-        .get("targetRange")
-        .or_else(|| value.get("range"))?;
+    let range_val = value.get("targetRange").or_else(|| value.get("range"))?;
     let range = parse_range(range_val)?;
-    Some(LspLocation { uri: uri_to_path(&uri), range })
+    Some(LspLocation {
+        uri: uri_to_path(&uri),
+        range,
+    })
 }
 
 fn parse_range(value: &Value) -> Option<LspRange> {
