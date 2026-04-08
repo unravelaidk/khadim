@@ -5,7 +5,7 @@
 ## Dependencies
 
 ```bash
-pnpm add @radix-ui/react-dialog @radix-ui/react-scroll-area @radix-ui/react-separator @radix-ui/react-slot
+bun add @radix-ui/react-dialog @radix-ui/react-scroll-area @radix-ui/react-separator @radix-ui/react-slot
 ```
 
 ## Color Palette

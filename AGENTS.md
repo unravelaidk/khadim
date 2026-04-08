@@ -213,7 +213,7 @@ This should stay a narrow integration:
 5. Add a native file finder / workspace search surface.
 6. Replace the current lightweight git snapshot with a structured diff workspace.
 7. Add richer worktree-aware context switching so terminal, finder, and diff follow the active agent/worktree.
-8. Re-run `cargo check` and `pnpm build` after each major desktop milestone.
+8. Re-run `cargo check` and `bun run build` after each major desktop milestone.
 
 ### Native Workspace Build Plan
 
