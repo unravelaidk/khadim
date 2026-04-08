@@ -114,7 +114,7 @@ function GitChangesPanelInner({ repoPath, isStreaming, onOpenFile, onClose }: Pr
         </div>
 
         {loading && (
-          <svg className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="w-3 h-3 dot-spinner text-[var(--text-muted)] ml-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v4m0 10v4m9-9h-4M7 12H3m15.364 6.364-2.828-2.828M8.464 8.464 5.636 5.636m12.728 0-2.828 2.828M8.464 15.536l-2.828 2.828" />
           </svg>
         )}
