@@ -8,7 +8,7 @@
     "version:set": "node ./scripts/sync-version.mjs",
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc && vite build",
-    "build:package": "pnpm tauri build",
+    "build:package": "bun run tauri build",
     "preview": "vite preview",
     "tauri": "tauri"
   },

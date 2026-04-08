@@ -4,9 +4,9 @@ Initial Tauri scaffold for the Khadim desktop app.
 
 Useful commands:
 
-- `pnpm --filter @khadim/desktop dev` for the frontend only
-- `pnpm --filter @khadim/desktop tauri dev` for the desktop app
-- `pnpm --filter @khadim/desktop build` for the frontend bundle
+- `bun --filter @khadim/desktop dev` for the frontend only
+- `bun --filter @khadim/desktop tauri dev` for the desktop app
+- `bun --filter @khadim/desktop build` for the frontend bundle
 
 Current scope:
 

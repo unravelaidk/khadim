@@ -2,7 +2,7 @@
   "providers": ["node", "deno"],
   "phases": {
     "setup": {
-      "nixPkgs": ["nodejs_22", "pnpm-9_x", "openssl"]
+      "nixPkgs": ["nodejs_22", "bun", "openssl"]
     },
     "deno:build": {
       "cmds": []
