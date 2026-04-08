@@ -65,7 +65,13 @@ jobs:
             librsvg2-dev
 
       - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+        shell: bash
+        run: |
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            bun install --frozen-lockfile
+          else
+            bun install
+          fi
 
       - name: Configure Windows code signing
         if: runner.os == 'Windows'
