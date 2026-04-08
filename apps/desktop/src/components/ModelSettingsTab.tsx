@@ -344,6 +344,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
   }, []);
 
   const defaultModel = models.find((model) => model.is_default);
+  const showBaseUrlField = Boolean(providerInfo?.needs_base_url || form.baseUrl.trim());
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -477,15 +478,31 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
             </div>
           )}
 
-          {providerInfo?.needs_base_url && (
+          {showBaseUrlField && (
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Base URL</label>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="block text-xs font-medium text-[var(--text-secondary)]">Base URL</label>
+                {!providerInfo?.needs_base_url && form.baseUrl.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, baseUrl: "" }))}
+                    className="text-[11px] font-medium text-[var(--text-muted)] underline underline-offset-2 hover:text-[var(--text-primary)]"
+                  >
+                    Clear override
+                  </button>
+                )}
+              </div>
               <input
                 value={form.baseUrl}
                 onChange={(event) => setForm((prev) => ({ ...prev, baseUrl: event.target.value }))}
                 className={inputClass}
                 placeholder="https://api.example.com/v1"
               />
+              {!providerInfo?.needs_base_url && form.baseUrl.trim() && (
+                <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+                  This model has a saved Base URL override. Clear it to fall back to the provider default.
+                </p>
+              )}
             </div>
           )}
 

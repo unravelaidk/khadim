@@ -67,6 +67,43 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Configure Windows code signing
+        if: runner.os == 'Windows'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            Write-Host "No Windows code-signing certificate configured. Building unsigned installer."
+            exit 0
+          }
+
+          New-Item -ItemType Directory -Force -Path certificate | Out-Null
+          Set-Content -Path certificate/tempCert.txt -Value $env:WINDOWS_CERTIFICATE
+          certutil -decode certificate/tempCert.txt certificate/certificate.pfx
+
+          $importedCert = Import-PfxCertificate `
+            -FilePath certificate/certificate.pfx `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
+
+          if (-not $importedCert) {
+            throw "Failed to import Windows code-signing certificate."
+          }
+
+          $thumbprint = ($importedCert.Thumbprint -replace '\s', '')
+          if ([string]::IsNullOrWhiteSpace($thumbprint)) {
+            throw "Imported Windows certificate did not expose a thumbprint."
+          }
+
+          $tauriConfigPath = "apps/desktop/src-tauri/tauri.conf.json"
+          $tauriConfig = Get-Content -Raw -Path $tauriConfigPath | ConvertFrom-Json
+          $tauriConfig.bundle.windows | Add-Member -NotePropertyName certificateThumbprint -NotePropertyValue $thumbprint -Force
+          $tauriConfig | ConvertTo-Json -Depth 100 | Set-Content -Path $tauriConfigPath
+
+          Remove-Item -Recurse -Force certificate
+
       - name: Build desktop bundle
         run: bun --filter @khadim/desktop build:package
 

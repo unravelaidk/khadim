@@ -359,7 +359,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
   // ── Render ────────────────────────────────────────────────────────
   return (
     <div
-      className="relative flex flex-col border-l border-[var(--glass-border)] h-full"
+      className="relative flex flex-col overflow-hidden border-l border-[var(--glass-border)] h-full"
       style={{
         width: dockWidth,
         background: "var(--terminal-bg, var(--surface-bg-subtle))",
