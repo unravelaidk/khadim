@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::khadim_ai::api_registry::get_api_provider;
-use crate::khadim_ai::env_api_keys::{get_env_api_key, get_env_base_url};
+use crate::khadim_ai::env_api_keys::get_env_api_key;
 use crate::khadim_ai::models::resolve_model;
 use crate::khadim_ai::types::{
     AssistantStreamEvent, CompletionResponse, Context, Model, ModelSelection,
@@ -35,7 +35,7 @@ impl ModelClient {
             ))
         })?;
 
-        if let Some(base_url) = selection.as_ref().and_then(|value| value.base_url.clone()).or_else(|| get_env_base_url(&provider)) {
+        if let Some(base_url) = selection.as_ref().and_then(|value| value.base_url.clone()) {
             if !base_url.trim().is_empty() {
                 model.base_url = base_url;
             }
