@@ -32,6 +32,7 @@ jobs:
       - name: Verify tag exists
         env:
           TAG_NAME: ${{ inputs.tag }}
+        shell: bash
         run: |
           git rev-parse --verify "refs/tags/${TAG_NAME}" >/dev/null 2>&1 || {
             echo "Tag '${TAG_NAME}' does not exist."
