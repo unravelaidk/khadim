@@ -1,14 +1,11 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import type { QueryClient } from "@tanstack/react-query";
 import type { Conversation, OpenCodeModelOption, OpenCodeModelRef, PendingApproval, PendingQuestion, ThinkingStepData, Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
-import { desktopQueryKeys } from "../lib/queries";
 import { getModelSettingKey } from "../lib/model-selection";
 import type { AgentInstance } from "../lib/types";
 
 interface UseAgentChatActionsArgs {
-  queryClient: QueryClient;
   selectedWorkspace: Workspace | null;
   activeConversation: Conversation | null;
   focusedAgentId: string | null;
@@ -41,7 +38,6 @@ function flattenQuestionAnswers(answers: string[][]) {
 }
 
 export function useAgentChatActions({
-  queryClient,
   selectedWorkspace,
   activeConversation,
   focusedAgentId,
@@ -172,7 +168,6 @@ export function useAgentChatActions({
           modelForSend,
         );
       }
-      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(conversation.id) });
     } catch (error) {
       const message = getErrorMessage(error);
       setError(message);
@@ -196,7 +191,6 @@ export function useAgentChatActions({
     focusedAgentId,
     getErrorMessage,
     handleNewConversation,
-    queryClient,
     selectedWorkspace,
     setAgentChatInput,
     setAgents,
@@ -295,9 +289,6 @@ export function useAgentChatActions({
         answers.map((group) => group.map((value) => value.trim()).filter(Boolean)),
       );
       setPendingQuestion(null);
-      if (currentQuestion.conversationId) {
-        await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.messages(currentQuestion.conversationId) });
-      }
     } catch (error) {
       setError(getErrorMessage(error));
       if (isActiveQuestion) {
@@ -311,7 +302,6 @@ export function useAgentChatActions({
     erroredAgentSessionsRef,
     getErrorMessage,
     pendingQuestion,
-    queryClient,
     setAgentChatInput,
     setAgents,
     setError,

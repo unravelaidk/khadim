@@ -328,7 +328,6 @@ export default function App() {
     handleQuestionDismiss,
     handleApprovalDecision,
   } = useAgentChatActions({
-    queryClient,
     selectedWorkspace,
     activeConversation,
     focusedAgentId,
@@ -866,8 +865,8 @@ export default function App() {
           </>
         )}
 
-        {/* Shared terminal dock — floating overlay on the right side of the workspace shell. */}
-        {!showSettings && interactionMode === "work" && inWorkspace && selectedWorkspace && terminalOpen && (
+        {/* Shared terminal dock — keep mounted so tabs survive collapse/reopen. */}
+        {!showSettings && interactionMode === "work" && inWorkspace && selectedWorkspace && (
           <div className="absolute inset-y-0 right-0 z-50">
             <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
           </div>

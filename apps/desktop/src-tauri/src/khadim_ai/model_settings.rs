@@ -7,9 +7,16 @@ use crate::db::Database;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Mutex, OnceLock};
 
 const MODEL_CONFIGS_KEY: &str = "khadim:model_configs";
 const API_KEYRING_SERVICE: &str = "khadim.desktop.api-keys";
+
+static SECRET_CACHE: OnceLock<Mutex<BTreeMap<String, Option<String>>>> = OnceLock::new();
+
+fn secret_cache() -> &'static Mutex<BTreeMap<String, Option<String>>> {
+    SECRET_CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderOption {
@@ -101,25 +108,46 @@ fn model_key_name(config_id: &str) -> String {
 }
 
 fn get_secret(name: &str) -> Result<Option<String>, AppError> {
+    if let Some(cached) = secret_cache().lock().unwrap().get(name).cloned() {
+        return Ok(cached);
+    }
+
     let entry = keyring_entry(name)?;
-    match entry.get_password() {
+    let value = match entry.get_password() {
         Ok(value) if value.trim().is_empty() => Ok(None),
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(err) => Err(AppError::io(format!("Failed to read keyring entry '{name}': {err}"))),
-    }
+    }?;
+
+    secret_cache()
+        .lock()
+        .unwrap()
+        .insert(name.to_string(), value.clone());
+
+    Ok(value)
 }
 
 fn set_secret(name: &str, value: &str) -> Result<(), AppError> {
     keyring_entry(name)?
         .set_password(value)
-        .map_err(|err| AppError::io(format!("Failed to store keyring entry '{name}': {err}")))
+        .map_err(|err| AppError::io(format!("Failed to store keyring entry '{name}': {err}")))?;
+
+    secret_cache()
+        .lock()
+        .unwrap()
+        .insert(name.to_string(), Some(value.to_string()));
+
+    Ok(())
 }
 
 fn delete_secret(name: &str) -> Result<(), AppError> {
     let entry = keyring_entry(name)?;
     match entry.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(()) | Err(keyring::Error::NoEntry) => {
+            secret_cache().lock().unwrap().insert(name.to_string(), None);
+            Ok(())
+        }
         Err(err) => Err(AppError::io(format!("Failed to delete keyring entry '{name}': {err}"))),
     }
 }
@@ -149,9 +177,37 @@ fn resolve_config_api_key(config: &ModelConfig) -> Result<Option<String>, AppErr
 }
 
 fn populate_runtime_secrets(config: &mut ModelConfig) -> Result<(), AppError> {
+    normalize_base_url(config);
     config.api_key = resolve_config_api_key(config)?;
     config.has_api_key = config.api_key.is_some();
     Ok(())
+}
+
+fn normalize_base_url(config: &mut ModelConfig) {
+    let provider = config.provider.as_str();
+    if !matches!(provider, "opencode" | "opencode-go") {
+        return;
+    }
+
+    let trimmed = config.base_url.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let builtin_base_url = builtin_models()
+        .into_iter()
+        .find(|model| model.provider == config.provider && model.id == config.model)
+        .map(|model| model.base_url);
+
+    let Some(builtin_base_url) = builtin_base_url else {
+        return;
+    };
+
+    let legacy_provider_default = match provider {
+        "opencode" => "https://opencode.ai/zen",
+        "opencode-go" => "https://opencode.ai/zen/go/v1",
+        _ => return,
+    };
+
+    if trimmed.is_none() || trimmed == Some(legacy_provider_default) {
+        config.base_url = Some(builtin_base_url);
+    }
 }
 
 pub fn supported_providers() -> Vec<ProviderOption> {
@@ -394,6 +450,60 @@ fn registry_models_for_provider(provider: &str) -> Vec<DiscoveredProviderModel> 
         .collect()
 }
 
+fn opencode_discovery_base_url(base_url: Option<String>) -> String {
+    let trimmed = base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    match trimmed {
+        Some(url) if url.ends_with("/v1") => url.to_string(),
+        Some(url) => format!("{}/v1", url.trim_end_matches('/')),
+        None => "https://opencode.ai/zen/v1".to_string(),
+    }
+}
+
+async fn discover_opencode_models(provider: &str, api_key: Option<String>, base_url: Option<String>) -> Result<Vec<DiscoveredProviderModel>, AppError> {
+    let resolved_base_url = opencode_discovery_base_url(base_url);
+    let api_key = api_key
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| get_saved_provider_api_key(provider).ok().flatten())
+        .or_else(|| get_env_api_key(provider))
+        .ok_or_else(|| AppError::invalid_input(format!("Missing API key for {provider}")))?;
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    let bearer = format!("Bearer {api_key}");
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&bearer)
+            .map_err(|err| AppError::invalid_input(format!("Invalid provider API key: {err}")))?,
+    );
+
+    let payload = fetch_json(&format!("{}/models", resolved_base_url.trim_end_matches('/')), headers).await?;
+    let discovered = payload
+        .get("data")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let discovered_pairs = discovered.into_iter().filter_map(|model| {
+        let id = model.get("id").and_then(|value| value.as_str())?;
+        let name = model
+            .get("name")
+            .or_else(|| model.get("display_name"))
+            .and_then(|value| value.as_str())
+            .unwrap_or(id);
+        Some((id.to_string(), name.to_string()))
+    });
+
+    Ok(normalize_model_pairs(
+        registry_models_for_provider(provider)
+            .into_iter()
+            .map(|model| (model.id, model.name))
+            .chain(discovered_pairs),
+    ))
+}
+
 fn normalize_model_pairs(items: impl IntoIterator<Item = (String, String)>) -> Vec<DiscoveredProviderModel> {
     let mut unique = BTreeMap::new();
     for (id, name) in items {
@@ -509,7 +619,6 @@ async fn fetch_json(url: &str, headers: reqwest::header::HeaderMap) -> Result<se
 
 pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: Option<String>) -> Result<Vec<DiscoveredProviderModel>, AppError> {
     let registry_only = BTreeSet::from([
-        "opencode",
         "opencode-go",
         "github-copilot",
         "amazon-bedrock",
@@ -521,6 +630,10 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
 
     if provider == "openai-codex" {
         return discover_codex_models().await;
+    }
+
+    if provider == "opencode" {
+        return discover_opencode_models(provider, api_key, base_url).await;
     }
 
     if registry_only.contains(provider) {
