@@ -71,11 +71,6 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Install Windows system dependencies
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y microsoft-edge-webview2-runtime
-
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
