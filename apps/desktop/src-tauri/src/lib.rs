@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod claude_code;
+mod commands;
 mod db;
 mod error;
 mod file_index;
@@ -14,13 +15,14 @@ mod lsp;
 mod opencode;
 mod plugins;
 mod process;
+mod run_lifecycle;
 mod skills;
 mod syntax;
 mod terminal;
 mod workspace_context;
 
 use claude_code::{ClaudeCodeManager, ClaudeCodeSessionCreated};
-use db::{ChatMessage, Conversation, Database, Workspace};
+use db::{ChatMessage, Conversation, Database};
 use error::AppError;
 use khadim_agent::KhadimManager;
 use khadim_ai::model_settings::{BulkModelEntry, DiscoveredProviderModel, ModelConfig, ModelConfigInput, ProviderOption, ProviderStatus};
@@ -30,10 +32,11 @@ use khadim_ai::types::ModelSelection;
 use opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
 use plugins::{PluginEntry, PluginManager, PluginToolInfo};
 use process::{ProcessOutput, ProcessRunner};
+use run_lifecycle::{emit_error_and_done, extract_text, persist_assistant_message, persist_streamed_assistant_message, persist_user_message, StreamAccumulator};
 use skills::{SkillEntry, SkillManager};
 use file_index::FileIndexManager;
 use lsp::LspManager;
-use terminal::{TerminalManager, TerminalSession};
+use terminal::TerminalManager;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::process::Stdio;
@@ -43,103 +46,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-fn extract_text(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(items) => items
-            .iter()
-            .map(extract_text)
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n"),
-        serde_json::Value::Object(map) => {
-            for key in ["content", "text", "message", "output"] {
-                if let Some(value) = map.get(key) {
-                    let text = extract_text(value);
-                    if !text.is_empty() {
-                        return text;
-                    }
-                }
-            }
-            String::new()
-        }
-        _ => String::new(),
-    }
-}
-
-fn extract_message_parts_text(parts: &[serde_json::Value]) -> String {
-    parts.iter()
-        .filter_map(|part| {
-            let part_type = part.get("type").and_then(|value| value.as_str())?;
-            match part_type {
-                "text" | "reasoning" => part.get("text").and_then(|value| value.as_str()),
-                "tool" => part
-                    .get("state")
-                    .and_then(|value| value.get("output"))
-                    .and_then(|value| value.as_str()),
-                _ => None,
-            }
-        })
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n")
-}
-
-fn extract_assistant_message(
-    payload: &serde_json::Value,
-    preferred_message_id: Option<&str>,
-) -> Option<(String, Option<String>)> {
-    let messages = payload
-        .as_array()
-        .or_else(|| payload.get("messages").and_then(|value| value.as_array()))?;
-
-    let message = if let Some(preferred_message_id) = preferred_message_id {
-        messages.iter().find(|message| {
-            message
-                .get("info")
-                .and_then(|value| value.get("id"))
-                .and_then(|value| value.as_str())
-                == Some(preferred_message_id)
-                && message
-                    .get("info")
-                    .and_then(|value| value.get("role"))
-                    .and_then(|value| value.as_str())
-                    == Some("assistant")
-        })?
-    } else {
-        let message = messages.last()?;
-        let role = message
-            .get("info")
-            .and_then(|value| value.get("role"))
-            .and_then(|value| value.as_str())?;
-        if role != "assistant" {
-            return None;
-        }
-        message
-    };
-
-    let parts = message
-        .get("parts")
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let content_from_parts = extract_message_parts_text(&parts);
-    let content = if !content_from_parts.trim().is_empty() {
-        content_from_parts
-    } else {
-        message
-            .get("info")
-            .map(extract_text)
-            .filter(|value| !value.trim().is_empty())?
-    };
-
-    Some((
-        content,
-        serde_json::to_string(message).ok().filter(|value| !value.is_empty()),
-    ))
-}
 
 /// Mask an API key, showing only the first 4 and last 4 characters.
 fn mask_api_key(key: &str) -> String {
@@ -156,72 +62,6 @@ fn mask_api_key(key: &str) -> String {
     }
 }
 
-async fn fetch_assistant_message_with_retry(
-    conn: &opencode::OpenCodeConnection,
-    session_id: &str,
-    preferred_message_id: Option<&str>,
-) -> Option<(String, Option<String>)> {
-    for attempt in 0..12 {
-        let result = OpenCodeManager::list_messages(conn, session_id)
-            .await
-            .ok()
-            .and_then(|payload| extract_assistant_message(&payload, preferred_message_id));
-
-        if result.is_some() {
-            return result;
-        }
-
-        if attempt < 11 {
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        }
-    }
-
-    None
-}
-
-async fn persist_streamed_assistant_message(
-    state: &Arc<AppState>,
-    conn: &opencode::OpenCodeConnection,
-    session_id: &str,
-    conversation_id: &str,
-    streamed_content: &str,
-    terminal_event: &AgentStreamEvent,
-    assistant_message_id: Option<&str>,
-) -> Result<(), AppError> {
-    let remote_message = fetch_assistant_message_with_retry(conn, session_id, assistant_message_id).await;
-
-    let (content, metadata) = match remote_message {
-        Some((content, metadata)) => (content, metadata),
-        None => {
-            let fallback = streamed_content.trim();
-            if fallback.is_empty() {
-                return Ok(());
-            }
-
-            let metadata = (terminal_event.event_type == "error").then(|| {
-                serde_json::json!({
-                    "source": "stream_fallback",
-                    "terminal_event": terminal_event.event_type,
-                    "error": terminal_event.content,
-                })
-                .to_string()
-            });
-
-            (fallback.to_string(), metadata)
-        }
-    };
-
-    let assistant_msg = ChatMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        conversation_id: conversation_id.to_string(),
-        role: "assistant".to_string(),
-        content,
-        metadata,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    state.db.insert_message(&assistant_msg)
-}
 
 // ── App State ────────────────────────────────────────────────────────
 
@@ -243,364 +83,6 @@ pub struct AppState {
 // ── Tauri commands ───────────────────────────────────────────────────
 // Each command returns Result<T, AppError>. Tauri serializes
 // AppError as JSON { kind, message } in the error channel.
-
-// ─── Runtime ─────────────────────────────────────────────────────────
-
-#[derive(Serialize)]
-struct RuntimeSummary {
-    platform: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    opencode_available: bool,
-}
-
-#[tauri::command]
-fn desktop_runtime_summary(state: State<'_, Arc<AppState>>) -> RuntimeSummary {
-    RuntimeSummary {
-        platform: std::env::consts::OS,
-        runtime: "tauri",
-        status: "native bridge ready",
-        opencode_available: state.opencode.get_connection("_check").is_none()
-            || true, // Just indicates the binary was found
-    }
-}
-
-// ─── Workspaces ──────────────────────────────────────────────────────
-
-#[tauri::command]
-fn list_workspaces(state: State<'_, Arc<AppState>>) -> Result<Vec<Workspace>, AppError> {
-    state.db.list_workspaces()
-}
-
-#[tauri::command]
-fn get_workspace(state: State<'_, Arc<AppState>>, id: String) -> Result<Workspace, AppError> {
-    state.db.get_workspace(&id)
-}
-
-#[derive(Deserialize)]
-struct CreateWorkspaceInput {
-    name: String,
-    repo_path: String,
-    branch: Option<String>,
-    backend: Option<String>,
-    execution_target: Option<String>,
-}
-
-#[tauri::command]
-fn create_workspace(
-    state: State<'_, Arc<AppState>>,
-    input: CreateWorkspaceInput,
-) -> Result<Workspace, AppError> {
-    // Validate repo path
-    if !git::is_git_repo(&input.repo_path) {
-        return Err(AppError::invalid_input(format!(
-            "{} is not a git repository",
-            input.repo_path
-        )));
-    }
-
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-    let backend = input.backend.unwrap_or_else(|| "opencode".to_string());
-    let target = input.execution_target.unwrap_or_else(|| "local".to_string());
-    let branch = input
-        .branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .or_else(|| git::repo_info(&input.repo_path).ok().and_then(|info| info.current_branch));
-
-    let ws = Workspace {
-        id: id.clone(),
-        name: input.name,
-        repo_path: input.repo_path,
-        worktree_path: None,
-        branch,
-        backend,
-        execution_target: target,
-        sandbox_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-
-    state.db.create_workspace(&ws)?;
-    Ok(ws)
-}
-
-#[tauri::command]
-fn delete_workspace(state: State<'_, Arc<AppState>>, id: String) -> Result<(), AppError> {
-    // If there's a worktree, try to clean it up
-    let ws = state.db.get_workspace(&id)?;
-    if let Some(ref wt_path) = ws.worktree_path {
-        let _ = git::remove_worktree(&ws.repo_path, wt_path, true);
-    }
-    state.db.delete_workspace(&id)
-}
-
-#[tauri::command]
-fn set_workspace_branch(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-    branch: Option<String>,
-) -> Result<(), AppError> {
-    let normalized = branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    state.db.update_workspace_branch(&id, normalized)
-}
-
-// ─── Git ─────────────────────────────────────────────────────────────
-
-#[tauri::command]
-fn git_repo_info(path: String) -> Result<git::RepoInfo, AppError> {
-    git::repo_info(&path)
-}
-
-#[tauri::command]
-fn git_list_branches(repo_path: String) -> Result<Vec<git::BranchInfo>, AppError> {
-    git::list_branches(&repo_path)
-}
-
-#[tauri::command]
-fn git_list_worktrees(repo_path: String) -> Result<Vec<git::WorktreeInfo>, AppError> {
-    git::list_worktrees(&repo_path)
-}
-
-#[tauri::command]
-fn git_status(repo_path: String) -> Result<String, AppError> {
-    git::status_summary(&repo_path)
-}
-
-#[tauri::command]
-fn git_diff_stat(repo_path: String) -> Result<String, AppError> {
-    git::diff_stat(&repo_path)
-}
-
-#[tauri::command]
-fn git_diff_files(repo_path: String) -> Result<Vec<git::DiffFileEntry>, AppError> {
-    git::diff_files(&repo_path)
-}
-
-#[tauri::command]
-fn git_create_worktree(
-    repo_path: String,
-    worktree_path: Option<String>,
-    branch: String,
-    new_branch: bool,
-    base_branch: Option<String>,
-) -> Result<git::WorktreeInfo, AppError> {
-    git::create_worktree(
-        &repo_path,
-        worktree_path.as_deref(),
-        &branch,
-        new_branch,
-        base_branch.as_deref(),
-    )
-}
-
-#[tauri::command]
-fn git_remove_worktree(
-    repo_path: String,
-    worktree_path: String,
-    force: bool,
-) -> Result<(), AppError> {
-    git::remove_worktree(&repo_path, &worktree_path, force)
-}
-
-// ─── Workspace context ───────────────────────────────────────────────
-
-// ─── Terminal dock ───────────────────────────────────────────────────
-
-#[tauri::command]
-fn terminal_create(
-    state: State<'_, Arc<AppState>>,
-    app: tauri::AppHandle,
-    workspace_id: String,
-    conversation_id: Option<String>,
-    cwd: Option<String>,
-    cols: Option<u16>,
-    rows: Option<u16>,
-) -> Result<TerminalSession, AppError> {
-    // Resolve cwd from the workspace context unless the caller forced one.
-    let resolved_cwd = match cwd {
-        Some(value) if std::path::Path::new(&value).is_dir() => value,
-        _ => {
-            let context = workspace_context::resolve(
-                &state.db,
-                &workspace_id,
-                conversation_id.as_deref(),
-            )?;
-            context.cwd
-        }
-    };
-
-    state.terminals.create(
-        &app,
-        workspace_id,
-        conversation_id,
-        resolved_cwd,
-        cols,
-        rows,
-    )
-}
-
-#[tauri::command]
-fn terminal_write(
-    state: State<'_, Arc<AppState>>,
-    session_id: String,
-    data: String,
-) -> Result<(), AppError> {
-    state.terminals.write(&session_id, &data)
-}
-
-#[tauri::command]
-fn terminal_resize(
-    state: State<'_, Arc<AppState>>,
-    session_id: String,
-    cols: u16,
-    rows: u16,
-) -> Result<(), AppError> {
-    state.terminals.resize(&session_id, cols, rows)
-}
-
-#[tauri::command]
-fn terminal_close(
-    state: State<'_, Arc<AppState>>,
-    session_id: String,
-) -> Result<(), AppError> {
-    state.terminals.close(&session_id)
-}
-
-#[tauri::command]
-fn terminal_list(
-    state: State<'_, Arc<AppState>>,
-    workspace_id: Option<String>,
-) -> Vec<TerminalSession> {
-    match workspace_id {
-        Some(id) => state.terminals.list_for_workspace(&id),
-        None => state.terminals.list(),
-    }
-}
-
-#[tauri::command]
-fn workspace_context_get(
-    state: State<'_, Arc<AppState>>,
-    workspace_id: String,
-    conversation_id: Option<String>,
-) -> Result<workspace_context::DesktopWorkspaceContext, AppError> {
-    workspace_context::resolve(&state.db, &workspace_id, conversation_id.as_deref())
-}
-
-// ─── File Finder ─────────────────────────────────────────────────────
-
-#[tauri::command]
-fn file_index_build(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-) -> Result<file_index::FileIndexStatus, AppError> {
-    state.file_index.build(&root)
-}
-
-#[tauri::command]
-fn file_search(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-    query: String,
-    max_results: Option<usize>,
-) -> Result<Vec<file_index::FileSearchResult>, AppError> {
-    state.file_index.search(&root, &query, max_results)
-}
-
-#[tauri::command]
-fn file_read_preview(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-    relative_path: String,
-    max_bytes: Option<usize>,
-) -> Result<file_index::FilePreview, AppError> {
-    state.file_index.read_preview(&root, &relative_path, max_bytes)
-}
-
-#[tauri::command]
-fn file_index_status(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-) -> Option<file_index::FileIndexStatus> {
-    state.file_index.status(&root)
-}
-
-// ─── LSP ─────────────────────────────────────────────────────────────
-
-#[tauri::command]
-fn lsp_hover(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-    file_path: String,
-    line: u32,
-    character: u32,
-) -> Result<Option<lsp::LspHoverResult>, AppError> {
-    state.lsp.hover(&root, &file_path, line, character)
-}
-
-#[tauri::command]
-fn lsp_definition(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-    file_path: String,
-    line: u32,
-    character: u32,
-) -> Result<Vec<lsp::LspLocation>, AppError> {
-    state.lsp.definition(&root, &file_path, line, character)
-}
-
-#[tauri::command]
-fn lsp_document_symbols(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-    file_path: String,
-) -> Result<Vec<lsp::LspSymbol>, AppError> {
-    state.lsp.document_symbols(&root, &file_path)
-}
-
-#[tauri::command]
-fn lsp_workspace_symbols(
-    state: State<'_, Arc<AppState>>,
-    root: String,
-    query: String,
-    language_hint: Option<String>,
-) -> Result<Vec<lsp::LspWorkspaceSymbol>, AppError> {
-    state.lsp.workspace_symbols(&root, &query, language_hint.as_deref())
-}
-
-#[tauri::command]
-fn lsp_list_servers(
-    state: State<'_, Arc<AppState>>,
-) -> Vec<lsp::LspServerStatus> {
-    state.lsp.list_servers()
-}
-
-#[tauri::command]
-fn lsp_stop(
-    state: State<'_, Arc<AppState>>,
-    root: Option<String>,
-) {
-    match root {
-        Some(r) => state.lsp.stop_for_root(&r),
-        None => state.lsp.stop_all(),
-    }
-}
-
-// ─── Syntax Highlighting (tree-sitter) ───────────────────────────────
-
-#[tauri::command]
-fn syntax_highlight(
-    source: String,
-    filename: String,
-) -> syntax::HighlightResult {
-    syntax::highlight(&source, &filename)
-}
 
 // ─── Conversations ───────────────────────────────────────────────────
 
@@ -739,38 +221,6 @@ fn resolve_khadim_selection(
     }))
 }
 
-fn persist_user_message(
-    state: &Arc<AppState>,
-    conversation_id: &str,
-    content: &str,
-) -> Result<(), AppError> {
-    let user_msg = ChatMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        conversation_id: conversation_id.to_string(),
-        role: "user".to_string(),
-        content: content.to_string(),
-        metadata: None,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state.db.insert_message(&user_msg)
-}
-
-fn persist_assistant_message(
-    state: &Arc<AppState>,
-    conversation_id: &str,
-    content: &str,
-    metadata: Option<String>,
-) -> Result<(), AppError> {
-    let assistant_msg = ChatMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        conversation_id: conversation_id.to_string(),
-        role: "assistant".to_string(),
-        content: content.to_string(),
-        metadata,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state.db.insert_message(&assistant_msg)
-}
 
 #[tauri::command]
 async fn opencode_start(
@@ -896,16 +346,7 @@ async fn opencode_send_message(
             ))
         })?;
 
-    // Save user message locally
-    let user_msg = ChatMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        conversation_id: conversation_id.clone(),
-        role: "user".to_string(),
-        content: content.clone(),
-        metadata: None,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state.db.insert_message(&user_msg)?;
+    persist_user_message(state.inner(), &conversation_id, &content)?;
 
     // Send to OpenCode (this waits for the response)
     let response = OpenCodeManager::send_message(
@@ -920,15 +361,12 @@ async fn opencode_send_message(
     let assistant_content = extract_text(&response);
 
     if !assistant_content.is_empty() {
-        let assistant_msg = ChatMessage {
-            id: uuid::Uuid::new_v4().to_string(),
-            conversation_id: conversation_id.clone(),
-            role: "assistant".to_string(),
-            content: assistant_content,
-            metadata: Some(serde_json::to_string(&response).unwrap_or_default()),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-        state.db.insert_message(&assistant_msg)?;
+        persist_assistant_message(
+            state.inner(),
+            &conversation_id,
+            &assistant_content,
+            Some(serde_json::to_string(&response).unwrap_or_default()),
+        )?;
     }
 
     Ok(response)
@@ -953,16 +391,7 @@ async fn opencode_send_message_async(
             ))
         })?;
 
-    // Save user message locally
-    let user_msg = ChatMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        conversation_id,
-        role: "user".to_string(),
-        content: content.clone(),
-        metadata: None,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state.db.insert_message(&user_msg)?;
+    persist_user_message(state.inner(), &conversation_id, &content)?;
 
     // Send async — frontend will receive updates via SSE
     OpenCodeManager::send_message_async(
@@ -996,16 +425,7 @@ async fn opencode_send_streaming(
             ))
         })?;
 
-    // Save user message locally
-    let user_msg = ChatMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        conversation_id: conversation_id.clone(),
-        role: "user".to_string(),
-        content: content.clone(),
-        metadata: None,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state.db.insert_message(&user_msg)?;
+    persist_user_message(state.inner(), &conversation_id, &content)?;
 
     // Subscribe to SSE events first
     let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
@@ -1290,10 +710,8 @@ async fn claude_code_send_streaming(
     let resolved_model = ClaudeCodeManager::resolve_model_id(model.as_ref());
 
     tokio::spawn(async move {
-        let mut full_content = String::new();
+        let mut stream = StreamAccumulator::new();
         let mut saw_terminal = false;
-        let mut terminal_event: Option<AgentStreamEvent> = None;
-        let mut persisted_steps: Vec<serde_json::Value> = Vec::new();
 
         let mut child = match Command::new("node")
             .arg(&bridge_path)
@@ -1305,25 +723,11 @@ async fn claude_code_send_streaming(
         {
             Ok(child) => child,
             Err(error) => {
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id: workspace_id.clone(),
-                        session_id: session_id.clone(),
-                        event_type: "error".to_string(),
-                        content: Some(format!("Failed to start Claude Code bridge: {error}")),
-                        metadata: None,
-                    },
-                );
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id,
-                        session_id,
-                        event_type: "done".to_string(),
-                        content: None,
-                        metadata: None,
-                    },
+                emit_error_and_done(
+                    &app_handle,
+                    workspace_id,
+                    session_id,
+                    format!("Failed to start Claude Code bridge: {error}"),
                 );
                 return;
             }
@@ -1339,25 +743,11 @@ async fn claude_code_send_streaming(
 
         let stdin = child.stdin.take();
         let Some(mut stdin) = stdin else {
-            let _ = app_handle.emit(
-                "agent-stream",
-                &AgentStreamEvent {
-                    workspace_id: workspace_id.clone(),
-                    session_id: session_id.clone(),
-                    event_type: "error".to_string(),
-                    content: Some("Claude Code bridge did not expose stdin".to_string()),
-                    metadata: None,
-                },
-            );
-            let _ = app_handle.emit(
-                "agent-stream",
-                &AgentStreamEvent {
-                    workspace_id,
-                    session_id,
-                    event_type: "done".to_string(),
-                    content: None,
-                    metadata: None,
-                },
+            emit_error_and_done(
+                &app_handle,
+                workspace_id,
+                session_id,
+                "Claude Code bridge did not expose stdin".to_string(),
             );
             return;
         };
@@ -1427,25 +817,11 @@ async fn claude_code_send_streaming(
         let stdout = match child.stdout.take() {
             Some(stdout) => stdout,
             None => {
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id: workspace_id.clone(),
-                        session_id: session_id.clone(),
-                        event_type: "error".to_string(),
-                        content: Some("Claude Code bridge did not expose stdout".to_string()),
-                        metadata: None,
-                    },
-                );
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id,
-                        session_id,
-                        event_type: "done".to_string(),
-                        content: None,
-                        metadata: None,
-                    },
+                emit_error_and_done(
+                    &app_handle,
+                    workspace_id,
+                    session_id,
+                    "Claude Code bridge did not expose stdout".to_string(),
                 );
                 return;
             }
@@ -1495,20 +871,14 @@ async fn claude_code_send_streaming(
             };
 
             if parsed.event_type == "text_delta" {
-                if let Some(text) = parsed.content.as_ref() {
-                    full_content.push_str(text);
-                }
+                stream.push_text_delta(parsed.content.as_deref());
             }
 
             if matches!(parsed.event_type.as_str(), "step_start" | "step_update" | "step_complete") {
                 if let Some(metadata) = event.metadata.as_ref().and_then(|value| value.as_object()) {
                     if let Some(step_id) = metadata.get("id").and_then(|value| value.as_str()) {
-                        let existing_index = persisted_steps.iter().position(|step| {
-                            step.get("id").and_then(|value| value.as_str()) == Some(step_id)
-                        });
-
-                        let mut next_step = existing_index
-                            .and_then(|index| persisted_steps.get(index).cloned())
+                        let mut next_step = stream
+                            .current_step(step_id)
                             .unwrap_or_else(|| serde_json::json!({
                                 "id": step_id,
                                 "title": metadata.get("title").and_then(|value| value.as_str()).unwrap_or("Working"),
@@ -1544,11 +914,7 @@ async fn claude_code_send_streaming(
                             obj.insert("status".to_string(), serde_json::Value::String(status.to_string()));
                         }
 
-                        if let Some(index) = existing_index {
-                            persisted_steps[index] = next_step;
-                        } else {
-                            persisted_steps.push(next_step);
-                        }
+                        stream.upsert_step(step_id, next_step);
                     }
                 }
             }
@@ -1556,13 +922,13 @@ async fn claude_code_send_streaming(
             if parsed.event_type == "done" {
                 let _ = state_arc.claude_code.mark_started(&session_id);
                 saw_terminal = true;
-                terminal_event = Some(event);
+                stream.set_terminal_event(event);
                 break;
             }
 
             if parsed.event_type == "error" {
                 saw_terminal = true;
-                terminal_event = Some(event);
+                stream.set_terminal_event(event);
                 break;
             }
 
@@ -1587,7 +953,7 @@ async fn claude_code_send_streaming(
             } else {
                 "Claude Code run ended unexpectedly".to_string()
             };
-            terminal_event = Some(AgentStreamEvent {
+            stream.set_terminal_event(AgentStreamEvent {
                 workspace_id: workspace_id.clone(),
                 session_id: session_id.clone(),
                 event_type: "error".to_string(),
@@ -1596,31 +962,8 @@ async fn claude_code_send_streaming(
             });
         }
 
-        if !full_content.trim().is_empty() {
-            let metadata = if persisted_steps.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "thinkingSteps": persisted_steps }).to_string())
-            };
-            let _ = persist_assistant_message(&state_arc, &conversation_id, &full_content, metadata);
-        }
-
-        if let Some(event) = terminal_event {
-            let is_error = event.event_type == "error";
-            let _ = app_handle.emit("agent-stream", &event);
-            if is_error {
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id,
-                        session_id,
-                        event_type: "done".to_string(),
-                        content: None,
-                        metadata: None,
-                    },
-                );
-            }
-        }
+        let _ = stream.persist_assistant_if_any(&state_arc, &conversation_id);
+        stream.emit_terminal_events(&app_handle, workspace_id, session_id);
     });
 
     Ok(())
@@ -1863,8 +1206,8 @@ async fn khadim_send_streaming(
         // assistant message before the frontend sees "done" and refetches.
         let (held_tx, mut held_rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
         // Collect step events so we can persist them as message metadata.
-        let collected_steps = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
-        let steps_for_emit = collected_steps.clone();
+        let stream = Arc::new(std::sync::Mutex::new(StreamAccumulator::new()));
+        let stream_for_emit = stream.clone();
         let emit_handle = app_handle.clone();
         let emit_task = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
@@ -1886,15 +1229,20 @@ async fn khadim_send_streaming(
                                     step["content"] = json!(c);
                                 }
                             }
-                            steps_for_emit.lock().unwrap().push(step);
+                            stream_for_emit.lock().unwrap().push_step(step);
                         }
                     } else if event.event_type == "step_start" {
                         if let Some(ref meta) = event.metadata {
                             let mut step = meta.clone();
                             step["status"] = json!("running");
                             // Will be replaced if step_complete arrives
-                            steps_for_emit.lock().unwrap().push(step);
+                            stream_for_emit.lock().unwrap().push_step(step);
                         }
+                    } else if event.event_type == "text_delta" {
+                        stream_for_emit
+                            .lock()
+                            .unwrap()
+                            .push_text_delta(event.content.as_deref());
                     }
                     let _ = emit_handle.emit("agent-stream", &event);
                 }
@@ -1929,9 +1277,9 @@ async fn khadim_send_streaming(
 
         match result {
             Ok(text) => {
-                // Build metadata with collected thinking steps.
-                let steps = {
-                    let mut raw = collected_steps.lock().unwrap();
+                let metadata = {
+                    let mut stream = stream.lock().unwrap();
+                    let mut raw = stream.take_thinking_steps();
                     // De-duplicate: if step_start was pushed and then step_complete
                     // arrived for the same id, keep only the complete version.
                     let mut seen = std::collections::HashSet::new();
@@ -1943,44 +1291,26 @@ async fn khadim_send_streaming(
                         }
                     }
                     deduped.reverse();
-                    deduped
-                };
-                let metadata = if steps.is_empty() {
-                    None
-                } else {
-                    Some(json!({ "thinkingSteps": steps }).to_string())
+                    if deduped.is_empty() {
+                        None
+                    } else {
+                        Some(json!({ "thinkingSteps": deduped }).to_string())
+                    }
                 };
 
-                // Persist the assistant message BEFORE emitting "done" so the
-                // frontend query refetch will find the new row.
                 if let Some(conversation_id) = conversation_id {
                     let _ = persist_assistant_message(&state_arc, &conversation_id, &text, metadata);
                 }
-                // Now emit any held terminal events.
                 while let Ok(event) = held_rx.try_recv() {
                     let _ = app_handle.emit("agent-stream", &event);
                 }
             }
             Err(error) => {
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id: workspace_id.clone(),
-                        session_id: session_id_for_error.clone(),
-                        event_type: "error".to_string(),
-                        content: Some(error.message.clone()),
-                        metadata: None,
-                    },
-                );
-                let _ = app_handle.emit(
-                    "agent-stream",
-                    &AgentStreamEvent {
-                        workspace_id,
-                        session_id: session_id_for_error.clone(),
-                        event_type: "done".to_string(),
-                        content: None,
-                        metadata: None,
-                    },
+                emit_error_and_done(
+                    &app_handle,
+                    workspace_id,
+                    session_id_for_error.clone(),
+                    error.message.clone(),
                 );
             }
         }
@@ -2048,29 +1378,6 @@ fn khadim_answer_question(
     answer: String,
 ) -> Result<(), AppError> {
     state.khadim.answer_question(&session_id, answer)
-}
-
-// ─── Settings ────────────────────────────────────────────────────────
-
-#[tauri::command]
-fn get_setting(state: State<'_, Arc<AppState>>, key: String) -> Result<Option<String>, AppError> {
-    state.db.get_setting(&key)
-}
-
-#[tauri::command]
-fn set_setting(
-    state: State<'_, Arc<AppState>>,
-    key: String,
-    value: String,
-) -> Result<(), AppError> {
-    state.db.set_setting(&key, &value)
-}
-
-// ─── Process info ────────────────────────────────────────────────────
-
-#[tauri::command]
-fn list_processes(state: State<'_, Arc<AppState>>) -> Vec<process::ProcessInfo> {
-    state.process_runner.list()
 }
 
 // ─── Plugins ─────────────────────────────────────────────────────────
@@ -2453,42 +1760,42 @@ pub fn run() {
         .manage(app_state.clone())
         .invoke_handler(tauri::generate_handler![
             // Runtime
-            desktop_runtime_summary,
+            commands::runtime::desktop_runtime_summary,
             // Workspaces
-            list_workspaces,
-            get_workspace,
-            create_workspace,
-            set_workspace_branch,
-            delete_workspace,
-            workspace_context_get,
-            terminal_create,
-            terminal_write,
-            terminal_resize,
-            terminal_close,
-            terminal_list,
+            commands::workspace::list_workspaces,
+            commands::workspace::get_workspace,
+            commands::workspace::create_workspace,
+            commands::workspace::set_workspace_branch,
+            commands::workspace::delete_workspace,
+            commands::workspace::workspace_context_get,
+            commands::terminal::terminal_create,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_close,
+            commands::terminal::terminal_list,
             // File Finder
-            file_index_build,
-            file_search,
-            file_read_preview,
-            file_index_status,
+            commands::file_index::file_index_build,
+            commands::file_index::file_search,
+            commands::file_index::file_read_preview,
+            commands::file_index::file_index_status,
             // LSP
-            lsp_hover,
-            lsp_definition,
-            lsp_document_symbols,
-            lsp_workspace_symbols,
-            lsp_list_servers,
-            lsp_stop,
+            commands::lsp::lsp_hover,
+            commands::lsp::lsp_definition,
+            commands::lsp::lsp_document_symbols,
+            commands::lsp::lsp_workspace_symbols,
+            commands::lsp::lsp_list_servers,
+            commands::lsp::lsp_stop,
             // Syntax highlighting
-            syntax_highlight,
+            commands::syntax::syntax_highlight,
             // Git
-            git_repo_info,
-            git_list_branches,
-            git_list_worktrees,
-            git_create_worktree,
-            git_remove_worktree,
-            git_status,
-            git_diff_stat,
-            git_diff_files,
+            commands::git::git_repo_info,
+            commands::git::git_list_branches,
+            commands::git::git_list_worktrees,
+            commands::git::git_create_worktree,
+            commands::git::git_remove_worktree,
+            commands::git::git_status,
+            commands::git::git_diff_stat,
+            commands::git::git_diff_files,
             // Conversations
             list_conversations,
             get_conversation,
@@ -2547,10 +1854,10 @@ pub fn run() {
             khadim_abort,
             khadim_answer_question,
             // Settings
-            get_setting,
-            set_setting,
+            commands::settings::get_setting,
+            commands::settings::set_setting,
             // Processes
-            list_processes,
+            commands::process::list_processes,
             // Plugins
             plugin_list,
             plugin_get,

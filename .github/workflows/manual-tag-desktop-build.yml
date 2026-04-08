@@ -1,0 +1,91 @@
+name: Manual Tag Desktop Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Git tag to build, for example v0.1.0
+        required: true
+        type: string
+
+jobs:
+  build-desktop-from-tag:
+    name: Build desktop from tag
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_suffix: linux
+          - os: macos-latest
+            artifact_suffix: macos
+          - os: windows-latest
+            artifact_suffix: windows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag exists
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+        run: |
+          git rev-parse --verify "refs/tags/${TAG_NAME}" >/dev/null 2>&1 || {
+            echo "Tag '${TAG_NAME}' does not exist."
+            exit 1
+          }
+
+      - name: Checkout requested tag
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+        run: git checkout "refs/tags/${TAG_NAME}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install Windows system dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y webview2
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop bundle
+        run: pnpm --filter @khadim/desktop build:package
+
+      - name: Upload desktop bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: khadim-desktop-${{ inputs.tag }}-${{ matrix.artifact_suffix }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: error

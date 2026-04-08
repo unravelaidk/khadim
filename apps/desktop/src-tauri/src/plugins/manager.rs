@@ -1,12 +1,12 @@
 use crate::db::Database;
 use crate::error::AppError;
-use crate::plugins::manifest::{PluginManifest, ResolvedPlugin};
+use crate::plugins::manifest::PluginManifest;
 use crate::plugins::wasm_host::{WasmPlugin, WasmToolDef, WasmToolResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 // ── Plugin state ─────────────────────────────────────────────────────
 
@@ -135,8 +135,7 @@ impl PluginManager {
         dir: &Path,
         workspace_root: &Path,
     ) -> Result<PluginEntry, AppError> {
-        let resolved = PluginManifest::load(dir)
-            .map_err(|e| AppError::invalid_input(e))?;
+        let resolved = PluginManifest::load(dir).map_err(|e| AppError::invalid_input(e))?;
 
         let enabled = self.is_enabled(plugin_id);
 
@@ -149,7 +148,10 @@ impl PluginManager {
 
         let (instance, tool_count, error) = if enabled {
             let config = self.load_plugin_config(plugin_id);
-            log::info!("Loading WASM plugin '{plugin_id}' from {}", resolved.wasm_path.display());
+            log::info!(
+                "Loading WASM plugin '{plugin_id}' from {}",
+                resolved.wasm_path.display()
+            );
             match WasmPlugin::load(&resolved, workspace_root, config) {
                 Ok(plugin) => {
                     log::info!("Plugin '{plugin_id}' loaded: {} tools", plugin.tools.len());
@@ -247,7 +249,9 @@ impl PluginManager {
             loaded.entry.error = None;
             Ok(loaded.entry.clone())
         } else {
-            Err(AppError::not_found(format!("Plugin not found: {plugin_id}")))
+            Err(AppError::not_found(format!(
+                "Plugin not found: {plugin_id}"
+            )))
         }
     }
 
@@ -282,9 +286,9 @@ impl PluginManager {
         args: &Value,
     ) -> Result<WasmToolResult, AppError> {
         let plugins = self.plugins.read().unwrap();
-        let loaded = plugins.get(plugin_id).ok_or_else(|| {
-            AppError::not_found(format!("Plugin not found: {plugin_id}"))
-        })?;
+        let loaded = plugins
+            .get(plugin_id)
+            .ok_or_else(|| AppError::not_found(format!("Plugin not found: {plugin_id}")))?;
 
         if !loaded.entry.enabled {
             return Err(AppError::invalid_input(format!(
@@ -292,11 +296,10 @@ impl PluginManager {
             )));
         }
 
-        let instance = loaded.instance.as_ref().ok_or_else(|| {
-            AppError::invalid_input(format!(
-                "Plugin {plugin_id} is not loaded"
-            ))
-        })?;
+        let instance = loaded
+            .instance
+            .as_ref()
+            .ok_or_else(|| AppError::invalid_input(format!("Plugin {plugin_id} is not loaded")))?;
 
         instance.execute_tool(tool_name, args)
     }
@@ -326,8 +329,7 @@ impl PluginManager {
         workspace_root: &Path,
     ) -> Result<PluginEntry, AppError> {
         // Validate the source has a manifest and a reachable wasm file
-        let resolved = PluginManifest::load(source)
-            .map_err(|e| AppError::invalid_input(e))?;
+        let resolved = PluginManifest::load(source).map_err(|e| AppError::invalid_input(e))?;
 
         let plugin_id = slug(&resolved.manifest.plugin.name);
         let target = self.plugins_dir.join(&plugin_id);
@@ -354,9 +356,8 @@ impl PluginManager {
         // Write a clean plugin.toml that points to plugin.wasm
         let mut manifest = resolved.manifest.clone();
         manifest.plugin.wasm = "plugin.wasm".to_string();
-        let toml_str = toml::to_string_pretty(&manifest).map_err(|e| {
-            AppError::io(format!("Failed to serialise manifest: {e}"))
-        })?;
+        let toml_str = toml::to_string_pretty(&manifest)
+            .map_err(|e| AppError::io(format!("Failed to serialise manifest: {e}")))?;
         std::fs::write(target.join("plugin.toml"), toml_str)?;
 
         log::info!("Installed plugin '{plugin_id}' to {}", target.display());
@@ -424,8 +425,7 @@ impl PluginManager {
     }
 
     fn load_plugin_config(&self, plugin_id: &str) -> HashMap<String, String> {
-        let mut config = HashMap::new();
-        let prefix = format!("plugin:config:{plugin_id}:");
+        let config = HashMap::new();
 
         // Load all settings with this prefix
         // For now, we'll load known config fields from the manifest
@@ -451,7 +451,13 @@ fn default_plugins_dir() -> PathBuf {
 fn slug(name: &str) -> String {
     name.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()

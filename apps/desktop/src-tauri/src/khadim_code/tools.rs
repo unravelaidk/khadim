@@ -299,7 +299,7 @@ impl Tool for WriteTool {
                     }),
                 }
             }
-            (None, Some(c)) => {
+            (None, Some(_c)) => {
                 // Model sent content but no path. This often happens when the model
                 // generates {"content":"...huge file...","path":"foo.html"} and output
                 // gets truncated before "path" is emitted.
