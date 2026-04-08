@@ -1,0 +1,34 @@
+import { Button } from "../ui";
+import type { AgentConfig } from "../../types/chat";
+import KhadimLogo from "../../assets/Khadim-logo.svg";
+
+interface HeaderProps {
+  agentConfig: AgentConfig | null;
+  onPreview: () => void;
+}
+
+export function Header({ agentConfig, onPreview }: HeaderProps) {
+  return (
+    <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[var(--surface-bg)]/90 border-b border-[var(--glass-border)]">
+      <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <KhadimLogo />
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
+              Khadim
+            </h1>
+            <p className="text-xs text-[var(--text-muted)]">
+              AI Agent Builder
+            </p>
+          </div>
+        </div>
+
+        {agentConfig && (
+          <Button onClick={onPreview} size="sm">
+            Preview
+          </Button>
+        )}
+      </div>
+    </header>
+  );
+}

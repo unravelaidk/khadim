@@ -1,0 +1,373 @@
+/* ── Tiptap Markdown Editor ─────────────────────────────────────────── */
+/* Designed to match the Khadim glass/botanical design system.         */
+/* Opaque surfaces, accent highlights, clean typography.               */
+
+.md-editor-content {
+  padding: 2rem 2.25rem;
+  min-height: 100%;
+  outline: none;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--text-primary);
+  caret-color: var(--color-accent);
+}
+
+@media (max-width: 640px) {
+  .md-editor-content {
+    padding: 1.25rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+}
+
+/* ── Focus ring for the editor area ────────────────────────────────── */
+
+.md-editor-content:focus {
+  outline: none;
+}
+
+/* ── Placeholder ───────────────────────────────────────────────────── */
+
+.md-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-muted);
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* ── Headings ──────────────────────────────────────────────────────── */
+
+.md-editor-content h1 {
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 2.25rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--glass-border);
+}
+
+.md-editor-content h2 {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.3;
+  margin-top: 2rem;
+  margin-bottom: 0.625rem;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.md-editor-content h3 {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.md-editor-content h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.8125rem;
+}
+
+.md-editor-content h1:first-child,
+.md-editor-content h2:first-child,
+.md-editor-content h3:first-child,
+.md-editor-content h4:first-child {
+  margin-top: 0;
+}
+
+/* ── Paragraphs ────────────────────────────────────────────────────── */
+
+.md-editor-content p {
+  margin-bottom: 0.875em;
+}
+
+.md-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Links ─────────────────────────────────────────────────────────── */
+
+.md-editor-content .editor-link {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.md-editor-content .editor-link:hover {
+  color: var(--color-accent-ink);
+  background: var(--color-accent);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  text-decoration: none;
+}
+
+/* ── Inline code ───────────────────────────────────────────────────── */
+
+.md-editor-content code {
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 0.15em 0.45em;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Code blocks ───────────────────────────────────────────────────── */
+
+.md-editor-content pre {
+  background: var(--surface-bg-subtle);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 1.125rem 1.25rem;
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+html.dark .md-editor-content pre {
+  background: rgba(10, 14, 7, 0.6);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.md-editor-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  font-weight: 400;
+}
+
+html.dark .md-editor-content pre code {
+  color: #d4dfc4;
+}
+
+/* ── Blockquotes ───────────────────────────────────────────────────── */
+
+.md-editor-content blockquote {
+  border-left: 3px solid var(--color-accent);
+  margin: 1.25rem 0;
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  background: var(--color-accent-subtle);
+  border-radius: 0 10px 10px 0;
+  color: var(--text-secondary);
+}
+
+.md-editor-content blockquote p {
+  font-style: italic;
+}
+
+/* ── Lists ─────────────────────────────────────────────────────────── */
+
+.md-editor-content ul {
+  list-style: disc;
+  padding-left: 1.5em;
+  margin: 0.625em 0;
+}
+
+.md-editor-content ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+  margin: 0.625em 0;
+}
+
+.md-editor-content li {
+  margin: 0.35em 0;
+}
+
+.md-editor-content li p {
+  margin-bottom: 0.25em;
+}
+
+.md-editor-content li::marker {
+  color: var(--text-muted);
+}
+
+/* ── Task lists ────────────────────────────────────────────────────── */
+
+.md-editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.md-editor-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.25rem 0;
+}
+
+.md-editor-content ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.3rem;
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid var(--glass-border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  background: var(--input-bg);
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-subtle);
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.md-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: var(--color-accent-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.md-editor-content ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* ── Horizontal rule ───────────────────────────────────────────────── */
+
+.md-editor-content hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--glass-border-strong),
+    transparent
+  );
+  margin: 2.5rem 0;
+}
+
+/* ── Images ────────────────────────────────────────────────────────── */
+
+.md-editor-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 1.25rem 0;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm);
+}
+
+.md-editor-content img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px var(--color-accent-subtle);
+}
+
+/* ── Highlight ─────────────────────────────────────────────────────── */
+
+.md-editor-content mark {
+  background: var(--color-accent-subtle);
+  border-radius: 3px;
+  padding: 0.1em 0.25em;
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* ── Tables (from paste) ───────────────────────────────────────────── */
+
+.md-editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.25rem 0;
+  font-size: 0.875em;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+}
+
+.md-editor-content th,
+.md-editor-content td {
+  border: 1px solid var(--glass-border);
+  padding: 0.625em 0.875em;
+  text-align: left;
+}
+
+.md-editor-content th {
+  background: var(--surface-elevated);
+  font-weight: 600;
+  font-size: 0.8125em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.md-editor-content tr:nth-child(even) td {
+  background: var(--surface-card);
+}
+
+/* ── Selection ─────────────────────────────────────────────────────── */
+
+.md-editor-content ::selection {
+  background: rgba(229, 255, 0, 0.35);
+  color: var(--color-accent-ink);
+}
+
+html.dark .md-editor-content ::selection {
+  background: rgba(229, 255, 0, 0.25);
+}
+
+/* ── ProseMirror gapcursor ─────────────────────────────────────────── */
+
+.md-editor-content .ProseMirror-gapcursor::after {
+  border-top-color: var(--color-accent);
+}
+
+/* ── Scrollbar styling for editor panes ────────────────────────────── */
+
+.md-editor-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.md-editor-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.md-editor-content::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}

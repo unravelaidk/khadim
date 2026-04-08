@@ -1,0 +1,303 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Tokyo Night Theme Family — Inspired by Tokyo neon lights
+   https://github.com/enkia/tokyo-night-vscode-theme
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Tokyo Night (dark) ───────────────────────────────────────────── */
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] {
+  color-scheme: dark;
+  --surface-bg: #1a1b26;
+  --surface-bg-subtle: #16161e;
+  --surface-card: rgba(42, 47, 68, 0.78);
+  --surface-card-hover: rgba(52, 57, 82, 0.84);
+  --surface-elevated: rgba(48, 53, 76, 0.88);
+  
+  --glass-bg: rgba(42, 47, 68, 0.72);
+  --glass-bg-strong: rgba(42, 47, 68, 0.85);
+  --glass-border: rgba(192, 202, 245, 0.14);
+  --glass-border-strong: rgba(192, 202, 245, 0.22);
+  --glass-shine: rgba(255, 255, 255, 0.06);
+  --glass-tint: rgba(36, 40, 59, 0.50);
+  
+  --text-primary: #c0caf5;
+  --text-secondary: #a9b1d6;
+  --text-muted: #6d76a0;
+  --text-inverse: #c0caf5;
+  
+  --mesh-1: #1a1b26;
+  --mesh-2: #16161e;
+  --mesh-3: #13141a;
+  --mesh-4: #1c1e28;
+  --orb-accent: rgba(122, 162, 247, 0.06);
+  --orb-accent-soft: rgba(125, 207, 255, 0.04);
+  --orb-ink: rgba(0, 0, 0, 0.16);
+  
+  --input-bg: rgba(42, 47, 68, 0.78);
+  --input-border: rgba(192, 202, 245, 0.16);
+  --input-focus-ring: rgba(122, 162, 247, 0.22);
+  
+  --scrollbar-thumb: rgba(192, 202, 245, 0.25);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(192, 202, 245, 0.04);
+  --surface-ink-4: rgba(192, 202, 245, 0.07);
+  --surface-ink-5: rgba(192, 202, 245, 0.10);
+  --surface-ink-25: rgba(19, 20, 26, 0.48);
+  --surface-white-15: rgba(192, 202, 245, 0.16);
+  --surface-white-50: rgba(192, 202, 245, 0.48);
+  --surface-ink-solid: #171824;
+  
+  --log-bg: rgba(19, 20, 26, 0.94);
+  --log-stdout: #9ece6a;
+  --log-stderr: #e0af68;
+  
+  --color-accent: #7aa2f7;
+  --color-accent-hover: #7dcfff;
+  --color-accent-muted: rgba(122, 162, 247, 0.20);
+  --color-accent-subtle: rgba(122, 162, 247, 0.09);
+  --color-accent-ink: #1a1b26;
+  --glow-low: rgba(122, 162, 247, 0.07);
+  --glow-high: rgba(122, 162, 247, 0.13);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(192, 202, 245, 0.07);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(192, 202, 245, 0.09);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(192, 202, 245, 0.11);
+  --shadow-glow: 0 0 0 1px rgba(122, 162, 247, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(122, 162, 247, 0.08);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.44);
+  
+  --color-success: #9ece6a;
+  --color-success-strong: #8fbc5f;
+  --color-success-muted: rgba(158, 206, 106, 0.12);
+  --color-success-text: #9ece6a;
+  
+  --color-danger: #f7768e;
+  --color-danger-strong: #db6985;
+  --color-danger-hover: #f48ea2;
+  --color-danger-muted: rgba(247, 118, 142, 0.12);
+  --color-danger-subtle: rgba(247, 118, 142, 0.07);
+  --color-danger-text: #f7768e;
+  --color-danger-text-light: #f48ea2;
+  --color-danger-border: rgba(247, 118, 142, 0.22);
+  --color-danger-border-strong: rgba(247, 118, 142, 0.32);
+  --color-danger-bg: rgba(247, 118, 142, 0.09);
+  --color-danger-bg-strong: rgba(247, 118, 142, 0.14);
+  --color-danger-ink: #f48ea2;
+  
+  --color-warning-text: #e0af68;
+
+  /* Terminal — Tokyo Night Dark ANSI */
+  --terminal-bg: #16161e;
+  --terminal-fg: #a9b1d6;
+  --terminal-cursor: #c0caf5;
+  --terminal-cursor-accent: #16161e;
+  --terminal-selection: rgba(41, 46, 66, 0.60);
+  --terminal-black: #414868;
+  --terminal-red: #f7768e;
+  --terminal-green: #9ece6a;
+  --terminal-yellow: #e0af68;
+  --terminal-blue: #7aa2f7;
+  --terminal-magenta: #bb9af7;
+  --terminal-cyan: #7dcfff;
+  --terminal-white: #c0caf5;
+  --terminal-bright-black: #565f89;
+  --terminal-bright-red: #f7768e;
+  --terminal-bright-green: #9ece6a;
+  --terminal-bright-yellow: #e0af68;
+  --terminal-bright-blue: #7aa2f7;
+  --terminal-bright-magenta: #bb9af7;
+  --terminal-bright-cyan: #7dcfff;
+  --terminal-bright-white: #c0caf5;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-panel,
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-card,
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="dark"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Tokyo Night Day (light) ──────────────────────────────────────── */
+[data-theme-family="tokyo-night"][data-theme-variant="light"] {
+  color-scheme: light;
+  --surface-bg: #e1e2eb;
+  --surface-bg-subtle: #d5d6de;
+  --surface-card: rgba(255, 255, 255, 0.72);
+  --surface-card-hover: rgba(255, 255, 255, 0.82);
+  --surface-elevated: rgba(255, 255, 255, 0.88);
+  
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(26, 27, 38, 0.09);
+  --glass-border-strong: rgba(26, 27, 38, 0.14);
+  --glass-shine: rgba(255, 255, 255, 0.55);
+  --glass-tint: rgba(255, 255, 255, 0.40);
+  
+  --text-primary: #343b59;
+  --text-secondary: #4f5779;
+  --text-muted: #6e7490;
+  --text-inverse: #e1e2eb;
+  
+  --orb-accent: rgba(52, 132, 228, 0.04);
+  --orb-accent-soft: rgba(76, 158, 214, 0.03);
+  --orb-ink: rgba(26, 27, 38, 0.05);
+  
+  --input-bg: rgba(255, 255, 255, 0.85);
+  --input-border: rgba(26, 27, 38, 0.13);
+  --input-focus-ring: rgba(52, 132, 228, 0.16);
+  
+  --scrollbar-thumb: rgba(52, 59, 89, 0.28);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(26, 27, 38, 0.03);
+  --surface-ink-4: rgba(26, 27, 38, 0.05);
+  --surface-ink-5: rgba(26, 27, 38, 0.07);
+  --surface-ink-25: rgba(26, 27, 38, 0.28);
+  --surface-white-15: rgba(52, 59, 89, 0.12);
+  --surface-white-50: rgba(52, 59, 89, 0.45);
+  --surface-ink-solid: #343b59;
+  
+  --log-bg: rgba(52, 59, 89, 0.94);
+  --log-stdout: #3c7a34;
+  --log-stderr: #b8750b;
+  
+  --color-accent: #3484e4;
+  --color-accent-hover: #4c9ed6;
+  --color-accent-muted: rgba(52, 132, 228, 0.14);
+  --color-accent-subtle: rgba(52, 132, 228, 0.05);
+  --color-accent-ink: #ffffff;
+  --glow-low: rgba(52, 132, 228, 0.05);
+  --glow-high: rgba(52, 132, 228, 0.09);
+  
+  --shadow-glass-sm: 0 4px 20px -6px rgba(26, 27, 38, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.65);
+  --shadow-glass-md: 0 10px 32px -10px rgba(26, 27, 38, 0.13), 0 0 0 1px rgba(255, 255, 255, 0.60);
+  --shadow-glass-lg: 0 20px 56px -16px rgba(26, 27, 38, 0.17), 0 0 0 1px rgba(255, 255, 255, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(26, 27, 38, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(26, 27, 38, 0.09);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(26, 27, 38, 0.14);
+  
+  --color-success: #3c7a34;
+  --color-success-strong: #326a2b;
+  --color-success-muted: rgba(60, 122, 52, 0.09);
+  --color-success-text: #326a2b;
+  
+  --color-danger: #8c4351;
+  --color-danger-strong: #7a3844;
+  --color-danger-hover: #9c5360;
+  --color-danger-muted: rgba(140, 67, 81, 0.09);
+  --color-danger-subtle: rgba(140, 67, 81, 0.05);
+  --color-danger-text: #7a3844;
+  --color-danger-text-light: #8c4351;
+  --color-danger-border: rgba(140, 67, 81, 0.16);
+  --color-danger-border-strong: rgba(140, 67, 81, 0.26);
+  --color-danger-bg: rgba(140, 67, 81, 0.07);
+  --color-danger-bg-strong: rgba(140, 67, 81, 0.11);
+  --color-danger-ink: #6a2a37;
+  
+  --color-warning-text: #b8750b;
+
+  /* Terminal — Tokyo Night Light ANSI */
+  --terminal-bg: #d5d6db;
+  --terminal-fg: #343b58;
+  --terminal-cursor: #343b58;
+  --terminal-cursor-accent: #d5d6db;
+  --terminal-selection: rgba(52, 59, 88, 0.14);
+  --terminal-black: #343b58;
+  --terminal-red: #8c4351;
+  --terminal-green: #33635c;
+  --terminal-yellow: #8f5e15;
+  --terminal-blue: #34548a;
+  --terminal-magenta: #5a4a78;
+  --terminal-cyan: #0f4b6e;
+  --terminal-white: #d5d6db;
+  --terminal-bright-black: #6c6e82;
+  --terminal-bright-red: #a0545e;
+  --terminal-bright-green: #48836e;
+  --terminal-bright-yellow: #b8750b;
+  --terminal-bright-blue: #4e6fac;
+  --terminal-bright-magenta: #7660a4;
+  --terminal-bright-cyan: #166e93;
+  --terminal-bright-white: #e3e4e8;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-panel,
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-card,
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-card-static {
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-panel-strong {
+  backdrop-filter: blur(36px) saturate(1.45);
+  -webkit-backdrop-filter: blur(36px) saturate(1.45);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-input {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .glass-input:focus {
+  border-color: rgba(26, 27, 38, 0.30);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: rgba(26, 27, 38, 0.75);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-accent:hover {
+  background: var(--color-accent-hover);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-ink {
+  background: var(--surface-ink-solid);
+  color: var(--text-inverse);
+  border-color: rgba(26, 27, 38, 0.65);
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] .btn-ink:hover {
+  background: #181b26;
+}
+
+[data-theme-family="tokyo-night"][data-theme-variant="light"] ::selection {
+  background: rgba(52, 132, 228, 0.20);
+  color: #343b59;
+}

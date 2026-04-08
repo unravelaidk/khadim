@@ -1,0 +1,37 @@
+[plugin]
+name = "web-search"
+version = "0.1.0"
+description = "Web search tool for the Khadim agent"
+author = "Khadim"
+license = "MIT"
+wasm = "target/wasm32-unknown-unknown/release/khadim_plugin_web_search.wasm"
+
+[[config]]
+key = "api_key"
+description = "API key for the search provider"
+field_type = "secret"
+required = true
+
+[[config]]
+key = "search_engine"
+description = "Search engine: brave, serper, tavily"
+field_type = "string"
+required = false
+default_value = "brave"
+
+[[config]]
+key = "max_results"
+description = "Maximum number of results to return"
+field_type = "number"
+required = false
+default_value = "5"
+
+[permissions]
+fs = false
+http = true
+store = true
+allowed_hosts = [
+    "api.search.brave.com",
+    "google.serper.dev",
+    "api.tavily.com",
+]

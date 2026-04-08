@@ -174,6 +174,14 @@ DON'T always use the same slide types. Mix these approaches:
 
 ## 1. Plan & Outline
 
+Before you make any slides, research the topic first.
+
+- Use `web_search` to gather current facts, examples, and supporting data.
+- Use `parse_document` when the user provides a PDF, report, or other source document.
+- Use `search_images` after the core story is clear so visuals match the research.
+- If research tools are unavailable, rely only on the user's provided material and avoid inventing unsupported claims.
+- Do not call `write_slides` until you have enough grounded material for a credible outline.
+
 Create a Markdown outline based on the user's topic:
 
 ```markdown
@@ -661,15 +669,17 @@ Write an `index.html` file with embedded slide data and Tailwind CSS.
 
 ### Workflow
 
-1. **Use `write_slides`** to create the presentation HTML with the **first
+1. **Research first** using `web_search`, `parse_document`, or other available source tools
+2. **Create an outline** from the verified findings and decide on the storyline
+3. **Use `write_slides`** to create the presentation HTML with the **first
    slide**
-2. **For each additional slide:**
-   - Call `write_slides` again with the updated HTML including the new slide
-   - Briefly describe what you added (e.g., "Added Slide 2: Problem Statement")
-3. **After all slides are complete**, tell the user they can:
-   - View the presentation in the preview
-   - Navigate using the slide controls
-   - Click "Download PPTX" to export
+4. **For each additional slide:**
+    - Call `write_slides` again with the updated HTML including the new slide
+    - Briefly describe what you added (e.g., "Added Slide 2: Problem Statement")
+5. **After all slides are complete**, tell the user they can:
+    - View the presentation in the preview
+    - Navigate using the slide controls
+    - Click "Download PPTX" to export
 
 > **NOTE:** Use `write_slides` tool - NOT `write_file`! Slides do NOT require a
 > sandbox. They render natively in the preview panel.

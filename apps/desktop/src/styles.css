@@ -1,0 +1,591 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/NerdFontsSymbolsOnly/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Symbols Nerd Font";
+  src: url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/NerdFontsSymbolsOnly/SymbolsNerdFont-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@import "./styles/themes/default.css";
+@import "./styles/themes/catppuccin.css";
+@import "./styles/themes/nord.css";
+@import "./styles/themes/tokyo-night.css";
+@import "./styles/themes/gruvbox.css";
+@import "./styles/themes/one-dark.css";
+@import "./styles/themes/dracula.css";
+
+/* ─── Design Tokens ────────────────────────────────────────────────── */
+@theme {
+  --font-sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+
+  /* Accent — neutral white-tinted for dark theme */
+  --color-accent: #e8e8e8;
+  --color-accent-hover: #ffffff;
+  --color-accent-muted: rgba(232, 232, 232, 0.20);
+  --color-accent-subtle: rgba(232, 232, 232, 0.08);
+  --color-accent-ink: #141414;
+  --glow-low: rgba(255, 255, 255, 0.04);
+  --glow-high: rgba(255, 255, 255, 0.08);
+
+  /* Pop — subtle warm highlight */
+  --color-pop: #c0a080;
+  --color-pop-muted: rgba(192, 160, 128, 0.30);
+  --color-pop-subtle: rgba(192, 160, 128, 0.10);
+
+  /* Shadows — deep dark */
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.40);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.50);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.60);
+  --shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-glow-sm: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.50);
+}
+
+/* ─── Logo adaptive fill ───────────────────────────────────────────── */
+.logo-adaptive svg path,
+.logo-adaptive svg circle,
+.logo-adaptive svg rect,
+.logo-adaptive svg polygon,
+.logo-adaptive svg ellipse {
+  fill: currentColor !important;
+}
+
+/* ─── Model Icon Theme Adaptation ──────────────────────────────────── */
+/* Monochrome icons use currentColor and default to black. In dark mode
+   they need inversion to be visible. In light mode, black icons work as-is. */
+.model-icon-mono {
+  filter: invert(1);
+}
+
+[data-theme-variant="light"] .model-icon-mono,
+[data-theme-variant="latte"] .model-icon-mono {
+  filter: none;
+}
+
+/* ─── Base ─────────────────────────────────────────────────────────── */
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  background-color: var(--surface-bg);
+  color: var(--text-primary);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+/* ─── Page Shell ────────────────────────────────────────────────────── */
+.glass-page-shell {
+  position: relative;
+  isolation: isolate;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+}
+
+.glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(circle at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(circle at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(60px);
+  opacity: 1;
+  animation: drift 24s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  100% { transform: translate3d(-5%, 2%, 0) rotate(-1deg); }
+}
+
+/* ─── Surface Utilities ────────────────────────────────────────────── */
+.glass-panel {
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm);
+}
+
+.glass-panel-strong {
+  background: var(--surface-elevated);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow-glass-md);
+}
+
+.glass-card {
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.glass-card:hover {
+  background: var(--surface-card-hover);
+  border-color: var(--glass-border-strong);
+}
+
+.glass-card-static {
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm);
+}
+
+.glass-input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.glass-input:focus {
+  border-color: var(--glass-border-strong);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+  outline: none;
+}
+
+.glass-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────── */
+.btn-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: rgba(255, 255, 255, 0.80);
+}
+
+.btn-accent:hover {
+  background: var(--color-accent-hover);
+}
+
+.btn-ink {
+  background: var(--surface-ink-solid);
+  color: var(--text-inverse);
+  border-color: rgba(255, 255, 255, 0.70);
+}
+
+.btn-ink:hover {
+  background: var(--surface-ink-solid);
+  filter: brightness(0.85);
+}
+
+.btn-glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.btn-glass:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border-strong);
+  color: var(--text-primary);
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────── */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Animations ────────────────────────────────────────────────────── */
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-in {
+  animation: animate-in 0.3s ease-out;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* ─── Streaming cursor ──────────────────────────────────────────────── */
+.streaming-cursor::after {
+  content: "▋";
+  animation: blink 1s step-end infinite;
+  margin-left: 1px;
+  color: var(--text-primary);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ─── Shimmer effect for loading states ─────────────────────────────── */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-card) 0%,
+    var(--surface-elevated) 50%,
+    var(--surface-card) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Dot Spinner (20 states) ──────────────────────────────────── */
+@keyframes dot-spin {
+  0% { transform: rotate(0deg); }
+  5% { transform: rotate(18deg); }
+  10% { transform: rotate(36deg); }
+  15% { transform: rotate(54deg); }
+  20% { transform: rotate(72deg); }
+  25% { transform: rotate(90deg); }
+  30% { transform: rotate(108deg); }
+  35% { transform: rotate(126deg); }
+  40% { transform: rotate(144deg); }
+  45% { transform: rotate(162deg); }
+  50% { transform: rotate(180deg); }
+  55% { transform: rotate(198deg); }
+  60% { transform: rotate(216deg); }
+  65% { transform: rotate(234deg); }
+  70% { transform: rotate(252deg); }
+  75% { transform: rotate(270deg); }
+  80% { transform: rotate(288deg); }
+  85% { transform: rotate(306deg); }
+  90% { transform: rotate(324deg); }
+  95% { transform: rotate(342deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ─── Dot Spinner Element ─────────────────────────────────────── */
+.dot-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: dot-spin 0.8s linear infinite;
+}
+
+/* ─── Dot Spinner Variants ─────────────────────────────────────── */
+.dot-sm { width: 0.5em; height: 0.5em; border-width: 1px; }
+.dot-lg { width: 1.5em; height: 1.5em; border-width: 3px; }
+.dot-xl { width: 2em; height: 2em; border-width: 4px; }
+
+/* ─── Terminal / xterm ──────────────────────────────────────────────── */
+.terminal-host,
+.terminal-host .xterm,
+.terminal-host .xterm-viewport,
+.terminal-host .xterm-screen,
+.terminal-host .xterm-helpers {
+  background: transparent !important;
+}
+
+.terminal-host .xterm-viewport {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.terminal-host .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-host .xterm a,
+.terminal-host .xterm .xterm-link {
+  cursor: pointer;
+}
+
+/* ─── Prose / Markdown ──────────────────────────────────────────────── */
+.prose-gb {
+  color: var(--text-primary);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose-gb h1,
+.prose-gb h2,
+.prose-gb h3,
+.prose-gb h4 {
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.prose-gb h1 { font-size: 1.25rem; margin-top: 1.5em; margin-bottom: 0.75em; }
+.prose-gb h2 { font-size: 1.125rem; margin-top: 1.25em; margin-bottom: 0.5em; }
+.prose-gb h3 { font-size: 1rem; margin-top: 1em; margin-bottom: 0.5em; }
+.prose-gb h4 { font-size: 0.875rem; margin-top: 0.75em; margin-bottom: 0.375em; }
+
+.prose-gb p {
+  margin-bottom: 0.75em;
+}
+.prose-gb p:last-child { margin-bottom: 0; }
+
+.prose-gb ul,
+.prose-gb ol {
+  margin: 0.5em 0;
+  padding-left: 1.25em;
+}
+
+.prose-gb ul { list-style-type: disc; }
+.prose-gb ol { list-style-type: decimal; }
+.prose-gb li { margin: 0.25em 0; }
+.prose-gb li > ul,
+.prose-gb li > ol { margin-top: 0.25em; }
+
+/* Inline code */
+.prose-gb code {
+  background: var(--surface-card);
+  border: 1px solid var(--glass-border);
+  padding: 0.125em 0.375em;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+  border-radius: 6px;
+  color: var(--text-primary);
+}
+
+/* Fenced code blocks */
+.prose-gb pre {
+  background: var(--surface-bg-subtle);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: var(--shadow-glass-sm);
+}
+
+.prose-gb pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Links */
+.prose-gb a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-gb a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Blockquotes */
+.prose-gb blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.prose-gb blockquote p:last-child { margin-bottom: 0; }
+
+/* Horizontal rules */
+.prose-gb hr {
+  border: none;
+  height: 1px;
+  background: var(--glass-border);
+  margin: 1.5em 0;
+}
+
+/* Tables */
+.prose-gb table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.875em;
+}
+
+.prose-gb th,
+.prose-gb td {
+  border: 1px solid var(--glass-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.prose-gb th {
+  background: var(--surface-card);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Strong / emphasis */
+.prose-gb strong { font-weight: 600; }
+.prose-gb del { text-decoration: line-through; color: var(--text-muted); }
+
+/* Task lists (GFM) */
+.prose-gb input[type="checkbox"] {
+  margin-right: 0.5em;
+  accent-color: var(--color-accent);
+}
+
+/* Images */
+.prose-gb img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.75em 0;
+}
+/* ── Tree-sitter syntax highlighting ──────────────────────────────── */
+/* Token classes emitted by the Rust tree-sitter highlighter.          */
+/* Color palette inspired by One Dark Pro.                             */
+
+.ts-preview {
+  background: var(--log-bg);
+  overflow: auto;
+  min-height: 100%;
+}
+.ts-code {
+  font-family: "IBM Plex Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.65;
+  padding: 0.5rem 0;
+}
+.ts-line {
+  display: flex;
+  padding: 0 0.75rem;
+}
+.ts-line:hover {
+  background: rgba(255,255,255,0.03);
+}
+.ts-ln {
+  flex-shrink: 0;
+  min-width: 3em;
+  padding-right: 1em;
+  text-align: right;
+  color: var(--scrollbar-thumb);
+  opacity: 0.5;
+  user-select: none;
+  font-size: 0.65rem;
+}
+.ts-lc {
+  white-space: pre;
+  color: var(--text-secondary);
+}
+
+/* ── Token colors (One Dark inspired) ── */
+.ts-keyword       { color: #c678dd; }
+.ts-function,
+.ts-function-builtin { color: #61afef; }
+.ts-type,
+.ts-type-builtin  { color: #e5c07b; }
+.ts-string,
+.ts-string-escape,
+.ts-string-regexp,
+.ts-string-special { color: #98c379; }
+.ts-number        { color: #d19a66; }
+.ts-boolean       { color: #d19a66; }
+.ts-comment,
+.ts-comment-documentation { color: #5c6370; font-style: italic; }
+.ts-variable      { color: #e06c75; }
+.ts-variable-builtin { color: #e06c75; }
+.ts-variable-member { color: #e06c75; }
+.ts-variable-parameter { color: #e06c75; font-style: italic; }
+.ts-constant,
+.ts-constant-builtin { color: #d19a66; }
+.ts-property,
+.ts-property-builtin { color: #e06c75; }
+.ts-constructor   { color: #e5c07b; }
+.ts-operator      { color: #56b6c2; }
+.ts-punctuation,
+.ts-punctuation-bracket,
+.ts-punctuation-delimiter,
+.ts-punctuation-special { color: #abb2bf; }
+.ts-tag           { color: #e06c75; }
+.ts-attribute     { color: #d19a66; }
+.ts-module        { color: #e5c07b; }
+.ts-escape        { color: #56b6c2; }
+.ts-embedded      { color: #abb2bf; }
+.ts-error         { color: #f44747; text-decoration: underline wavy; }
+.ts-markup        { color: #abb2bf; }
+.ts-markup-heading { color: #e06c75; font-weight: bold; }
+.ts-markup-bold   { font-weight: bold; }
+.ts-markup-italic { font-style: italic; }
+.ts-markup-link   { color: #61afef; text-decoration: underline; }
+.ts-markup-link-url { color: #56b6c2; }
+.ts-markup-list   { color: #e06c75; }
+.ts-markup-quote  { color: #5c6370; font-style: italic; }
+.ts-markup-raw    { color: #98c379; }
+.ts-markup-strikethrough { text-decoration: line-through; }

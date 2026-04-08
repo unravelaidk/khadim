@@ -3,6 +3,7 @@ node_modules
 npm-debug.log
 yarn-error.log
 pnpm-debug.log*
+bun-debug.log*
 
 # OS
 .DS_Store
@@ -12,6 +13,11 @@ Thumbs.db
 dist
 build
 .react-router
+apps/*/build
+apps/*/.react-router
+target
+apps/*/src-tauri/target
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -23,6 +29,8 @@ build
 # Editor directories and files
 .idea
 .vscode
+.claude
+.khadim-worktrees/
 *.suo
 *.ntvs*
 *.njsproj

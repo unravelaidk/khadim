@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "server.ts",
+    "vite.config.ts",
+    "app/agent/**/*.ts",
+    "app/lib/agent-rpc.ts",
+    "app/lib/agent-rpc-hono.ts",
+    "app/lib/agent-ws.ts",
+    "app/lib/hono-node-ws.ts",
+    "app/lib/job-manager.ts",
+    "app/lib/job-cancel.ts",
+    "app/lib/chat-history.ts",
+    "app/lib/uploaded-documents.ts",
+    "app/lib/badges.ts",
+    "app/lib/versions.ts",
+    "app/lib/workspace-sync.ts",
+    "app/lib/db/**/*.ts",
+    "app/types/**/*.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "strict": true,
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler"
+  }
+}

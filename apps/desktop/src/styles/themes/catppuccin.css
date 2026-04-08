@@ -1,0 +1,576 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Catppuccin Theme Family — Soothing pastel colors
+   https://github.com/catppuccin/catppuccin
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Catppuccin Mocha (dark) ─────────────────────────────────────── */
+[data-theme-family="catppuccin"][data-theme-variant="mocha"] {
+  color-scheme: dark;
+  --surface-bg: #1e1e2e;
+  --surface-bg-subtle: #181825;
+  --surface-card: rgba(55, 56, 75, 0.78);
+  --surface-card-hover: rgba(65, 66, 86, 0.84);
+  --surface-elevated: rgba(62, 63, 84, 0.88);
+  
+  --glass-bg: rgba(55, 56, 75, 0.72);
+  --glass-bg-strong: rgba(55, 56, 75, 0.85);
+  --glass-border: rgba(205, 214, 244, 0.14);
+  --glass-border-strong: rgba(205, 214, 244, 0.22);
+  --glass-shine: rgba(255, 255, 255, 0.06);
+  --glass-tint: rgba(49, 50, 68, 0.50);
+  
+  --text-primary: #cdd6f4;
+  --text-secondary: #bac2de;
+  --text-muted: #7f849c;
+  --text-inverse: #cdd6f4;
+  
+  --mesh-1: #1e1e2e;
+  --mesh-2: #181825;
+  --mesh-3: #11111b;
+  --mesh-4: #1a1a2e;
+  --orb-accent: rgba(137, 180, 250, 0.06);
+  --orb-accent-soft: rgba(249, 226, 175, 0.04);
+  --orb-ink: rgba(17, 17, 27, 0.18);
+  
+  --input-bg: rgba(73, 75, 96, 0.78);
+  --input-border: rgba(205, 214, 244, 0.16);
+  --input-focus-ring: rgba(137, 180, 250, 0.22);
+  
+  --scrollbar-thumb: rgba(205, 214, 244, 0.25);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(205, 214, 244, 0.04);
+  --surface-ink-4: rgba(205, 214, 244, 0.07);
+  --surface-ink-5: rgba(205, 214, 244, 0.10);
+  --surface-ink-25: rgba(17, 17, 27, 0.48);
+  --surface-white-15: rgba(205, 214, 244, 0.16);
+  --surface-white-50: rgba(205, 214, 244, 0.48);
+  --surface-ink-solid: #15152a;
+  
+  --log-bg: rgba(17, 17, 27, 0.94);
+  --log-stdout: #a6e3a1;
+  --log-stderr: #f9e2af;
+  
+  --color-accent: #89b4fa;
+  --color-accent-hover: #b4befe;
+  --color-accent-muted: rgba(137, 180, 250, 0.20);
+  --color-accent-subtle: rgba(137, 180, 250, 0.09);
+  --color-accent-ink: #1e1e2e;
+  --glow-low: rgba(137, 180, 250, 0.07);
+  --glow-high: rgba(137, 180, 250, 0.13);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(205, 214, 244, 0.07);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.50), 0 0 0 1px rgba(205, 214, 244, 0.09);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.60), 0 0 0 1px rgba(205, 214, 244, 0.11);
+  --shadow-glow: 0 0 0 1px rgba(137, 180, 250, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(137, 180, 250, 0.08);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.44);
+  
+  --color-success: #a6e3a1;
+  --color-success-strong: #94e2d5;
+  --color-success-muted: rgba(166, 227, 161, 0.12);
+  --color-success-text: #a6e3a1;
+  
+  --color-danger: #f38ba8;
+  --color-danger-strong: #eba0ac;
+  --color-danger-hover: #f5a3b5;
+  --color-danger-muted: rgba(243, 139, 168, 0.12);
+  --color-danger-subtle: rgba(243, 139, 168, 0.07);
+  --color-danger-text: #f38ba8;
+  --color-danger-text-light: #f5a3b5;
+  --color-danger-border: rgba(243, 139, 168, 0.22);
+  --color-danger-border-strong: rgba(243, 139, 168, 0.32);
+  --color-danger-bg: rgba(243, 139, 168, 0.09);
+  --color-danger-bg-strong: rgba(243, 139, 168, 0.14);
+  --color-danger-ink: #f5a3b5;
+  
+  --color-warning-text: #f9e2af;
+
+  /* Terminal — Catppuccin Mocha ANSI */
+  --terminal-bg: #11111b;
+  --terminal-fg: #cdd6f4;
+  --terminal-cursor: #f5e0dc;
+  --terminal-cursor-accent: #11111b;
+  --terminal-selection: rgba(137, 180, 250, 0.22);
+  --terminal-black: #45475a;
+  --terminal-red: #f38ba8;
+  --terminal-green: #a6e3a1;
+  --terminal-yellow: #f9e2af;
+  --terminal-blue: #89b4fa;
+  --terminal-magenta: #cba6f7;
+  --terminal-cyan: #94e2d5;
+  --terminal-white: #bac2de;
+  --terminal-bright-black: #585b70;
+  --terminal-bright-red: #f38ba8;
+  --terminal-bright-green: #a6e3a1;
+  --terminal-bright-yellow: #f9e2af;
+  --terminal-bright-blue: #89b4fa;
+  --terminal-bright-magenta: #cba6f7;
+  --terminal-bright-cyan: #94e2d5;
+  --terminal-bright-white: #a6adc8;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="mocha"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="mocha"] .glass-panel,
+[data-theme-family="catppuccin"][data-theme-variant="mocha"] .glass-card,
+[data-theme-family="catppuccin"][data-theme-variant="mocha"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="mocha"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Catppuccin Macchiato (dark) ───────────────────────────────────── */
+[data-theme-family="catppuccin"][data-theme-variant="macchiato"] {
+  color-scheme: dark;
+  --surface-bg: #24273a;
+  --surface-bg-subtle: #1e2030;
+  --surface-card: rgba(60, 64, 86, 0.78);
+  --surface-card-hover: rgba(71, 75, 102, 0.84);
+  --surface-elevated: rgba(68, 72, 100, 0.88);
+  
+  --glass-bg: rgba(60, 64, 86, 0.72);
+  --glass-bg-strong: rgba(60, 64, 86, 0.85);
+  --glass-border: rgba(202, 211, 245, 0.14);
+  --glass-border-strong: rgba(202, 211, 245, 0.22);
+  --glass-shine: rgba(255, 255, 255, 0.06);
+  --glass-tint: rgba(54, 58, 79, 0.50);
+  
+  --text-primary: #cad3f5;
+  --text-secondary: #b8c0e0;
+  --text-muted: #8087a2;
+  --text-inverse: #cad3f5;
+  
+  --mesh-1: #24273a;
+  --mesh-2: #1e2030;
+  --mesh-3: #181a28;
+  --mesh-4: #232636;
+  --orb-accent: rgba(138, 173, 244, 0.06);
+  --orb-accent-soft: rgba(248, 225, 174, 0.04);
+  --orb-ink: rgba(24, 26, 40, 0.18);
+  
+  --input-bg: rgba(78, 82, 106, 0.78);
+  --input-border: rgba(202, 211, 245, 0.16);
+  --input-focus-ring: rgba(138, 173, 244, 0.22);
+  
+  --scrollbar-thumb: rgba(202, 211, 245, 0.25);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(202, 211, 245, 0.04);
+  --surface-ink-4: rgba(202, 211, 245, 0.07);
+  --surface-ink-5: rgba(202, 211, 245, 0.10);
+  --surface-ink-25: rgba(24, 26, 40, 0.48);
+  --surface-white-15: rgba(202, 211, 245, 0.16);
+  --surface-white-50: rgba(202, 211, 245, 0.48);
+  --surface-ink-solid: #1a1c2e;
+  
+  --log-bg: rgba(24, 26, 40, 0.94);
+  --log-stdout: #a6da95;
+  --log-stderr: #eed99f;
+  
+  --color-accent: #8aadf4;
+  --color-accent-hover: #b7bdf8;
+  --color-accent-muted: rgba(138, 173, 244, 0.20);
+  --color-accent-subtle: rgba(138, 173, 244, 0.09);
+  --color-accent-ink: #24273a;
+  --glow-low: rgba(138, 173, 244, 0.07);
+  --glow-high: rgba(138, 173, 244, 0.13);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(202, 211, 245, 0.07);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.50), 0 0 0 1px rgba(202, 211, 245, 0.09);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.60), 0 0 0 1px rgba(202, 211, 245, 0.11);
+  --shadow-glow: 0 0 0 1px rgba(138, 173, 244, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(138, 173, 244, 0.08);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.44);
+  
+  --color-success: #a6da95;
+  --color-success-strong: #8bd5aa;
+  --color-success-muted: rgba(166, 218, 149, 0.12);
+  --color-success-text: #a6da95;
+  
+  --color-danger: #ed8796;
+  --color-danger-strong: #ee99a7;
+  --color-danger-hover: #f0a1ad;
+  --color-danger-muted: rgba(237, 135, 150, 0.12);
+  --color-danger-subtle: rgba(237, 135, 150, 0.07);
+  --color-danger-text: #ed8796;
+  --color-danger-text-light: #f0a1ad;
+  --color-danger-border: rgba(237, 135, 150, 0.22);
+  --color-danger-border-strong: rgba(237, 135, 150, 0.32);
+  --color-danger-bg: rgba(237, 135, 150, 0.09);
+  --color-danger-bg-strong: rgba(237, 135, 150, 0.14);
+  --color-danger-ink: #f0a1ad;
+  
+  --color-warning-text: #f5d597;
+
+  /* Terminal — Catppuccin Macchiato ANSI */
+  --terminal-bg: #181926;
+  --terminal-fg: #cad3f5;
+  --terminal-cursor: #f4dbd6;
+  --terminal-cursor-accent: #181926;
+  --terminal-selection: rgba(138, 173, 244, 0.22);
+  --terminal-black: #494d64;
+  --terminal-red: #ed8796;
+  --terminal-green: #a6da95;
+  --terminal-yellow: #eed49f;
+  --terminal-blue: #8aadf4;
+  --terminal-magenta: #c6a0f6;
+  --terminal-cyan: #8bd5ca;
+  --terminal-white: #b8c0e0;
+  --terminal-bright-black: #5b6078;
+  --terminal-bright-red: #ed8796;
+  --terminal-bright-green: #a6da95;
+  --terminal-bright-yellow: #eed49f;
+  --terminal-bright-blue: #8aadf4;
+  --terminal-bright-magenta: #c6a0f6;
+  --terminal-bright-cyan: #8bd5ca;
+  --terminal-bright-white: #a5adcb;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="macchiato"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="macchiato"] .glass-panel,
+[data-theme-family="catppuccin"][data-theme-variant="macchiato"] .glass-card,
+[data-theme-family="catppuccin"][data-theme-variant="macchiato"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="macchiato"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Catppuccin Frappé (dark) ─────────────────────────────────────── */
+[data-theme-family="catppuccin"][data-theme-variant="frappe"] {
+  color-scheme: dark;
+  --surface-bg: #303446;
+  --surface-bg-subtle: #292c3c;
+  --surface-card: rgba(72, 76, 96, 0.78);
+  --surface-card-hover: rgba(86, 92, 114, 0.84);
+  --surface-elevated: rgba(84, 90, 114, 0.88);
+  
+  --glass-bg: rgba(72, 76, 96, 0.72);
+  --glass-bg-strong: rgba(72, 76, 96, 0.85);
+  --glass-border: rgba(198, 208, 234, 0.14);
+  --glass-border-strong: rgba(198, 208, 234, 0.22);
+  --glass-shine: rgba(255, 255, 255, 0.06);
+  --glass-tint: rgba(65, 69, 89, 0.50);
+  
+  --text-primary: #c6d0f5;
+  --text-secondary: #b5bfe2;
+  --text-muted: #838ba7;
+  --text-inverse: #c6d0f5;
+  
+  --mesh-1: #303446;
+  --mesh-2: #292c3c;
+  --mesh-3: #232536;
+  --mesh-4: #2e3243;
+  --orb-accent: rgba(140, 170, 238, 0.06);
+  --orb-accent-soft: rgba(242, 213, 183, 0.04);
+  --orb-ink: rgba(35, 37, 54, 0.15);
+  
+  --input-bg: rgba(86, 92, 114, 0.78);
+  --input-border: rgba(198, 208, 234, 0.16);
+  --input-focus-ring: rgba(140, 170, 238, 0.22);
+  
+  --scrollbar-thumb: rgba(198, 208, 234, 0.25);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(198, 208, 234, 0.04);
+  --surface-ink-4: rgba(198, 208, 234, 0.07);
+  --surface-ink-5: rgba(198, 208, 234, 0.10);
+  --surface-ink-25: rgba(35, 37, 54, 0.48);
+  --surface-white-15: rgba(198, 208, 234, 0.16);
+  --surface-white-50: rgba(198, 208, 234, 0.48);
+  --surface-ink-solid: #262839;
+  
+  --log-bg: rgba(35, 37, 54, 0.94);
+  --log-stdout: #81c8be;
+  --log-stderr: #e5c890;
+  
+  --color-accent: #8caaee;
+  --color-accent-hover: #babbf1;
+  --color-accent-muted: rgba(140, 170, 238, 0.20);
+  --color-accent-subtle: rgba(140, 170, 238, 0.09);
+  --color-accent-ink: #303446;
+  --glow-low: rgba(140, 170, 238, 0.07);
+  --glow-high: rgba(140, 170, 238, 0.13);
+  
+  --shadow-glass-sm: 0 4px 16px -4px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(198, 208, 234, 0.07);
+  --shadow-glass-md: 0 8px 28px -8px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(198, 208, 234, 0.09);
+  --shadow-glass-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.54), 0 0 0 1px rgba(198, 208, 234, 0.11);
+  --shadow-glow: 0 0 0 1px rgba(140, 170, 238, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(140, 170, 238, 0.08);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(0, 0, 0, 0.44);
+  
+  --color-success: #81c8be;
+  --color-success-strong: #6ed3c7;
+  --color-success-muted: rgba(129, 200, 190, 0.12);
+  --color-success-text: #81c8be;
+  
+  --color-danger: #e78284;
+  --color-danger-strong: #ea8e8f;
+  --color-danger-hover: #eca0a1;
+  --color-danger-muted: rgba(231, 130, 132, 0.12);
+  --color-danger-subtle: rgba(231, 130, 132, 0.07);
+  --color-danger-text: #e78284;
+  --color-danger-text-light: #eca0a1;
+  --color-danger-border: rgba(231, 130, 132, 0.22);
+  --color-danger-border-strong: rgba(231, 130, 132, 0.32);
+  --color-danger-bg: rgba(231, 130, 132, 0.09);
+  --color-danger-bg-strong: rgba(231, 130, 132, 0.14);
+  --color-danger-ink: #eca0a1;
+  
+  --color-warning-text: #e5c890;
+
+  /* Terminal — Catppuccin Frappe ANSI */
+  --terminal-bg: #232634;
+  --terminal-fg: #c6d0f5;
+  --terminal-cursor: #f2d5cf;
+  --terminal-cursor-accent: #232634;
+  --terminal-selection: rgba(140, 170, 238, 0.22);
+  --terminal-black: #51576d;
+  --terminal-red: #e78284;
+  --terminal-green: #81c8be;
+  --terminal-yellow: #e5c890;
+  --terminal-blue: #8caaee;
+  --terminal-magenta: #ca9ee6;
+  --terminal-cyan: #99d1db;
+  --terminal-white: #b5bfe2;
+  --terminal-bright-black: #626880;
+  --terminal-bright-red: #e78284;
+  --terminal-bright-green: #81c8be;
+  --terminal-bright-yellow: #e5c890;
+  --terminal-bright-blue: #8caaee;
+  --terminal-bright-magenta: #ca9ee6;
+  --terminal-bright-cyan: #99d1db;
+  --terminal-bright-white: #a5adce;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="frappe"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="frappe"] .glass-panel,
+[data-theme-family="catppuccin"][data-theme-variant="frappe"] .glass-card,
+[data-theme-family="catppuccin"][data-theme-variant="frappe"] .glass-card-static {
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="frappe"] .glass-panel-strong {
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+}
+
+/* ─── Catppuccin Latte (light) ──────────────────────────────────────── */
+[data-theme-family="catppuccin"][data-theme-variant="latte"] {
+  color-scheme: light;
+  --surface-bg: #eff1f5;
+  --surface-bg-subtle: #e6e9ef;
+  --surface-card: rgba(255, 255, 254, 0.72);
+  --surface-card-hover: rgba(255, 255, 254, 0.82);
+  --surface-elevated: rgba(255, 255, 254, 0.88);
+  
+  --glass-bg: rgba(255, 255, 254, 0.55);
+  --glass-bg-strong: rgba(255, 255, 254, 0.75);
+  --glass-border: rgba(76, 79, 105, 0.09);
+  --glass-border-strong: rgba(76, 79, 105, 0.14);
+  --glass-shine: rgba(255, 255, 255, 0.55);
+  --glass-tint: rgba(255, 255, 254, 0.40);
+  
+  --text-primary: #4c4f69;
+  --text-secondary: #5c5f77;
+  --text-muted: #6c6f85;
+  --text-inverse: #eff1f5;
+  
+  --mesh-1: #eff1f5;
+  --mesh-2: #e6e9ef;
+  --mesh-3: #dce0e8;
+  --mesh-4: #e8eaef;
+  --orb-accent: rgba(30, 102, 245, 0.035);
+  --orb-accent-soft: rgba(239, 128, 99, 0.025);
+  --orb-ink: rgba(76, 79, 105, 0.055);
+  
+  --input-bg: rgba(255, 255, 254, 0.85);
+  --input-border: rgba(76, 79, 105, 0.13);
+  --input-focus-ring: rgba(30, 102, 245, 0.14);
+  
+  --scrollbar-thumb: rgba(76, 79, 105, 0.28);
+  --scrollbar-track: transparent;
+  
+  --surface-ink-3: rgba(76, 79, 105, 0.03);
+  --surface-ink-4: rgba(76, 79, 105, 0.05);
+  --surface-ink-5: rgba(76, 79, 105, 0.07);
+  --surface-ink-25: rgba(76, 79, 105, 0.28);
+  --surface-white-15: rgba(76, 79, 105, 0.12);
+  --surface-white-50: rgba(76, 79, 105, 0.45);
+  --surface-ink-solid: #4c4f69;
+  
+  --log-bg: rgba(230, 233, 239, 0.94);
+  --log-stdout: #40a02b;
+  --log-stderr: #df8e1d;
+  
+  --color-accent: #1e66f5;
+  --color-accent-hover: #3867fe;
+  --color-accent-muted: rgba(30, 102, 245, 0.14);
+  --color-accent-subtle: rgba(30, 102, 245, 0.05);
+  --color-accent-ink: #ffffff;
+  --glow-low: rgba(30, 102, 245, 0.05);
+  --glow-high: rgba(30, 102, 245, 0.09);
+  
+  --shadow-glass-sm: 0 4px 20px -6px rgba(76, 79, 105, 0.09), 0 0 0 1px rgba(255, 255, 254, 0.65);
+  --shadow-glass-md: 0 10px 32px -10px rgba(76, 79, 105, 0.13), 0 0 0 1px rgba(255, 255, 254, 0.60);
+  --shadow-glass-lg: 0 20px 56px -16px rgba(76, 79, 105, 0.17), 0 0 0 1px rgba(255, 255, 254, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(76, 79, 105, 0.14);
+  --shadow-glow-sm: 0 0 0 1px rgba(76, 79, 105, 0.09);
+  --shadow-glow-accent: 0 4px 16px -4px rgba(76, 79, 105, 0.14);
+  
+  --color-success: #40a02b;
+  --color-success-strong: #359025;
+  --color-success-muted: rgba(64, 160, 43, 0.09);
+  --color-success-text: #40a02b;
+  
+  --color-danger: #d20f39;
+  --color-danger-strong: #be0931;
+  --color-danger-hover: #e6203d;
+  --color-danger-muted: rgba(210, 15, 57, 0.09);
+  --color-danger-subtle: rgba(210, 15, 57, 0.05);
+  --color-danger-text: #d20f39;
+  --color-danger-text-light: #e6203d;
+  --color-danger-border: rgba(210, 15, 57, 0.16);
+  --color-danger-border-strong: rgba(210, 15, 57, 0.26);
+  --color-danger-bg: rgba(210, 15, 57, 0.07);
+  --color-danger-bg-strong: rgba(210, 15, 57, 0.11);
+  --color-danger-ink: #e6203d;
+  
+  --color-warning-text: #df8e1d;
+
+  /* Terminal — Catppuccin Latte ANSI */
+  --terminal-bg: #e6e9ef;
+  --terminal-fg: #4c4f69;
+  --terminal-cursor: #dc8a78;
+  --terminal-cursor-accent: #e6e9ef;
+  --terminal-selection: rgba(114, 135, 253, 0.16);
+  --terminal-black: #5c5f77;
+  --terminal-red: #d20f39;
+  --terminal-green: #40a02b;
+  --terminal-yellow: #df8e1d;
+  --terminal-blue: #1e66f5;
+  --terminal-magenta: #8839ef;
+  --terminal-cyan: #179299;
+  --terminal-white: #acb0be;
+  --terminal-bright-black: #6c6f85;
+  --terminal-bright-red: #d20f39;
+  --terminal-bright-green: #40a02b;
+  --terminal-bright-yellow: #df8e1d;
+  --terminal-bright-blue: #1e66f5;
+  --terminal-bright-magenta: #8839ef;
+  --terminal-bright-cyan: #179299;
+  --terminal-bright-white: #bcc0cc;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 25%, var(--orb-accent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, var(--orb-accent-soft), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 60% 80%, var(--orb-ink), transparent 52%);
+  filter: blur(80px);
+  opacity: 1;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-panel,
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-card,
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-card-static {
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-panel-strong {
+  backdrop-filter: blur(36px) saturate(1.45);
+  -webkit-backdrop-filter: blur(36px) saturate(1.45);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-input {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .glass-input:focus {
+  border-color: rgba(76, 79, 105, 0.32);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .btn-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: rgba(76, 79, 105, 0.75);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .btn-accent:hover {
+  background: var(--color-accent-hover);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .btn-ink {
+  background: var(--surface-ink-solid);
+  color: var(--text-inverse);
+  border-color: rgba(76, 79, 105, 0.65);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] .btn-ink:hover {
+  background: var(--surface-ink-solid);
+  filter: brightness(0.85);
+}
+
+[data-theme-family="catppuccin"][data-theme-variant="latte"] ::selection {
+  background: rgba(30, 102, 245, 0.18);
+  color: #4c4f69;
+}
