@@ -74,7 +74,7 @@ jobs:
       - name: Install Windows system dependencies
         if: runner.os == 'Windows'
         run: |
-          choco install -y webview2
+          choco install -y microsoft-edge-webview2-runtime
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
