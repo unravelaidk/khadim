@@ -11,6 +11,10 @@ interface Props {
   terminalOpen?: boolean;
   /** Toggle the terminal dock open/closed. */
   onToggleTerminal?: () => void;
+  /** Whether the git changes dock is currently open. */
+  changesOpen?: boolean;
+  /** Toggle the git changes dock open/closed. */
+  onToggleChanges?: () => void;
   /** Open the file finder. */
   onOpenFinder?: () => void;
   /** Open the project in the default IDE. */
@@ -32,6 +36,8 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
   connected,
   terminalOpen,
   onToggleTerminal,
+  changesOpen,
+  onToggleChanges,
   onOpenFinder,
   onOpenInEditor,
   className,
@@ -121,6 +127,22 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
         </button>
       )}
 
+      {/* Changes (diff) toggle button */}
+      {onToggleChanges && (
+        <button
+          onClick={onToggleChanges}
+          className={`ml-1 h-6 px-2 rounded-lg inline-flex items-center gap-1.5 text-[10px] font-semibold transition-colors ${
+            changesOpen
+              ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
+              : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
+          }`}
+          title={changesOpen ? "Hide changes panel" : "Show changes panel"}
+        >
+          <DiffIcon />
+          Changes
+        </button>
+      )}
+
       {/* Terminal toggle button */}
       {onToggleTerminal && (
         <button
@@ -176,6 +198,14 @@ function FinderIcon() {
     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <circle cx="11" cy="11" r="8" />
       <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+    </svg>
+  );
+}
+
+function DiffIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" d="M3 8h10M8 3v10" />
     </svg>
   );
 }

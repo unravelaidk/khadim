@@ -22,14 +22,49 @@ pub struct Workspace {
     pub backend: String,          // "opencode" | "claude_code" | "khadim"
     pub execution_target: String, // "local" | "sandbox"
     pub sandbox_id: Option<String>,
+    pub sandbox_root_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Environment {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
+    pub backend: String,
+    pub execution_target: String,
+    pub source_cwd: String,
+    pub effective_cwd: String,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
+    pub sandbox_id: Option<String>,
+    pub sandbox_root_path: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_used_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeSession {
+    pub id: String,
+    pub environment_id: String,
+    pub backend: String,
+    pub backend_session_id: Option<String>,
+    pub backend_session_cwd: Option<String>,
+    pub shared: bool,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_active_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {
     pub id: String,
     pub workspace_id: String,
+    pub environment_id: Option<String>,
+    pub runtime_session_id: Option<String>,
     pub backend: String,
     pub backend_session_id: Option<String>,
     pub backend_session_cwd: Option<String>,
@@ -113,6 +148,7 @@ impl Database {
                 backend         TEXT NOT NULL DEFAULT 'opencode',
                 execution_target TEXT NOT NULL DEFAULT 'local',
                 sandbox_id      TEXT,
+                sandbox_root_path TEXT,
                 created_at      TEXT NOT NULL,
                 updated_at      TEXT NOT NULL
             );
@@ -120,6 +156,8 @@ impl Database {
             CREATE TABLE IF NOT EXISTS conversations (
                 id                  TEXT PRIMARY KEY,
                 workspace_id        TEXT NOT NULL REFERENCES workspaces(id),
+                environment_id      TEXT REFERENCES environments(id),
+                runtime_session_id  TEXT REFERENCES runtime_sessions(id),
                 backend             TEXT NOT NULL,
                 backend_session_id  TEXT,
                 backend_session_cwd TEXT,
@@ -145,10 +183,36 @@ impl Database {
                 value TEXT NOT NULL
             );
 
-            CREATE INDEX IF NOT EXISTS idx_conversations_workspace
-                ON conversations(workspace_id);
-            CREATE INDEX IF NOT EXISTS idx_messages_conversation
-                ON messages(conversation_id);
+            CREATE TABLE IF NOT EXISTS environments (
+                id                TEXT PRIMARY KEY,
+                workspace_id      TEXT NOT NULL REFERENCES workspaces(id),
+                name              TEXT NOT NULL,
+                backend           TEXT NOT NULL,
+                execution_target  TEXT NOT NULL DEFAULT 'local',
+                source_cwd        TEXT NOT NULL,
+                effective_cwd     TEXT NOT NULL,
+                branch            TEXT,
+                worktree_path     TEXT,
+                sandbox_id        TEXT,
+                sandbox_root_path TEXT,
+                created_at        TEXT NOT NULL,
+                updated_at        TEXT NOT NULL,
+                last_used_at      TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS runtime_sessions (
+                id                  TEXT PRIMARY KEY,
+                environment_id      TEXT NOT NULL REFERENCES environments(id),
+                backend             TEXT NOT NULL,
+                backend_session_id  TEXT,
+                backend_session_cwd TEXT,
+                shared              INTEGER NOT NULL DEFAULT 0,
+                status              TEXT NOT NULL DEFAULT 'idle',
+                created_at          TEXT NOT NULL,
+                updated_at          TEXT NOT NULL,
+                last_active_at      TEXT NOT NULL
+            );
+
             ",
         )?;
 
@@ -165,14 +229,38 @@ impl Database {
             "ALTER TABLE conversations ADD COLUMN backend_session_cwd TEXT",
             [],
         );
-        let _ = conn.execute(
-            "ALTER TABLE conversations ADD COLUMN branch TEXT",
-            [],
-        );
+        let _ = conn.execute("ALTER TABLE conversations ADD COLUMN branch TEXT", []);
         let _ = conn.execute(
             "ALTER TABLE conversations ADD COLUMN worktree_path TEXT",
             [],
         );
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN environment_id TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE conversations ADD COLUMN runtime_session_id TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE workspaces ADD COLUMN sandbox_root_path TEXT",
+            [],
+        );
+
+        conn.execute_batch(
+            "
+            CREATE INDEX IF NOT EXISTS idx_conversations_workspace
+                ON conversations(workspace_id);
+            CREATE INDEX IF NOT EXISTS idx_conversations_environment
+                ON conversations(environment_id);
+            CREATE INDEX IF NOT EXISTS idx_messages_conversation
+                ON messages(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_environments_workspace
+                ON environments(workspace_id);
+            CREATE INDEX IF NOT EXISTS idx_runtime_sessions_environment
+                ON runtime_sessions(environment_id);
+            ",
+        )?;
 
         Ok(())
     }
@@ -182,8 +270,8 @@ impl Database {
     pub fn create_workspace(&self, ws: &Workspace) -> Result<(), AppError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO workspaces (id, name, repo_path, worktree_path, branch, backend, execution_target, sandbox_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO workspaces (id, name, repo_path, worktree_path, branch, backend, execution_target, sandbox_id, sandbox_root_path, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 ws.id,
                 ws.name,
@@ -193,6 +281,7 @@ impl Database {
                 ws.backend,
                 ws.execution_target,
                 ws.sandbox_id,
+                ws.sandbox_root_path,
                 ws.created_at,
                 ws.updated_at,
             ],
@@ -203,7 +292,7 @@ impl Database {
     pub fn list_workspaces(&self) -> Result<Vec<Workspace>, AppError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, repo_path, worktree_path, branch, backend, execution_target, sandbox_id, created_at, updated_at
+            "SELECT id, name, repo_path, worktree_path, branch, backend, execution_target, sandbox_id, sandbox_root_path, created_at, updated_at
              FROM workspaces ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -216,8 +305,9 @@ impl Database {
                 backend: row.get(5)?,
                 execution_target: row.get(6)?,
                 sandbox_id: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
+                sandbox_root_path: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -227,7 +317,7 @@ impl Database {
     pub fn get_workspace(&self, id: &str) -> Result<Workspace, AppError> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, name, repo_path, worktree_path, branch, backend, execution_target, sandbox_id, created_at, updated_at
+            "SELECT id, name, repo_path, worktree_path, branch, backend, execution_target, sandbox_id, sandbox_root_path, created_at, updated_at
              FROM workspaces WHERE id = ?1",
             params![id],
             |row| {
@@ -240,8 +330,9 @@ impl Database {
                     backend: row.get(5)?,
                     execution_target: row.get(6)?,
                     sandbox_id: row.get(7)?,
-                    created_at: row.get(8)?,
-                    updated_at: row.get(9)?,
+                    sandbox_root_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
                 })
             },
         )
@@ -267,6 +358,41 @@ impl Database {
         let changed = conn.execute(
             "UPDATE workspaces SET branch = ?1, updated_at = ?2 WHERE id = ?3",
             params![branch, now, id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!("Workspace {id} not found")));
+        }
+        Ok(())
+    }
+
+    pub fn update_workspace_execution_target(
+        &self,
+        id: &str,
+        execution_target: &str,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE workspaces SET execution_target = ?1, updated_at = ?2 WHERE id = ?3",
+            params![execution_target, now, id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!("Workspace {id} not found")));
+        }
+        Ok(())
+    }
+
+    pub fn update_workspace_sandbox(
+        &self,
+        id: &str,
+        sandbox_id: &str,
+        sandbox_root_path: &str,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE workspaces SET sandbox_id = ?1, sandbox_root_path = ?2, updated_at = ?3 WHERE id = ?4",
+            params![sandbox_id, sandbox_root_path, now, id],
         )?;
         if changed == 0 {
             return Err(AppError::not_found(format!("Workspace {id} not found")));
@@ -302,6 +428,8 @@ impl Database {
             params![
                 conv.id,
                 conv.workspace_id,
+                conv.environment_id,
+                conv.runtime_session_id,
                 conv.backend,
                 conv.backend_session_id,
                 conv.backend_session_cwd,
@@ -351,24 +479,26 @@ impl Database {
     pub fn list_conversations(&self, workspace_id: &str) -> Result<Vec<Conversation>, AppError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, workspace_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens
+            "SELECT id, workspace_id, environment_id, runtime_session_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens
              FROM conversations WHERE workspace_id = ?1 ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map(params![workspace_id], |row| {
             Ok(Conversation {
                 id: row.get(0)?,
                 workspace_id: row.get(1)?,
-                backend: row.get(2)?,
-                backend_session_id: row.get(3)?,
-                backend_session_cwd: row.get(4)?,
-                branch: row.get(5)?,
-                worktree_path: row.get(6)?,
-                title: row.get(7)?,
-                is_active: row.get::<_, i32>(8)? != 0,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
-                input_tokens: row.get::<_, i64>(11).unwrap_or(0),
-                output_tokens: row.get::<_, i64>(12).unwrap_or(0),
+                environment_id: row.get(2)?,
+                runtime_session_id: row.get(3)?,
+                backend: row.get(4)?,
+                backend_session_id: row.get(5)?,
+                backend_session_cwd: row.get(6)?,
+                branch: row.get(7)?,
+                worktree_path: row.get(8)?,
+                title: row.get(9)?,
+                is_active: row.get::<_, i32>(10)? != 0,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+                input_tokens: row.get::<_, i64>(13).unwrap_or(0),
+                output_tokens: row.get::<_, i64>(14).unwrap_or(0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -378,24 +508,26 @@ impl Database {
     pub fn get_conversation(&self, id: &str) -> Result<Conversation, AppError> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, workspace_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens
+            "SELECT id, workspace_id, environment_id, runtime_session_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens
              FROM conversations WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Conversation {
                     id: row.get(0)?,
                     workspace_id: row.get(1)?,
-                    backend: row.get(2)?,
-                    backend_session_id: row.get(3)?,
-                    backend_session_cwd: row.get(4)?,
-                    branch: row.get(5)?,
-                    worktree_path: row.get(6)?,
-                    title: row.get(7)?,
-                    is_active: row.get::<_, i32>(8)? != 0,
-                    created_at: row.get(9)?,
-                    updated_at: row.get(10)?,
-                    input_tokens: row.get::<_, i64>(11).unwrap_or(0),
-                    output_tokens: row.get::<_, i64>(12).unwrap_or(0),
+                    environment_id: row.get(2)?,
+                    runtime_session_id: row.get(3)?,
+                    backend: row.get(4)?,
+                    backend_session_id: row.get(5)?,
+                    backend_session_cwd: row.get(6)?,
+                    branch: row.get(7)?,
+                    worktree_path: row.get(8)?,
+                    title: row.get(9)?,
+                    is_active: row.get::<_, i32>(10)? != 0,
+                    created_at: row.get(11)?,
+                    updated_at: row.get(12)?,
+                    input_tokens: row.get::<_, i64>(13).unwrap_or(0),
+                    output_tokens: row.get::<_, i64>(14).unwrap_or(0),
                 })
             },
         )
@@ -495,6 +627,250 @@ impl Database {
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![key, value],
         )?;
+        Ok(())
+    }
+
+    pub fn set_conversation_environment(
+        &self,
+        id: &str,
+        environment_id: Option<&str>,
+        runtime_session_id: Option<&str>,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE conversations SET environment_id = ?1, runtime_session_id = ?2, updated_at = ?3 WHERE id = ?4",
+            params![environment_id, runtime_session_id, now, id],
+        )?;
+        Ok(())
+    }
+
+    // ── Environment CRUD ──────────────────────────────────────────────
+
+    pub fn create_environment(&self, environment: &Environment) -> Result<(), AppError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO environments (id, workspace_id, name, backend, execution_target, source_cwd, effective_cwd, branch, worktree_path, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                environment.id,
+                environment.workspace_id,
+                environment.name,
+                environment.backend,
+                environment.execution_target,
+                environment.source_cwd,
+                environment.effective_cwd,
+                environment.branch,
+                environment.worktree_path,
+                environment.sandbox_id,
+                environment.sandbox_root_path,
+                environment.created_at,
+                environment.updated_at,
+                environment.last_used_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_environments(&self, workspace_id: &str) -> Result<Vec<Environment>, AppError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, workspace_id, name, backend, execution_target, source_cwd, effective_cwd, branch, worktree_path, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at
+             FROM environments WHERE workspace_id = ?1 ORDER BY last_used_at DESC, created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![workspace_id], |row| {
+            Ok(Environment {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                name: row.get(2)?,
+                backend: row.get(3)?,
+                execution_target: row.get(4)?,
+                source_cwd: row.get(5)?,
+                effective_cwd: row.get(6)?,
+                branch: row.get(7)?,
+                worktree_path: row.get(8)?,
+                sandbox_id: row.get(9)?,
+                sandbox_root_path: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+                last_used_at: row.get(13)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::db(e.to_string()))
+    }
+
+    pub fn get_environment(&self, id: &str) -> Result<Environment, AppError> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, workspace_id, name, backend, execution_target, source_cwd, effective_cwd, branch, worktree_path, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at
+             FROM environments WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(Environment {
+                    id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    name: row.get(2)?,
+                    backend: row.get(3)?,
+                    execution_target: row.get(4)?,
+                    source_cwd: row.get(5)?,
+                    effective_cwd: row.get(6)?,
+                    branch: row.get(7)?,
+                    worktree_path: row.get(8)?,
+                    sandbox_id: row.get(9)?,
+                    sandbox_root_path: row.get(10)?,
+                    created_at: row.get(11)?,
+                    updated_at: row.get(12)?,
+                    last_used_at: row.get(13)?,
+                })
+            },
+        )
+        .map_err(|_| AppError::not_found(format!("Environment {id} not found")))
+    }
+
+    pub fn delete_environment(&self, id: &str) -> Result<(), AppError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE conversations SET environment_id = NULL, runtime_session_id = NULL WHERE environment_id = ?1",
+            params![id],
+        )?;
+        conn.execute(
+            "DELETE FROM runtime_sessions WHERE environment_id = ?1",
+            params![id],
+        )?;
+        let changed = conn.execute("DELETE FROM environments WHERE id = ?1", params![id])?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!("Environment {id} not found")));
+        }
+        Ok(())
+    }
+
+    pub fn touch_environment(&self, id: &str, effective_cwd: Option<&str>) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE environments SET effective_cwd = COALESCE(?1, effective_cwd), updated_at = ?2, last_used_at = ?2 WHERE id = ?3",
+            params![effective_cwd, now, id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!("Environment {id} not found")));
+        }
+        Ok(())
+    }
+
+    // ── Runtime Session CRUD ─────────────────────────────────────────
+
+    pub fn create_runtime_session(&self, session: &RuntimeSession) -> Result<(), AppError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO runtime_sessions (id, environment_id, backend, backend_session_id, backend_session_cwd, shared, status, created_at, updated_at, last_active_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                session.id,
+                session.environment_id,
+                session.backend,
+                session.backend_session_id,
+                session.backend_session_cwd,
+                session.shared as i32,
+                session.status,
+                session.created_at,
+                session.updated_at,
+                session.last_active_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_runtime_sessions(
+        &self,
+        environment_id: &str,
+    ) -> Result<Vec<RuntimeSession>, AppError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, environment_id, backend, backend_session_id, backend_session_cwd, shared, status, created_at, updated_at, last_active_at
+             FROM runtime_sessions WHERE environment_id = ?1 ORDER BY last_active_at DESC, created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![environment_id], |row| {
+            Ok(RuntimeSession {
+                id: row.get(0)?,
+                environment_id: row.get(1)?,
+                backend: row.get(2)?,
+                backend_session_id: row.get(3)?,
+                backend_session_cwd: row.get(4)?,
+                shared: row.get::<_, i32>(5)? != 0,
+                status: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                last_active_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::db(e.to_string()))
+    }
+
+    pub fn get_runtime_session(&self, id: &str) -> Result<RuntimeSession, AppError> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, environment_id, backend, backend_session_id, backend_session_cwd, shared, status, created_at, updated_at, last_active_at
+             FROM runtime_sessions WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(RuntimeSession {
+                    id: row.get(0)?,
+                    environment_id: row.get(1)?,
+                    backend: row.get(2)?,
+                    backend_session_id: row.get(3)?,
+                    backend_session_cwd: row.get(4)?,
+                    shared: row.get::<_, i32>(5)? != 0,
+                    status: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                    last_active_at: row.get(9)?,
+                })
+            },
+        )
+        .map_err(|_| AppError::not_found(format!("Runtime session {id} not found")))
+    }
+
+    pub fn update_runtime_session_backend(
+        &self,
+        id: &str,
+        backend_session_id: Option<&str>,
+        backend_session_cwd: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE runtime_sessions
+             SET backend_session_id = COALESCE(?1, backend_session_id),
+                 backend_session_cwd = COALESCE(?2, backend_session_cwd),
+                 status = COALESCE(?3, status),
+                 updated_at = ?4,
+                 last_active_at = ?4
+             WHERE id = ?5",
+            params![backend_session_id, backend_session_cwd, status, now, id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!(
+                "Runtime session {id} not found"
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn delete_runtime_session(&self, id: &str) -> Result<(), AppError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE conversations SET runtime_session_id = NULL WHERE runtime_session_id = ?1",
+            params![id],
+        )?;
+        let changed = conn.execute("DELETE FROM runtime_sessions WHERE id = ?1", params![id])?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!(
+                "Runtime session {id} not found"
+            )));
+        }
         Ok(())
     }
 }

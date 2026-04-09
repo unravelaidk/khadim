@@ -25,11 +25,29 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_suffix: linux
+            artifact_suffix: linux-deb
+            rust_target: x86_64-unknown-linux-gnu
+            bundles: deb
+          - os: ubuntu-latest
+            artifact_suffix: linux-rpm
+            rust_target: x86_64-unknown-linux-gnu
+            bundles: rpm
+          - os: ubuntu-latest
+            artifact_suffix: linux-appimage
+            rust_target: x86_64-unknown-linux-gnu
+            bundles: appimage
+          - os: macos-13
+            artifact_suffix: macos-x64
+            rust_target: x86_64-apple-darwin
+            bundles: ''
           - os: macos-latest
-            artifact_suffix: macos
+            artifact_suffix: macos-arm64
+            rust_target: aarch64-apple-darwin
+            bundles: ''
           - os: windows-latest
             artifact_suffix: windows
+            rust_target: x86_64-pc-windows-msvc
+            bundles: ''
 
     steps:
       - name: Checkout repository
@@ -64,12 +82,14 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
-          shared-key: tauri-${{ matrix.os }}
+          shared-key: tauri-${{ matrix.os }}-${{ matrix.rust_target }}
 
       - name: Cache Tauri tooling (WiX / NSIS)
         if: runner.os == 'Windows'
@@ -148,13 +168,20 @@ jobs:
           Remove-Item -Recurse -Force certificate
 
       - name: Build desktop bundle
-        run: bun --filter @khadim/desktop build:package
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          args=(--target "${{ matrix.rust_target }}")
+          if [ -n "${{ matrix.bundles }}" ]; then
+            args+=(--bundles "${{ matrix.bundles }}")
+          fi
+          bun run tauri build "${args[@]}"
 
       - name: Collect release bundles
         shell: bash
         run: |
           mkdir -p release-bundles
-          bundle_dir="apps/desktop/src-tauri/target/release/bundle"
+          bundle_dir="apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle"
           # Copy only the distributable installer files, not build intermediates.
           find "$bundle_dir" -type f \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \

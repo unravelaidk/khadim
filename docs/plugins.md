@@ -278,7 +278,7 @@ See `examples/plugins/` for complete examples:
 
 - **hello-world** — Minimal plugin with three simple tools
 - **web-search** — Web search plugin demonstrating HTTP permissions and config
-- **obsidian-wiki** — Obsidian vault helper for bootstrapping and maintaining an LLM-authored wiki
+- **obsidian-wiki** — Obsidian vault helper for bootstrapping and maintaining an LLM-authored wiki (see `apps/docs/src/content/docs/guides/OBSIDIAN_WIKI_LLM_KNOWLEDGE_BASE.md` for full documentation)
 
 ## Roadmap
 
@@ -288,3 +288,7 @@ See `examples/plugins/` for complete examples:
 - [ ] Plugin-to-plugin communication
 - [ ] UI extension points (custom panels, sidebar widgets)
 - [ ] Streaming tool results (progress callbacks)
+
+## Related Documentation
+
+- [Obsidian Wiki and LLM Knowledge Base](../apps/docs/src/content/docs/guides/OBSIDIAN_WIKI_LLM_KNOWLEDGE_BASE.md) — Full documentation on Karpathy's LLM Wiki pattern

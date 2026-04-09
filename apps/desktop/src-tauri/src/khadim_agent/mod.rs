@@ -5,7 +5,7 @@ pub mod subagent;
 pub mod types;
 
 use crate::error::AppError;
-use crate::khadim_agent::session::KhadimSession;
+use crate::khadim_agent::session::{ExecutionTarget, KhadimSession};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -29,8 +29,15 @@ impl KhadimManager {
         }
     }
 
-    pub fn create_session(&self, workspace_id: String, cwd: PathBuf) -> String {
-        let session = KhadimSession::new(workspace_id, cwd);
+    pub fn create_session(
+        &self,
+        workspace_id: String,
+        cwd: PathBuf,
+        source_cwd: PathBuf,
+        execution_target: ExecutionTarget,
+        sandbox_id: Option<String>,
+    ) -> String {
+        let session = KhadimSession::new(workspace_id, cwd, source_cwd, execution_target, sandbox_id);
         let session_id = session.id.clone();
         self.sessions
             .lock()

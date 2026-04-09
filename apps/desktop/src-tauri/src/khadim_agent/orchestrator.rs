@@ -7,7 +7,7 @@ use crate::khadim_ai::types::{
 };
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
-use crate::khadim_code::tools::{QuestionTool, Tool};
+use crate::khadim_code::tools::{QuestionTool, Tool, ToolContext};
 use crate::opencode::AgentStreamEvent;
 use crate::plugins::PluginManager;
 use serde_json::{json, Value};
@@ -202,7 +202,19 @@ pub async fn run_prompt_with_plugins(
     );
 
     // Always use with_extras so skill dirs are available to the read tool
-    let runtime = AgentRuntime::with_extras(&session.cwd, plugin_tools, skill_dirs, skills_prompt);
+    let tool_context = if session.execution_target == crate::khadim_agent::session::ExecutionTarget::Sandbox {
+        ToolContext::sandbox(
+            session.cwd.clone(),
+            session.source_cwd.clone(),
+            session
+                .sandbox_id
+                .clone()
+                .unwrap_or_else(|| format!("sandbox-{}", session.id)),
+        )
+    } else {
+        ToolContext::direct(session.cwd.clone())
+    };
+    let runtime = AgentRuntime::with_extras(tool_context, plugin_tools, skill_dirs, skills_prompt);
     let mode = if session.workspace_id == "__chat__" {
         chat_mode()
     } else {

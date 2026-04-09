@@ -60,6 +60,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { WorkspaceContextRail } from "./components/WorkspaceContextRail";
 import { TerminalDock } from "./components/TerminalDock";
 import { FileFinder } from "./components/FileFinder";
+import { GitChangesPanel } from "./components/GitChangesPanel";
 
 initWebviewZoom();
 
@@ -112,7 +113,9 @@ export default function App() {
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
+  const [newAgentInitialEnvironmentId, setNewAgentInitialEnvironmentId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const {
@@ -292,6 +295,7 @@ export default function App() {
     handleCreateWorkspace,
     handleDeleteWorkspace,
     handleWorkspaceBranchChange,
+    handleWorkspaceExecutionTargetChange,
     handleStartOpenCode,
     handleStopOpenCode,
     handleNewConversation,
@@ -798,6 +802,8 @@ export default function App() {
               connected={Boolean(connection)}
               terminalOpen={terminalOpen}
               onToggleTerminal={() => setTerminalOpen((o) => !o)}
+              changesOpen={changesOpen}
+              onToggleChanges={() => setChangesOpen((o) => !o)}
               onOpenFinder={() => setFinderOpen(true)}
               onOpenInEditor={handleOpenProjectInEditor}
             />
@@ -815,7 +821,14 @@ export default function App() {
             onNewAgent={handleOpenNewAgent}
             onFocusAgent={handleFocusAgent}
             onManageAgent={handleManageAgent}
+            onOpenChanges={() => setChangesOpen(true)}
+            onOpenTerminal={() => setTerminalOpen(true)}
+            onNewAgentInEnvironment={(environmentId) => {
+              setNewAgentInitialEnvironmentId(environmentId);
+              setShowNewAgentModal(true);
+            }}
             onWorkspaceBranchChange={handleWorkspaceBranchChange}
+            onWorkspaceExecutionTargetChange={handleWorkspaceExecutionTargetChange}
             loading={loadingWorkspace || focusedAgentIsProcessing}
             githubAuthStatus={githubAuthStatus}
             githubSlug={githubSlug}
@@ -836,6 +849,8 @@ export default function App() {
               connected={Boolean(connection)}
               terminalOpen={terminalOpen}
               onToggleTerminal={() => setTerminalOpen((o) => !o)}
+              changesOpen={changesOpen}
+              onToggleChanges={() => setChangesOpen((o) => !o)}
               onOpenFinder={() => setFinderOpen(true)}
               onOpenInEditor={handleOpenProjectInEditor}
             />
@@ -865,10 +880,22 @@ export default function App() {
           </>
         )}
 
-        {/* Shared terminal dock — keep mounted so tabs survive collapse/reopen. */}
+        {/* Shared docks — stacked on the right. Terminal keeps mount across collapses so tabs survive. */}
         {!showSettings && interactionMode === "work" && inWorkspace && selectedWorkspace && (
-          <div className="absolute inset-y-0 right-0 z-50">
-            <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
+          <div className="absolute inset-y-0 right-0 z-50 flex pointer-events-none">
+            {changesOpen && (
+              <div className="pointer-events-auto w-80 h-full">
+                <GitChangesPanel
+                  repoPath={repoPath}
+                  isStreaming={focusedAgentIsProcessing}
+                  onOpenFile={handleOpenFileInEditor}
+                  onClose={() => setChangesOpen(false)}
+                />
+              </div>
+            )}
+            <div className="pointer-events-auto h-full">
+              <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
+            </div>
           </div>
         )}
 
@@ -898,8 +925,14 @@ export default function App() {
         <NewAgentModal
           isOpen={showNewAgentModal}
           workspace={selectedWorkspace}
-          onClose={() => setShowNewAgentModal(false)}
-          onCreateAgent={(branch, worktreePath, label, issueUrl) => void handleCreateAgentWithWorktree(branch, worktreePath, label, issueUrl)}
+          initialEnvironmentId={newAgentInitialEnvironmentId}
+          onClose={() => {
+            setShowNewAgentModal(false);
+            setNewAgentInitialEnvironmentId(null);
+          }}
+          onCreateAgent={(branch, worktreePath, label, issueUrl, envChoice) =>
+            void handleCreateAgentWithWorktree(branch, worktreePath, label, issueUrl, envChoice)
+          }
           isCreating={isCreatingAgent}
         />
       )}

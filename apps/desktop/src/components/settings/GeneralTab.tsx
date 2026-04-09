@@ -307,18 +307,45 @@ function CatppuccinVariantSelector({
   return (
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">Catppuccin Variant</p>
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {CATPPUCCIN_VARIANTS.map((variant) => (
           <button
             key={variant.id}
+            type="button"
             onClick={() => handleVariantChange(variant.id)}
-            className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-semibold transition-all duration-200 border ${
+            aria-pressed={catppuccinVariant === variant.id}
+            className={`group relative overflow-hidden rounded-xl border text-left transition-all duration-200 ${
               catppuccinVariant === variant.id
-                ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] border-[var(--glass-border-strong)]"
-                : "bg-[var(--glass-bg)] text-[var(--text-primary)] border-[var(--glass-border)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+                ? "border-[var(--color-accent)] shadow-[var(--shadow-glow)]"
+                : "border-[var(--glass-border)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--glass-bg-strong)]"
             }`}
           >
-            {variant.label}
+            <div className="aspect-[2.4/1] border-b border-black/10 p-2" style={{ background: variant.previewBg }}>
+              <div className="flex h-full gap-2 rounded-lg p-2" style={{ background: variant.previewSurface }}>
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-1.5 w-8 rounded-full opacity-90" style={{ background: variant.previewText }} />
+                  <div className="h-1.5 w-12 rounded-full opacity-55" style={{ background: variant.previewText }} />
+                </div>
+                <div className="w-7 rounded-md opacity-90" style={{ background: variant.previewAccent }} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-[var(--surface-card)]">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-[var(--text-primary)]">{variant.label}</p>
+                <p className="text-[9px] text-[var(--text-muted)]">{variant.isDark ? "Dark" : "Light"} palette</p>
+              </div>
+              <div
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                  catppuccinVariant === variant.id
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
+                    : "border-[var(--glass-border-strong)] bg-[var(--glass-bg)] text-transparent group-hover:border-[var(--glass-border-strong)]"
+                }`}
+              >
+                <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
           </button>
         ))}
       </div>
@@ -345,7 +372,9 @@ function ThemeFamilyCard({
 
   return (
     <button
+      type="button"
       onClick={onSelect}
+      aria-pressed={isSelected}
       className={`group relative flex flex-col rounded-2xl border-2 transition-all duration-200 overflow-hidden ${
         isSelected
           ? "border-[var(--color-accent)] shadow-[var(--shadow-glow)]"

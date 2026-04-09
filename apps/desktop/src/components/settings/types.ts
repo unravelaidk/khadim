@@ -21,6 +21,16 @@ export interface ThemeFamilyOption {
   hasLightVariant: boolean;
 }
 
+export interface CatppuccinVariantOption {
+  id: CatppuccinVariant;
+  label: string;
+  isDark: boolean;
+  previewBg: string;
+  previewSurface: string;
+  previewText: string;
+  previewAccent: string;
+}
+
 export interface TabDef {
   id: SettingsTab;
   label: string;

@@ -4,6 +4,8 @@
   "scripts": {
     "build": "bun -r --if-present build",
     "dev": "bun --filter @khadim/web dev",
+    "docs:dev": "bun --filter @khadim/docs dev",
+    "docs:build": "bun --filter @khadim/docs build",
     "desktop:dev": "bun --filter @khadim/desktop tauri dev",
     "desktop:build": "bun --filter @khadim/desktop build",
     "start": "bun --filter @khadim/web start",

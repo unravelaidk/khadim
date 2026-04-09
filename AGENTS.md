@@ -176,9 +176,21 @@ This should stay a narrow integration:
 - OpenCode async streaming and question reply handling are implemented.
 - Claude Code native bridge, approval prompts, and best-effort session restore are implemented.
 - Worktree management is no longer purely ad hoc; it now has stable paths, reuse behavior, and shared-deletion safeguards.
-- The main remaining desktop gap is no longer basic backend wiring; it is turning workspace mode into a stronger native coding surface.
+- Desktop `khadim` now supports workspace-level execution targets:
+  - `local`
+  - `sandbox`
+- Sandbox mode for desktop `khadim` currently provides:
+  - persistent per-workspace sandbox roots
+  - first-run seeding from the selected cwd
+  - `.git/` exclusion
+  - sandbox-rooted file access
+  - restricted command execution
+  - explicit export back to the original workspace
+- The main remaining desktop gap is no longer basic backend wiring; it is moving from an agent/worktree-centric workspace UX toward first-class environments, native tools, and stronger operational views.
 - The highest-value next desktop priority is:
-  - redesign workspace mode around native tools
+  - introduce first-class environments and runtime sessions
+  - redesign workspace mode around native tools and environment context
+  - add a monitor view for active agents
   - add a native terminal in workspace mode
   - add a native-speed file finder
   - replace the current lightweight git snapshot with a richer diff workspace
@@ -201,19 +213,94 @@ This should stay a narrow integration:
   - `apps/desktop/src/components/ApprovalOverlay.tsx`
 - Updated `apps/desktop/src/components/NewAgentModal.tsx` and git backend behavior to support stable and reusable worktrees.
 - Updated `apps/desktop/src/hooks/useAgentStreamHandler.ts` and `apps/desktop/src/hooks/useAgentChatActions.ts` to support OpenCode question replies and Claude Code approval requests.
+- Added desktop `khadim` execution target support at the workspace level:
+  - `local`
+  - `sandbox`
+- Added persistent sandbox metadata for desktop workspaces:
+  - `sandbox_id`
+  - `sandbox_root_path`
+- Added a Khadim-specific local sandbox backend in:
+  - `apps/desktop/src-tauri/src/sandbox.rs`
+- Added sandbox lifecycle behavior for desktop `khadim`:
+  - first-run sandbox root creation
+  - seed sandbox from the selected source cwd
+  - exclude `.git/` from seed copy
+  - persistent sandbox reuse across reopened sessions
+- Updated desktop `khadim` session creation to carry:
+  - execution target
+  - source cwd
+  - sandbox id
+  - effective cwd
+- Refactored desktop `khadim` tool/runtime execution to be mode-aware:
+  - direct mode uses the real workspace/worktree cwd
+  - sandbox mode uses the persistent sandbox root
+- Added sandbox file handoff support for desktop `khadim`:
+  - `export_to_workspace`
+- Added desktop UI support for workspace execution mode:
+  - create workspace modal can choose `Direct` or `Sandbox`
+  - workspace overview can switch execution mode
+  - workspace overview displays sandbox root when present
+- Verified the current desktop sandbox changes with:
+  - `cargo check`
+  - `bun run build`
+- Added first-class desktop backend persistence for environments and runtime sessions:
+  - `environments`
+  - `runtime_sessions`
+- Extended desktop conversation persistence so agents can attach to the new runtime model via:
+  - `environment_id`
+  - `runtime_session_id`
+- Added desktop backend CRUD/helpers for environments and runtime sessions in:
+  - `apps/desktop/src-tauri/src/db.rs`
+  - `apps/desktop/src-tauri/src/commands/environment.rs`
+- Added initial environment/session Tauri commands for desktop:
+  - `list_environments`
+  - `get_environment`
+  - `create_environment`
+  - `ensure_default_environment`
+  - `delete_environment`
+  - `list_runtime_sessions`
+  - `get_runtime_session`
+  - `create_runtime_session`
+  - `delete_runtime_session`
+  - `set_conversation_environment`
+- Added environment-aware runtime wiring for desktop `khadim`:
+  - sandboxed environments create and reuse their own persistent sandbox roots
+  - `khadim` runtime sessions can create a real backend session immediately
+  - workspace context resolution now prefers runtime session and environment cwd before conversation/worktree fallback
+- Verified the initial environment/session backend foundation with:
+  - `cargo check`
+  - `bun run build`
 
 ### Remaining Desktop Work
 
-1. Finish the remaining workspace-mode frontend migration in:
+1. Introduce first-class desktop `Environment` records above conversations/agents.
+2. Introduce first-class runtime session records so agents can either:
+   - create a fresh session
+   - attach to an existing environment session
+3. Add a new `Environments` tab in workspace mode.
+4. Add a `Monitor` view for active agents that is more log/status-oriented than chat-oriented.
+5. Rework agent creation so users can choose:
+   - fresh environment
+   - existing environment
+   - fresh session
+   - shared session
+6. Move worktree and sandbox ownership toward environment scope instead of agent/workspace scope.
+7. Finish the remaining workspace-mode frontend migration in:
    - `apps/desktop/src/components/WorkspaceView.tsx`
    - `apps/desktop/src/App.tsx`
-2. Integrate `WelcomeScreen` into the empty chat state and remove the remaining inline desktop-only styling.
-3. Remove stale `apps/desktop/src/lib/mock-data.ts` once all remaining references are gone.
-4. Add a native PTY-backed terminal for workspace mode.
-5. Add a native file finder / workspace search surface.
-6. Replace the current lightweight git snapshot with a structured diff workspace.
-7. Add richer worktree-aware context switching so terminal, finder, and diff follow the active agent/worktree.
-8. Re-run `cargo check` and `bun run build` after each major desktop milestone.
+8. Integrate `WelcomeScreen` into the empty chat state and remove the remaining inline desktop-only styling.
+9. Remove stale `apps/desktop/src/lib/mock-data.ts` once all remaining references are gone.
+10. Add a native PTY-backed terminal for workspace mode.
+11. Add a native file finder / workspace search surface.
+12. Replace the current lightweight git snapshot with a structured diff workspace.
+13. Make terminal, finder, and diff resolve context from the active environment first.
+14. Continue desktop sandbox hardening:
+   - formal sandbox policy
+   - audit logging
+   - env allowlisting
+   - network policy
+   - export controls
+15. Re-run `cargo check` and `bun run build` after each major desktop milestone.
 
 ### Native Workspace Build Plan
 
@@ -243,9 +330,15 @@ Turn workspace mode into a native coding cockpit with four coordinated surfaces:
    - recent files
    - changed-file jump list
 
-All three native tools should resolve their context from the active agent first:
+All three native tools should move toward resolving their context from the active environment first, then active session, then active agent, then workspace fallback.
+
+Current resolver direction is still effectively:
 
 - `agent.worktreePath ?? workspace.worktree_path ?? workspace.repo_path`
+
+Target resolver direction should become closer to:
+
+- `environment.effectiveCwd ?? session.backendSessionCwd ?? agent.worktreePath ?? workspace.worktree_path ?? workspace.repo_path`
 
 #### Phase 1 — Workspace Context Layer
 
@@ -412,8 +505,106 @@ Planned improvements:
   - `error`
 - Claude Code should continue using its bridge process, but the surrounding desktop UI should treat approvals, terminal context, file search, and diff as first-class native workspace tools.
 
+### Environments Direction
+
+- Khadim desktop should move from the current flat `workspace -> conversation/agent -> backend session` model toward a first-class environment model.
+- Recommended conceptual model:
+  - `Workspace` = repo/home container
+  - `Environment` = durable execution context
+  - `Runtime session` = backend memory/tool session inside an environment
+  - `Agent` = user-facing worker/thread attached to a session
+- This is needed so users can:
+  - create a fresh agent with a fresh environment/session
+  - create a fresh agent inside an existing environment
+  - attach multiple agents to the same environment
+  - optionally allow multiple agents to share the same runtime session
+- Environment should become the owner of:
+  - cwd
+  - worktree
+  - sandbox
+  - execution target
+  - backend
+- Session should become the owner of:
+  - backend session identity
+  - runtime memory/context
+  - shared vs dedicated session semantics
+- Agent should remain the user-facing object:
+  - label
+  - task
+  - issue linkage
+  - live status
+  - chat surface
+
+#### UI Direction
+
+- Add a workspace `Environments` tab for managing execution contexts.
+- Add a workspace `Monitor` view for supervising active agents in a live log/status-oriented surface.
+- Keep agent chat as a focused drill-in surface rather than the main supervision view.
+- New agent creation flow should support:
+  - `Fresh environment`
+  - `Existing environment`
+  - `New session`
+  - `Shared session`
+
+#### Runtime / Substrate Direction
+
+- Environments should not be defined by Wasm alone.
+- Wasm is useful for plugins and narrowly scoped helper execution.
+- Khadim environments should support multiple substrates over time:
+  - `direct local`
+  - `sandboxed local`
+  - later `container`
+- If users expect package installation and server-like setup, container-backed environments will likely be needed in a later phase.
+
+#### Monitor View Direction
+
+- Khadim should separate two distinct workspace experiences:
+  - an operational monitor view for many active agents
+  - a focused chat view for steering one selected agent
+- The monitor view should be log/status-oriented and optimized for supervision rather than full transcript reading.
+- For each active agent, monitor should show:
+  - agent name
+  - environment name
+  - session/shared-session badge
+  - branch/worktree/sandbox badges
+  - current activity
+  - recent steps or log tail
+  - last event time
+  - status (`queued`, `running`, `waiting`, `done`, `error`)
+- Primary monitor actions should include:
+  - `Open chat`
+  - `Focus environment`
+  - `Stop`
+  - `Open diff`
+  - `Open terminal`
+
 ### Notes
 
 - The Tauri dialog plugin is now wired and available for native folder picking.
 - `apps/desktop/src/lib/mock-data.ts` remains stale and should be removed during the remaining frontend cleanup.
 - The current Rust warnings reported by `cargo check` are unrelated pre-existing warnings in plugin code and not part of the desktop transport/worktree changes.
+
+---
+
+## Obsidian Wiki Integration
+
+When working with an Obsidian vault as workspace, the agent can leverage the [[obsidian-wiki-llm-knowledge-base]] pattern for knowledge compounding.
+
+### Wiki Workflow for Agents
+
+1. **Ingest** — New sources go to `raw/`, never modified after import
+2. **Compile** — Agent synthesizes sources into `Wiki/sources/`, `Wiki/entities/`, `Wiki/concepts/`
+3. **Link** — Cross-reference pages with `[[wikilinks]]` to create meaningful connections
+4. **Index** — Keep `Wiki/index.md` updated for quick navigation
+5. **Log** — Record operations in `Wiki/log.md` for auditability
+
+### Relevant Tools
+
+When the obsidian-wiki plugin is enabled:
+- `plugin_obsidian_wiki_bootstrap_llm_wiki` — Initialize vault structure
+- `plugin_obsidian_wiki_upsert_note` — Write wiki pages
+- `plugin_obsidian_wiki_append_log_entry` — Record operations
+- `plugin_obsidian_wiki_ensure_index_entry` — Update navigation
+- `plugin_obsidian_wiki_wiki_health_check` — Verify wiki integrity
+
+See `docs/obsidian-wiki-llm-knowledge-base.md` for full documentation.

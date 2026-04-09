@@ -10,12 +10,16 @@ import type {
 import { commands } from "../lib/bindings";
 import {
   useCreateConversationMutation,
+  useCreateEnvironmentMutation,
+  useCreateRuntimeSessionMutation,
   useCreateWorkspaceMutation,
   useDeleteConversationMutation,
   useDeleteWorkspaceMutation,
   useSetConversationBackendSessionMutation,
+  useSetConversationEnvironmentMutation,
   useSetSettingMutation,
   useSetWorkspaceBranchMutation,
+  useSetWorkspaceExecutionTargetMutation,
   useStartOpenCodeMutation,
   useStopOpenCodeMutation,
 } from "../lib/queries";
@@ -77,11 +81,15 @@ export function useWorkspaceActions({
   const createWorkspaceMutation = useCreateWorkspaceMutation();
   const deleteWorkspaceMutation = useDeleteWorkspaceMutation();
   const setWorkspaceBranchMutation = useSetWorkspaceBranchMutation();
+  const setWorkspaceExecutionTargetMutation = useSetWorkspaceExecutionTargetMutation();
   const startOpenCodeMutation = useStartOpenCodeMutation();
   const stopOpenCodeMutation = useStopOpenCodeMutation();
   const createConversationMutation = useCreateConversationMutation();
   const deleteConversationMutation = useDeleteConversationMutation();
   const setConversationBackendSessionMutation = useSetConversationBackendSessionMutation();
+  const createEnvironmentMutation = useCreateEnvironmentMutation();
+  const createRuntimeSessionMutation = useCreateRuntimeSessionMutation();
+  const setConversationEnvironmentMutation = useSetConversationEnvironmentMutation();
   const setSettingMutation = useSetSettingMutation();
 
   const handleCreateWorkspace = useCallback(async (input: CreateWorkspaceInput) => {
@@ -113,6 +121,11 @@ export function useWorkspaceActions({
     if (!selectedWorkspace) return;
     await setWorkspaceBranchMutation.mutateAsync({ id: selectedWorkspace.id, branch });
   }, [selectedWorkspace, setWorkspaceBranchMutation]);
+
+  const handleWorkspaceExecutionTargetChange = useCallback(async (executionTarget: "local" | "sandbox") => {
+    if (!selectedWorkspace) return;
+    await setWorkspaceExecutionTargetMutation.mutateAsync({ id: selectedWorkspace.id, executionTarget });
+  }, [selectedWorkspace, setWorkspaceExecutionTargetMutation]);
 
   const ensureOpenCodeStarted = useCallback(async (workspace: Workspace) => {
     if (connection) return connection;
@@ -183,7 +196,7 @@ export function useWorkspaceActions({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
           backendSessionId: session.id,
-          backendSessionCwd: selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path,
+          backendSessionCwd: session.cwd,
           branch: selectedWorkspace.branch ?? null,
           worktreePath: selectedWorkspace.worktree_path ?? null,
         });
@@ -297,7 +310,18 @@ export function useWorkspaceActions({
     setSelectedConversationId,
   ]);
 
-  const handleCreateAgentWithWorktree = useCallback(async (branch: string, worktreePath: string, label: string, issueUrl: string | null) => {
+  const handleCreateAgentWithWorktree = useCallback(async (
+    branch: string,
+    worktreePath: string,
+    label: string,
+    issueUrl: string | null,
+    envChoice: {
+      envMode: "fresh" | "existing";
+      environmentId: string | null;
+      sessionMode: "new" | "shared";
+      runtimeSessionId: string | null;
+    } = { envMode: "fresh", environmentId: null, sessionMode: "new", runtimeSessionId: null },
+  ) => {
     if (!selectedWorkspace) return;
     setIsCreatingAgent(true);
     setError(null);
@@ -306,46 +330,89 @@ export function useWorkspaceActions({
         await ensureOpenCodeStarted(selectedWorkspace);
       }
 
+      // Resolve the target environment. Either fetch an existing one or create
+      // a fresh one tied to the chosen branch / worktree.
+      let environmentId: string | null = envChoice.environmentId;
+      if (envChoice.envMode === "fresh") {
+        const env = await createEnvironmentMutation.mutateAsync({
+          workspace_id: selectedWorkspace.id,
+          name: label,
+          backend: selectedWorkspace.backend,
+          execution_target: selectedWorkspace.execution_target,
+          source_cwd: worktreePath,
+          branch,
+          worktree_path: worktreePath,
+        }).catch(() => null);
+        environmentId = env?.id ?? null;
+      }
+
       const conversation = await createConversationMutation.mutateAsync(selectedWorkspace.id);
       let updatedConversation = conversation;
 
-      if (selectedWorkspace.backend === "opencode") {
-        const session = await commands.opencodeCreateSession(selectedWorkspace.id);
-        const sessionId = extractSessionId(session);
-        if (!sessionId) {
-          throw new Error("OpenCode session created but no session ID was returned.");
+      // Resolve the backend session. When sharing a runtime session, reuse its
+      // existing backend session id. Otherwise spin up a new backend session.
+      let backendSessionId: string | null = null;
+      let backendSessionCwd: string | null = worktreePath;
+
+      if (envChoice.sessionMode === "shared" && envChoice.runtimeSessionId) {
+        try {
+          const existing = await commands.getRuntimeSession(envChoice.runtimeSessionId);
+          backendSessionId = existing.backend_session_id;
+          backendSessionCwd = existing.backend_session_cwd ?? worktreePath;
+        } catch {
+          backendSessionId = null;
         }
+      }
+
+      if (!backendSessionId) {
+        if (selectedWorkspace.backend === "opencode") {
+          const session = await commands.opencodeCreateSession(selectedWorkspace.id);
+          const sessionId = extractSessionId(session);
+          if (!sessionId) {
+            throw new Error("OpenCode session created but no session ID was returned.");
+          }
+          backendSessionId = sessionId;
+        } else if (selectedWorkspace.backend === "claude_code") {
+          const session = await commands.claudeCodeCreateSession(selectedWorkspace.id, worktreePath);
+          backendSessionId = session.id;
+        } else if (selectedWorkspace.backend === "khadim") {
+          const session = await commands.khadimCreateSession(selectedWorkspace.id, worktreePath);
+          backendSessionId = session.id;
+          backendSessionCwd = session.cwd;
+        }
+      }
+
+      if (backendSessionId) {
         await setConversationBackendSessionMutation.mutateAsync({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
-          backendSessionId: sessionId,
-          backendSessionCwd: worktreePath,
+          backendSessionId,
+          backendSessionCwd,
           branch,
           worktreePath,
         });
-        updatedConversation = { ...conversation, backend_session_id: sessionId };
-      } else if (selectedWorkspace.backend === "claude_code") {
-        const session = await commands.claudeCodeCreateSession(selectedWorkspace.id, worktreePath);
-        await setConversationBackendSessionMutation.mutateAsync({
+        updatedConversation = { ...conversation, backend_session_id: backendSessionId };
+      }
+
+      // Create a new runtime session record if needed, then attach the
+      // conversation to (environment, runtime session).
+      let runtimeSessionId: string | null = envChoice.runtimeSessionId;
+      if (envChoice.sessionMode === "new" && environmentId) {
+        const rs = await createRuntimeSessionMutation.mutateAsync({
+          environment_id: environmentId,
+          shared: false,
+          status: "idle",
+        }).catch(() => null);
+        runtimeSessionId = rs?.id ?? null;
+      }
+
+      if (environmentId) {
+        await setConversationEnvironmentMutation.mutateAsync({
           workspaceId: selectedWorkspace.id,
           id: conversation.id,
-          backendSessionId: session.id,
-          backendSessionCwd: worktreePath,
-          branch,
-          worktreePath,
-        });
-        updatedConversation = { ...conversation, backend_session_id: session.id };
-      } else if (selectedWorkspace.backend === "khadim") {
-        const session = await commands.khadimCreateSession(selectedWorkspace.id, worktreePath);
-        await setConversationBackendSessionMutation.mutateAsync({
-          workspaceId: selectedWorkspace.id,
-          id: conversation.id,
-          backendSessionId: session.id,
-          backendSessionCwd: worktreePath,
-          branch,
-          worktreePath,
-        });
-        updatedConversation = { ...conversation, backend_session_id: session.id };
+          environmentId,
+          runtimeSessionId,
+        }).catch(() => undefined);
       }
 
       setSelectedConversationId(updatedConversation.id);
@@ -407,6 +474,8 @@ export function useWorkspaceActions({
     }
   }, [
     createConversationMutation,
+    createEnvironmentMutation,
+    createRuntimeSessionMutation,
     ensureOpenCodeStarted,
     getErrorMessage,
     inWorkspace,
@@ -418,12 +487,14 @@ export function useWorkspaceActions({
     setInWorkspace,
     setSelectedConversationId,
     setConversationBackendSessionMutation,
+    setConversationEnvironmentMutation,
   ]);
 
   return {
     handleCreateWorkspace,
     handleDeleteWorkspace,
     handleWorkspaceBranchChange,
+    handleWorkspaceExecutionTargetChange,
     handleStartOpenCode,
     handleStopOpenCode,
     handleNewConversation,

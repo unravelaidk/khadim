@@ -1,4 +1,4 @@
-import type { CatppuccinVariant, TabDef, ThemeFamilyOption } from "./types";
+import type { CatppuccinVariantOption, TabDef, ThemeFamilyOption } from "./types";
 
 export const THEME_FAMILIES: ThemeFamilyOption[] = [
   {
@@ -101,11 +101,43 @@ export const THEME_FAMILIES: ThemeFamilyOption[] = [
   },
 ];
 
-export const CATPPUCCIN_VARIANTS: { id: CatppuccinVariant; label: string; isDark: boolean }[] = [
-  { id: "mocha", label: "Mocha", isDark: true },
-  { id: "macchiato", label: "Macchiato", isDark: true },
-  { id: "frappe", label: "Frappé", isDark: true },
-  { id: "latte", label: "Latte", isDark: false },
+export const CATPPUCCIN_VARIANTS: CatppuccinVariantOption[] = [
+  {
+    id: "mocha",
+    label: "Mocha",
+    isDark: true,
+    previewBg: "#1e1e2e",
+    previewSurface: "#313244",
+    previewText: "#cdd6f4",
+    previewAccent: "#89b4fa",
+  },
+  {
+    id: "macchiato",
+    label: "Macchiato",
+    isDark: true,
+    previewBg: "#24273a",
+    previewSurface: "#363a4f",
+    previewText: "#cad3f5",
+    previewAccent: "#8aadf4",
+  },
+  {
+    id: "frappe",
+    label: "Frappé",
+    isDark: true,
+    previewBg: "#303446",
+    previewSurface: "#414559",
+    previewText: "#c6d0f5",
+    previewAccent: "#8caaee",
+  },
+  {
+    id: "latte",
+    label: "Latte",
+    isDark: false,
+    previewBg: "#eff1f5",
+    previewSurface: "#ccd0da",
+    previewText: "#4c4f69",
+    previewAccent: "#1e66f5",
+  },
 ];
 
 export const TABS: TabDef[] = [

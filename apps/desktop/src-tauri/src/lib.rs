@@ -16,6 +16,7 @@ mod opencode;
 mod plugins;
 mod process;
 mod run_lifecycle;
+mod sandbox;
 mod skills;
 mod syntax;
 mod terminal;
@@ -33,6 +34,7 @@ use opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
 use plugins::{PluginEntry, PluginManager, PluginToolInfo};
 use process::{ProcessOutput, ProcessRunner};
 use run_lifecycle::{emit_error_and_done, extract_text, persist_assistant_message, persist_streamed_assistant_message, persist_user_message, StreamAccumulator};
+use sandbox as khadim_sandbox;
 use skills::{SkillEntry, SkillManager};
 use file_index::FileIndexManager;
 use lsp::LspManager;
@@ -118,6 +120,8 @@ fn create_conversation(
     let conv = Conversation {
         id: id.clone(),
         workspace_id: workspace_id.clone(),
+        environment_id: None,
+        runtime_session_id: None,
         backend: ws.backend.clone(),
         backend_session_id: None,
         backend_session_cwd: None,
@@ -133,6 +137,20 @@ fn create_conversation(
 
     state.db.create_conversation(&conv)?;
     Ok(conv)
+}
+
+#[tauri::command]
+fn set_conversation_environment(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    environment_id: Option<String>,
+    runtime_session_id: Option<String>,
+) -> Result<(), AppError> {
+    state.db.set_conversation_environment(
+        &id,
+        environment_id.as_deref(),
+        runtime_session_id.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -184,6 +202,7 @@ struct OpenCodeStarted {
 #[derive(Serialize, Clone)]
 struct KhadimSessionCreated {
     id: String,
+    cwd: String,
 }
 
 fn resolve_khadim_selection(
@@ -998,21 +1017,35 @@ async fn khadim_create_session(
     workspace_id: Option<String>,
     cwd_override: Option<String>,
 ) -> Result<KhadimSessionCreated, AppError> {
-    let (resolved_workspace_id, cwd) = if let Some(workspace_id) = workspace_id {
+    let (resolved_workspace_id, cwd, source_cwd, execution_target, sandbox_id) = if let Some(workspace_id) = workspace_id {
         let workspace = state.db.get_workspace(&workspace_id)?;
+        let default_workspace_cwd = std::path::PathBuf::from(
+            workspace
+                .worktree_path
+                .clone()
+                .unwrap_or_else(|| workspace.repo_path.clone()),
+        );
         let base_cwd = if let Some(ref override_path) = cwd_override {
             let p = std::path::PathBuf::from(override_path);
             if p.is_dir() { p } else {
-                std::path::PathBuf::from(
-                    workspace.worktree_path.unwrap_or(workspace.repo_path),
-                )
+                default_workspace_cwd.clone()
             }
         } else {
-            std::path::PathBuf::from(
-                workspace.worktree_path.unwrap_or(workspace.repo_path),
-            )
+            default_workspace_cwd
         };
-        (workspace_id, base_cwd)
+        let execution_target = khadim_agent::session::ExecutionTarget::from_str(&workspace.execution_target);
+        if execution_target == khadim_agent::session::ExecutionTarget::Sandbox {
+            let sandbox = khadim_sandbox::build_context(&state.db, &workspace, base_cwd.clone())?;
+            (
+                workspace_id,
+                sandbox.sandbox_root.clone(),
+                base_cwd,
+                execution_target,
+                Some(sandbox.sandbox_id),
+            )
+        } else {
+            (workspace_id, base_cwd.clone(), base_cwd, execution_target, None)
+        }
     } else {
         // Standalone chat — check if the user configured a chat directory.
         let configured_dir = state
@@ -1040,11 +1073,22 @@ async fn khadim_create_session(
             tmp
         };
 
-        ("__chat__".to_string(), dir)
+        (
+            "__chat__".to_string(),
+            dir.clone(),
+            dir,
+            khadim_agent::session::ExecutionTarget::Local,
+            None,
+        )
     };
 
-    let id = state.khadim.create_session(resolved_workspace_id, cwd);
-    Ok(KhadimSessionCreated { id })
+    let id = state
+        .khadim
+        .create_session(resolved_workspace_id, cwd.clone(), source_cwd, execution_target, sandbox_id);
+    Ok(KhadimSessionCreated {
+        id,
+        cwd: cwd.to_string_lossy().to_string(),
+    })
 }
 
 #[tauri::command]
@@ -1766,8 +1810,19 @@ pub fn run() {
             commands::workspace::get_workspace,
             commands::workspace::create_workspace,
             commands::workspace::set_workspace_branch,
+            commands::workspace::set_workspace_execution_target,
             commands::workspace::delete_workspace,
             commands::workspace::workspace_context_get,
+            // Environments
+            commands::environment::list_environments,
+            commands::environment::get_environment,
+            commands::environment::create_environment,
+            commands::environment::ensure_default_environment,
+            commands::environment::delete_environment,
+            commands::environment::list_runtime_sessions,
+            commands::environment::get_runtime_session,
+            commands::environment::create_runtime_session,
+            commands::environment::delete_runtime_session,
             commands::terminal::terminal_create,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
@@ -1801,6 +1856,7 @@ pub fn run() {
             get_conversation,
             create_conversation,
             set_conversation_backend_session,
+            set_conversation_environment,
             delete_conversation,
             // Messages
             list_messages,

@@ -13,7 +13,7 @@
 //!
 //! `branch` falls back from conversation → workspace.
 
-use crate::db::{Conversation, Database, Workspace};
+use crate::db::{Conversation, Database, Environment, RuntimeSession, Workspace};
 use crate::error::AppError;
 use serde::Serialize;
 use std::path::Path;
@@ -72,8 +72,27 @@ pub fn resolve(
         Some(id) => Some(db.get_conversation(id)?),
         None => None,
     };
+    let environment = match conversation
+        .as_ref()
+        .and_then(|c| c.environment_id.as_deref())
+    {
+        Some(id) => db.get_environment(id).ok(),
+        None => None,
+    };
+    let runtime_session = match conversation
+        .as_ref()
+        .and_then(|c| c.runtime_session_id.as_deref())
+    {
+        Some(id) => db.get_runtime_session(id).ok(),
+        None => None,
+    };
 
-    Ok(build_context(&workspace, conversation.as_ref()))
+    Ok(build_context(
+        &workspace,
+        conversation.as_ref(),
+        environment.as_ref(),
+        runtime_session.as_ref(),
+    ))
 }
 
 /// Pure builder used by `resolve` and unit tests — no DB access here so it
@@ -81,14 +100,22 @@ pub fn resolve(
 pub fn build_context(
     workspace: &Workspace,
     conversation: Option<&Conversation>,
+    environment: Option<&Environment>,
+    runtime_session: Option<&RuntimeSession>,
 ) -> DesktopWorkspaceContext {
+    let session_cwd = runtime_session.and_then(|s| s.backend_session_cwd.as_deref());
     let conv_cwd = conversation.and_then(|c| c.backend_session_cwd.as_deref());
     let conv_worktree = conversation.and_then(|c| c.worktree_path.as_deref());
+    let env_cwd = environment.map(|e| e.effective_cwd.as_str());
+    let env_worktree = environment.and_then(|e| e.worktree_path.as_deref());
     let ws_worktree = workspace.worktree_path.as_deref();
 
     let cwd = first_existing_dir([
+        session_cwd,
+        env_cwd,
         conv_cwd,
         conv_worktree,
+        env_worktree,
         ws_worktree,
         Some(workspace.repo_path.as_str()),
     ])
@@ -96,7 +123,7 @@ pub fn build_context(
 
     // Prefer a real worktree path that still exists on disk; otherwise drop it
     // so the frontend doesn't show a stale badge.
-    let worktree_path = [conv_worktree, ws_worktree]
+    let worktree_path = [conv_worktree, env_worktree, ws_worktree]
         .into_iter()
         .flatten()
         .find(|p| Path::new(p).is_dir())
@@ -138,15 +165,22 @@ mod tests {
             backend: "khadim".into(),
             execution_target: "local".into(),
             sandbox_id: None,
+            sandbox_root_path: None,
             created_at: "now".into(),
             updated_at: "now".into(),
         }
     }
 
-    fn conversation(cwd: Option<&str>, worktree: Option<&str>, branch: Option<&str>) -> Conversation {
+    fn conversation(
+        cwd: Option<&str>,
+        worktree: Option<&str>,
+        branch: Option<&str>,
+    ) -> Conversation {
         Conversation {
             id: "conv".into(),
             workspace_id: "ws".into(),
+            environment_id: None,
+            runtime_session_id: None,
             backend: "khadim".into(),
             backend_session_id: None,
             backend_session_cwd: cwd.map(str::to_string),
@@ -164,7 +198,7 @@ mod tests {
     #[test]
     fn falls_back_to_repo_path_when_nothing_exists() {
         let ws = workspace("/nope/repo", None, Some("main"));
-        let ctx = build_context(&ws, None);
+        let ctx = build_context(&ws, None, None, None);
         assert_eq!(ctx.cwd, "/nope/repo");
         assert_eq!(ctx.branch.as_deref(), Some("main"));
         assert!(!ctx.in_worktree);
@@ -175,7 +209,7 @@ mod tests {
     fn prefers_conversation_branch_over_workspace_branch() {
         let ws = workspace("/repo", None, Some("main"));
         let conv = conversation(None, None, Some("feature/x"));
-        let ctx = build_context(&ws, Some(&conv));
+        let ctx = build_context(&ws, Some(&conv), None, None);
         assert_eq!(ctx.branch.as_deref(), Some("feature/x"));
     }
 
@@ -184,7 +218,7 @@ mod tests {
         let tmp = std::env::temp_dir();
         let tmp_str = tmp.to_string_lossy().to_string();
         let ws = workspace(&tmp_str, None, None);
-        let ctx = build_context(&ws, None);
+        let ctx = build_context(&ws, None, None, None);
         assert_eq!(ctx.cwd, tmp_str);
     }
 }

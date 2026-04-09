@@ -44,8 +44,39 @@ export interface Workspace {
   backend: "opencode" | "claude_code" | "khadim";
   execution_target: "local" | "sandbox";
   sandbox_id: string | null;
+  sandbox_root_path: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Environment {
+  id: string;
+  workspace_id: string;
+  name: string;
+  backend: string;
+  execution_target: "local" | "sandbox";
+  source_cwd: string;
+  effective_cwd: string;
+  branch: string | null;
+  worktree_path: string | null;
+  sandbox_id: string | null;
+  sandbox_root_path: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string;
+}
+
+export interface RuntimeSession {
+  id: string;
+  environment_id: string;
+  backend: string;
+  backend_session_id: string | null;
+  backend_session_cwd: string | null;
+  shared: boolean;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  last_active_at: string;
 }
 
 /**
@@ -79,9 +110,27 @@ export interface CreateWorkspaceInput {
   execution_target?: string;
 }
 
+export interface CreateEnvironmentInput {
+  workspace_id: string;
+  name?: string;
+  backend?: string;
+  execution_target?: "local" | "sandbox";
+  source_cwd?: string;
+  branch?: string;
+  worktree_path?: string;
+}
+
+export interface CreateRuntimeSessionInput {
+  environment_id: string;
+  shared?: boolean;
+  status?: string;
+}
+
 export interface Conversation {
   id: string;
   workspace_id: string;
+  environment_id: string | null;
+  runtime_session_id: string | null;
   backend: string;
   backend_session_id: string | null;
   backend_session_cwd: string | null;
@@ -229,6 +278,7 @@ export interface OpenCodeModelRef {
 
 export interface KhadimSessionCreated {
   id: string;
+  cwd: string;
 }
 
 export interface KhadimModelOption {
@@ -655,6 +705,9 @@ export const commands = {
   setWorkspaceBranch: (id: string, branch?: string) =>
     invoke<void>("set_workspace_branch", { id, branch }),
 
+  setWorkspaceExecutionTarget: (id: string, executionTarget: "local" | "sandbox") =>
+    invoke<void>("set_workspace_execution_target", { id, executionTarget }),
+
   deleteWorkspace: (id: string) =>
     invoke<void>("delete_workspace", { id }),
 
@@ -663,6 +716,34 @@ export const commands = {
       workspaceId,
       conversationId: conversationId ?? null,
     }),
+
+  // Environments
+  listEnvironments: (workspaceId: string) =>
+    invoke<Environment[]>("list_environments", { workspaceId }),
+
+  getEnvironment: (id: string) =>
+    invoke<Environment>("get_environment", { id }),
+
+  createEnvironment: (input: CreateEnvironmentInput) =>
+    invoke<Environment>("create_environment", { input }),
+
+  ensureDefaultEnvironment: (workspaceId: string) =>
+    invoke<Environment>("ensure_default_environment", { workspaceId }),
+
+  deleteEnvironment: (id: string) =>
+    invoke<void>("delete_environment", { id }),
+
+  listRuntimeSessions: (environmentId: string) =>
+    invoke<RuntimeSession[]>("list_runtime_sessions", { environmentId }),
+
+  getRuntimeSession: (id: string) =>
+    invoke<RuntimeSession>("get_runtime_session", { id }),
+
+  createRuntimeSession: (input: CreateRuntimeSessionInput) =>
+    invoke<RuntimeSession>("create_runtime_session", { input }),
+
+  deleteRuntimeSession: (id: string) =>
+    invoke<void>("delete_runtime_session", { id }),
 
   // Terminal
   terminalCreate: (
@@ -813,6 +894,17 @@ export const commands = {
       backendSessionCwd,
       branch,
       worktreePath,
+    }),
+
+  setConversationEnvironment: (
+    id: string,
+    environmentId?: string | null,
+    runtimeSessionId?: string | null,
+  ) =>
+    invoke<void>("set_conversation_environment", {
+      id,
+      environmentId: environmentId ?? null,
+      runtimeSessionId: runtimeSessionId ?? null,
     }),
 
   // Messages

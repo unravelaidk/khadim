@@ -1,0 +1,22 @@
+<svg width="720" height="480" viewBox="0 0 720 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="480" rx="32" fill="#0B1020"/>
+  <rect x="48" y="56" width="624" height="368" rx="24" fill="#111833" stroke="#29335C"/>
+  <rect x="88" y="108" width="164" height="264" rx="20" fill="#182244"/>
+  <rect x="278" y="108" width="164" height="264" rx="20" fill="#182244"/>
+  <rect x="468" y="108" width="164" height="264" rx="20" fill="#182244"/>
+  <rect x="114" y="144" width="112" height="20" rx="10" fill="#7DD3FC"/>
+  <rect x="304" y="144" width="112" height="20" rx="10" fill="#A78BFA"/>
+  <rect x="494" y="144" width="112" height="20" rx="10" fill="#34D399"/>
+  <rect x="114" y="188" width="112" height="12" rx="6" fill="#32426F"/>
+  <rect x="114" y="214" width="88" height="12" rx="6" fill="#32426F"/>
+  <rect x="304" y="188" width="112" height="12" rx="6" fill="#32426F"/>
+  <rect x="304" y="214" width="88" height="12" rx="6" fill="#32426F"/>
+  <rect x="494" y="188" width="112" height="12" rx="6" fill="#32426F"/>
+  <rect x="494" y="214" width="88" height="12" rx="6" fill="#32426F"/>
+  <path d="M252 240H278" stroke="#47588F" stroke-width="6" stroke-linecap="round"/>
+  <path d="M442 240H468" stroke="#47588F" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="360" cy="240" r="28" fill="#7C3AED"/>
+  <path d="M349 240L357 248L371 232" stroke="#F8FAFC" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="88" y="92" fill="#E2E8F0" font-family="Arial, sans-serif" font-size="24" font-weight="700">Khadim Plugin SDK</text>
+  <text x="88" y="404" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">AssemblyScript + WASM + Starlight docs</text>
+</svg>

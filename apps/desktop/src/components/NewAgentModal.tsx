@@ -2,15 +2,46 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { useGitBranches } from "../hooks/useGitBranches";
-import { useGitHubIssuesQuery, useGitHubSlugQuery, useGitHubAuthStatusQuery } from "../lib/queries";
+import {
+  useEnvironmentsQuery,
+  useGitHubAuthStatusQuery,
+  useGitHubIssuesQuery,
+  useGitHubSlugQuery,
+  useRuntimeSessionsQuery,
+} from "../lib/queries";
 import { GlassSelect } from "./GlassSelect";
+
+/**
+ * Describes how the new agent should attach to an environment and runtime session.
+ * Passed through to `useWorkspaceActions.handleCreateAgentWithWorktree`.
+ */
+export interface NewAgentEnvChoice {
+  envMode: "fresh" | "existing";
+  /** Only meaningful when `envMode === "existing"`. */
+  environmentId: string | null;
+  sessionMode: "new" | "shared";
+  /** Only meaningful when `sessionMode === "shared"`. */
+  runtimeSessionId: string | null;
+}
 
 interface Props {
   isOpen: boolean;
   workspace: Workspace;
+  /** Preselect an existing environment in the modal (used by Environments tab). */
+  initialEnvironmentId?: string | null;
   onClose: () => void;
-  /** Called after worktree is created. Returns the branch name, worktree path, label, and optional issue URL. */
-  onCreateAgent: (branch: string, worktreePath: string, label: string, issueUrl: string | null) => void;
+  /**
+   * Called after the branch / worktree decision has been made. The environment
+   * + session choice is passed alongside so the action hook can either reuse
+   * an existing environment or create a fresh one.
+   */
+  onCreateAgent: (
+    branch: string,
+    worktreePath: string,
+    label: string,
+    issueUrl: string | null,
+    envChoice: NewAgentEnvChoice,
+  ) => void;
   isCreating: boolean;
 }
 
@@ -19,7 +50,7 @@ function extractIssueNumber(url: string): number | null {
   return match ? parseInt(match[1], 10) : null;
 }
 
-export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCreating }: Props) {
+export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose, onCreateAgent, isCreating }: Props) {
   const [baseBranch, setBaseBranch] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [newBranchName, setNewBranchName] = useState("");
@@ -29,9 +60,27 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
   const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // Environment + session selection.
+  const [envMode, setEnvMode] = useState<"fresh" | "existing">("fresh");
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
+  const [sessionMode, setSessionMode] = useState<"new" | "shared">("new");
+  const [selectedRuntimeSessionId, setSelectedRuntimeSessionId] = useState<string | null>(null);
+
   const backdropRef = useRef<HTMLDivElement>(null);
   const labelInputRef = useRef<HTMLInputElement>(null);
   const { branches, localBranches, loading } = useGitBranches(workspace.repo_path, isOpen);
+
+  // Load environments/sessions for the workspace.
+  const { data: environments = [] } = useEnvironmentsQuery(workspace.id, isOpen);
+  const { data: runtimeSessions = [] } = useRuntimeSessionsQuery(
+    envMode === "existing" ? selectedEnvironmentId : null,
+    isOpen && envMode === "existing" && Boolean(selectedEnvironmentId),
+  );
+  const selectedEnvironment = useMemo(
+    () => environments.find((env) => env.id === selectedEnvironmentId) ?? null,
+    [environments, selectedEnvironmentId],
+  );
 
   // GitHub integration
   const { data: githubSlug } = useGitHubSlugQuery(workspace.repo_path, isOpen);
@@ -56,8 +105,49 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     setBranchMode("new");
     setCreating(false);
 
+    // Reset env/session selection each time the modal opens, honoring a
+    // preselected environment from the Environments tab if provided.
+    if (initialEnvironmentId) {
+      setEnvMode("existing");
+      setSelectedEnvironmentId(initialEnvironmentId);
+    } else {
+      setEnvMode("fresh");
+      setSelectedEnvironmentId(null);
+    }
+    setSessionMode("new");
+    setSelectedRuntimeSessionId(null);
+
     requestAnimationFrame(() => labelInputRef.current?.focus());
-  }, [isOpen]);
+  }, [isOpen, initialEnvironmentId]);
+
+  // When switching to "existing" env mode without a selection yet, default to
+  // the first available environment.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (envMode !== "existing") return;
+    if (selectedEnvironmentId) return;
+    if (environments.length > 0) {
+      setSelectedEnvironmentId(environments[0].id);
+    }
+  }, [envMode, environments, isOpen, selectedEnvironmentId]);
+
+  // Reset shared-session selection when the chosen environment changes.
+  useEffect(() => {
+    setSelectedRuntimeSessionId(null);
+    if (sessionMode === "shared" && runtimeSessions.length === 0) {
+      setSessionMode("new");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEnvironmentId]);
+
+  // When "shared" mode is on and sessions load, auto-pick the first.
+  useEffect(() => {
+    if (sessionMode !== "shared") return;
+    if (selectedRuntimeSessionId) return;
+    if (runtimeSessions.length > 0) {
+      setSelectedRuntimeSessionId(runtimeSessions[0].id);
+    }
+  }, [runtimeSessions, selectedRuntimeSessionId, sessionMode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -90,6 +180,50 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
     : null;
 
   async function submit() {
+    // When attaching to an existing environment, we reuse the env's branch /
+    // worktree directly and skip all worktree creation.
+    if (envMode === "existing") {
+      if (!selectedEnvironment) {
+        setError("Select an environment.");
+        return;
+      }
+      if (sessionMode === "shared" && !selectedRuntimeSessionId) {
+        setError("Select a runtime session to share, or switch to a new session.");
+        return;
+      }
+      const label = agentLabel.trim() || selectedEnvironment.name;
+      const branch = selectedEnvironment.branch ?? workspace.branch ?? "main";
+      const worktree = selectedEnvironment.worktree_path ?? selectedEnvironment.effective_cwd;
+
+      let issue: string | null = null;
+      if (selectedIssueNumber && githubSlug) {
+        issue = `https://github.com/${githubSlug.owner}/${githubSlug.repo}/issues/${selectedIssueNumber}`;
+      } else if (issueUrl.trim()) {
+        issue = issueUrl.trim();
+      }
+
+      setError(null);
+      setCreating(true);
+      try {
+        onCreateAgent(branch, worktree, label, issue, {
+          envMode: "existing",
+          environmentId: selectedEnvironment.id,
+          sessionMode,
+          runtimeSessionId: sessionMode === "shared" ? selectedRuntimeSessionId : null,
+        });
+        onClose();
+      } catch (err) {
+        const msg = err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : String(err);
+        setError(msg);
+      } finally {
+        setCreating(false);
+      }
+      return;
+    }
+
+    // Fresh environment path — original branch/worktree flow applies.
     const label = agentLabel.trim() || (branchMode === "new" ? newBranchName.trim() : selectedBranch);
     if (!label) {
       setError("Give the agent a name or branch.");
@@ -125,7 +259,12 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
             baseBranch || undefined,
           );
 
-      onCreateAgent(branch, worktree.path, label, issue);
+      onCreateAgent(branch, worktree.path, label, issue, {
+        envMode: "fresh",
+        environmentId: null,
+        sessionMode: "new",
+        runtimeSessionId: null,
+      });
       onClose();
     } catch (err) {
       const msg = err && typeof err === "object" && "message" in err
@@ -185,6 +324,97 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
         {/* Form */}
         <div className="px-6 py-5 space-y-4">
+          {/* Environment mode toggle */}
+          <div>
+            <span className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-2">
+              Environment
+            </span>
+            <div className="flex gap-1 p-0.5 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
+              <button
+                onClick={() => setEnvMode("fresh")}
+                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all ${
+                  envMode === "fresh"
+                    ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                Fresh environment
+              </button>
+              <button
+                onClick={() => setEnvMode("existing")}
+                disabled={environments.length === 0}
+                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                  envMode === "existing"
+                    ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+                title={environments.length === 0 ? "No environments yet" : undefined}
+              >
+                Existing environment
+              </button>
+            </div>
+
+            {envMode === "existing" && (
+              <div className="mt-2 space-y-2">
+                <GlassSelect
+                  value={selectedEnvironmentId ?? ""}
+                  onChange={(v) => setSelectedEnvironmentId(v || null)}
+                  options={environments.map((env) => ({
+                    value: env.id,
+                    label: `${env.name} · ${env.execution_target}${env.branch ? ` · ${env.branch}` : ""}`,
+                  }))}
+                />
+                {selectedEnvironment && (
+                  <p className="text-[10px] font-mono text-[var(--text-muted)] break-all">
+                    {selectedEnvironment.effective_cwd}
+                  </p>
+                )}
+
+                {/* Session mode picker (only meaningful inside an existing env). */}
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] block mb-1.5">
+                    Runtime session
+                  </span>
+                  <div className="flex gap-1 p-0.5 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
+                    <button
+                      onClick={() => setSessionMode("new")}
+                      className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all ${
+                        sessionMode === "new"
+                          ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      }`}
+                    >
+                      New session
+                    </button>
+                    <button
+                      onClick={() => setSessionMode("shared")}
+                      disabled={runtimeSessions.length === 0}
+                      className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        sessionMode === "shared"
+                          ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      }`}
+                      title={runtimeSessions.length === 0 ? "No runtime sessions in this environment" : undefined}
+                    >
+                      Shared session
+                    </button>
+                  </div>
+                  {sessionMode === "shared" && runtimeSessions.length > 0 && (
+                    <GlassSelect
+                      value={selectedRuntimeSessionId ?? ""}
+                      onChange={(v) => setSelectedRuntimeSessionId(v || null)}
+                      options={runtimeSessions.map((session) => ({
+                        value: session.id,
+                        label: `${session.backend_session_id ?? session.id.slice(0, 8)} · ${session.status}${session.shared ? " · shared" : ""}`,
+                      }))}
+                      className="mt-1.5"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Agent label */}
           <label className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
@@ -264,6 +494,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
             </p>
           </div>
 
+          {envMode === "fresh" && (
           <div className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
               Base branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
@@ -292,8 +523,10 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               </p>
             )}
           </div>
+          )}
 
           {/* Branch mode toggle */}
+          {envMode === "fresh" && (
           <div>
             <span className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-2">
               Agent branch
@@ -321,9 +554,10 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               </button>
             </div>
           </div>
+          )}
 
           {/* Branch input */}
-          {branchMode === "new" ? (
+          {envMode === "fresh" && (branchMode === "new" ? (
             <label className="block">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
                 New branch name
@@ -362,7 +596,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
                 />
               )}
             </div>
-          )}
+          ))}
 
           {/* Info note */}
           <div className="flex items-start gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--glass-bg)] rounded-2xl px-3 py-2.5 border border-[var(--glass-border)]">

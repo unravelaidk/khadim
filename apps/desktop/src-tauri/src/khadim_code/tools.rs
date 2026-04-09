@@ -1,6 +1,8 @@
 use crate::error::AppError;
 use crate::khadim_agent::KhadimManager;
+use crate::khadim_agent::session::ExecutionTarget;
 use crate::opencode::AgentStreamEvent;
+use crate::sandbox::{execute_sandbox_command, export_path_to_workspace, SandboxContext};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -58,25 +60,65 @@ fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
     Ok(normalized)
 }
 
+#[derive(Debug, Clone)]
+pub struct ToolContext {
+    pub root: PathBuf,
+    pub source_root: PathBuf,
+    pub execution_target: ExecutionTarget,
+    pub sandbox_id: Option<String>,
+}
+
+impl ToolContext {
+    pub fn direct(root: PathBuf) -> Self {
+        Self {
+            source_root: root.clone(),
+            root,
+            execution_target: ExecutionTarget::Local,
+            sandbox_id: None,
+        }
+    }
+
+    pub fn sandbox(root: PathBuf, source_root: PathBuf, sandbox_id: String) -> Self {
+        Self {
+            root,
+            source_root,
+            execution_target: ExecutionTarget::Sandbox,
+            sandbox_id: Some(sandbox_id),
+        }
+    }
+
+    fn sandbox_context(&self) -> Result<SandboxContext, AppError> {
+        let sandbox_id = self
+            .sandbox_id
+            .clone()
+            .ok_or_else(|| AppError::invalid_input("Missing sandbox id for sandboxed execution"))?;
+        Ok(SandboxContext {
+            sandbox_id,
+            sandbox_root: self.root.clone(),
+            source_root: self.source_root.clone(),
+        })
+    }
+}
+
 pub struct ReadTool {
-    root: PathBuf,
+    context: ToolContext,
     /// Additional directories the read tool is allowed to access (e.g. skill dirs).
     extra_allowed: Vec<PathBuf>,
 }
 
 impl ReadTool {
-    pub fn new(root: PathBuf) -> Self {
-        Self { root, extra_allowed: default_skill_read_dirs() }
+    pub fn new(context: ToolContext) -> Self {
+        Self { context, extra_allowed: default_skill_read_dirs() }
     }
 
-    pub fn with_extra_allowed(root: PathBuf, mut extra_allowed: Vec<PathBuf>) -> Self {
+    pub fn with_extra_allowed(context: ToolContext, mut extra_allowed: Vec<PathBuf>) -> Self {
         // Always include default skill directories
         for dir in default_skill_read_dirs() {
             if !extra_allowed.contains(&dir) {
                 extra_allowed.push(dir);
             }
         }
-        Self { root, extra_allowed }
+        Self { context, extra_allowed }
     }
 }
 
@@ -120,13 +162,13 @@ impl Tool for ReadTool {
         let limit = input.get("limit").and_then(|value| value.as_u64()).unwrap_or(200) as usize;
 
         // Try workspace root first, then check extra allowed dirs (skill dirs)
-        let target = match normalize_path(&self.root, path) {
+        let target = match normalize_path(&self.context.root, path) {
             Ok(p) => p,
             Err(_) => {
                 log::info!(
                     "read: path {:?} not in workspace {:?}, trying {} extra dirs",
                     path,
-                    self.root,
+                    self.context.root,
                     self.extra_allowed.len()
                 );
                 self.resolve_extra_allowed(path)?
@@ -211,12 +253,12 @@ impl ReadTool {
 }
 
 pub struct WriteTool {
-    root: PathBuf,
+    context: ToolContext,
 }
 
 impl WriteTool {
-    pub fn new(root: PathBuf) -> Self {
-        Self { root }
+    pub fn new(context: ToolContext) -> Self {
+        Self { context }
     }
 }
 
@@ -230,7 +272,7 @@ impl Tool for WriteTool {
                  CRITICAL: 'path' MUST be the FIRST key in the JSON arguments — before 'content'. \
                  The path must include subdirectories relative to workspace root (e.g. \"pong/index.html\", not just \"index.html\"). \
                  Workspace root: {}",
-                self.root.display()
+                self.context.root.display()
             ),
             parameters: json!({
                 "type": "object",
@@ -244,7 +286,7 @@ impl Tool for WriteTool {
             prompt_snippet: format!(
                 "- write({{\"path\": \"subdir/file.ext\", \"content\": \"...\"}}): Write a file. \
                  Path MUST be first and include subdirectories relative to workspace root: {}",
-                self.root.display()
+                self.context.root.display()
             ),
         }
     }
@@ -293,7 +335,7 @@ impl Tool for WriteTool {
                              You provided path=\"{}\" but no content.\n\
                              Usage: write({{\"path\": \"subdir/file.ext\", \"content\": \"...\"}})\n\
                              IMPORTANT: path MUST come FIRST in the JSON and include the full relative path from workspace root: {}",
-                            p, self.root.display()
+                            p, self.context.root.display()
                         ),
                         metadata: Some(json!({"error": "missing_content"})),
                     }),
@@ -306,7 +348,7 @@ impl Tool for WriteTool {
                 // Return an error asking the model to retry with path FIRST.
                 // Do NOT guess the filename — guessing loses the intended directory
                 // and writes to the wrong location.
-                let workspace = self.root.display();
+                let workspace = self.context.root.display();
                 let dir_hint = target_dir
                     .map(|d| format!(" The user wanted the file in directory: {d}."))
                     .unwrap_or_default();
@@ -339,14 +381,14 @@ impl Tool for WriteTool {
                          Usage: write({{\"path\": \"subdir/filename.ext\", \"content\": \"...\"}})\n\
                          IMPORTANT: 'path' MUST be the FIRST key and include subdirectories.",
                         keys.join(", "),
-                        self.root.display()
+                        self.context.root.display()
                     ),
                     metadata: Some(json!({"error": "missing_params"})),
                 });
             }
         };
 
-        let target = normalize_path(&self.root, &path)?;
+        let target = normalize_path(&self.context.root, &path)?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -394,23 +436,23 @@ fn guess_filename(content: &str) -> Option<&str> {
 }
 
 pub struct ListFilesTool {
-    root: PathBuf,
+    context: ToolContext,
     /// Additional directories the ls tool is allowed to access (e.g. skill dirs).
     extra_allowed: Vec<PathBuf>,
 }
 
 impl ListFilesTool {
-    pub fn new(root: PathBuf) -> Self {
-        Self { root, extra_allowed: default_skill_read_dirs() }
+    pub fn new(context: ToolContext) -> Self {
+        Self { context, extra_allowed: default_skill_read_dirs() }
     }
 
-    pub fn with_extra_allowed(root: PathBuf, mut extra_allowed: Vec<PathBuf>) -> Self {
+    pub fn with_extra_allowed(context: ToolContext, mut extra_allowed: Vec<PathBuf>) -> Self {
         for dir in default_skill_read_dirs() {
             if !extra_allowed.contains(&dir) {
                 extra_allowed.push(dir);
             }
         }
-        Self { root, extra_allowed }
+        Self { context, extra_allowed }
     }
 
     /// Check if an absolute path falls within one of the extra allowed directories.
@@ -462,7 +504,7 @@ impl Tool for ListFilesTool {
 
     async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
         let path = input.get("path").and_then(|value| value.as_str()).unwrap_or(".");
-        let target = match normalize_path(&self.root, path) {
+        let target = match normalize_path(&self.context.root, path) {
             Ok(p) => p,
             Err(_) => self.resolve_extra_allowed(path)?,
         };
@@ -485,12 +527,12 @@ impl Tool for ListFilesTool {
 }
 
 pub struct BashTool {
-    root: PathBuf,
+    context: ToolContext,
 }
 
 impl BashTool {
-    pub fn new(root: PathBuf) -> Self {
-        Self { root }
+    pub fn new(context: ToolContext) -> Self {
+        Self { context }
     }
 }
 
@@ -523,10 +565,23 @@ impl Tool for BashTool {
             .and_then(|value| value.as_u64())
             .unwrap_or(120_000);
 
+        if self.context.execution_target == ExecutionTarget::Sandbox {
+            let sandbox = self.context.sandbox_context()?;
+            let result = execute_sandbox_command(&sandbox, command, timeout_ms).await?;
+            return Ok(ToolResult {
+                content: result.output,
+                metadata: Some(json!({
+                    "result": if result.success { "success" } else { "failure" },
+                    "executionTarget": self.context.execution_target.as_str(),
+                    "sandboxId": sandbox.sandbox_id,
+                })),
+            });
+        }
+
         let mut child = Command::new("bash")
             .arg("-lc")
             .arg(command)
-            .current_dir(&self.root)
+            .current_dir(&self.context.root)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -585,22 +640,90 @@ impl Tool for BashTool {
             content: output,
             metadata: Some(json!({
                 "result": if status.success() { "success" } else { "failure" },
+                "executionTarget": self.context.execution_target.as_str(),
             })),
         })
     }
 }
 
-pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
-    default_tools_with_skill_dirs(root, Vec::new())
+pub struct ExportToWorkspaceTool {
+    context: ToolContext,
 }
 
-pub fn default_tools_with_skill_dirs(root: &Path, skill_dirs: Vec<PathBuf>) -> Vec<Arc<dyn Tool>> {
-    vec![
-        Arc::new(ReadTool::with_extra_allowed(root.to_path_buf(), skill_dirs.clone())),
-        Arc::new(WriteTool::new(root.to_path_buf())),
-        Arc::new(ListFilesTool::with_extra_allowed(root.to_path_buf(), skill_dirs)),
-        Arc::new(BashTool::new(root.to_path_buf())),
-    ]
+impl ExportToWorkspaceTool {
+    pub fn new(context: ToolContext) -> Self {
+        Self { context }
+    }
+}
+
+#[async_trait]
+impl Tool for ExportToWorkspaceTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "export_to_workspace".to_string(),
+            description: "Copy a file or directory from the sandbox back into the original workspace directory.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Sandbox-relative file or directory path to export"},
+                    "target_path": {"type": "string", "description": "Optional destination path relative to the original workspace"}
+                },
+                "required": ["path"]
+            }),
+            prompt_snippet: "- export_to_workspace: Copy sandbox files back to the original workspace when the user asks for them".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        if self.context.execution_target != ExecutionTarget::Sandbox {
+            return Err(AppError::invalid_input(
+                "export_to_workspace is only available in sandbox mode",
+            ));
+        }
+
+        let path = input
+            .get("path")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("export_to_workspace requires a path"))?;
+        let target_path = input.get("target_path").and_then(|value| value.as_str());
+
+        let destination = export_path_to_workspace(
+            &self.context.root,
+            &self.context.source_root,
+            path,
+            target_path,
+        )?;
+
+        Ok(ToolResult {
+            content: format!(
+                "Exported {} to {}",
+                path,
+                destination.display()
+            ),
+            metadata: Some(json!({
+                "filePath": destination.to_string_lossy(),
+                "executionTarget": self.context.execution_target.as_str(),
+                "sandboxId": self.context.sandbox_id.clone(),
+            })),
+        })
+    }
+}
+
+pub fn default_tools(context: ToolContext) -> Vec<Arc<dyn Tool>> {
+    default_tools_with_skill_dirs(context, Vec::new())
+}
+
+pub fn default_tools_with_skill_dirs(context: ToolContext, skill_dirs: Vec<PathBuf>) -> Vec<Arc<dyn Tool>> {
+    let mut tools: Vec<Arc<dyn Tool>> = vec![
+        Arc::new(ReadTool::with_extra_allowed(context.clone(), skill_dirs.clone())),
+        Arc::new(WriteTool::new(context.clone())),
+        Arc::new(ListFilesTool::with_extra_allowed(context.clone(), skill_dirs)),
+        Arc::new(BashTool::new(context.clone())),
+    ];
+    if context.execution_target == ExecutionTarget::Sandbox {
+        tools.push(Arc::new(ExportToWorkspaceTool::new(context)));
+    }
+    tools
 }
 
 // ── Question tool ─────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ export function backendLabel(backend: string) {
 }
 
 export function executionTargetLabel(target: string) {
-  return target === "sandbox" ? "Sandbox" : "Local";
+  return target === "sandbox" ? "Sandbox" : "Direct";
 }
 
 export function formatMessageTime(input: string | Date) {

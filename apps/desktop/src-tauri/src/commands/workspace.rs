@@ -45,6 +45,11 @@ pub(crate) fn create_workspace(
     let target = input
         .execution_target
         .unwrap_or_else(|| "local".to_string());
+    if target != "local" && target != "sandbox" {
+        return Err(AppError::invalid_input(format!(
+            "Unsupported execution target: {target}"
+        )));
+    }
     let branch = input
         .branch
         .as_deref()
@@ -66,6 +71,7 @@ pub(crate) fn create_workspace(
         backend,
         execution_target: target,
         sandbox_id: None,
+        sandbox_root_path: None,
         created_at: now.clone(),
         updated_at: now,
     };
@@ -83,6 +89,12 @@ pub(crate) fn delete_workspace(
     if let Some(ref wt_path) = ws.worktree_path {
         let _ = git::remove_worktree(&ws.repo_path, wt_path, true);
     }
+    if let Some(ref sandbox_root_path) = ws.sandbox_root_path {
+        let sandbox_path = std::path::Path::new(sandbox_root_path);
+        if sandbox_path.exists() {
+            let _ = std::fs::remove_dir_all(sandbox_path);
+        }
+    }
     state.db.delete_workspace(&id)
 }
 
@@ -97,6 +109,21 @@ pub(crate) fn set_workspace_branch(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     state.db.update_workspace_branch(&id, normalized)
+}
+
+#[tauri::command]
+pub(crate) fn set_workspace_execution_target(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    execution_target: String,
+) -> Result<(), AppError> {
+    let normalized = execution_target.trim();
+    if normalized != "local" && normalized != "sandbox" {
+        return Err(AppError::invalid_input(format!(
+            "Unsupported execution target: {normalized}"
+        )));
+    }
+    state.db.update_workspace_execution_target(&id, normalized)
 }
 
 #[tauri::command]

@@ -1,3 +1,4 @@
+pub(crate) mod environment;
 pub(crate) mod file_index;
 pub(crate) mod git;
 pub(crate) mod lsp;

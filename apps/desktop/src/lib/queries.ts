@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { CreateWorkspaceInput } from "./bindings";
+import type {
+  CreateEnvironmentInput,
+  CreateRuntimeSessionInput,
+  CreateWorkspaceInput,
+} from "./bindings";
 
 export const desktopQueryKeys = {
   runtimeSummary: ["runtime-summary"] as const,
@@ -21,6 +25,8 @@ export const desktopQueryKeys = {
   khadimActiveModel: ["khadim-active-model"] as const,
   githubSlug: (repoPath: string | null) => ["github-slug", repoPath] as const,
   githubIssues: (owner: string, repo: string, state: string) => ["github-issues", owner, repo, state] as const,
+  environments: (workspaceId: string | null) => ["environments", workspaceId] as const,
+  runtimeSessions: (environmentId: string | null) => ["runtime-sessions", environmentId] as const,
 };
 
 export function useRuntimeSummaryQuery() {
@@ -241,6 +247,21 @@ export function useSetWorkspaceBranchMutation() {
   });
 }
 
+export function useSetWorkspaceExecutionTargetMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, executionTarget }: { id: string; executionTarget: "local" | "sandbox" }) =>
+      commands.setWorkspaceExecutionTarget(id, executionTarget),
+    onSuccess: async (_, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspaces }),
+        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspace(id) }),
+        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspaceContext(id, null) }),
+      ]);
+    },
+  });
+}
+
 export function useStartOpenCodeMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -323,6 +344,80 @@ export function useSetSettingMutation() {
     mutationFn: ({ key, value }: { key: string; value: string }) => commands.setSetting(key, value),
     onSuccess: async (_, { key }) => {
       await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.setting(key) });
+    },
+  });
+}
+
+/* ── Environments & runtime sessions ───────────────────────────── */
+
+export function useEnvironmentsQuery(workspaceId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.environments(workspaceId),
+    queryFn: () => {
+      if (!workspaceId) return Promise.resolve([]);
+      return commands.listEnvironments(workspaceId);
+    },
+    enabled: enabled && Boolean(workspaceId),
+  });
+}
+
+export function useRuntimeSessionsQuery(environmentId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.runtimeSessions(environmentId),
+    queryFn: () => {
+      if (!environmentId) return Promise.resolve([]);
+      return commands.listRuntimeSessions(environmentId);
+    },
+    enabled: enabled && Boolean(environmentId),
+  });
+}
+
+export function useCreateEnvironmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateEnvironmentInput) => commands.createEnvironment(input),
+    onSuccess: async (env) => {
+      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.environments(env.workspace_id) });
+    },
+  });
+}
+
+export function useDeleteEnvironmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { workspaceId: string; id: string }) => commands.deleteEnvironment(id),
+    onSuccess: async (_, { workspaceId, id }) => {
+      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.environments(workspaceId) });
+      queryClient.removeQueries({ queryKey: desktopQueryKeys.runtimeSessions(id) });
+    },
+  });
+}
+
+export function useCreateRuntimeSessionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateRuntimeSessionInput) => commands.createRuntimeSession(input),
+    onSuccess: async (session) => {
+      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.runtimeSessions(session.environment_id) });
+    },
+  });
+}
+
+export function useSetConversationEnvironmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      environmentId,
+      runtimeSessionId,
+    }: {
+      workspaceId: string;
+      id: string;
+      environmentId: string | null;
+      runtimeSessionId: string | null;
+    }) => commands.setConversationEnvironment(id, environmentId, runtimeSessionId),
+    onSuccess: async (_, { workspaceId }) => {
+      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.conversations(workspaceId) });
     },
   });
 }

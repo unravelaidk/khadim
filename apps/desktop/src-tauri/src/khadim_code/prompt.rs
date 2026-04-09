@@ -1,7 +1,10 @@
+use crate::khadim_agent::session::ExecutionTarget;
 use crate::khadim_agent::types::AgentModeDefinition;
 
 pub fn build_system_prompt(
     cwd: &str,
+    source_cwd: &str,
+    execution_target: ExecutionTarget,
     mode: &AgentModeDefinition,
     tool_snippets: &[String],
 ) -> String {
@@ -12,9 +15,20 @@ pub fn build_system_prompt(
         tool_snippets.join("\n")
     };
 
+    let execution_guidance = if execution_target == ExecutionTarget::Sandbox {
+        format!(
+            "You are running in persistent sandbox mode. All reads, writes, and commands operate inside the sandbox working directory shown below. The sandbox was seeded from the original workspace at: {source_cwd}. Sandbox contents persist across session close and reopen. If the user asks for files produced in the sandbox, use the export_to_workspace tool to copy them back into the original workspace. Sandbox command execution is restricted to direct approved executables and workspace-local scripts; do not rely on shell operators like pipes or redirects."
+        )
+    } else {
+        format!(
+            "You are running in direct mode. Tool operations act on the original workspace at: {source_cwd}."
+        )
+    };
+
     format!(
         "You are Khadim, a native coding agent for the Khadim desktop app.\n\n\
          Agent mode: {}\n{}\n\n\
+         Execution mode: {}\n{}\n\n\
          Available tools:\n{}\n\n\
          Guidelines:\n\
          - Be concise and action-oriented\n\
@@ -27,7 +41,15 @@ pub fn build_system_prompt(
            Always include subdirectories in the path (e.g. \"myapp/src/index.html\", NOT just \"index.html\"). \
            The path is relative to the current working directory shown below.\n\n\
          Current date: {}\n\
+         Original workspace directory: {}\n\
          Current working directory: {}",
-        mode.name, mode.system_prompt_addition, tools, date, cwd
+        mode.name,
+        mode.system_prompt_addition,
+        execution_target.as_str(),
+        execution_guidance,
+        tools,
+        date,
+        source_cwd,
+        cwd
     )
 }

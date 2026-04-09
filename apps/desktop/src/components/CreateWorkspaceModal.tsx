@@ -206,11 +206,14 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
                 value={form.execution_target ?? "local"}
                 onChange={(v) => setForm((prev) => ({ ...prev, execution_target: v }))}
                 options={[
-                  { value: "local", label: "Local" },
+                  { value: "local", label: "Direct" },
                   { value: "sandbox", label: "Sandbox" },
                 ]}
                 className="mt-1.5"
               />
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                Sandbox creates a persistent copied workspace and keeps its files between sessions.
+              </p>
             </div>
           </div>
 
