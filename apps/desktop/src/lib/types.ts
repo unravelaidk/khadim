@@ -58,6 +58,10 @@ export interface AgentInstance {
   modelLabel: string | null;
   /** GitHub issue URL to work on */
   issueUrl: string | null;
+  /** Attached environment, when the agent uses the environments model. */
+  environmentId?: string | null;
+  /** Attached runtime session, when the agent uses the environments model. */
+  runtimeSessionId?: string | null;
 
   // ── Worktree / branch ─────────────────────────────────────────
   /** Git branch this agent's worktree is based on */
@@ -129,6 +133,8 @@ export function createAgentInstance(
   branch: string | null = null,
   worktreePath: string | null = null,
   issueUrl: string | null = null,
+  environmentId: string | null = null,
+  runtimeSessionId: string | null = null,
 ): AgentInstance {
   return {
     id,
@@ -140,6 +146,8 @@ export function createAgentInstance(
     branch,
     worktreePath,
     issueUrl,
+    environmentId,
+    runtimeSessionId,
     streamPreview: [],
     currentActivity: null,
     streamingSteps: [],

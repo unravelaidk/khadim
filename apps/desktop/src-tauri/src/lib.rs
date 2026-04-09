@@ -34,7 +34,6 @@ use opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
 use plugins::{PluginEntry, PluginManager, PluginToolInfo};
 use process::{ProcessOutput, ProcessRunner};
 use run_lifecycle::{emit_error_and_done, extract_text, persist_assistant_message, persist_streamed_assistant_message, persist_user_message, StreamAccumulator};
-use sandbox as khadim_sandbox;
 use skills::{SkillEntry, SkillManager};
 use file_index::FileIndexManager;
 use lsp::LspManager;
@@ -1033,19 +1032,13 @@ async fn khadim_create_session(
         } else {
             default_workspace_cwd
         };
-        let execution_target = khadim_agent::session::ExecutionTarget::from_str(&workspace.execution_target);
-        if execution_target == khadim_agent::session::ExecutionTarget::Sandbox {
-            let sandbox = khadim_sandbox::build_context(&state.db, &workspace, base_cwd.clone())?;
-            (
-                workspace_id,
-                sandbox.sandbox_root.clone(),
-                base_cwd,
-                execution_target,
-                Some(sandbox.sandbox_id),
-            )
-        } else {
-            (workspace_id, base_cwd.clone(), base_cwd, execution_target, None)
-        }
+        (
+            workspace_id,
+            base_cwd.clone(),
+            base_cwd,
+            khadim_agent::session::ExecutionTarget::Direct,
+            None,
+        )
     } else {
         // Standalone chat — check if the user configured a chat directory.
         let configured_dir = state
@@ -1077,7 +1070,7 @@ async fn khadim_create_session(
             "__chat__".to_string(),
             dir.clone(),
             dir,
-            khadim_agent::session::ExecutionTarget::Local,
+            khadim_agent::session::ExecutionTarget::Direct,
             None,
         )
     };
@@ -1817,12 +1810,14 @@ pub fn run() {
             commands::environment::list_environments,
             commands::environment::get_environment,
             commands::environment::create_environment,
+            commands::environment::update_environment,
             commands::environment::ensure_default_environment,
             commands::environment::delete_environment,
             commands::environment::list_runtime_sessions,
             commands::environment::get_runtime_session,
             commands::environment::create_runtime_session,
             commands::environment::delete_runtime_session,
+            commands::environment::update_runtime_session_backend,
             commands::terminal::terminal_create,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,

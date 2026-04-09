@@ -3,6 +3,7 @@ import { commands } from "./bindings";
 import type {
   CreateEnvironmentInput,
   CreateRuntimeSessionInput,
+  UpdateEnvironmentInput,
   CreateWorkspaceInput,
 } from "./bindings";
 
@@ -247,21 +248,6 @@ export function useSetWorkspaceBranchMutation() {
   });
 }
 
-export function useSetWorkspaceExecutionTargetMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, executionTarget }: { id: string; executionTarget: "local" | "sandbox" }) =>
-      commands.setWorkspaceExecutionTarget(id, executionTarget),
-    onSuccess: async (_, { id }) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspaces }),
-        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspace(id) }),
-        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspaceContext(id, null) }),
-      ]);
-    },
-  });
-}
-
 export function useStartOpenCodeMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -376,6 +362,16 @@ export function useCreateEnvironmentMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateEnvironmentInput) => commands.createEnvironment(input),
+    onSuccess: async (env) => {
+      await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.environments(env.workspace_id) });
+    },
+  });
+}
+
+export function useUpdateEnvironmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateEnvironmentInput) => commands.updateEnvironment(input),
     onSuccess: async (env) => {
       await queryClient.invalidateQueries({ queryKey: desktopQueryKeys.environments(env.workspace_id) });
     },

@@ -42,9 +42,6 @@ export interface Workspace {
   worktree_path: string | null;
   branch: string | null;
   backend: "opencode" | "claude_code" | "khadim";
-  execution_target: "local" | "sandbox";
-  sandbox_id: string | null;
-  sandbox_root_path: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -54,11 +51,16 @@ export interface Environment {
   workspace_id: string;
   name: string;
   backend: string;
-  execution_target: "local" | "sandbox";
+  substrate: "local" | "docker" | "remote";
+  wasm_enabled: boolean;
+  docker_image: string | null;
+  docker_workdir: string | null;
+  ssh_host: string | null;
+  ssh_port: number | null;
+  ssh_user: string | null;
+  ssh_path: string | null;
   source_cwd: string;
   effective_cwd: string;
-  branch: string | null;
-  worktree_path: string | null;
   sandbox_id: string | null;
   sandbox_root_path: string | null;
   created_at: string;
@@ -107,21 +109,40 @@ export interface CreateWorkspaceInput {
   repo_path: string;
   branch?: string;
   backend?: string;
-  execution_target?: string;
 }
 
 export interface CreateEnvironmentInput {
   workspace_id: string;
   name?: string;
   backend?: string;
-  execution_target?: "local" | "sandbox";
+  substrate?: "local" | "docker" | "remote";
+  wasm_enabled?: boolean;
+  docker_image?: string;
+  docker_workdir?: string;
+  ssh_host?: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_path?: string;
   source_cwd?: string;
-  branch?: string;
-  worktree_path?: string;
+}
+
+export interface UpdateEnvironmentInput {
+  id: string;
+  name?: string;
+  backend?: string;
+  substrate?: "local" | "docker" | "remote";
+  wasm_enabled?: boolean;
+  docker_image?: string;
+  docker_workdir?: string;
+  ssh_host?: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_path?: string;
 }
 
 export interface CreateRuntimeSessionInput {
   environment_id: string;
+  source_cwd?: string;
   shared?: boolean;
   status?: string;
 }
@@ -705,9 +726,6 @@ export const commands = {
   setWorkspaceBranch: (id: string, branch?: string) =>
     invoke<void>("set_workspace_branch", { id, branch }),
 
-  setWorkspaceExecutionTarget: (id: string, executionTarget: "local" | "sandbox") =>
-    invoke<void>("set_workspace_execution_target", { id, executionTarget }),
-
   deleteWorkspace: (id: string) =>
     invoke<void>("delete_workspace", { id }),
 
@@ -727,6 +745,9 @@ export const commands = {
   createEnvironment: (input: CreateEnvironmentInput) =>
     invoke<Environment>("create_environment", { input }),
 
+  updateEnvironment: (input: UpdateEnvironmentInput) =>
+    invoke<Environment>("update_environment", { input }),
+
   ensureDefaultEnvironment: (workspaceId: string) =>
     invoke<Environment>("ensure_default_environment", { workspaceId }),
 
@@ -744,6 +765,21 @@ export const commands = {
 
   deleteRuntimeSession: (id: string) =>
     invoke<void>("delete_runtime_session", { id }),
+
+  updateRuntimeSessionBackend: (
+    id: string,
+    backendSessionId?: string | null,
+    backendSessionCwd?: string | null,
+    status?: string | null,
+  ) =>
+    invoke<void>("update_runtime_session_backend", {
+      input: {
+        id,
+        backend_session_id: backendSessionId ?? null,
+        backend_session_cwd: backendSessionCwd ?? null,
+        status: status ?? null,
+      },
+    }),
 
   // Terminal
   terminalCreate: (

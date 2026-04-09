@@ -15,14 +15,13 @@ pub fn build_system_prompt(
         tool_snippets.join("\n")
     };
 
-    let execution_guidance = if execution_target == ExecutionTarget::Sandbox {
-        format!(
+    let execution_guidance = match execution_target {
+        ExecutionTarget::Sandbox => format!(
             "You are running in persistent sandbox mode. All reads, writes, and commands operate inside the sandbox working directory shown below. The sandbox was seeded from the original workspace at: {source_cwd}. Sandbox contents persist across session close and reopen. If the user asks for files produced in the sandbox, use the export_to_workspace tool to copy them back into the original workspace. Sandbox command execution is restricted to direct approved executables and workspace-local scripts; do not rely on shell operators like pipes or redirects."
-        )
-    } else {
-        format!(
+        ),
+        ExecutionTarget::Direct => format!(
             "You are running in direct mode. Tool operations act on the original workspace at: {source_cwd}."
-        )
+        ),
     };
 
     format!(

@@ -70,10 +70,14 @@ pub struct ToolContext {
 
 impl ToolContext {
     pub fn direct(root: PathBuf) -> Self {
+        Self::direct_with_target(root, ExecutionTarget::Direct)
+    }
+
+    pub fn direct_with_target(root: PathBuf, execution_target: ExecutionTarget) -> Self {
         Self {
             source_root: root.clone(),
             root,
-            execution_target: ExecutionTarget::Local,
+            execution_target,
             sandbox_id: None,
         }
     }

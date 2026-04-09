@@ -3,22 +3,21 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionTarget {
-    Local,
+    Direct,
     Sandbox,
 }
 
 impl ExecutionTarget {
     pub fn from_str(value: &str) -> Self {
-        if value == "sandbox" {
-            Self::Sandbox
-        } else {
-            Self::Local
+        match value {
+            "docker" | "remote" | "sandbox" => Self::Sandbox,
+            _ => Self::Direct,
         }
     }
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Local => "local",
+            Self::Direct => "direct",
             Self::Sandbox => "sandbox",
         }
     }

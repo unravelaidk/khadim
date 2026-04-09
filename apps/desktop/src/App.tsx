@@ -295,7 +295,6 @@ export default function App() {
     handleCreateWorkspace,
     handleDeleteWorkspace,
     handleWorkspaceBranchChange,
-    handleWorkspaceExecutionTargetChange,
     handleStartOpenCode,
     handleStopOpenCode,
     handleNewConversation,
@@ -416,6 +415,8 @@ export default function App() {
             return {
               ...existing,
               sessionId: conv.backend_session_id ?? existing.sessionId,
+              environmentId: conv.environment_id ?? existing.environmentId ?? null,
+              runtimeSessionId: conv.runtime_session_id ?? existing.runtimeSessionId ?? null,
               branch: conv.branch ?? existing.branch,
               worktreePath: conv.worktree_path ?? existing.worktreePath,
             };
@@ -429,6 +430,9 @@ export default function App() {
             existing?.modelLabel ?? null,
             conv.branch ?? null,
             conv.worktree_path ?? null,
+            existing?.issueUrl ?? null,
+            conv.environment_id ?? existing?.environmentId ?? null,
+            conv.runtime_session_id ?? existing?.runtimeSessionId ?? null,
           );
           if (existing) {
             instance.status = existing.status;
@@ -499,6 +503,9 @@ export default function App() {
               null,
               conv.branch ?? null,
               conv.worktree_path ?? null,
+              null,
+              conv.environment_id ?? null,
+              conv.runtime_session_id ?? null,
             );
             if (conv.input_tokens > 0 || conv.output_tokens > 0) {
               instance.tokenUsage = {
@@ -823,12 +830,7 @@ export default function App() {
             onManageAgent={handleManageAgent}
             onOpenChanges={() => setChangesOpen(true)}
             onOpenTerminal={() => setTerminalOpen(true)}
-            onNewAgentInEnvironment={(environmentId) => {
-              setNewAgentInitialEnvironmentId(environmentId);
-              setShowNewAgentModal(true);
-            }}
             onWorkspaceBranchChange={handleWorkspaceBranchChange}
-            onWorkspaceExecutionTargetChange={handleWorkspaceExecutionTargetChange}
             loading={loadingWorkspace || focusedAgentIsProcessing}
             githubAuthStatus={githubAuthStatus}
             githubSlug={githubSlug}

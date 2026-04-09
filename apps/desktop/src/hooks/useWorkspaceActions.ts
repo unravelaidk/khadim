@@ -19,7 +19,6 @@ import {
   useSetConversationEnvironmentMutation,
   useSetSettingMutation,
   useSetWorkspaceBranchMutation,
-  useSetWorkspaceExecutionTargetMutation,
   useStartOpenCodeMutation,
   useStopOpenCodeMutation,
 } from "../lib/queries";
@@ -81,7 +80,6 @@ export function useWorkspaceActions({
   const createWorkspaceMutation = useCreateWorkspaceMutation();
   const deleteWorkspaceMutation = useDeleteWorkspaceMutation();
   const setWorkspaceBranchMutation = useSetWorkspaceBranchMutation();
-  const setWorkspaceExecutionTargetMutation = useSetWorkspaceExecutionTargetMutation();
   const startOpenCodeMutation = useStartOpenCodeMutation();
   const stopOpenCodeMutation = useStopOpenCodeMutation();
   const createConversationMutation = useCreateConversationMutation();
@@ -121,11 +119,6 @@ export function useWorkspaceActions({
     if (!selectedWorkspace) return;
     await setWorkspaceBranchMutation.mutateAsync({ id: selectedWorkspace.id, branch });
   }, [selectedWorkspace, setWorkspaceBranchMutation]);
-
-  const handleWorkspaceExecutionTargetChange = useCallback(async (executionTarget: "local" | "sandbox") => {
-    if (!selectedWorkspace) return;
-    await setWorkspaceExecutionTargetMutation.mutateAsync({ id: selectedWorkspace.id, executionTarget });
-  }, [selectedWorkspace, setWorkspaceExecutionTargetMutation]);
 
   const ensureOpenCodeStarted = useCallback(async (workspace: Workspace) => {
     if (connection) return connection;
@@ -317,10 +310,12 @@ export function useWorkspaceActions({
     issueUrl: string | null,
     envChoice: {
       envMode: "fresh" | "existing";
+      environmentSubstrate: "local" | "docker" | "remote";
+      environmentWasmEnabled: boolean;
       environmentId: string | null;
       sessionMode: "new" | "shared";
       runtimeSessionId: string | null;
-    } = { envMode: "fresh", environmentId: null, sessionMode: "new", runtimeSessionId: null },
+    } = { envMode: "fresh", environmentSubstrate: "local", environmentWasmEnabled: false, environmentId: null, sessionMode: "new", runtimeSessionId: null },
   ) => {
     if (!selectedWorkspace) return;
     setIsCreatingAgent(true);
@@ -330,41 +325,58 @@ export function useWorkspaceActions({
         await ensureOpenCodeStarted(selectedWorkspace);
       }
 
-      // Resolve the target environment. Either fetch an existing one or create
-      // a fresh one tied to the chosen branch / worktree.
-      let environmentId: string | null = envChoice.environmentId;
+      // Resolve the target environment first. It defines the isolation model.
+      let environment = envChoice.environmentId
+        ? await commands.getEnvironment(envChoice.environmentId).catch(() => null)
+        : null;
       if (envChoice.envMode === "fresh") {
-        const env = await createEnvironmentMutation.mutateAsync({
+        environment = await createEnvironmentMutation.mutateAsync({
           workspace_id: selectedWorkspace.id,
           name: label,
           backend: selectedWorkspace.backend,
-          execution_target: selectedWorkspace.execution_target,
+          substrate: envChoice.environmentSubstrate,
+          wasm_enabled: envChoice.environmentWasmEnabled,
           source_cwd: worktreePath,
-          branch,
-          worktree_path: worktreePath,
         }).catch(() => null);
-        environmentId = env?.id ?? null;
       }
+      const environmentId = environment?.id ?? null;
+      const executionCwd = environment?.effective_cwd ?? worktreePath;
+      const executionBranch = branch;
+      const executionWorktreePath = worktreePath;
 
       const conversation = await createConversationMutation.mutateAsync(selectedWorkspace.id);
       let updatedConversation = conversation;
 
-      // Resolve the backend session. When sharing a runtime session, reuse its
-      // existing backend session id. Otherwise spin up a new backend session.
-      let backendSessionId: string | null = null;
-      let backendSessionCwd: string | null = worktreePath;
+      // Resolve the runtime session first. Backend session identity comes from
+      // a shared runtime session, a newly created runtime session, or a direct
+      // backend session fallback when no runtime session has an identity yet.
+      let runtimeSessionId: string | null = envChoice.runtimeSessionId;
+      let runtimeSession = runtimeSessionId
+        ? await commands.getRuntimeSession(runtimeSessionId).catch(() => null)
+        : null;
 
-      if (envChoice.sessionMode === "shared" && envChoice.runtimeSessionId) {
-        try {
-          const existing = await commands.getRuntimeSession(envChoice.runtimeSessionId);
-          backendSessionId = existing.backend_session_id;
-          backendSessionCwd = existing.backend_session_cwd ?? worktreePath;
-        } catch {
-          backendSessionId = null;
+      if (envChoice.sessionMode === "new" && environmentId) {
+        runtimeSession = await createRuntimeSessionMutation.mutateAsync({
+          environment_id: environmentId,
+          source_cwd: worktreePath,
+          shared: false,
+          status: issueUrl ? "running" : "idle",
+        }).catch(() => null);
+        runtimeSessionId = runtimeSession?.id ?? null;
+      }
+
+      let backendSessionId: string | null = null;
+      let backendSessionCwd: string | null = runtimeSession?.backend_session_cwd ?? executionCwd;
+
+      if (envChoice.sessionMode === "shared") {
+        backendSessionId = runtimeSession?.backend_session_id ?? null;
+        backendSessionCwd = runtimeSession?.backend_session_cwd ?? executionCwd;
+        if (!backendSessionId && runtimeSessionId) {
+          throw new Error("The selected shared session is not ready yet.");
         }
       }
 
-      if (!backendSessionId) {
+      if (!backendSessionId && envChoice.sessionMode === "new") {
         if (selectedWorkspace.backend === "opencode") {
           const session = await commands.opencodeCreateSession(selectedWorkspace.id);
           const sessionId = extractSessionId(session);
@@ -373,12 +385,26 @@ export function useWorkspaceActions({
           }
           backendSessionId = sessionId;
         } else if (selectedWorkspace.backend === "claude_code") {
-          const session = await commands.claudeCodeCreateSession(selectedWorkspace.id, worktreePath);
+          const session = await commands.claudeCodeCreateSession(selectedWorkspace.id, executionCwd);
           backendSessionId = session.id;
         } else if (selectedWorkspace.backend === "khadim") {
-          const session = await commands.khadimCreateSession(selectedWorkspace.id, worktreePath);
-          backendSessionId = session.id;
-          backendSessionCwd = session.cwd;
+          if (runtimeSession?.backend_session_id) {
+            backendSessionId = runtimeSession.backend_session_id;
+            backendSessionCwd = runtimeSession.backend_session_cwd ?? executionCwd;
+          } else {
+            const session = await commands.khadimCreateSession(selectedWorkspace.id, executionCwd);
+            backendSessionId = session.id;
+            backendSessionCwd = session.cwd;
+          }
+        }
+
+        if (runtimeSessionId && backendSessionId) {
+          await commands.updateRuntimeSessionBackend(
+            runtimeSessionId,
+            backendSessionId,
+            backendSessionCwd,
+            issueUrl ? "running" : "idle",
+          ).catch(() => undefined);
         }
       }
 
@@ -388,22 +414,10 @@ export function useWorkspaceActions({
           id: conversation.id,
           backendSessionId,
           backendSessionCwd,
-          branch,
-          worktreePath,
+          branch: executionBranch,
+          worktreePath: executionWorktreePath,
         });
         updatedConversation = { ...conversation, backend_session_id: backendSessionId };
-      }
-
-      // Create a new runtime session record if needed, then attach the
-      // conversation to (environment, runtime session).
-      let runtimeSessionId: string | null = envChoice.runtimeSessionId;
-      if (envChoice.sessionMode === "new" && environmentId) {
-        const rs = await createRuntimeSessionMutation.mutateAsync({
-          environment_id: environmentId,
-          shared: false,
-          status: "idle",
-        }).catch(() => null);
-        runtimeSessionId = rs?.id ?? null;
       }
 
       if (environmentId) {
@@ -423,9 +437,11 @@ export function useWorkspaceActions({
         label,
         updatedConversation.backend_session_id ?? null,
         modelLabel,
-        branch,
-        worktreePath,
+        executionBranch,
+        executionWorktreePath,
         issueUrl,
+        environmentId,
+        runtimeSessionId,
       );
       setAgents((prev) => [...prev, { ...newAgent, status: issueUrl ? "running" : "idle", startedAt: issueUrl ? new Date().toISOString() : null }]);
       setFocusedAgentId(updatedConversation.id);
@@ -494,7 +510,6 @@ export function useWorkspaceActions({
     handleCreateWorkspace,
     handleDeleteWorkspace,
     handleWorkspaceBranchChange,
-    handleWorkspaceExecutionTargetChange,
     handleStartOpenCode,
     handleStopOpenCode,
     handleNewConversation,

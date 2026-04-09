@@ -18,7 +18,6 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
     name: "",
     repo_path: "",
     backend: "opencode",
-    execution_target: "local",
   });
   const [error, setError] = useState<string | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -49,7 +48,6 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
         name: "",
         repo_path: "",
         backend: "opencode",
-        execution_target: "local",
       });
       setError(null);
     }
@@ -180,41 +178,24 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
             </div>
           </label>
 
-          {/* Backend + target row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="block">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                Backend
-              </span>
-              <GlassSelect
-                value={form.backend ?? "opencode"}
-                onChange={(v) => setForm((prev) => ({ ...prev, backend: v }))}
-                options={[
-                  { value: "opencode", label: "OpenCode" },
-                  { value: "khadim", label: "Khadim" },
-                  { value: "claude_code", label: "Claude Code" },
-                ]}
-                className="mt-1.5"
-              />
-            </div>
-
-            <div className="block">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                Execution target
-              </span>
-              <GlassSelect
-                value={form.execution_target ?? "local"}
-                onChange={(v) => setForm((prev) => ({ ...prev, execution_target: v }))}
-                options={[
-                  { value: "local", label: "Direct" },
-                  { value: "sandbox", label: "Sandbox" },
-                ]}
-                className="mt-1.5"
-              />
-              <p className="mt-1 text-[10px] text-[var(--text-muted)]">
-                Sandbox creates a persistent copied workspace and keeps its files between sessions.
-              </p>
-            </div>
+          {/* Backend */}
+          <div className="block">
+            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              Backend
+            </span>
+            <GlassSelect
+              value={form.backend ?? "opencode"}
+              onChange={(v) => setForm((prev) => ({ ...prev, backend: v }))}
+              options={[
+                { value: "opencode", label: "OpenCode" },
+                { value: "khadim", label: "Khadim" },
+                { value: "claude_code", label: "Claude Code" },
+              ]}
+              className="mt-1.5"
+            />
+            <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+              New workspaces start in Direct mode. You can switch an agent or environment to Sandbox later.
+            </p>
           </div>
 
           {/* Default branch */}

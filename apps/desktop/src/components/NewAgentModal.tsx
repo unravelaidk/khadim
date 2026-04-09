@@ -9,6 +9,7 @@ import {
   useGitHubSlugQuery,
   useRuntimeSessionsQuery,
 } from "../lib/queries";
+import { environmentSubstrateLabel } from "../lib/ui";
 import { GlassSelect } from "./GlassSelect";
 
 /**
@@ -17,6 +18,8 @@ import { GlassSelect } from "./GlassSelect";
  */
 export interface NewAgentEnvChoice {
   envMode: "fresh" | "existing";
+  environmentSubstrate: "local" | "docker" | "remote";
+  environmentWasmEnabled: boolean;
   /** Only meaningful when `envMode === "existing"`. */
   environmentId: string | null;
   sessionMode: "new" | "shared";
@@ -63,6 +66,8 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
 
   // Environment + session selection.
   const [envMode, setEnvMode] = useState<"fresh" | "existing">("fresh");
+  const [environmentSubstrate, setEnvironmentSubstrate] = useState<"local" | "docker" | "remote">("local");
+  const [environmentWasmEnabled, setEnvironmentWasmEnabled] = useState(false);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
   const [sessionMode, setSessionMode] = useState<"new" | "shared">("new");
   const [selectedRuntimeSessionId, setSelectedRuntimeSessionId] = useState<string | null>(null);
@@ -114,6 +119,8 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
       setEnvMode("fresh");
       setSelectedEnvironmentId(null);
     }
+    setEnvironmentSubstrate("local");
+    setEnvironmentWasmEnabled(false);
     setSessionMode("new");
     setSelectedRuntimeSessionId(null);
 
@@ -180,8 +187,7 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
     : null;
 
   async function submit() {
-    // When attaching to an existing environment, we reuse the env's branch /
-    // worktree directly and skip all worktree creation.
+    // Existing environments reuse their execution root directly.
     if (envMode === "existing") {
       if (!selectedEnvironment) {
         setError("Select an environment.");
@@ -192,8 +198,8 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
         return;
       }
       const label = agentLabel.trim() || selectedEnvironment.name;
-      const branch = selectedEnvironment.branch ?? workspace.branch ?? "main";
-      const worktree = selectedEnvironment.worktree_path ?? selectedEnvironment.effective_cwd;
+      const branch = workspace.branch ?? selectedBranch ?? baseBranch ?? "main";
+      const worktree = selectedEnvironment.source_cwd || selectedEnvironment.effective_cwd;
 
       let issue: string | null = null;
       if (selectedIssueNumber && githubSlug) {
@@ -207,6 +213,8 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
       try {
         onCreateAgent(branch, worktree, label, issue, {
           envMode: "existing",
+          environmentSubstrate: selectedEnvironment.substrate,
+          environmentWasmEnabled: selectedEnvironment.wasm_enabled,
           environmentId: selectedEnvironment.id,
           sessionMode,
           runtimeSessionId: sessionMode === "shared" ? selectedRuntimeSessionId : null,
@@ -261,6 +269,8 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
 
       onCreateAgent(branch, worktree.path, label, issue, {
         envMode: "fresh",
+        environmentSubstrate,
+        environmentWasmEnabled,
         environmentId: null,
         sessionMode: "new",
         runtimeSessionId: null,
@@ -361,7 +371,7 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
                   onChange={(v) => setSelectedEnvironmentId(v || null)}
                   options={environments.map((env) => ({
                     value: env.id,
-                    label: `${env.name} · ${env.execution_target}${env.branch ? ` · ${env.branch}` : ""}`,
+                    label: `${env.name} · ${environmentSubstrateLabel(env.substrate)}${env.wasm_enabled ? " · wasm" : ""}`,
                   }))}
                 />
                 {selectedEnvironment && (
@@ -411,6 +421,32 @@ export function NewAgentModal({ isOpen, workspace, initialEnvironmentId, onClose
                     />
                   )}
                 </div>
+              </div>
+            )}
+
+            {envMode === "fresh" && (
+              <div className="mt-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] block mb-1.5">
+                  Environment substrate
+                </span>
+                <GlassSelect
+                  value={environmentSubstrate}
+                  onChange={(v) => setEnvironmentSubstrate(v as "local" | "docker" | "remote")}
+                  options={[
+                    { value: "local", label: "Local" },
+                    { value: "docker", label: "Docker sandbox" },
+                    { value: "remote", label: "Remote sandbox" },
+                  ]}
+                />
+                <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={environmentWasmEnabled}
+                    onChange={(e) => setEnvironmentWasmEnabled(e.target.checked)}
+                    className="rounded"
+                  />
+                  Enable Wasm tools for this environment
+                </label>
               </div>
             )}
           </div>

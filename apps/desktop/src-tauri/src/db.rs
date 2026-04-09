@@ -33,11 +33,16 @@ pub struct Environment {
     pub workspace_id: String,
     pub name: String,
     pub backend: String,
-    pub execution_target: String,
+    pub substrate: String,
+    pub wasm_enabled: bool,
+    pub docker_image: Option<String>,
+    pub docker_workdir: Option<String>,
+    pub ssh_host: Option<String>,
+    pub ssh_port: Option<i64>,
+    pub ssh_user: Option<String>,
+    pub ssh_path: Option<String>,
     pub source_cwd: String,
     pub effective_cwd: String,
-    pub branch: Option<String>,
-    pub worktree_path: Option<String>,
     pub sandbox_id: Option<String>,
     pub sandbox_root_path: Option<String>,
     pub created_at: String,
@@ -189,6 +194,13 @@ impl Database {
                 name              TEXT NOT NULL,
                 backend           TEXT NOT NULL,
                 execution_target  TEXT NOT NULL DEFAULT 'local',
+                wasm_enabled      INTEGER NOT NULL DEFAULT 0,
+                docker_image      TEXT,
+                docker_workdir    TEXT,
+                ssh_host          TEXT,
+                ssh_port          INTEGER,
+                ssh_user          TEXT,
+                ssh_path          TEXT,
                 source_cwd        TEXT NOT NULL,
                 effective_cwd     TEXT NOT NULL,
                 branch            TEXT,
@@ -246,6 +258,19 @@ impl Database {
             "ALTER TABLE workspaces ADD COLUMN sandbox_root_path TEXT",
             [],
         );
+        let _ = conn.execute(
+            "ALTER TABLE environments ADD COLUMN wasm_enabled INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE environments ADD COLUMN docker_image TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE environments ADD COLUMN docker_workdir TEXT",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE environments ADD COLUMN ssh_host TEXT", []);
+        let _ = conn.execute("ALTER TABLE environments ADD COLUMN ssh_port INTEGER", []);
+        let _ = conn.execute("ALTER TABLE environments ADD COLUMN ssh_user TEXT", []);
+        let _ = conn.execute("ALTER TABLE environments ADD COLUMN ssh_path TEXT", []);
 
         conn.execute_batch(
             "
@@ -423,8 +448,8 @@ impl Database {
     pub fn create_conversation(&self, conv: &Conversation) -> Result<(), AppError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO conversations (id, workspace_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO conversations (id, workspace_id, environment_id, runtime_session_id, backend, backend_session_id, backend_session_cwd, branch, worktree_path, title, is_active, created_at, updated_at, input_tokens, output_tokens)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 conv.id,
                 conv.workspace_id,
@@ -650,18 +675,23 @@ impl Database {
     pub fn create_environment(&self, environment: &Environment) -> Result<(), AppError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO environments (id, workspace_id, name, backend, execution_target, source_cwd, effective_cwd, branch, worktree_path, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            "INSERT INTO environments (id, workspace_id, name, backend, execution_target, wasm_enabled, docker_image, docker_workdir, ssh_host, ssh_port, ssh_user, ssh_path, source_cwd, effective_cwd, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 environment.id,
                 environment.workspace_id,
                 environment.name,
                 environment.backend,
-                environment.execution_target,
+                environment.substrate,
+                environment.wasm_enabled as i32,
+                environment.docker_image,
+                environment.docker_workdir,
+                environment.ssh_host,
+                environment.ssh_port,
+                environment.ssh_user,
+                environment.ssh_path,
                 environment.source_cwd,
                 environment.effective_cwd,
-                environment.branch,
-                environment.worktree_path,
                 environment.sandbox_id,
                 environment.sandbox_root_path,
                 environment.created_at,
@@ -675,7 +705,7 @@ impl Database {
     pub fn list_environments(&self, workspace_id: &str) -> Result<Vec<Environment>, AppError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, workspace_id, name, backend, execution_target, source_cwd, effective_cwd, branch, worktree_path, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at
+            "SELECT id, workspace_id, name, backend, execution_target, wasm_enabled, docker_image, docker_workdir, ssh_host, ssh_port, ssh_user, ssh_path, source_cwd, effective_cwd, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at
              FROM environments WHERE workspace_id = ?1 ORDER BY last_used_at DESC, created_at DESC",
         )?;
         let rows = stmt.query_map(params![workspace_id], |row| {
@@ -684,16 +714,21 @@ impl Database {
                 workspace_id: row.get(1)?,
                 name: row.get(2)?,
                 backend: row.get(3)?,
-                execution_target: row.get(4)?,
-                source_cwd: row.get(5)?,
-                effective_cwd: row.get(6)?,
-                branch: row.get(7)?,
-                worktree_path: row.get(8)?,
-                sandbox_id: row.get(9)?,
-                sandbox_root_path: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
-                last_used_at: row.get(13)?,
+                substrate: row.get(4)?,
+                wasm_enabled: row.get::<_, i32>(5)? != 0,
+                docker_image: row.get(6)?,
+                docker_workdir: row.get(7)?,
+                ssh_host: row.get(8)?,
+                ssh_port: row.get(9)?,
+                ssh_user: row.get(10)?,
+                ssh_path: row.get(11)?,
+                source_cwd: row.get(12)?,
+                effective_cwd: row.get(13)?,
+                sandbox_id: row.get(14)?,
+                sandbox_root_path: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
+                last_used_at: row.get(18)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -703,7 +738,7 @@ impl Database {
     pub fn get_environment(&self, id: &str) -> Result<Environment, AppError> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, workspace_id, name, backend, execution_target, source_cwd, effective_cwd, branch, worktree_path, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at
+            "SELECT id, workspace_id, name, backend, execution_target, wasm_enabled, docker_image, docker_workdir, ssh_host, ssh_port, ssh_user, ssh_path, source_cwd, effective_cwd, sandbox_id, sandbox_root_path, created_at, updated_at, last_used_at
              FROM environments WHERE id = ?1",
             params![id],
             |row| {
@@ -712,20 +747,101 @@ impl Database {
                     workspace_id: row.get(1)?,
                     name: row.get(2)?,
                     backend: row.get(3)?,
-                    execution_target: row.get(4)?,
-                    source_cwd: row.get(5)?,
-                    effective_cwd: row.get(6)?,
-                    branch: row.get(7)?,
-                    worktree_path: row.get(8)?,
-                    sandbox_id: row.get(9)?,
-                    sandbox_root_path: row.get(10)?,
-                    created_at: row.get(11)?,
-                    updated_at: row.get(12)?,
-                    last_used_at: row.get(13)?,
+                    substrate: row.get(4)?,
+                    wasm_enabled: row.get::<_, i32>(5)? != 0,
+                    docker_image: row.get(6)?,
+                    docker_workdir: row.get(7)?,
+                    ssh_host: row.get(8)?,
+                    ssh_port: row.get(9)?,
+                    ssh_user: row.get(10)?,
+                    ssh_path: row.get(11)?,
+                    source_cwd: row.get(12)?,
+                    effective_cwd: row.get(13)?,
+                    sandbox_id: row.get(14)?,
+                    sandbox_root_path: row.get(15)?,
+                    created_at: row.get(16)?,
+                    updated_at: row.get(17)?,
+                    last_used_at: row.get(18)?,
                 })
             },
         )
         .map_err(|_| AppError::not_found(format!("Environment {id} not found")))
+    }
+
+    pub fn update_environment(&self, environment: &Environment) -> Result<(), AppError> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE environments
+             SET name = ?1,
+                 backend = ?2,
+                 execution_target = ?3,
+                 wasm_enabled = ?4,
+                 docker_image = ?5,
+                 docker_workdir = ?6,
+                 ssh_host = ?7,
+                 ssh_port = ?8,
+                 ssh_user = ?9,
+                 ssh_path = ?10,
+                 updated_at = ?11,
+                 last_used_at = ?12
+             WHERE id = ?13",
+            params![
+                environment.name,
+                environment.backend,
+                environment.substrate,
+                environment.wasm_enabled as i32,
+                environment.docker_image,
+                environment.docker_workdir,
+                environment.ssh_host,
+                environment.ssh_port,
+                environment.ssh_user,
+                environment.ssh_path,
+                environment.updated_at,
+                environment.last_used_at,
+                environment.id,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!(
+                "Environment {} not found",
+                environment.id
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn update_environment_execution_root(
+        &self,
+        id: &str,
+        source_cwd: &str,
+        effective_cwd: &str,
+        sandbox_id: Option<&str>,
+        sandbox_root_path: Option<&str>,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE environments
+             SET source_cwd = ?1,
+                 effective_cwd = ?2,
+                 sandbox_id = ?3,
+                 sandbox_root_path = ?4,
+                 updated_at = ?5,
+                 last_used_at = ?5
+             WHERE id = ?6",
+            params![
+                source_cwd,
+                effective_cwd,
+                sandbox_id,
+                sandbox_root_path,
+                now,
+                id
+            ],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found(format!("Environment {id} not found")));
+        }
+        Ok(())
     }
 
     pub fn delete_environment(&self, id: &str) -> Result<(), AppError> {

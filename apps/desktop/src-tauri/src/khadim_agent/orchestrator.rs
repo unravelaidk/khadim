@@ -212,7 +212,7 @@ pub async fn run_prompt_with_plugins(
                 .unwrap_or_else(|| format!("sandbox-{}", session.id)),
         )
     } else {
-        ToolContext::direct(session.cwd.clone())
+        ToolContext::direct_with_target(session.cwd.clone(), session.execution_target)
     };
     let runtime = AgentRuntime::with_extras(tool_context, plugin_tools, skill_dirs, skills_prompt);
     let mode = if session.workspace_id == "__chat__" {

@@ -16,8 +16,10 @@ export function backendLabel(backend: string) {
   return backend;
 }
 
-export function executionTargetLabel(target: string) {
-  return target === "sandbox" ? "Sandbox" : "Direct";
+export function environmentSubstrateLabel(substrate: string) {
+  if (substrate === "docker") return "Docker sandbox";
+  if (substrate === "remote") return "Remote sandbox";
+  return "Local";
 }
 
 export function formatMessageTime(input: string | Date) {

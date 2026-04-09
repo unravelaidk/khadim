@@ -7,9 +7,10 @@
 //!
 //! Resolution order for `cwd`:
 //! 1. `conversation.backend_session_cwd` (already validated at session create time)
-//! 2. `conversation.worktree_path`
-//! 3. `workspace.worktree_path`
-//! 4. `workspace.repo_path`
+//! 2. `environment.effective_cwd`
+//! 3. `conversation.worktree_path`
+//! 4. `workspace.worktree_path`
+//! 5. `workspace.repo_path`
 //!
 //! `branch` falls back from conversation → workspace.
 
@@ -107,7 +108,6 @@ pub fn build_context(
     let conv_cwd = conversation.and_then(|c| c.backend_session_cwd.as_deref());
     let conv_worktree = conversation.and_then(|c| c.worktree_path.as_deref());
     let env_cwd = environment.map(|e| e.effective_cwd.as_str());
-    let env_worktree = environment.and_then(|e| e.worktree_path.as_deref());
     let ws_worktree = workspace.worktree_path.as_deref();
 
     let cwd = first_existing_dir([
@@ -115,7 +115,6 @@ pub fn build_context(
         env_cwd,
         conv_cwd,
         conv_worktree,
-        env_worktree,
         ws_worktree,
         Some(workspace.repo_path.as_str()),
     ])
@@ -123,7 +122,7 @@ pub fn build_context(
 
     // Prefer a real worktree path that still exists on disk; otherwise drop it
     // so the frontend doesn't show a stale badge.
-    let worktree_path = [conv_worktree, env_worktree, ws_worktree]
+    let worktree_path = [conv_worktree, ws_worktree]
         .into_iter()
         .flatten()
         .find(|p| Path::new(p).is_dir())

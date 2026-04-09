@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import type { Workspace } from "../lib/bindings";
-import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import { backendLabel, relTime } from "../lib/ui";
 
 interface Props {
   workspaces: Workspace[];
@@ -141,7 +141,7 @@ const WorkspaceCard = memo(function WorkspaceCard({
         <span className="text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">{relTime(workspace.updated_at)}</span>
       </div>
       <h3 className="text-[14px] font-bold text-[var(--text-primary)] leading-snug truncate mb-1">{workspace.name}</h3>
-      <p className="text-[11px] text-[var(--text-muted)]">{backendLabel(workspace.backend)} · {executionTargetLabel(workspace.execution_target)}</p>
+      <p className="text-[11px] text-[var(--text-muted)]">{backendLabel(workspace.backend)}</p>
       {workspace.branch && (
         <p className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
           <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">

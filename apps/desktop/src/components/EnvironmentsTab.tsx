@@ -1,39 +1,45 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { Environment, RuntimeSession, Workspace } from "../lib/bindings";
-import type { AgentInstance } from "../lib/types";
 import {
   useCreateEnvironmentMutation,
   useDeleteEnvironmentMutation,
   useEnvironmentsQuery,
   useRuntimeSessionsQuery,
+  useUpdateEnvironmentMutation,
 } from "../lib/queries";
-import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import { backendLabel, environmentSubstrateLabel, relTime } from "../lib/ui";
 import { GlassSelect } from "./GlassSelect";
 
 interface Props {
   workspace: Workspace;
-  agents: AgentInstance[];
-  onNewAgentInEnvironment?: (environmentId: string) => void;
 }
 
 /**
- * Environments tab — first-class execution contexts inside a workspace.
- *
- * An environment owns: cwd, worktree, sandbox, execution target, backend.
- * A runtime session owns: backend session identity + shared/dedicated flag.
- * Agents (conversations) attach to an environment and a runtime session.
+ * Environments tab — first-class isolation profiles inside a workspace.
  */
-export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: Props) {
+export function EnvironmentsTab({ workspace }: Props) {
   const { data: environments = [], isLoading } = useEnvironmentsQuery(workspace.id);
   const createMutation = useCreateEnvironmentMutation();
+  const updateMutation = useUpdateEnvironmentMutation();
   const deleteMutation = useDeleteEnvironmentMutation();
 
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
-  const [target, setTarget] = useState<"local" | "sandbox">(workspace.execution_target);
-  const [branch, setBranch] = useState<string>(workspace.branch ?? "");
+  const [substrate, setSubstrate] = useState<"local" | "docker" | "remote">("local");
+  const [wasmEnabled, setWasmEnabled] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (environments.length === 0) {
+      setSelectedEnvironmentId(null);
+      return;
+    }
+    if (!selectedEnvironmentId || !environments.some((env) => env.id === selectedEnvironmentId)) {
+      setSelectedEnvironmentId(environments[0].id);
+    }
+  }, [environments, selectedEnvironmentId]);
 
   async function handleCreate() {
     setError(null);
@@ -43,12 +49,12 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
         workspace_id: workspace.id,
         name: name.trim() || undefined,
         backend: workspace.backend,
-        execution_target: target,
-        branch: branch.trim() || undefined,
+        substrate,
+        wasm_enabled: wasmEnabled,
       });
       setName("");
-      setBranch(workspace.branch ?? "");
-      setTarget(workspace.execution_target);
+      setSubstrate("local");
+      setWasmEnabled(false);
       setShowCreate(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -61,6 +67,7 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
     if (!confirm(`Delete environment "${env.name}"? This will detach any agents using it.`)) return;
     try {
       await deleteMutation.mutateAsync({ workspaceId: workspace.id, id: env.id });
+      if (selectedEnvironmentId === env.id) setSelectedEnvironmentId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -73,7 +80,7 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
         <div>
           <h2 className="text-sm font-bold text-[var(--text-primary)]">Environments</h2>
           <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-            Durable execution contexts. Agents attach to an environment for cwd, worktree, sandbox, and backend.
+            Configure execution substrates for this workspace. Agents are assigned to environments from the agents tab.
           </p>
         </div>
         <button
@@ -98,26 +105,27 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
               />
             </label>
             <label className="block">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Execution target</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Substrate</span>
               <GlassSelect
-                value={target}
-                onChange={(v) => setTarget(v as "local" | "sandbox")}
+                value={substrate}
+                onChange={(v) => setSubstrate(v as "local" | "docker" | "remote")}
                 options={[
-                  { value: "local", label: "Direct" },
-                  { value: "sandbox", label: "Sandbox" },
+                  { value: "local", label: "Local" },
+                  { value: "docker", label: "Docker sandbox" },
+                  { value: "remote", label: "Remote sandbox" },
                 ]}
                 className="mt-1"
               />
             </label>
           </div>
-          <label className="block">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Branch (optional)</span>
+          <label className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
             <input
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              placeholder={workspace.branch ?? "main"}
-              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none font-mono"
+              type="checkbox"
+              checked={wasmEnabled}
+              onChange={(e) => setWasmEnabled(e.target.checked)}
+              className="rounded"
             />
+            Enable Wasm tools on top of this environment
           </label>
           {error && (
             <p className="text-[11px] text-[var(--color-danger-text-light)]">{error}</p>
@@ -149,7 +157,7 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
         <div className="py-12 text-center rounded-2xl glass-card-static">
           <p className="text-[12px] font-medium text-[var(--text-secondary)]">No environments yet</p>
           <p className="text-[11px] text-[var(--text-muted)] mt-1 max-w-sm mx-auto">
-            Create an environment to group agents sharing the same branch, worktree, sandbox, or session.
+            Create an environment to define the runtime substrate for agents in this workspace.
           </p>
           <button
             onClick={() => setShowCreate(true)}
@@ -165,12 +173,21 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
           <EnvironmentCard
             key={env.id}
             env={env}
-            agents={agents}
+            selected={env.id === selectedEnvironmentId}
+            onSelect={() => setSelectedEnvironmentId(env.id)}
             onDelete={() => void handleDelete(env)}
-            onNewAgent={onNewAgentInEnvironment ? () => onNewAgentInEnvironment(env.id) : undefined}
           />
         ))}
       </div>
+
+      {selectedEnvironmentId && (
+        <EnvironmentConfigPanel
+          key={selectedEnvironmentId}
+          env={environments.find((env) => env.id === selectedEnvironmentId) ?? null}
+          onSave={(input) => updateMutation.mutateAsync(input)}
+          onDelete={(env) => void handleDelete(env)}
+        />
+      )}
     </div>
   );
 }
@@ -179,112 +196,291 @@ export function EnvironmentsTab({ workspace, agents, onNewAgentInEnvironment }: 
 
 interface CardProps {
   env: Environment;
-  agents: AgentInstance[];
+  selected: boolean;
+  onSelect: () => void;
   onDelete: () => void;
-  onNewAgent?: () => void;
 }
 
-const EnvironmentCard = memo(function EnvironmentCard({ env, agents, onDelete, onNewAgent }: CardProps) {
+const EnvironmentCard = memo(function EnvironmentCard({ env, selected, onSelect, onDelete }: CardProps) {
   const { data: sessions = [] } = useRuntimeSessionsQuery(env.id);
-
-  const attachedAgents = useMemo(
-    () => agents.filter((a) => a.worktreePath === env.worktree_path || a.branch === env.branch),
-    [agents, env.branch, env.worktree_path],
-  );
-  const runningCount = attachedAgents.filter((a) => a.status === "running").length;
+  const runningSessionCount = sessions.filter((s) => s.status === "running").length;
 
   return (
-    <div className="rounded-2xl glass-card p-4 flex flex-col gap-3">
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`rounded-2xl glass-card p-4 flex flex-col gap-3 text-left transition-all ${
+        selected ? "ring-1 ring-[var(--color-accent)] shadow-[var(--shadow-glow-accent)]" : ""
+      }`}
+    >
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                runningSessionCount > 0 ? "bg-[var(--color-accent)] animate-pulse" : "bg-[var(--scrollbar-thumb)]"
+              }`}
+            />
             <p className="text-[13px] font-semibold text-[var(--text-primary)] truncate">{env.name}</p>
             <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              {executionTargetLabel(env.execution_target)}
+              {environmentSubstrateLabel(env.substrate)}
             </span>
           </div>
           <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
             {backendLabel(env.backend)} · updated {relTime(env.updated_at)}
           </p>
         </div>
-        <button
-          onClick={onDelete}
-          className="h-7 w-7 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--color-danger-bg-strong)] hover:text-[var(--color-danger-text-light)] transition-colors shrink-0"
-          title="Delete environment"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+        <span className="h-7 px-2 rounded-xl flex items-center justify-center text-[var(--text-muted)] shrink-0 text-[10px] font-semibold">
+          {selected ? "Configuring" : "Configure"}
+        </span>
       </div>
 
       {/* Badges */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        {env.branch && (
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px] font-medium bg-[var(--surface-ink-5)] text-[var(--text-secondary)] max-w-[200px] truncate" title={env.branch}>
-            {env.branch}
-          </span>
-        )}
-        {env.worktree_path && (
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium bg-[var(--surface-ink-5)] text-[var(--text-secondary)]" title={env.worktree_path}>
-            worktree
+        {env.wasm_enabled && (
+          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium bg-[var(--surface-ink-5)] text-[var(--text-secondary)]">
+            wasm
           </span>
         )}
         {env.sandbox_root_path && (
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium bg-[var(--surface-ink-5)] text-[var(--text-secondary)]" title={env.sandbox_root_path}>
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium bg-[var(--surface-ink-5)] text-[var(--text-secondary)]"
+            title={env.sandbox_root_path}
+          >
             sandbox
           </span>
         )}
       </div>
 
       {/* cwd */}
-      <p
-        className="text-[10px] font-mono text-[var(--text-muted)] break-all"
-        title={env.effective_cwd}
-      >
+      <p className="text-[10px] font-mono text-[var(--text-muted)] break-all" title={env.effective_cwd}>
         {env.effective_cwd}
       </p>
 
-      {/* Sessions + agents stats */}
+      {/* Sessions stat */}
       <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)] pt-1 border-t border-[var(--glass-border)]">
         <span>
-          <span className="font-semibold text-[var(--text-secondary)]">{sessions.length}</span> session{sessions.length !== 1 ? "s" : ""}
+          <span className="font-semibold text-[var(--text-secondary)]">{sessions.length}</span>{" "}
+          session{sessions.length !== 1 ? "s" : ""}
         </span>
-        <span>
-          <span className="font-semibold text-[var(--text-secondary)]">{attachedAgents.length}</span> agent{attachedAgents.length !== 1 ? "s" : ""}
-        </span>
-        {runningCount > 0 && (
+        {runningSessionCount > 0 && (
           <span className="inline-flex items-center gap-1 text-[var(--color-accent-hover)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-pulse" />
-            {runningCount} running
+            {runningSessionCount} running
           </span>
         )}
-        {onNewAgent && (
-          <button
-            onClick={onNewAgent}
-            className="ml-auto h-6 px-2 rounded-lg btn-glass text-[10px] font-semibold"
-          >
-            New agent
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="ml-auto h-6 px-2 rounded-lg text-[10px] font-semibold text-[var(--color-danger-text-light)] hover:bg-[var(--color-danger-bg-strong)] transition-colors"
+        >
+          Delete
+        </button>
       </div>
 
       {/* Session list (compact) */}
       {sessions.length > 0 && (
         <div className="space-y-1">
-          {sessions.slice(0, 4).map((session) => (
+          {sessions.slice(0, 3).map((session) => (
             <SessionRow key={session.id} session={session} />
           ))}
-          {sessions.length > 4 && (
-            <p className="text-[10px] text-[var(--text-muted)] pl-2">+ {sessions.length - 4} more</p>
+          {sessions.length > 3 && (
+            <p className="text-[10px] text-[var(--text-muted)] pl-2">+ {sessions.length - 3} more</p>
           )}
         </div>
       )}
-    </div>
+    </button>
   );
 });
+
+function EnvironmentConfigPanel({
+  env,
+  onSave,
+  onDelete,
+}: {
+  env: Environment | null;
+  onSave: (input: import("../lib/bindings").UpdateEnvironmentInput) => Promise<Environment>;
+  onDelete: (env: Environment) => void;
+}) {
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState(env?.name ?? "");
+  const [substrate, setSubstrate] = useState<"local" | "docker" | "remote">(env?.substrate ?? "local");
+  const [wasmEnabled, setWasmEnabled] = useState(env?.wasm_enabled ?? false);
+  const [dockerImage, setDockerImage] = useState(env?.docker_image ?? "");
+  const [dockerWorkdir, setDockerWorkdir] = useState(env?.docker_workdir ?? "");
+  const [sshHost, setSshHost] = useState(env?.ssh_host ?? "");
+  const [sshPort, setSshPort] = useState(env?.ssh_port ? String(env.ssh_port) : "22");
+  const [sshUser, setSshUser] = useState(env?.ssh_user ?? "");
+  const [sshPath, setSshPath] = useState(env?.ssh_path ?? "");
+
+  useEffect(() => {
+    setSaveError(null);
+    setName(env?.name ?? "");
+    setSubstrate(env?.substrate ?? "local");
+    setWasmEnabled(env?.wasm_enabled ?? false);
+    setDockerImage(env?.docker_image ?? "");
+    setDockerWorkdir(env?.docker_workdir ?? "");
+    setSshHost(env?.ssh_host ?? "");
+    setSshPort(env?.ssh_port ? String(env.ssh_port) : "22");
+    setSshUser(env?.ssh_user ?? "");
+    setSshPath(env?.ssh_path ?? "");
+  }, [env]);
+
+  if (!env) return null;
+  const currentEnv = env;
+
+  async function handleSave() {
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await onSave({
+        id: currentEnv.id,
+        name,
+        substrate,
+        wasm_enabled: wasmEnabled,
+        docker_image: dockerImage,
+        docker_workdir: dockerWorkdir,
+        ssh_host: sshHost,
+        ssh_port: Number.isFinite(Number(sshPort)) ? Number(sshPort) : undefined,
+        ssh_user: sshUser,
+        ssh_path: sshPath,
+      });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="rounded-3xl glass-card-static p-4 space-y-4">
+      <div>
+        <h3 className="text-sm font-bold text-[var(--text-primary)]">Configure: {currentEnv.name}</h3>
+        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+          Set the substrate and connection details for this environment.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Substrate</span>
+          <GlassSelect
+            value={substrate}
+            onChange={(v) => setSubstrate(v as "local" | "docker" | "remote")}
+            options={[
+              { value: "local", label: "Local" },
+              { value: "docker", label: "Docker sandbox" },
+              { value: "remote", label: "Remote via SSH" },
+            ]}
+            className="mt-1"
+          />
+        </label>
+      </div>
+
+      <label className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
+        <input
+          type="checkbox"
+          checked={wasmEnabled}
+          onChange={(e) => setWasmEnabled(e.target.checked)}
+          className="rounded"
+        />
+        Enable Wasm tools on top of this environment
+      </label>
+
+      {substrate === "local" && (
+        <div className="rounded-xl bg-[var(--surface-ink-3)] p-3 text-[11px] text-[var(--text-secondary)]">
+          Agents run directly on this machine using the selected worktree or repo context.
+        </div>
+      )}
+
+      {substrate === "docker" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Docker image</span>
+            <input
+              value={dockerImage}
+              onChange={(e) => setDockerImage(e.target.value)}
+              placeholder="e.g. node:22-bookworm"
+              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Container workdir</span>
+            <input
+              value={dockerWorkdir}
+              onChange={(e) => setDockerWorkdir(e.target.value)}
+              placeholder="e.g. /workspace"
+              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+            />
+          </label>
+        </div>
+      )}
+
+      {substrate === "remote" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">SSH host</span>
+            <input
+              value={sshHost}
+              onChange={(e) => setSshHost(e.target.value)}
+              placeholder="e.g. devbox.internal"
+              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">SSH port</span>
+            <input
+              value={sshPort}
+              onChange={(e) => setSshPort(e.target.value)}
+              placeholder="22"
+              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">SSH user</span>
+            <input
+              value={sshUser}
+              onChange={(e) => setSshUser(e.target.value)}
+              placeholder="e.g. ubuntu"
+              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Remote path</span>
+            <input
+              value={sshPath}
+              onChange={(e) => setSshPath(e.target.value)}
+              placeholder="e.g. /srv/app"
+              className="mt-1 w-full rounded-xl glass-input px-3 py-2 text-[12px] outline-none"
+            />
+          </label>
+        </div>
+      )}
+
+      {saveError && <p className="text-[11px] text-[var(--color-danger-text-light)]">{saveError}</p>}
+
+      <div className="flex justify-end">
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="h-8 px-4 rounded-xl btn-ink text-[11px] font-semibold disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save configuration"}
+        </button>
+      </div>
+    </section>
+  );
+}
 
 function SessionRow({ session }: { session: RuntimeSession }) {
   return (
