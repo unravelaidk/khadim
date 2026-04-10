@@ -8,8 +8,8 @@
     "start": "tsx server.ts",
     "typecheck": "react-router typegen && tsc -b",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:generate": "tsx scripts/run-drizzle.ts generate",
+    "db:migrate": "tsx scripts/run-drizzle.ts migrate"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.12",

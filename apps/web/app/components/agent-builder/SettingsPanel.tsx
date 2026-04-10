@@ -266,6 +266,8 @@ export function SettingsPanel() {
         <AddModelForm
           form={form}
           setForm={setForm}
+          existingApiKey={existingApiKey}
+          setExistingApiKey={setExistingApiKey}
           providers={providers}
           providerInfo={providerInfo}
           providerModelOptions={providerModelOptions}
@@ -295,6 +297,8 @@ export function SettingsPanel() {
           <EditModelModal
             editForm={editForm}
             setEditForm={setEditForm}
+            editExistingApiKey={editExistingApiKey}
+            setEditExistingApiKey={setEditExistingApiKey}
             providers={providers}
             editProviderModelOptions={editProviderModelOptions}
             editDiscoverModels={editDiscoverModels}
@@ -450,6 +454,8 @@ function CodexOAuthSection({
 function AddModelForm({
   form,
   setForm,
+  existingApiKey,
+  setExistingApiKey,
   providers,
   providerInfo,
   providerModelOptions,
@@ -467,6 +473,8 @@ function AddModelForm({
 }: {
   form: FormData;
   setForm: React.Dispatch<React.SetStateAction<FormData>>;
+  existingApiKey: boolean;
+  setExistingApiKey: React.Dispatch<React.SetStateAction<boolean>>;
   providers: Array<{ type: ProviderType; name: string; needsBaseUrl: boolean }>;
   providerInfo: { type: ProviderType; name: string; needsBaseUrl: boolean } | undefined;
   providerModelOptions: ModelOption[];
@@ -671,6 +679,8 @@ function ConfiguredModelsSection({
 function EditModelModal({
   editForm,
   setEditForm,
+  editExistingApiKey,
+  setEditExistingApiKey,
   providers,
   editProviderModelOptions,
   editDiscoverModels,
@@ -681,6 +691,8 @@ function EditModelModal({
 }: {
   editForm: FormData;
   setEditForm: React.Dispatch<React.SetStateAction<FormData>>;
+  editExistingApiKey: boolean;
+  setEditExistingApiKey: React.Dispatch<React.SetStateAction<boolean>>;
   providers: Array<{ type: ProviderType; name: string }>;
   editProviderModelOptions: ModelOption[];
   editDiscoverModels: ReturnType<typeof useDiscoverModels>;

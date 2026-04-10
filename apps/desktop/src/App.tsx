@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useEffectEvent, useRef, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
@@ -46,6 +46,7 @@ import type { AgentInstance, InteractionMode, WorkHomeView } from "./lib/types";
 import { createAgentInstance, createLocalConversation } from "./lib/types";
 import { useStandaloneChat } from "./hooks/useStandaloneChat";
 import { useAgentPersistence } from "./hooks/useAgentPersistence";
+import { usePluginTabs } from "./hooks/usePluginTabs";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
@@ -79,6 +80,11 @@ export default function App() {
     handleSetCatppuccinVariant,
     handleToggleTheme,
   } = useThemePreferences();
+
+  // ── Plugin tab state (chat mode sidebar + content area) ─────────
+  // null = built-in Chats; "{pluginId}:{tabLabel}" = plugin-owned
+  const [activePluginTab, setActivePluginTab] = useState<string | null>(null);
+  const pluginTabs = usePluginTabs();
 
   // ── Workspace state ─────────────────────────────────────────────
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
@@ -688,6 +694,8 @@ export default function App() {
         onSelectChat={handleSelectChat}
         onNewChat={handleNewStandaloneChat}
         onDeleteChat={handleDeleteStandaloneChat}
+        activePluginTab={activePluginTab}
+        onSetPluginTab={setActivePluginTab}
         // Work mode — home props
         workView={sidebarWorkView}
         workspaces={workspaces}
@@ -747,33 +755,60 @@ export default function App() {
         )}
 
         {/* ── CHAT MODE ─────────────────────────────────────────── */}
-        {!showSettings && interactionMode === "chat" && (
-          <ChatView
-            localConversation={activeChatConv}
-            conversationId={activeChatId}
-            title={activeChatConv?.title ?? "Chat"}
-            subtitle={
-              chatDirectory
-                ? chatDirectory
-                : activeChatConv
-                  ? `${activeChatConv.messages.length} messages`
-                  : "Start a new conversation"
+        {!showSettings && interactionMode === "chat" && (() => {
+          // If a plugin tab with a content_element is active, let the plugin
+          // own the entire content div. Otherwise show the default ChatView.
+          if (activePluginTab) {
+            const activeEntry = pluginTabs.find(
+              (t) => `${t.pluginId}:${t.tab.label}` === activePluginTab
+            );
+            if (activeEntry?.tab.content_element) {
+              // Use React.createElement with the custom element tag name (string).
+              // Web components are valid HTML elements; we bypass TS's strict JSX check.
+              const tag = activeEntry.tab.content_element;
+              return (
+                // Flex column that fills the parent — same shape as ChatView's root.
+                // The custom element is a flex child with flex:1 so it fills this.
+                <div key={activePluginTab} style={{ display: "flex", flexDirection: "column", flex: "1 1 0%", minHeight: 0 }}>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(React as any).createElement(tag, {
+                    "data-plugin-id": activeEntry.pluginId,
+                    // connectedCallback also sets flex:1 via cssText; these are
+                    // merged — belt-and-suspenders to ensure the element fills the parent.
+                    style: { flex: 1, minHeight: 0, width: "100%" },
+                  })}
+                </div>
+              );
             }
-            basePath={chatDirectory}
-            input={standaloneChatInput}
-            onInputChange={setStandaloneChatInput}
-            onSend={handleStandaloneChatSend}
-            onStop={() => void handleStandaloneChatAbort()}
-            onNewChat={handleNewStandaloneChat}
-            isProcessing={activeStandaloneIsProcessing}
-            streamingContent={activeStandaloneStreamingContent}
-            streamingSteps={activeStandaloneStreamingSteps}
-            availableModels={chatAvailableModels}
-            selectedModel={chatSelectedModel}
-            onSelectModel={(key) => void handleChatSelectModel(key)}
-            chatEndRef={chatEndRef}
-          />
-        )}
+          }
+          return (
+            <ChatView
+              localConversation={activeChatConv}
+              conversationId={activeChatId}
+              title={activeChatConv?.title ?? "Chat"}
+              subtitle={
+                chatDirectory
+                  ? chatDirectory
+                  : activeChatConv
+                    ? `${activeChatConv.messages.length} messages`
+                    : "Start a new conversation"
+              }
+              basePath={chatDirectory}
+              input={standaloneChatInput}
+              onInputChange={setStandaloneChatInput}
+              onSend={handleStandaloneChatSend}
+              onStop={() => void handleStandaloneChatAbort()}
+              onNewChat={handleNewStandaloneChat}
+              isProcessing={activeStandaloneIsProcessing}
+              streamingContent={activeStandaloneStreamingContent}
+              streamingSteps={activeStandaloneStreamingSteps}
+              availableModels={chatAvailableModels}
+              selectedModel={chatSelectedModel}
+              onSelectModel={(key) => void handleChatSelectModel(key)}
+              chatEndRef={chatEndRef}
+            />
+          );
+        })()}
 
         {/* ── WORK MODE — home views ────────────────────────────── */}
         {!showSettings && interactionMode === "work" && !inWorkspace && workView === "workspaces" && (

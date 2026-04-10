@@ -13,6 +13,7 @@ use crate::plugins::PluginManager;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
+use tauri::AppHandle;
 
 fn flush_missing_tool_results(
     repaired: &mut Vec<ChatMessage>,
@@ -162,7 +163,7 @@ pub async fn run_prompt(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     manager: Option<&Arc<KhadimManager>>,
 ) -> Result<String, AppError> {
-    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager).await
+    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager, None).await
 }
 
 pub async fn run_prompt_with_plugins(
@@ -173,10 +174,12 @@ pub async fn run_prompt_with_plugins(
     plugin_manager: Option<&Arc<PluginManager>>,
     skill_manager: Option<&Arc<crate::skills::SkillManager>>,
     khadim_manager: Option<&Arc<KhadimManager>>,
+    app: Option<&AppHandle>,
 ) -> Result<String, AppError> {
-    let mut plugin_tools: Vec<Arc<dyn Tool>> = plugin_manager
-        .map(|pm| crate::plugins::collect_plugin_tools(pm))
-        .unwrap_or_default();
+    let mut plugin_tools: Vec<Arc<dyn Tool>> = match (plugin_manager, app) {
+        (Some(pm), Some(handle)) => crate::plugins::collect_plugin_tools(pm, handle),
+        _ => Vec::new(),
+    };
 
     // Add the question tool if the manager is available (gives it the
     // ability to park on a oneshot channel until the frontend answers).

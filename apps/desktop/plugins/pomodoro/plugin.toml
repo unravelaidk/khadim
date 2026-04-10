@@ -1,0 +1,20 @@
+[plugin]
+name        = "Pomodoro"
+version     = "0.1.0"
+description = "Pomodoro timer with study tasks — the agent estimates time and can start timers from chat"
+author      = "Khadim"
+license     = "MIT"
+wasm        = "plugin.wasm"
+
+[permissions]
+store = true
+
+[ui]
+js = "ui.js"
+
+[[ui.tabs]]
+label           = "Pomodoro"
+icon            = "timer"
+sidebar_element = "khadim-pomodoro-sidebar"
+content_element = "khadim-pomodoro-content"
+priority        = 20

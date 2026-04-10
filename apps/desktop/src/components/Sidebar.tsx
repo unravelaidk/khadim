@@ -1,10 +1,14 @@
-import { memo, useState } from "react";
+import React, { memo, useState, useEffect } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
 import type { Workspace } from "../lib/bindings";
+import { commands } from "../lib/bindings";
 import { backendLabel, relTime } from "../lib/ui";
 import type { AgentInstance, InteractionMode, LocalChatConversation, WorkHomeView } from "../lib/types";
 import type { ThemeMode } from "./SettingsPanel";
 import { AgentCard } from "./AgentCard";
+import { usePluginTabs } from "../hooks/usePluginTabs";
+import { usePluginScripts } from "../hooks/usePluginScripts";
+import type { PluginEntry } from "../lib/bindings";
 
 
 /* ─── Mode Switcher ────────────────────────────────────────────────── */
@@ -72,6 +76,9 @@ interface SidebarProps {
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
+  /** Which plugin tab is active in the chat sidebar (null = built-in Chats) */
+  activePluginTab: string | null;
+  onSetPluginTab: (key: string | null) => void;
 
   // Work mode — home props
   workView: WorkHomeView | "workspace";
@@ -110,6 +117,8 @@ export function Sidebar({
   onSelectChat,
   onNewChat,
   onDeleteChat,
+  activePluginTab,
+  onSetPluginTab,
   workView,
   workspaces,
   selectedWorkspaceId,
@@ -149,6 +158,8 @@ export function Sidebar({
             onSelectChat={onSelectChat}
             onNewChat={onNewChat}
             onDeleteChat={onDeleteChat}
+            activePluginTab={activePluginTab}
+            onSetPluginTab={onSetPluginTab}
           />
         ) : workView === "workspace" ? (
           <WorkspaceSidebar
@@ -231,12 +242,43 @@ export function Sidebar({
    Chat Sidebar — standalone LLM conversations
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* ─── Plugin Tab Strip ─────────────────────────────────────────────── */
+
+/** Icon map: icon name from plugin.toml → inline SVG path */
+function PluginTabIcon({ icon }: { icon: string | null }) {
+  const paths: Record<string, string> = {
+    calendar: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
+    notes: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    tasks: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+    search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+    settings: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+    bookmark: "M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z",
+    chart: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+    clock: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+    timer: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+    grid: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
+    puzzle: "M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z",
+  };
+  const d = icon && paths[icon]
+    ? paths[icon]
+    : "M4 6h16M4 10h16M4 14h16M4 18h16"; // fallback: lines icon
+
+  return (
+    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  );
+}
+
 interface ChatSidebarProps {
   conversations: LocalChatConversation[];
   activeChatId: string | null;
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
+  /** Controlled from outside so App.tsx can switch content area too */
+  activePluginTab: string | null;
+  onSetPluginTab: (tabKey: string | null) => void;
 }
 
 function ChatSidebar({
@@ -245,56 +287,127 @@ function ChatSidebar({
   onSelectChat,
   onNewChat,
   onDeleteChat,
+  activePluginTab,
+  onSetPluginTab,
 }: ChatSidebarProps) {
+  const pluginTabs = usePluginTabs();
+
+  // Collect all plugin entries that have a ui_js so we can inject scripts
+  const [allPlugins, setAllPlugins] = useState<PluginEntry[]>([]);
+  useEffect(() => {
+    commands.pluginList().then(setAllPlugins);
+  }, []);
+  usePluginScripts(allPlugins);
+
+  const activeTabEntry = pluginTabs.find(
+    (t) => `${t.pluginId}:${t.tab.label}` === activePluginTab
+  ) ?? null;
+
   return (
     <>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--glass-border)]">
-        <span className="text-[14px] font-bold tracking-tight text-[var(--text-primary)]">Chats</span>
-        <button
-          onClick={onNewChat}
-          className="h-6 w-6 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
-          title="New chat"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
+        <span className="text-[14px] font-bold tracking-tight text-[var(--text-primary)]">
+          {activeTabEntry ? activeTabEntry.tab.label : "Chats"}
+        </span>
+        {!activeTabEntry && (
+          <button
+            onClick={onNewChat}
+            className="h-6 w-6 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            title="New chat"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
       </div>
 
-      {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-1.5 py-1.5">
-        <div className="flex flex-col gap-0.5">
-          {conversations.map((conversation) => (
-            <ChatSidebarItem
-              key={conversation.id}
-              conversation={conversation}
-              isSelected={conversation.id === activeChatId}
-              onSelectChat={onSelectChat}
-              onDeleteChat={onDeleteChat}
-            />
-          ))}
-          {conversations.length === 0 && (
-            <div className="py-10 text-center">
-              <div className="w-10 h-10 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
-                <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                </svg>
-              </div>
-              <p className="text-[12px] font-medium text-[var(--text-secondary)]">No chats yet</p>
-              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                Start a conversation with the AI
-              </p>
+      {/* Plugin tab strip — only shown when plugins register tabs */}
+      {pluginTabs.length > 0 && (
+        <div className="shrink-0 flex items-center gap-0.5 px-2 py-1.5 border-b border-[var(--glass-border)]">
+          {/* Built-in "Chats" tab */}
+          <button
+            onClick={() => onSetPluginTab(null)}
+            title="Chats"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+              activePluginTab === null
+                ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+            </svg>
+            Chats
+          </button>
+
+          {/* Plugin tabs */}
+          {pluginTabs.map((entry) => {
+            const key = `${entry.pluginId}:${entry.tab.label}`;
+            return (
               <button
-                onClick={onNewChat}
-                className="mt-3 h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold"
+                key={key}
+                onClick={() => onSetPluginTab(activePluginTab === key ? null : key)}
+                title={entry.tab.label}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  activePluginTab === key
+                    ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)]"
+                    : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+                }`}
               >
-                New chat
+                <PluginTabIcon icon={entry.tab.icon} />
+                {entry.tab.label}
               </button>
-            </div>
-          )}
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {/* Content: plugin sidebar element OR built-in chats list */}
+      {activeTabEntry && activeTabEntry.tab.sidebar_element ? (
+        <div className="flex-1 overflow-hidden min-h-0" style={{ display: "flex", flexDirection: "column" }}>
+          {/* Render the plugin's custom element — it owns this div fully */}
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {(React as any).createElement(activeTabEntry.tab.sidebar_element, {
+            "data-plugin-id": activeTabEntry.pluginId,
+            style: { flex: 1, minHeight: 0, width: "100%" },
+          })}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-1.5 py-1.5">
+          <div className="flex flex-col gap-0.5">
+            {conversations.map((conversation) => (
+              <ChatSidebarItem
+                key={conversation.id}
+                conversation={conversation}
+                isSelected={conversation.id === activeChatId}
+                onSelectChat={onSelectChat}
+                onDeleteChat={onDeleteChat}
+              />
+            ))}
+            {conversations.length === 0 && (
+              <div className="py-10 text-center">
+                <div className="w-10 h-10 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
+                  <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                  </svg>
+                </div>
+                <p className="text-[12px] font-medium text-[var(--text-secondary)]">No chats yet</p>
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  Start a conversation with the AI
+                </p>
+                <button
+                  onClick={onNewChat}
+                  className="mt-3 h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold"
+                >
+                  New chat
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

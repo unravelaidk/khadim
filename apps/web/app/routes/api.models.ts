@@ -10,7 +10,7 @@ import {
   initializeDefaultModels,
 } from "../agent/model-manager";
 import { SUPPORTED_PROVIDERS, RECOMMENDED_MODELS } from "../agent/models";
-import { discoverProviderModels } from "../agent/provider-models";
+import { discoverProviderModels, hasProviderApiKey } from "../agent/provider-models";
 import {
   getOpenAICodexLoginStatus,
   hasOpenAICodexAuth,
@@ -44,8 +44,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   if (action === "providers") {
+    const providers = await Promise.all(
+      SUPPORTED_PROVIDERS.map(async (provider) => ({
+        ...provider,
+        hasApiKey: await hasProviderApiKey(provider.type),
+      }))
+    );
+
     return Response.json({
-      providers: SUPPORTED_PROVIDERS,
+      providers,
       recommended: RECOMMENDED_MODELS,
       oauth: {
         openaiCodexConnected: await hasOpenAICodexAuth(),
@@ -69,8 +76,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
+  await initializeDefaultModels();
   const models = await getAllModels();
-  return Response.json({ models });
+  const enrichedModels = await Promise.all(
+    models.map(async (model) => ({
+      ...model,
+      hasApiKey: await hasProviderApiKey(model.provider as Parameters<typeof hasProviderApiKey>[0], model.apiKey ?? undefined),
+    }))
+  );
+  return Response.json({ models: enrichedModels });
 }
 
 export async function action({ request }: ActionFunctionArgs) {

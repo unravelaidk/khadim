@@ -1,0 +1,23 @@
+{
+  "name": "@khadim/plugin-calendar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Calendar plugin UI — React + Vite, loaded as web components via khadim-plugin://",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0",
+    "vite-plugin-css-injected-by-js": "^3.5.2"
+  }
+}

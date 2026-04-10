@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { sandboxClient } from "../agent/sandbox";
+import { getSandboxProvider, withSandboxProviderFallback } from "../agent/sandbox";
 import { db, artifacts, chats, projects, workspaceFiles } from "../lib/db";
 import { eq } from "drizzle-orm";
 
@@ -18,6 +18,15 @@ async function startStaticServer(sandbox: { writeFile: (path: string, content: s
   `;
   await sandbox.writeFile("_server.ts", serverCode);
   await sandbox.spawn(["bun", "run", "_server.ts"]);
+}
+
+function requireSpawn(
+  sandbox: { spawn?: (cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }) => Promise<{ pid: number }> }
+): (cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }) => Promise<{ pid: number }> {
+  if (!sandbox.spawn) {
+    throw new Error("The selected sandbox backend does not support background processes");
+  }
+  return sandbox.spawn.bind(sandbox);
 }
 
 // Helper: Start npm dev server for React/Vite/Astro projects
@@ -80,21 +89,22 @@ export async function action({ request }: ActionFunctionArgs) {
   const chatId = formData.get("chatId")?.toString();
 
   try {
-    let sandbox: Awaited<ReturnType<typeof sandboxClient.sandbox.create>>;
+    const sandboxProvider = getSandboxProvider();
+    let sandbox: Awaited<ReturnType<typeof sandboxProvider.create>>;
     let newSandboxId: string;
     let isNewSession = false;
 
     if (sandboxId) {
       try {
-        sandbox = await sandboxClient.sandbox.connect(sandboxId);
+        sandbox = await withSandboxProviderFallback((provider) => provider.connect({ id: sandboxId }));
         newSandboxId = sandboxId;
       } catch {
-        sandbox = await sandboxClient.sandbox.create({ lifetime: "15m" });
+        sandbox = await withSandboxProviderFallback((provider) => provider.create({ lifetime: "15m" }));
         newSandboxId = sandbox.id;
         isNewSession = true;
       }
     } else {
-      sandbox = await sandboxClient.sandbox.create({ lifetime: "15m" });
+      sandbox = await withSandboxProviderFallback((provider) => provider.create({ lifetime: "15m" }));
       newSandboxId = sandbox.id;
       isNewSession = true;
     }
@@ -143,13 +153,14 @@ export async function action({ request }: ActionFunctionArgs) {
         // 2. Check if we have project metadata
         const projectResult = await db.select().from(projects).where(eq(projects.chatId, chatId)).limit(1);
         const project = projectResult[0];
-        
+
         if (project && project.projectType && project.projectName) {
           // We have a framework project (vite, react-router, astro)
           console.log(`Detected ${project.projectType} project: ${project.projectName}`);
+          const spawn = requireSpawn(sandbox);
           
           const devResult = await startDevServer(
-            sandbox, 
+            { exec: sandbox.exec, spawn }, 
             project.projectName, 
             project.devCommand || "npm run dev"
           );
@@ -177,7 +188,8 @@ export async function action({ request }: ActionFunctionArgs) {
               restorationStatus = "none";
             } else {
               console.log(`Detected static HTML project`);
-              await startStaticServer(sandbox, ".", 8000);
+              const spawn = requireSpawn(sandbox);
+              await startStaticServer({ writeFile: sandbox.writeFile, spawn }, ".", 8000);
               await new Promise(r => setTimeout(r, 500));
               restorationStatus = "static";
             }

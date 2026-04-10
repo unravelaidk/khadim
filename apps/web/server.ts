@@ -1,6 +1,9 @@
+import { loadEnv } from "./app/lib/load-env";
 import compression from "compression";
 import express, { type Request, type Response, type NextFunction } from "express";
 import morgan from "morgan";
+
+loadEnv();
 
 // Short-circuit the type-checking of the built output.
 const BUILD_PATH = "./build/server/index.js";

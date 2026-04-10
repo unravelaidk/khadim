@@ -36,6 +36,41 @@
         "vite-plugin-svgr": "^4.5.0",
       },
     },
+    "apps/desktop/plugins/calendar": {
+      "name": "@khadim/plugin-calendar",
+      "version": "0.1.0",
+      "dependencies": {
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.0.4",
+        "typescript": "^5.9.3",
+        "vite": "^7.3.0",
+        "vite-plugin-css-injected-by-js": "^3.5.2",
+      },
+    },
+    "apps/desktop/plugins/pomodoro": {
+      "name": "@khadim/plugin-pomodoro",
+      "version": "0.1.0",
+      "dependencies": {
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.0.4",
+        "typescript": "^5.9.3",
+        "vite": "^7.3.0",
+        "vite-plugin-css-injected-by-js": "^3.5.2",
+      },
+    },
+    "apps/firecracker-sandbox": {
+      "name": "@khadim/firecracker-sandbox",
+    },
     "apps/web": {
       "name": "@khadim/web",
       "dependencies": {
@@ -449,7 +484,13 @@
 
     "@khadim/desktop": ["@khadim/desktop@workspace:apps/desktop"],
 
+    "@khadim/firecracker-sandbox": ["@khadim/firecracker-sandbox@workspace:apps/firecracker-sandbox"],
+
     "@khadim/html-to-pptx": ["@khadim/html-to-pptx@workspace:packages/html-to-pptx"],
+
+    "@khadim/plugin-calendar": ["@khadim/plugin-calendar@workspace:apps/desktop/plugins/calendar"],
+
+    "@khadim/plugin-pomodoro": ["@khadim/plugin-pomodoro@workspace:apps/desktop/plugins/pomodoro"],
 
     "@khadim/web": ["@khadim/web@workspace:apps/web"],
 
@@ -2149,6 +2190,8 @@
 
     "vite-node": ["vite-node@1.6.1", "", { "dependencies": { "cac": "^6.7.14", "debug": "^4.3.4", "pathe": "^1.1.1", "picocolors": "^1.0.0", "vite": "^5.0.0" }, "bin": { "vite-node": "vite-node.mjs" } }, "sha512-YAXkfvGtuTzwWbDSACdJSg4A4DZiAqckWe90Zapc/sEX3XvHcw1NdurM/6od8J207tSDqNbSsgdCacBgvJKFuA=="],
 
+    "vite-plugin-css-injected-by-js": ["vite-plugin-css-injected-by-js@3.5.2", "", { "peerDependencies": { "vite": ">2.0.0-0" } }, "sha512-2MpU/Y+SCZyWUB6ua3HbJCrgnF0KACAsmzOQt1UvRVJCGF6S8xdA3ZUhWcWdM9ivG4I5az8PnQmwwrkC2CAQrQ=="],
+
     "vite-plugin-svgr": ["vite-plugin-svgr@4.5.0", "", { "dependencies": { "@rollup/pluginutils": "^5.2.0", "@svgr/core": "^8.1.0", "@svgr/plugin-jsx": "^8.1.0" }, "peerDependencies": { "vite": ">=2.6.0" } }, "sha512-W+uoSpmVkSmNOGPSsDCWVW/DDAyv+9fap9AZXBvWiQqrboJ08j2vh0tFxTD/LjwqwAd3yYSVJgm54S/1GhbdnA=="],
 
     "vite-tsconfig-paths": ["vite-tsconfig-paths@5.1.4", "", { "dependencies": { "debug": "^4.1.1", "globrex": "^0.1.2", "tsconfck": "^3.0.3" }, "peerDependencies": { "vite": "*" }, "optionalPeers": ["vite"] }, "sha512-cYj0LRuLV2c2sMqhqhGpaO3LretdtMn/BVX4cPLanIZuwwrkVl+lK84E/miEXkCHWXuq65rhNN4rXsBcOB3S4w=="],
@@ -2180,6 +2223,8 @@
     "xtend": ["xtend@4.0.2", "", {}, "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="],
 
     "yallist": ["yallist@3.1.1", "", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
+
+    "yaml": ["yaml@2.8.3", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg=="],
 
     "yocto-queue": ["yocto-queue@1.2.2", "", {}, "sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ=="],
 

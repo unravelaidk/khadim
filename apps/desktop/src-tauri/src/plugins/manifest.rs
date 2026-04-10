@@ -9,6 +9,9 @@ pub struct PluginManifest {
     pub config: Vec<ConfigField>,
     #[serde(default)]
     pub permissions: PluginPermissions,
+    /// Optional UI declaration. Present only when the plugin ships a UI.
+    #[serde(default)]
+    pub ui: Option<PluginUiManifest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +68,53 @@ pub struct PluginPermissions {
     #[serde(default)]
     pub store: bool,
 }
+
+// ── UI extension declarations ─────────────────────────────────────────
+
+/// Top-level `[ui]` table in `plugin.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PluginUiManifest {
+    /// Path to the JS file (relative to plugin dir) that registers the
+    /// plugin's custom elements.  Required when `tabs` is non-empty.
+    pub js: Option<String>,
+
+    /// Each entry adds one tab to the chat sidebar tab strip.
+    #[serde(default)]
+    pub tabs: Vec<PluginUiTab>,
+}
+
+/// A single `[[ui.tabs]]` entry.
+///
+/// When the user selects this tab:
+///   - `sidebar_element` (if set) owns the full sidebar content div.
+///   - `content_element` (if set) owns the full main content div.
+///
+/// Either or both may be omitted:
+///   - No `sidebar_element` → sidebar shows nothing extra (just the tab icon).
+///   - No `content_element` → the default ChatView keeps showing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginUiTab {
+    /// Display label shown under / next to the tab icon.
+    pub label: String,
+    /// Icon name (maps to SVG in the host icon set, e.g. "calendar", "notes").
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Custom-element tag that owns the full sidebar div.
+    #[serde(default)]
+    pub sidebar_element: Option<String>,
+    /// Custom-element tag that owns the full content div.
+    #[serde(default)]
+    pub content_element: Option<String>,
+    /// Ordering hint — lower numbers appear first. Default 100.
+    #[serde(default = "default_priority")]
+    pub priority: u32,
+}
+
+fn default_priority() -> u32 {
+    100
+}
+
+// ── Resolved plugin on disk ───────────────────────────────────────────
 
 /// A fully resolved plugin on disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]

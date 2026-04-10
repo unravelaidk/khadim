@@ -31,6 +31,18 @@ pub struct WasmToolResult {
     pub content: String,
     pub is_error: bool,
     pub metadata: Option<String>,
+    /// UI events emitted by the plugin during this tool call.
+    /// Each entry is (event_name, json_data).  The host forwards these
+    /// to the frontend via the `plugin-ui-event` Tauri event after the call.
+    #[serde(default)]
+    pub ui_events: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginUiEvent {
+    pub plugin_id: String,
+    pub event: String,
+    pub data: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,16 +61,24 @@ pub struct WasmPluginInfo {
 /// Per-plugin host state passed into WASM calls.
 pub struct PluginHostState {
     pub plugin_name: String,
+    pub plugin_id: String,
     pub workspace_root: PathBuf,
     pub permissions: PluginPermissions,
     pub config: HashMap<String, String>,
     pub store: Arc<Mutex<HashMap<String, String>>>,
+    /// Path to the on-disk store.json for this plugin.
+    pub store_path: PathBuf,
     /// Buffer holding the most recent filesystem read/list result.
     pub fs_response_buf: Vec<u8>,
     /// Buffer holding the most recent HTTP response body.
     pub http_response_buf: Vec<u8>,
     /// HTTP status code of the most recent response.
     pub http_response_status: u16,
+    /// Buffer for the most recent store read result.
+    pub store_response_buf: Vec<u8>,
+    /// Accumulated UI events emitted during the current tool call.
+    /// Drained by execute_tool and returned in WasmToolResult.
+    pub ui_events: Vec<(String, String)>,
 }
 
 // ── The WASM plugin instance ─────────────────────────────────────────
@@ -84,6 +104,8 @@ impl WasmPlugin {
         resolved: &ResolvedPlugin,
         workspace_root: &Path,
         config: HashMap<String, String>,
+        plugin_id: &str,
+        store_path: PathBuf,
     ) -> Result<Self, AppError> {
         let engine = Engine::default();
         let wasm_bytes = std::fs::read(&resolved.wasm_path).map_err(|e| {
@@ -102,17 +124,27 @@ impl WasmPlugin {
 
         let permissions = resolved.manifest.permissions.clone();
         let plugin_name = resolved.manifest.plugin.name.clone();
-        let plugin_store = Arc::new(Mutex::new(HashMap::<String, String>::new()));
+
+        // Load existing store from disk so WASM can read previously persisted data.
+        let initial_store: HashMap<String, String> = std::fs::read_to_string(&store_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        let plugin_store = Arc::new(Mutex::new(initial_store));
 
         let host_state = PluginHostState {
             plugin_name: plugin_name.clone(),
+            plugin_id: plugin_id.to_string(),
             workspace_root: workspace_root.to_path_buf(),
             permissions: permissions.clone(),
             config: config.clone(),
             store: plugin_store,
+            store_path,
             fs_response_buf: Vec::new(),
             http_response_buf: Vec::new(),
             http_response_status: 0,
+            store_response_buf: Vec::new(),
+            ui_events: Vec::new(),
         };
 
         let mut store = Store::new(&engine, host_state);
@@ -144,15 +176,24 @@ impl WasmPlugin {
     }
 
     /// Execute a tool by name with JSON arguments.
+    /// Any UI events emitted by the plugin during this call are included in the result.
     pub fn execute_tool(&self, tool_name: &str, args: &Value) -> Result<WasmToolResult, AppError> {
         let mut store = self
             .store
             .lock()
             .map_err(|e| AppError::backend_busy(format!("Plugin store lock poisoned: {e}")))?;
 
+        // Clear any stale UI events from a previous call.
+        store.data_mut().ui_events.clear();
+
         let args_json = serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string());
 
-        call_execute_tool(&self.instance, &mut store, tool_name, &args_json)
+        let mut result = call_execute_tool(&self.instance, &mut store, tool_name, &args_json)?;
+
+        // Drain UI events accumulated during this call.
+        result.ui_events = std::mem::take(&mut store.data_mut().ui_events);
+
+        Ok(result)
     }
 }
 
@@ -165,7 +206,6 @@ fn register_host_functions(
     let fs_allowed = permissions.fs;
     let http_allowed = permissions.http;
     let allowed_hosts = permissions.allowed_hosts.clone();
-    let _store_allowed = permissions.store;
 
     // ─── host-fs ─────────────────────────────────────────────────
     //
@@ -707,6 +747,143 @@ fn register_host_functions(
                 let msg = read_guest_string(&mut caller, ptr, len).unwrap_or_default();
                 let name = &caller.data().plugin_name;
                 log::error!("[plugin:{name}] {msg}");
+            },
+        )
+        .ok();
+
+    // ─── host-store ──────────────────────────────────────────────
+    //
+    // Persistent key-value store backed by {plugin_dir}/store.json.
+    //
+    // Protocol:
+    //   store-set(key_ptr, key_len, val_ptr, val_len) -> i32   (0 ok, -1 err)
+    //   store-get(key_ptr, key_len) -> i32                      (value len, -1 missing)
+    //   store-read(buf_ptr, buf_cap)  -> i32                    (bytes copied)
+
+    let store_allowed = permissions.store;
+
+    linker
+        .func_wrap(
+            "host-store",
+            "store_set",
+            move |mut caller: Caller<'_, PluginHostState>,
+                  key_ptr: i32,
+                  key_len: i32,
+                  val_ptr: i32,
+                  val_len: i32|
+                  -> i32 {
+                if !store_allowed {
+                    log::warn!("[plugin] store-set denied — permission not granted");
+                    return -1;
+                }
+                let key = match read_guest_string(&mut caller, key_ptr, key_len) {
+                    Some(k) => k,
+                    None => return -1,
+                };
+                let val = match read_guest_string(&mut caller, val_ptr, val_len) {
+                    Some(v) => v,
+                    None => return -1,
+                };
+
+                let store_path = caller.data().store_path.clone();
+                let plugin_name = caller.data().plugin_name.clone();
+
+                // Update in-memory map
+                {
+                    let mut map = caller.data().store.lock().unwrap();
+                    map.insert(key.clone(), val);
+                }
+
+                // Flush to disk
+                let snapshot: HashMap<String, String> =
+                    caller.data().store.lock().unwrap().clone();
+                match serde_json::to_string(&snapshot) {
+                    Ok(json) => {
+                        if let Some(parent) = store_path.parent() {
+                            std::fs::create_dir_all(parent).ok();
+                        }
+                        if let Err(e) = std::fs::write(&store_path, json) {
+                            log::error!("[plugin:{plugin_name}] store-set write error: {e}");
+                            return -1;
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("[plugin:{plugin_name}] store-set serialise error: {e}");
+                        return -1;
+                    }
+                }
+                0
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-store",
+            "store_get",
+            move |mut caller: Caller<'_, PluginHostState>,
+                  key_ptr: i32,
+                  key_len: i32|
+                  -> i32 {
+                if !store_allowed {
+                    caller.data_mut().store_response_buf = b"Store permission denied".to_vec();
+                    return -1;
+                }
+                let key = match read_guest_string(&mut caller, key_ptr, key_len) {
+                    Some(k) => k,
+                    None => return -1,
+                };
+                let value = caller.data().store.lock().unwrap().get(&key).cloned();
+                match value {
+                    Some(v) => {
+                        let bytes = v.into_bytes();
+                        let len = bytes.len() as i32;
+                        caller.data_mut().store_response_buf = bytes;
+                        len
+                    }
+                    None => -1,
+                }
+            },
+        )
+        .ok();
+
+    linker
+        .func_wrap(
+            "host-store",
+            "store_read",
+            |mut caller: Caller<'_, PluginHostState>, buf_ptr: i32, buf_cap: i32| -> i32 {
+                let buf = caller.data().store_response_buf.clone();
+                copy_bytes_to_guest(&mut caller, &buf, buf_ptr, buf_cap)
+            },
+        )
+        .ok();
+
+    // ─── host-ui ─────────────────────────────────────────────────
+    //
+    // Allows WASM plugins to push named events to the frontend.
+    //
+    // emit-event(name_ptr, name_len, data_ptr, data_len) -> i32   (0 ok, -1 err)
+
+    linker
+        .func_wrap(
+            "host-ui",
+            "emit_event",
+            move |mut caller: Caller<'_, PluginHostState>,
+                  name_ptr: i32,
+                  name_len: i32,
+                  data_ptr: i32,
+                  data_len: i32|
+                  -> i32 {
+                let event_name = match read_guest_string(&mut caller, name_ptr, name_len) {
+                    Some(n) => n,
+                    None => return -1,
+                };
+                let data = match read_guest_string(&mut caller, data_ptr, data_len) {
+                    Some(d) => d,
+                    None => String::new(),
+                };
+                caller.data_mut().ui_events.push((event_name, data));
+                0
             },
         )
         .ok();

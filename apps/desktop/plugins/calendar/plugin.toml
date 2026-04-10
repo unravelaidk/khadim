@@ -1,0 +1,20 @@
+[plugin]
+name        = "Calendar"
+version     = "0.1.0"
+description = "Shared calendar — the agent and you both create and manage events"
+author      = "Khadim"
+license     = "MIT"
+wasm        = "plugin.wasm"
+
+[permissions]
+store = true
+
+[ui]
+js = "ui.js"
+
+[[ui.tabs]]
+label           = "Calendar"
+icon            = "calendar"
+sidebar_element = "khadim-calendar-sidebar"
+content_element = "khadim-calendar-content"
+priority        = 10

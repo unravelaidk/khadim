@@ -80,6 +80,10 @@ async function getApiKey(provider: ProviderType, passedApiKey?: string): Promise
   }
 }
 
+export async function hasProviderApiKey(provider: ProviderType, passedApiKey?: string): Promise<boolean> {
+  return Boolean(await getApiKey(provider, passedApiKey));
+}
+
 function normalizeModelList(items: Array<{ id?: string; name?: string }>) {
   const unique = new Map<string, ProviderModel>();
 

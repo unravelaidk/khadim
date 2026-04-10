@@ -324,6 +324,24 @@ export interface PluginPermissionsSummary {
   allowed_hosts: string[];
 }
 
+/** A single [[ui.tabs]] entry from plugin.toml */
+export interface PluginUiTab {
+  label: string;
+  icon: string | null;
+  /** Custom-element tag that owns the full sidebar div */
+  sidebar_element: string | null;
+  /** Custom-element tag that owns the full content div */
+  content_element: string | null;
+  priority: number;
+}
+
+/** Event emitted by a plugin tool via host-ui::emit-event */
+export interface PluginUiEvent {
+  plugin_id: string;
+  event: string;
+  data: string;
+}
+
 export interface PluginEntry {
   id: string;
   name: string;
@@ -337,6 +355,10 @@ export interface PluginEntry {
   tool_count: number;
   permissions: PluginPermissionsSummary;
   error: string | null;
+  /** UI tabs this plugin contributes to the chat sidebar tab strip */
+  ui_tabs: PluginUiTab[];
+  /** Relative path to the plugin's UI JS file (served via khadim-plugin://) */
+  ui_js: string | null;
 }
 
 export interface PluginToolParam {
@@ -1104,6 +1126,14 @@ export const commands = {
 
   pluginDir: () =>
     invoke<string>("plugin_dir"),
+
+  /** Read a value from a plugin's persistent store (shared with the plugin's WASM tools). */
+  pluginStoreGet: (pluginId: string, key: string) =>
+    invoke<string | null>("plugin_store_get", { pluginId, key }),
+
+  /** Write a value into a plugin's persistent store. */
+  pluginStoreSet: (pluginId: string, key: string, value: string) =>
+    invoke<void>("plugin_store_set", { pluginId, key, value }),
 
   // Skills
   skillDiscover: () =>

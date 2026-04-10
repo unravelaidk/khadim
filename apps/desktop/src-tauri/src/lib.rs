@@ -1261,6 +1261,7 @@ async fn khadim_send_streaming(
                         Some(&plugins),
                         Some(&skills),
                         Some(&khadim_mgr),
+                        Some(&app_handle),
                     )
                     .await
                 }
@@ -1325,6 +1326,7 @@ async fn khadim_send_streaming(
 #[tauri::command]
 async fn khadim_send_message(
     state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     workspace_id: String,
     session_id: String,
     conversation_id: Option<String>,
@@ -1351,6 +1353,7 @@ async fn khadim_send_message(
             Some(&plugins),
             Some(&skills),
             Some(&khadim_mgr),
+            Some(&app),
         )
         .await?
     };
@@ -1475,6 +1478,27 @@ fn plugin_discover(
 #[tauri::command]
 fn plugin_dir(state: State<'_, Arc<AppState>>) -> String {
     state.plugins.plugins_dir().to_string_lossy().to_string()
+}
+
+// ─── Plugin store (frontend ↔ plugin shared KV) ───────────────────────
+
+#[tauri::command]
+fn plugin_store_get(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+    key: String,
+) -> Option<String> {
+    state.plugins.store_get(&plugin_id, &key)
+}
+
+#[tauri::command]
+fn plugin_store_set(
+    state: State<'_, Arc<AppState>>,
+    plugin_id: String,
+    key: String,
+    value: String,
+) -> Result<(), AppError> {
+    state.plugins.store_set(&plugin_id, &key, &value)
 }
 
 // ─── Skills ──────────────────────────────────────────────────────────
@@ -1758,6 +1782,67 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(app_state.clone())
+        // ── khadim-plugin:// URI scheme ─────────────────────────────
+        // Serves files from the plugin directory so plugin ui.js files
+        // can be loaded via  <script src="khadim-plugin://calendar/ui.js">
+        // without filesystem permission requirements in the webview.
+        .register_uri_scheme_protocol("khadim-plugin", {
+            let state = app_state.clone();
+            move |_app, request| {
+                let uri = request.uri();
+                // URI format: khadim-plugin://{plugin_id}/{file_path}
+                // On some platforms (Linux/webkit2gtk) the authority may be "localhost"
+                // and the plugin_id is the first path segment. On others the plugin_id
+                // is the host/authority. Handle both:
+                let raw_path = uri.path().trim_start_matches('/');
+                let authority = uri.host().unwrap_or("");
+                let (plugin_id, file_rel) = if !authority.is_empty() && authority != "localhost" {
+                    // authority IS the plugin id (e.g. khadim-plugin://calendar/ui.js)
+                    (authority, raw_path)
+                } else {
+                    // authority is empty or "localhost", plugin id is first path segment
+                    // e.g. khadim-plugin://localhost/calendar/ui.js
+                    let mut parts = raw_path.splitn(2, '/');
+                    let id = parts.next().unwrap_or("");
+                    let rel = parts.next().unwrap_or("");
+                    (id, rel)
+                };
+                let plugin_dir = state.plugins.plugins_dir().join(plugin_id);
+                let file_path = plugin_dir.join(file_rel);
+
+                // Basic path traversal guard
+                if !file_path.starts_with(&plugin_dir) {
+                    return tauri::http::Response::builder()
+                        .status(403)
+                        .body(b"Forbidden".to_vec())
+                        .unwrap();
+                }
+
+                match std::fs::read(&file_path) {
+                    Ok(bytes) => {
+                        let content_type = if file_rel.ends_with(".js") || file_rel.ends_with(".mjs") {
+                            "application/javascript"
+                        } else if file_rel.ends_with(".css") {
+                            "text/css"
+                        } else if file_rel.ends_with(".html") {
+                            "text/html"
+                        } else {
+                            "application/octet-stream"
+                        };
+                        tauri::http::Response::builder()
+                            .status(200)
+                            .header("Content-Type", content_type)
+                            .header("Access-Control-Allow-Origin", "*")
+                            .body(bytes)
+                            .unwrap()
+                    }
+                    Err(_) => tauri::http::Response::builder()
+                        .status(404)
+                        .body(format!("Plugin file not found: {file_rel}").into_bytes())
+                        .unwrap(),
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             // Runtime
             commands::runtime::desktop_runtime_summary,
@@ -1870,6 +1955,8 @@ pub fn run() {
             plugin_get_config,
             plugin_discover,
             plugin_dir,
+            plugin_store_get,
+            plugin_store_set,
             // Skills
             skill_discover,
             skill_toggle,

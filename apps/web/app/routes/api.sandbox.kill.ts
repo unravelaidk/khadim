@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { sandboxClient } from "../agent/sandbox";
+import { withSandboxProviderFallback } from "../agent/sandbox";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") {
@@ -20,7 +20,10 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const sandbox = await sandboxClient.sandbox.connect(sandboxId);
+    const sandbox = await withSandboxProviderFallback((provider) => provider.connect({ id: sandboxId }));
+    if (!sandbox.kill) {
+      throw new Error("The selected sandbox backend does not support termination");
+    }
     await sandbox.kill();
 
     return new Response(JSON.stringify({ success: true, message: "Sandbox terminated" }), {

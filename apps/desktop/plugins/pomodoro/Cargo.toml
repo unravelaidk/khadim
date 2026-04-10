@@ -1,0 +1,15 @@
+[package]
+name        = "khadim-plugin-pomodoro"
+version     = "0.1.0"
+edition     = "2021"
+description = "Pomodoro timer plugin for Khadim — agent + UI share the same task/timer store"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto       = true
+strip     = true

@@ -1,6 +1,6 @@
 use crate::db::Database;
 use crate::error::AppError;
-use crate::plugins::manifest::PluginManifest;
+use crate::plugins::manifest::{PluginManifest, PluginUiTab};
 use crate::plugins::wasm_host::{WasmPlugin, WasmToolDef, WasmToolResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,6 +24,10 @@ pub struct PluginEntry {
     pub tool_count: usize,
     pub permissions: PluginPermissionsSummary,
     pub error: Option<String>,
+    /// UI tabs this plugin contributes to the chat sidebar tab strip.
+    pub ui_tabs: Vec<PluginUiTab>,
+    /// JS file path (relative to plugin dir) for the UI web components.
+    pub ui_js: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +124,8 @@ impl PluginManager {
                             allowed_hosts: Vec::new(),
                         },
                         error: Some(e.to_string()),
+                        ui_tabs: Vec::new(),
+                        ui_js: None,
                     });
                 }
             }
@@ -152,7 +158,8 @@ impl PluginManager {
                 "Loading WASM plugin '{plugin_id}' from {}",
                 resolved.wasm_path.display()
             );
-            match WasmPlugin::load(&resolved, workspace_root, config) {
+            let store_path = self.store_path(plugin_id);
+            match WasmPlugin::load(&resolved, workspace_root, config, plugin_id, store_path) {
                 Ok(plugin) => {
                     log::info!("Plugin '{plugin_id}' loaded: {} tools", plugin.tools.len());
                     for t in &plugin.tools {
@@ -171,6 +178,11 @@ impl PluginManager {
             (None, 0, None)
         };
 
+        let (ui_tabs, ui_js) = match &resolved.manifest.ui {
+            Some(ui) => (ui.tabs.clone(), ui.js.clone()),
+            None => (Vec::new(), None),
+        };
+
         let entry = PluginEntry {
             id: plugin_id.to_string(),
             name: resolved.manifest.plugin.name.clone(),
@@ -184,6 +196,8 @@ impl PluginManager {
             tool_count,
             permissions: permissions_summary,
             error,
+            ui_tabs,
+            ui_js,
         };
 
         let mut plugins = self.plugins.write().unwrap();
@@ -353,6 +367,18 @@ impl PluginManager {
             ))
         })?;
 
+        // Copy ui.js if the plugin ships one
+        if let Some(ui) = &resolved.manifest.ui {
+            if let Some(ref js_file) = ui.js {
+                let src_js = source.join(js_file);
+                if src_js.exists() {
+                    std::fs::copy(&src_js, target.join(js_file)).map_err(|e| {
+                        AppError::io(format!("Failed to copy ui.js: {e}"))
+                    })?;
+                }
+            }
+        }
+
         // Write a clean plugin.toml that points to plugin.wasm
         let mut manifest = resolved.manifest.clone();
         manifest.plugin.wasm = "plugin.wasm".to_string();
@@ -411,6 +437,43 @@ impl PluginManager {
     ) -> Result<Option<String>, AppError> {
         self.db
             .get_setting(&format!("plugin:config:{plugin_id}:{key}"))
+    }
+
+    // ── File-backed plugin store ─────────────────────────────────────
+
+    /// Path to the persistent store file for a plugin.
+    fn store_path(&self, plugin_id: &str) -> PathBuf {
+        self.plugins_dir.join(plugin_id).join("store.json")
+    }
+
+    /// Load the store for a plugin from disk (returns empty map if missing).
+    pub fn store_load(&self, plugin_id: &str) -> HashMap<String, String> {
+        let path = self.store_path(plugin_id);
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return HashMap::new();
+        };
+        serde_json::from_str(&content).unwrap_or_default()
+    }
+
+    /// Get a value from the plugin's persistent store.
+    pub fn store_get(&self, plugin_id: &str, key: &str) -> Option<String> {
+        self.store_load(plugin_id).remove(key)
+    }
+
+    /// Set a value in the plugin's persistent store (flushes to disk).
+    pub fn store_set(&self, plugin_id: &str, key: &str, value: &str) -> Result<(), AppError> {
+        let mut map = self.store_load(plugin_id);
+        map.insert(key.to_string(), value.to_string());
+        let json = serde_json::to_string(&map)
+            .map_err(|e| AppError::io(format!("Failed to serialise store: {e}")))?;
+        let path = self.store_path(plugin_id);
+        // Ensure plugin dir exists (needed for freshly installed plugins)
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&path, json)
+            .map_err(|e| AppError::io(format!("Failed to write store: {e}")))?;
+        Ok(())
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

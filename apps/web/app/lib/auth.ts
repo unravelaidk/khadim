@@ -1,6 +1,8 @@
-import "dotenv/config";
+import { loadEnv } from "./load-env";
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
+
+loadEnv();
 
 const socialProviders = {
   ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET

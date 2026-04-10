@@ -12,6 +12,7 @@
     "app/lib/job-cancel.ts",
     "app/lib/chat-history.ts",
     "app/lib/uploaded-documents.ts",
+    "app/lib/load-env.ts",
     "app/lib/badges.ts",
     "app/lib/versions.ts",
     "app/lib/workspace-sync.ts",

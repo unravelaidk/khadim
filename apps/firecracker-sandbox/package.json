@@ -1,0 +1,11 @@
+{
+  "name": "@khadim/firecracker-sandbox",
+  "private": true,
+  "scripts": {
+    "dev": "bun run scripts/run-cargo.ts run",
+    "start": "bun run scripts/run-cargo.ts run --release",
+    "check": "bun run scripts/run-cargo.ts check",
+    "test": "bun run scripts/run-cargo.ts test",
+    "fmt": "cargo fmt --all"
+  }
+}

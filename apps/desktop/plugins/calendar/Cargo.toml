@@ -1,0 +1,15 @@
+[package]
+name        = "khadim-plugin-calendar"
+version     = "0.1.0"
+edition     = "2021"
+description = "Calendar plugin for Khadim — agent + UI share the same event store"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto       = true
+strip     = true

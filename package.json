@@ -4,8 +4,13 @@
   "scripts": {
     "build": "bun -r --if-present build",
     "dev": "bun --filter @khadim/web dev",
+    "sandbox:dev": "bun --filter @khadim/firecracker-sandbox dev",
+    "sandbox:check": "bun --filter @khadim/firecracker-sandbox check",
+    "docs:dev": "bun --filter @khadim/docs dev",
+    "docs:build": "bun --filter @khadim/docs build",
     "desktop:dev": "bun --filter @khadim/desktop tauri dev",
     "desktop:build": "bun --filter @khadim/desktop build",
+    "plugins:build": "bun --filter '@khadim/plugin-*' build",
     "start": "bun --filter @khadim/web start",
     "typecheck": "bun --filter @khadim/web typecheck",
     "test": "bun -r --if-present test",
@@ -14,6 +19,7 @@
   },
   "workspaces": [
     "apps/*",
+    "apps/desktop/plugins/*",
     "packages/*"
   ]
 }
