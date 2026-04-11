@@ -1,6 +1,7 @@
 {
   "name": "khadim",
   "private": true,
+  "license": "UNLICENSED",
   "scripts": {
     "build": "bun -r --if-present build",
     "dev": "bun --filter @khadim/web dev",
