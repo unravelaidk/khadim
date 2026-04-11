@@ -3,12 +3,13 @@ title: Plugin SDK Overview
 description: Build sandboxed Khadim plugins as WebAssembly modules and ship new tools into the desktop app.
 ---
 
-Khadim plugins let you add new tools to the app without changing the core runtime. A plugin is packaged as a WebAssembly module plus a `plugin.toml` manifest that describes metadata, config, and permissions.
+Khadim plugins let you add new tools to the app without changing the core runtime. A plugin is packaged as a WebAssembly module plus a `plugin.toml` manifest that describes metadata, config, permissions, and optional desktop UI tabs.
 
 ## What a plugin contains
 
 - `plugin.toml` for metadata, configuration fields, and permission declarations.
 - `plugin.wasm` for the compiled plugin code.
+- Optional `ui.js` and `[[ui.tabs]]` manifest entries for desktop plugin panels.
 - Optional source files and build scripts used to produce the final WebAssembly bundle.
 
 ## What plugins can do
@@ -16,6 +17,7 @@ Khadim plugins let you add new tools to the app without changing the core runtim
 - Register one or more tools that the host can call.
 - Read plugin config values provided by the app.
 - Use host capabilities such as HTTP or filesystem access when permissions allow it.
+- Add desktop sidebar/content tabs by registering custom elements from a plugin UI bundle.
 - Stay isolated from the main application process behind a narrow host API.
 
 ## Plugin author workflow

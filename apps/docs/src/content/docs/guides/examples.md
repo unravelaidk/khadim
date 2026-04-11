@@ -7,6 +7,8 @@ The repository includes example plugins you can copy, rename, and adapt while bu
 
 ## Included plugin examples
 
+- `examples/plugins/hello-world`
+  Minimal Rust plugin. Good for understanding the smallest manifest and tool surface.
 - `examples/plugins/ts-hello-world`
   Smallest AssemblyScript example. Good for learning the manifest format, the plugin exports, and the basic host API.
 - `examples/plugins/obsidian-wiki`
@@ -14,11 +16,19 @@ The repository includes example plugins you can copy, rename, and adapt while bu
 - `examples/plugins/web-search`
   Rust plugin example that shows an alternative implementation language.
 
+## Desktop UI examples
+
+- `apps/desktop/plugins/calendar`
+  Example plugin with a sidebar panel and a main content panel declared through `[[ui.tabs]]`.
+- `apps/desktop/plugins/pomodoro`
+  Example plugin with a richer interactive desktop UI tab backed by plugin storage and tools.
+
 ## What to learn from the examples
 
 - manifest structure
 - host calls
 - tool naming
+- desktop UI tab registration
 - packaging flow
 
 ## Recommended path

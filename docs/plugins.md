@@ -1,6 +1,6 @@
 # Khadim Plugin System
 
-Khadim supports a WASM-based plugin system that lets anyone extend the agent with custom tools. Plugins are sandboxed WebAssembly modules that run inside the desktop app with controlled access to the filesystem, network, and persistent storage.
+Khadim supports a WASM-based plugin system that lets anyone extend the agent with custom tools. Plugins are sandboxed WebAssembly modules that run inside the desktop app with controlled access to the filesystem, network, and persistent storage. Plugins can also optionally contribute desktop UI tabs.
 
 ## Architecture
 
@@ -40,6 +40,8 @@ Khadim supports a WASM-based plugin system that lets anyone extend the agent wit
 4. **Execution** — When the agent calls a plugin tool, the orchestrator delegates to the WASM runtime. The plugin runs in a sandboxed environment with only the permissions it declared.
 
 5. **Namespacing** — Plugin tools are namespaced as `plugin.{plugin-id}.{tool-name}` to avoid collisions with built-in tools.
+
+6. **Optional UI Tabs** — A plugin may ship a `ui.js` bundle and declare `[[ui.tabs]]` entries. The desktop host loads that bundle and mounts the declared custom elements into the sidebar and main content areas.
 
 ## Creating a Plugin
 
@@ -128,6 +130,16 @@ wasm = "target/wasm32-unknown-unknown/release/my_plugin.wasm"
 fs = false
 http = false
 store = false
+
+[ui]
+js = "ui.js"
+
+[[ui.tabs]]
+label = "My Tool"
+icon = "sparkles"
+sidebar_element = "my-plugin-sidebar"
+content_element = "my-plugin-content"
+priority = 100
 ```
 
 ### 5. Install it
@@ -173,7 +185,19 @@ allowed_hosts = [               # HTTP allowlist (only when http = true).
     "api.example.com",
     "*.openai.com",
 ]
+
+[ui]
+js = "ui.js"                   # Optional desktop UI bundle.
+
+[[ui.tabs]]
+label = "Calendar"             # Tab label shown by the desktop host.
+icon = "calendar"              # Optional host icon name.
+sidebar_element = "my-sidebar" # Optional custom element for the sidebar area.
+content_element = "my-content" # Optional custom element for the main content area.
+priority = 10                   # Lower numbers sort first. Default 100.
 ```
+
+The desktop host serves plugin UI assets from `khadim-plugin://{plugin-id}/...`, and your `ui.js` bundle should register the custom elements referenced by `sidebar_element` and `content_element`.
 
 ## SDK Reference
 
@@ -280,11 +304,16 @@ See `examples/plugins/` for complete examples:
 - **web-search** — Web search plugin demonstrating HTTP permissions and config
 - **obsidian-wiki** — Obsidian vault helper for bootstrapping and maintaining an LLM-authored wiki
 
+Desktop UI examples live in `apps/desktop/plugins/`:
+
+- **calendar** — Declares a plugin tab with both sidebar and content custom elements
+- **pomodoro** — Declares a richer productivity UI tab with sidebar and content panels
+
 ## Roadmap
 
 - [ ] Component Model support (WIT-based typed imports/exports)
 - [ ] Plugin marketplace / registry
 - [ ] Hot-reload on `.wasm` file change
 - [ ] Plugin-to-plugin communication
-- [ ] UI extension points (custom panels, sidebar widgets)
+- [x] UI extension points (custom panels, sidebar widgets)
 - [ ] Streaming tool results (progress callbacks)
