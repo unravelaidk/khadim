@@ -10,6 +10,11 @@ in part, without prior written permission from Unravel AI.
 Access to this repository does not grant any license or other rights in the
 software except as explicitly agreed in writing by Unravel AI.
 
+Exception:
+
+The files under `examples/plugins/` are excluded from this proprietary license
+and are instead licensed under the terms in `examples/plugins/LICENSE`.
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL

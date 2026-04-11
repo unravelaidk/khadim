@@ -3,18 +3,33 @@ title: Plugin SDK Overview
 description: Build sandboxed Khadim plugins as WebAssembly modules and ship new tools into the desktop app.
 ---
 
-Khadim plugins let you add sandboxed capabilities to the desktop app without shipping those features in the core runtime.
+Khadim plugins let you add new tools to the app without changing the core runtime. A plugin is packaged as a WebAssembly module plus a `plugin.toml` manifest that describes metadata, config, and permissions.
 
-## What you can do
+## What a plugin contains
 
-- Build plugin tools as WebAssembly modules.
-- Expose tool surfaces through the Khadim host.
-- Keep plugin code isolated from the main desktop runtime.
+- `plugin.toml` for metadata, configuration fields, and permission declarations.
+- `plugin.wasm` for the compiled plugin code.
+- Optional source files and build scripts used to produce the final WebAssembly bundle.
+
+## What plugins can do
+
+- Register one or more tools that the host can call.
+- Read plugin config values provided by the app.
+- Use host capabilities such as HTTP or filesystem access when permissions allow it.
+- Stay isolated from the main application process behind a narrow host API.
+
+## Plugin author workflow
+
+1. Start from one of the example plugins in `examples/plugins/`.
+2. Edit `plugin.toml` to define the plugin identity and permissions.
+3. Implement your tool behavior in AssemblyScript or Rust.
+4. Build `plugin.wasm`.
+5. Install or copy the plugin into the Khadim plugins directory.
 
 ## Docs map
 
-- Start with [Getting Started](/khadim/getting-started/)
-- Review the [Manifest Reference](/khadim/reference/manifest/)
-- Learn the [AssemblyScript SDK](/khadim/reference/assemblyscript-sdk/)
-- Check [Host Capabilities](/khadim/reference/host-capabilities/)
-- Browse [Examples](/khadim/guides/examples/)
+- Start with [Getting Started](/khadim/getting-started/) to build your first plugin.
+- Review the [Manifest Reference](/khadim/reference/manifest/) to understand `plugin.toml`.
+- Learn the [AssemblyScript SDK](/khadim/reference/assemblyscript-sdk/) for TypeScript-style plugins.
+- Check [Host Capabilities](/khadim/reference/host-capabilities/) before requesting permissions.
+- Browse [Examples](/khadim/guides/examples/) for working plugin templates.
