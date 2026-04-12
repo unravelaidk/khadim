@@ -1,31 +1,18 @@
 import { memo } from "react";
 import type { DesktopWorkspaceContext } from "../lib/bindings";
+import { StatusIndicator } from "./StatusIndicator";
 
 interface Props {
   context: DesktopWorkspaceContext | null;
-  /** Optional label for the active agent (falls back to "Workspace"). */
   agentLabel?: string | null;
-  /** Optional connection / activity indicator. */
   connected?: boolean;
-  /** Whether the terminal dock is currently open. */
   terminalOpen?: boolean;
-  /** Toggle the terminal dock open/closed. */
   onToggleTerminal?: () => void;
-  /** Open the file finder. */
   onOpenFinder?: () => void;
-  /** Open the project in the default IDE. */
   onOpenInEditor?: () => void;
   className?: string;
 }
 
-/**
- * Compact, always-visible rail describing the active coding context:
- * workspace · backend · branch · worktree badge · cwd.
- *
- * This is the seed of the "top context header" from the native workspace
- * redesign — terminal, file finder, and diff will all read from the same
- * `DesktopWorkspaceContext` shape.
- */
 export const WorkspaceContextRail = memo(function WorkspaceContextRail({
   context,
   agentLabel,
@@ -46,12 +33,10 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
     <div
       className={`shrink-0 px-6 py-2 border-b border-[var(--glass-border)] flex items-center gap-3 text-[10px] ${className ?? ""}`}
     >
-      {/* Connection dot */}
-      <span
-        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-          connected ? "bg-[var(--color-success)]" : "bg-[var(--scrollbar-thumb)]"
-        }`}
-        title={connected ? "Backend connected" : "Backend idle"}
+      {/* Connection indicator — uses StatusIndicator instead of raw dot */}
+      <StatusIndicator
+        status={connected ? "running" : "idle"}
+        size="xs"
       />
 
       {/* Workspace + agent */}
@@ -117,7 +102,8 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
           title="Find file (⌘P)"
         >
           <FinderIcon />
-          Find
+          <span>Find</span>
+          <kbd className="rounded bg-[var(--surface-ink-4)] px-1 py-px font-mono text-[8px] text-[var(--text-muted)]">⌘P</kbd>
         </button>
       )}
 
@@ -125,7 +111,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       {onToggleTerminal && (
         <button
           onClick={onToggleTerminal}
-          className={`ml-2 h-6 px-2 rounded-lg inline-flex items-center gap-1.5 text-[10px] font-semibold transition-colors ${
+          className={`ml-1 h-6 px-2 rounded-lg inline-flex items-center gap-1.5 text-[10px] font-semibold transition-colors ${
             terminalOpen
               ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
               : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
@@ -133,7 +119,10 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
           title={terminalOpen ? "Close terminal (⌘`)" : "Open terminal (⌘`)"}
         >
           <TerminalIcon />
-          Terminal
+          <span>Terminal</span>
+          {!terminalOpen && (
+            <kbd className="rounded bg-[var(--surface-ink-4)] px-1 py-px font-mono text-[8px] text-[var(--text-muted)]">⌘`</kbd>
+          )}
         </button>
       )}
     </div>

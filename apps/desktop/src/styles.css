@@ -344,6 +344,16 @@ body {
   }
 }
 
+/* ─── Custom status pulse (replaces generic Tailwind animate-pulse) ── */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status-pulse {
+  animation: status-pulse 2s var(--ease-in-out-quart) infinite;
+}
+
 /* ─── Typing indicator dots ─────────────────────────────────────────── */
 .typing-dot {
   display: inline-block;

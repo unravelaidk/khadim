@@ -6,6 +6,7 @@ import { backendLabel, relTime } from "../lib/ui";
 import type { AgentInstance, InteractionMode, LocalChatConversation, WorkHomeView } from "../lib/types";
 import type { ThemeMode } from "./SettingsPanel";
 import { AgentCard } from "./AgentCard";
+import { StatusIndicator, StatusPill } from "./StatusIndicator";
 import { usePluginTabs } from "../hooks/usePluginTabs";
 import { usePluginScripts } from "../hooks/usePluginScripts";
 import type { PluginEntry } from "../lib/bindings";
@@ -634,7 +635,7 @@ const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
 
         <div className="flex shrink-0 items-center gap-1">
           <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[9px] ${runningCount > 0 ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]" : "bg-[var(--surface-ink-4)] text-[var(--text-muted)]"}`}>
-            {runningCount > 0 && <span className="h-1 w-1 rounded-full bg-[var(--color-accent)] animate-pulse" />}
+            {runningCount > 0 && <StatusIndicator status="running" size="xs" />}
             {agents.length}
           </span>
           <button
@@ -769,7 +770,7 @@ function WorkspaceSidebar({
                 {workspace.branch ?? "default"}
               </span>
               <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] ${connected ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]" : "bg-[var(--surface-ink-4)] text-[var(--text-muted)]"}`}>
-                <span className={`h-1 w-1 rounded-full ${connected ? "bg-[var(--color-success)]" : "bg-[var(--scrollbar-thumb)]"}`} />
+                <StatusIndicator status={connected ? "complete" : "idle"} size="xs" />
                 {connected ? "connected" : "idle"}
               </span>
               {githubAuthenticated && (

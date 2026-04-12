@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import type { AgentInstance } from "../lib/types";
 import { relTime } from "../lib/ui";
+import { StatusIndicator } from "./StatusIndicator";
 
 interface AgentCardProps {
   agent: AgentInstance;
@@ -12,7 +13,7 @@ interface AgentCardProps {
 
 function statusLabel(agent: AgentInstance): string {
   if (agent.status === "running" && agent.currentActivity) return agent.currentActivity;
-  if (agent.status === "running") return "Working...";
+  if (agent.status === "running") return "Working…";
   if (agent.status === "complete" && agent.finishedAt) return `Done ${relTime(agent.finishedAt)}`;
   if (agent.status === "complete") return "Completed";
   if (agent.status === "error") return agent.errorMessage ?? "Error";
@@ -25,20 +26,13 @@ function statusTextClass(status: AgentInstance["status"]): string {
   return "text-[var(--text-muted)]";
 }
 
-function statusDotClass(status: AgentInstance["status"]): string {
-  if (status === "running") return "bg-[var(--color-accent)]";
-  if (status === "complete") return "bg-[var(--color-success)]";
-  if (status === "error") return "bg-[var(--color-danger)]";
-  return "bg-[var(--scrollbar-thumb)]";
-}
-
 export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onClick, onRemove, onManage }: AgentCardProps) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const statusLabelText = statusLabel(agent);
 
   return (
     <div
-      className={`group cursor-pointer rounded-[var(--radius-sm)] px-2 py-1.5 transition-colors duration-150 ${
+      className={`group cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-2 transition-colors duration-150 ${
         isSelected
           ? "bg-[var(--color-accent-subtle)]"
           : "bg-transparent hover:bg-[var(--glass-bg)]"
@@ -48,18 +42,18 @@ export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onCl
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onClick()}
     >
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(agent.status)} ${agent.status === "running" ? "animate-pulse" : ""}`} />
+      <div className="flex items-center gap-2.5 min-w-0">
+        <StatusIndicator status={agent.status} size="sm" />
         <div className="flex-1 min-w-0">
-          <span className={`block truncate text-[11px] font-medium ${isSelected ? "text-[var(--color-accent)]" : "text-[var(--text-primary)]"}`}>
+          <span className={`block truncate text-[12px] font-medium leading-tight ${isSelected ? "text-[var(--color-accent)]" : "text-[var(--text-primary)]"}`}>
             {agent.label}
           </span>
-          <div className="mt-0.5 flex min-w-0 items-center gap-2">
-            <p className={`min-w-0 flex-1 truncate text-[9px] ${statusTextClass(agent.status)}`}>
+          <div className="mt-1 flex min-w-0 items-center gap-2">
+            <p className={`min-w-0 flex-1 truncate text-[10px] ${statusTextClass(agent.status)}`}>
               {statusLabelText}
             </p>
             {agent.branch && (
-              <span className="max-w-[104px] shrink-0 truncate rounded-md bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[9px] text-[var(--text-muted)]">
+              <span className="max-w-[100px] shrink-0 truncate rounded-md bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[9px] text-[var(--text-muted)]">
                 {agent.branch}
               </span>
             )}
@@ -75,9 +69,10 @@ export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onCl
               className="w-6 h-6 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
               title="Settings"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <circle cx="12" cy="12" r="3" />
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="1" />
+                <circle cx="19" cy="12" r="1" />
+                <circle cx="5" cy="12" r="1" />
               </svg>
             </button>
           )}
@@ -106,12 +101,12 @@ export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onCl
       </div>
 
       {agent.status === "running" && agent.streamPreview.length > 0 && (
-        <div className="mt-1 ml-3.5 space-y-0.5">
+        <div className="mt-1.5 ml-[26px] space-y-0.5">
           {agent.streamPreview.slice(-2).map((line, i) => (
             <p
               key={i}
               className="truncate font-mono text-[9px] leading-tight text-[var(--text-muted)]"
-              style={{ opacity: i === 0 && agent.streamPreview.length > 1 ? 0.65 : 1 }}
+              style={{ opacity: i === 0 && agent.streamPreview.length > 1 ? 0.55 : 0.85 }}
             >
               {line}
             </p>

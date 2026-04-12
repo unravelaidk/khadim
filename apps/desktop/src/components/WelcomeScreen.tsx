@@ -12,24 +12,24 @@ interface WelcomeScreenProps {
 
 const examples = [
   {
-    title: "Explain a concept",
-    desc: "A clear, simple explanation of any topic.",
-    prompt: "Explain quantum computing to me like I'm 12 years old. Use simple analogies and avoid jargon.",
+    title: "Fix failing tests",
+    desc: "Find the root cause and patch it.",
+    prompt: "The tests in src/api are failing after the last merge. Investigate the failures, find the root cause, and fix them.",
   },
   {
-    title: "Brainstorm ideas",
-    desc: "Creative solutions, possibilities, directions.",
-    prompt: "Help me brainstorm 10 creative project ideas for learning web development. I'm interested in practical apps I can actually build.",
+    title: "Refactor a module",
+    desc: "Improve structure without breaking things.",
+    prompt: "Refactor the authentication module to use JWT tokens instead of session cookies. Keep the existing API contract intact.",
   },
   {
-    title: "Write something",
-    desc: "Draft emails, articles, or any written content.",
-    prompt: "Help me write a professional but warm email to my team announcing a deadline extension for our project.",
+    title: "Review a PR",
+    desc: "Read the diff and give feedback.",
+    prompt: "Review the latest open PR on this repo. Check for bugs, suggest improvements, and note any style or performance issues.",
   },
   {
-    title: "Solve a problem",
-    desc: "Work through challenges step by step.",
-    prompt: "I need to make a decision between three job offers. Help me think through the trade-offs systematically.",
+    title: "Add a feature",
+    desc: "Implement end-to-end, with tests.",
+    prompt: "Add a dark mode toggle to the settings page. Persist the preference in localStorage and respect the system default on first load.",
   },
 ];
 
@@ -106,8 +106,8 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
             className="font-display font-medium tracking-[-0.02em] text-[var(--text-primary)]"
             style={{ fontSize: "var(--text-display)", lineHeight: 1.05 }}
           >
-            What do you want<br />
-            <span className="text-[var(--text-secondary)]">to build today?</span>
+            What are you<br />
+            <span className="text-[var(--text-secondary)]">working on?</span>
           </h1>
         </div>
       </div>

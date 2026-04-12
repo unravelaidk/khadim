@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react";
 import type { Workspace } from "../lib/bindings";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, relTime } from "../lib/ui";
+import { StatusPill } from "./StatusIndicator";
 
 /* ─── Props ────────────────────────────────────────────────────────── */
 
@@ -162,10 +163,7 @@ const WorkspaceRow = memo(function WorkspaceRow({
             {workspace.name}
           </p>
           {runningCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-accent-subtle)] px-2 py-0.5 text-[9px] font-medium text-[var(--color-accent)]">
-              <span className="h-1 w-1 rounded-full bg-[var(--color-accent)] animate-pulse" />
-              {runningCount}
-            </span>
+            <StatusPill status="running" label={`${runningCount} running`} />
           )}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">

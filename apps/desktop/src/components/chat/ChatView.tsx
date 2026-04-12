@@ -11,6 +11,7 @@ import { ChatInput } from "../ChatInput";
 import { ContextBar } from "../ContextBar";
 import { ModifiedFilesPanel } from "../ModifiedFilesPanel";
 import { WelcomeScreen } from "../WelcomeScreen";
+import { StatusIndicator } from "../StatusIndicator";
 
 function getModelKey(model: OpenCodeModelRef) {
   return `${model.provider_id}:${model.model_id}`;
@@ -124,19 +125,12 @@ export function ChatView({
 
   // ── Header status dot ─────────────────────────────────────────
   const statusDot = agent ? (
-    <div
-      className={`w-2 h-2 rounded-full shrink-0 ${
-        agent.status === "running"
-          ? "bg-[var(--color-accent)] animate-pulse"
-          : agent.status === "complete"
-            ? "bg-[var(--color-success)]"
-            : agent.status === "error"
-              ? "bg-[var(--color-danger)]"
-              : "bg-[var(--scrollbar-thumb)]"
-      }`}
+    <StatusIndicator
+      status={agent.status}
+      size="sm"
     />
   ) : isProcessing ? (
-    <div className="w-2 h-2 rounded-full shrink-0 bg-[var(--color-accent)] animate-pulse" />
+    <StatusIndicator status="running" size="sm" />
   ) : null;
 
   // ── Derive header text ────────────────────────────────────────
@@ -205,8 +199,7 @@ export function ChatView({
         ) : (
           <div className={`mx-auto flex gap-4 px-4 md:px-6 ${showSidePanel ? "max-w-6xl" : "max-w-3xl"}`}>
             <div className={`min-w-0 flex-1 ${showSidePanel ? "max-w-3xl" : ""}`}>
-              <div className="rounded-3xl p-5 glass-card-static">
-                <div className="space-y-5">
+              <div className="space-y-6">
                   {displayMessages.map((message) => (
                     <ChatMessage key={message.id} message={message} basePath={effectiveBasePath} backend={backend} />
                   ))}
@@ -236,7 +229,6 @@ export function ChatView({
 
                   <div ref={chatEndRef} />
                 </div>
-              </div>
             </div>
 
             {/* ── Optional: modified files side panel ───────────── */}
