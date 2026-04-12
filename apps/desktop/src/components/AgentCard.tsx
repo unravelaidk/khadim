@@ -20,37 +20,54 @@ function statusLabel(agent: AgentInstance): string {
 }
 
 function statusTextClass(status: AgentInstance["status"]): string {
-  if (status === "running") return "text-[var(--text-secondary)]";
+  if (status === "running") return "text-[var(--color-accent)]";
   if (status === "error") return "text-[var(--color-danger-text-light)]";
   return "text-[var(--text-muted)]";
 }
 
+function statusDotClass(status: AgentInstance["status"]): string {
+  if (status === "running") return "bg-[var(--color-accent)]";
+  if (status === "complete") return "bg-[var(--color-success)]";
+  if (status === "error") return "bg-[var(--color-danger)]";
+  return "bg-[var(--scrollbar-thumb)]";
+}
+
 export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onClick, onRemove, onManage }: AgentCardProps) {
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const statusLabelText = statusLabel(agent);
 
   return (
     <div
-      className={`group rounded-xl transition-all duration-150 cursor-pointer ${
+      className={`group cursor-pointer rounded-[var(--radius-sm)] px-2 py-1.5 transition-colors duration-150 ${
         isSelected
-          ? "bg-[var(--glass-bg-strong)] border border-[var(--glass-border-strong)]"
-          : "bg-transparent hover:bg-[var(--glass-bg)] border border-transparent"
-      } px-2.5 py-2`}
+          ? "bg-[var(--color-accent-subtle)]"
+          : "bg-transparent hover:bg-[var(--glass-bg)]"
+      }`}
       onClick={onClick}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onClick()}
     >
-      {/* Label row + actions */}
       <div className="flex items-center gap-2 min-w-0">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(agent.status)} ${agent.status === "running" ? "animate-pulse" : ""}`} />
         <div className="flex-1 min-w-0">
-          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate block">
+          <span className={`block truncate text-[11px] font-medium ${isSelected ? "text-[var(--color-accent)]" : "text-[var(--text-primary)]"}`}>
             {agent.label}
           </span>
+          <div className="mt-0.5 flex min-w-0 items-center gap-2">
+            <p className={`min-w-0 flex-1 truncate text-[9px] ${statusTextClass(agent.status)}`}>
+              {statusLabelText}
+            </p>
+            {agent.branch && (
+              <span className="max-w-[104px] shrink-0 truncate rounded-md bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[9px] text-[var(--text-muted)]">
+                {agent.branch}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Actions — trailing edge, hover-revealed */}
         <div className={`shrink-0 flex items-center gap-0.5 transition-opacity duration-150 ${
-          confirmRemove ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          confirmRemove ? "opacity-100" : "opacity-70 group-hover:opacity-100"
         }`}>
           {!confirmRemove && (
             <button
@@ -88,25 +105,12 @@ export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onCl
         </div>
       </div>
 
-      {/* Status + branch row */}
-      <div className="flex items-center gap-2 mt-0.5 min-w-0">
-        <p className={`text-[10px] truncate flex-1 min-w-0 ${statusTextClass(agent.status)}`}>
-          {statusLabel(agent)}
-        </p>
-        {agent.branch && (
-          <span className="text-[10px] font-mono text-[var(--text-muted)] truncate shrink-0 max-w-[100px]">
-            {agent.branch}
-          </span>
-        )}
-      </div>
-
-      {/* Stream preview */}
       {agent.status === "running" && agent.streamPreview.length > 0 && (
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-1 ml-3.5 space-y-0.5">
           {agent.streamPreview.slice(-2).map((line, i) => (
             <p
               key={i}
-              className="text-[10px] font-mono text-[var(--text-muted)] truncate leading-tight"
+              className="truncate font-mono text-[9px] leading-tight text-[var(--text-muted)]"
               style={{ opacity: i === 0 && agent.streamPreview.length > 1 ? 0.65 : 1 }}
             >
               {line}

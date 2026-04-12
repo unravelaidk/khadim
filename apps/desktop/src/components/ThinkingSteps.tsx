@@ -402,7 +402,7 @@ function CompactStepChip({ step }: { step: ThinkingStepData }) {
   const errored = step.status === "error";
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-medium ${
+      className={`inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-2 py-1 text-[10px] font-medium ${
         errored
           ? "bg-[var(--color-danger-muted)]/60 text-[var(--color-danger)]"
           : "bg-[var(--glass-bg)] text-[var(--text-muted)]"

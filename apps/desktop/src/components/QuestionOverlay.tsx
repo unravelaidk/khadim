@@ -191,7 +191,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[520px] max-h-[80vh] mx-4 glass-panel-strong rounded-[28px] animate-in zoom-in slide-in-from-bottom-4 duration-300 flex flex-col"
+        className="relative z-10 w-full max-w-[520px] max-h-[80vh] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300 flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-label="Agent question"
@@ -205,7 +205,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
               </svg>
             </span>
             <div>
-              <h2 className="text-base font-bold text-[var(--text-primary)]">
+              <h2 className="font-display text-base font-medium text-[var(--text-primary)]">
                 Agent needs your input
               </h2>
               <p className="text-[10px] text-[var(--text-muted)] mt-0.5">

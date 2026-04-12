@@ -36,8 +36,8 @@ export function ChatInput({
   }, [value]);
 
   return (
-    <div className="shrink-0 z-40 px-3 md:px-6 pt-2 pb-4">
-      <div className="mx-auto max-w-5xl">
+    <div className="shrink-0 z-40 px-4 md:px-6 pt-2 pb-5">
+      <div className="mx-auto max-w-3xl">
         {availableModels.length > 0 && onSelectModel && (
           <div className="mb-2 px-1">
             <ModelSelector
@@ -51,7 +51,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="relative group">
+        <div className="group relative rounded-[var(--radius-xl)] border border-[var(--glass-border)] bg-[var(--surface-card)] transition-[border-color,box-shadow] duration-[var(--duration-base)] focus-within:border-[var(--color-accent-muted)] focus-within:shadow-[0_0_0_4px_var(--color-accent-subtle)]">
           <textarea
             ref={inputRef}
             value={value}
@@ -62,37 +62,41 @@ export function ChatInput({
                 if (value.trim()) onSend();
               }
             }}
-            placeholder={isProcessing ? "Keep typing..." : "Message..."}
+            placeholder={isProcessing ? "Keep typing…" : "Message Khadim"}
             rows={1}
-            className="flex min-h-[52px] w-full resize-none items-center rounded-3xl glass-panel-strong pl-5 pr-14 py-4 text-[15px] text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--glass-border-strong)] focus:ring-4 focus:ring-[var(--input-focus-ring)] focus:outline-none md:min-h-[58px] md:px-6 md:py-4 md:pr-14 md:text-base"
-            style={{ maxHeight: "168px" }}
+            className="block w-full resize-none bg-transparent px-5 py-4 pr-14 font-sans text-[15px] leading-[1.55] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none md:px-6 md:py-[18px] md:pr-16 md:text-[16px]"
+            style={{ minHeight: "56px", maxHeight: "168px" }}
           />
           {isProcessing ? (
             <button
               onClick={onStop}
-              className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full btn-ink transition-all hover:scale-105 md:h-11 md:w-11"
+              aria-label="Stop generation"
+              className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-danger-border)] bg-[var(--color-danger-muted)] text-[var(--color-danger-text)] transition-all duration-[var(--duration-fast)] hover:bg-[var(--color-danger-bg-strong)] active:scale-95 md:h-11 md:w-11"
               title="Stop generation"
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+              <svg className="h-[14px] w-[14px]" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
             </button>
           ) : (
             <button
               onClick={onSend}
               disabled={!value.trim()}
-              className={`absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all md:h-11 md:w-11 ${
+              aria-label="Send message"
+              className={`absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full transition-all duration-[var(--duration-fast)] md:h-11 md:w-11 ${
                 value.trim()
-                  ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] hover:scale-105 hover:shadow-[var(--shadow-glass-md)]"
+                  ? "btn-accent"
                   : "bg-[var(--glass-bg)] text-[var(--text-muted)] cursor-not-allowed"
               }`}
             >
-              <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+              <svg className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </button>
           )}
         </div>
-        <p className="mt-2 text-center text-xs font-medium text-[var(--text-muted)]">
-          {isProcessing ? "Click stop to cancel. Press Enter to queue your next thought." : "Press Enter to send, Shift+Enter for newline"}
+        <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+          {isProcessing ? "Stop to cancel · Enter queues next turn" : "Enter to send · Shift+Enter new line"}
         </p>
       </div>
     </div>

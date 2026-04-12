@@ -1,117 +1,207 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { Workspace } from "../lib/bindings";
-import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import type { AgentInstance } from "../lib/types";
+import { backendLabel, relTime } from "../lib/ui";
+
+/* ─── Props ────────────────────────────────────────────────────────── */
 
 interface Props {
   workspaces: Workspace[];
+  agents: AgentInstance[];
   onSelect: (id: string) => void;
   onCreateNew: () => void;
   onDelete: (id: string) => void;
 }
 
-export function WorkspaceList({ workspaces, onSelect, onCreateNew, onDelete }: Props) {
+/* ─── Component ────────────────────────────────────────────────────── */
+
+export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDelete }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  return (
-    <div className="flex-1">
-      <div className="mx-auto max-w-5xl px-6 py-8">
-        {/* Header */}
-        <div className="mb-6">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)] mb-1">
-            Workspaces
+  // Attach running agent counts per workspace
+  const agentsByWorkspace = useMemo(() => {
+    const map = new Map<string, { running: number; total: number }>();
+    for (const agent of agents) {
+      const prev = map.get(agent.workspaceId) ?? { running: 0, total: 0 };
+      prev.total += 1;
+      if (agent.status === "running") prev.running += 1;
+      map.set(agent.workspaceId, prev);
+    }
+    return map;
+  }, [agents]);
+
+  // Global stats
+  const totalRunning = agents.filter((a) => a.status === "running").length;
+
+  /* ── Empty state ────────────────────────────────────────────────── */
+  if (workspaces.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-24">
+        <div className="stagger-in" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
+            Work mode
           </p>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-            Your workspaces
+          <h1
+            className="mt-3 font-display font-medium tracking-[-0.02em] text-[var(--text-primary)]"
+            style={{ fontSize: "var(--text-2xl)", lineHeight: 1.15 }}
+          >
+            No workspaces yet
           </h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">
-            Select a workspace to enter, or create a new one from a git repository.
+          <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Create a workspace from a local git repository.
+            Each workspace can run multiple agents in isolated worktrees.
           </p>
-        </div>
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {/* Workspace cards */}
-          {workspaces.map((workspace) => (
-            <WorkspaceCard
-              key={workspace.id}
-              workspace={workspace}
-              confirmDelete={confirmDeleteId === workspace.id}
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onConfirmDeleteChange={setConfirmDeleteId}
-            />
-          ))}
-
-          {/* + New workspace card */}
           <button
             onClick={onCreateNew}
-            className="group text-left rounded-3xl border-2 border-dashed border-[var(--glass-border-strong)] hover:border-[var(--color-accent-muted)] p-4 flex flex-col items-center justify-center min-h-[160px] transition-all duration-200 hover:bg-[var(--color-accent-subtle)]"
+            className="btn-accent mt-6 h-9 rounded-full px-5 text-[12px] font-semibold"
           >
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-[var(--glass-bg)] group-hover:bg-[var(--color-accent-subtle)] border border-[var(--glass-border)] transition-colors">
-              <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <p className="text-[12px] font-semibold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] mt-3 transition-colors">
-              New workspace
-            </p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
-              From a git repository
-            </p>
+            Create workspace
           </button>
         </div>
+      </div>
+    );
+  }
 
-        {/* Empty state — only when no workspaces at all */}
-        {workspaces.length === 0 && (
-          <div className="mt-4 rounded-3xl glass-card-static p-12 text-center">
-            <div className="w-14 h-14 rounded-3xl mx-auto flex items-center justify-center bg-[var(--color-accent-subtle)] mb-4">
-              <svg className="w-7 h-7 text-[var(--text-secondary)]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
+  /* ── Populated state ────────────────────────────────────────────── */
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="mx-auto max-w-4xl px-6 py-8 sm:px-8">
+
+        {/* Header */}
+        <div className="stagger-in" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
+                Work mode
+              </p>
+              <h1 className="mt-2 font-display text-[28px] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--text-primary)]">
+                Workspaces
+              </h1>
+              <p className="mt-2 text-[13px] text-[var(--text-secondary)]">
+                {workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}
+                {totalRunning > 0 && (
+                  <span className="text-[var(--color-accent)]"> · {totalRunning} agent{totalRunning !== 1 ? "s" : ""} running</span>
+                )}
+              </p>
             </div>
-            <p className="text-sm font-semibold text-[var(--text-primary)]">
-              No workspaces yet
-            </p>
-            <p className="text-[12px] text-[var(--text-muted)] mt-1 max-w-xs mx-auto">
-              Create your first workspace from a local git repository to get started.
-            </p>
             <button
               onClick={onCreateNew}
-              className="mt-4 h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold"
+              className="btn-accent mt-1 h-8 shrink-0 rounded-full px-4 text-[11px] font-semibold"
             >
-              Create workspace
+              New workspace
             </button>
           </div>
-        )}
+        </div>
+
+        {/* Separator */}
+        <hr className="my-6 border-none h-px bg-[var(--glass-border)]" />
+
+        {/* Workspace list — flat rows, not cards */}
+        <div className="space-y-0">
+          {workspaces.map((workspace, i) => {
+            const agentInfo = agentsByWorkspace.get(workspace.id);
+            return (
+              <WorkspaceRow
+                key={workspace.id}
+                workspace={workspace}
+                agentCount={agentInfo?.total ?? 0}
+                runningCount={agentInfo?.running ?? 0}
+                confirmDelete={confirmDeleteId === workspace.id}
+                onSelect={onSelect}
+                onDelete={onDelete}
+                onConfirmDeleteChange={setConfirmDeleteId}
+                delay={60 + i * 40}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-const WorkspaceCard = memo(function WorkspaceCard({
+/* ─── Workspace Row ────────────────────────────────────────────────── */
+
+const WorkspaceRow = memo(function WorkspaceRow({
   workspace,
+  agentCount,
+  runningCount,
   confirmDelete,
   onSelect,
   onDelete,
   onConfirmDeleteChange,
+  delay,
 }: {
   workspace: Workspace;
+  agentCount: number;
+  runningCount: number;
   confirmDelete: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onConfirmDeleteChange: (id: string | null) => void;
+  delay: number;
 }) {
   return (
     <div
-      className="group relative text-left rounded-3xl glass-card p-4 flex flex-col cursor-pointer"
+      className="group stagger-in flex items-center gap-4 border-t border-[var(--glass-border)] first:border-none py-4 px-2 -mx-2 rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--surface-ink-3)] cursor-pointer"
+      style={{ "--stagger-delay": `${delay}ms` } as React.CSSProperties}
       onClick={() => onSelect(workspace.id)}
-      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(workspace.id); }}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(workspace.id); }}
       tabIndex={0}
       role="button"
     >
+      {/* Initial */}
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--surface-ink-4)] font-display text-[15px] font-semibold text-[var(--text-primary)]">
+        {workspace.name.charAt(0).toUpperCase()}
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-[14px] font-medium text-[var(--text-primary)] group-hover:text-[var(--color-accent)] transition-colors">
+            {workspace.name}
+          </p>
+          {runningCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-accent-subtle)] px-2 py-0.5 text-[9px] font-medium text-[var(--color-accent)]">
+              <span className="h-1 w-1 rounded-full bg-[var(--color-accent)] animate-pulse" />
+              {runningCount}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+          <span>{backendLabel(workspace.backend)}</span>
+          {workspace.branch && (
+            <>
+              <span className="opacity-40">·</span>
+              <span className="inline-flex items-center gap-1 font-mono text-[10px]">
+                <BranchIcon />
+                {workspace.branch}
+              </span>
+            </>
+          )}
+          {agentCount > 0 && (
+            <>
+              <span className="opacity-40">·</span>
+              <span>{agentCount} agent{agentCount !== 1 ? "s" : ""}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Timestamp */}
+      <span className="hidden sm:block shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]">
+        {relTime(workspace.updated_at)}
+      </span>
+
+      {/* Path */}
+      <span className="hidden lg:block shrink-0 max-w-[200px] truncate font-mono text-[10px] text-[var(--text-muted)] opacity-60">
+        {workspace.worktree_path ?? workspace.repo_path}
+      </span>
+
+      {/* Delete */}
       <button
-        onClick={(event) => {
-          event.stopPropagation();
+        onClick={(e) => {
+          e.stopPropagation();
           if (confirmDelete) {
             onDelete(workspace.id);
             onConfirmDeleteChange(null);
@@ -119,11 +209,11 @@ const WorkspaceCard = memo(function WorkspaceCard({
             onConfirmDeleteChange(workspace.id);
           }
         }}
-        onBlur={() => onConfirmDeleteChange(confirmDelete ? null : workspace.id)}
-        className={`absolute top-2.5 right-2.5 z-10 rounded-xl px-2 py-1 text-[10px] font-semibold transition-all duration-150 ${
+        onBlur={() => { if (confirmDelete) onConfirmDeleteChange(null); }}
+        className={`shrink-0 transition-all duration-150 ${
           confirmDelete
-            ? "bg-[var(--color-danger-muted)] text-[var(--color-danger)] border border-[var(--color-danger-border)] opacity-100"
-            : "opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)] border border-transparent"
+            ? "rounded-[var(--radius-xs)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] text-[var(--color-danger)] px-2 py-1 text-[10px] font-semibold opacity-100"
+            : "opacity-0 group-hover:opacity-100 h-7 w-7 flex items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)]"
         }`}
         title={confirmDelete ? "Click again to confirm" : "Delete workspace"}
       >
@@ -133,24 +223,19 @@ const WorkspaceCard = memo(function WorkspaceCard({
           </svg>
         )}
       </button>
-
-      <div className="flex items-center justify-between mb-3 gap-3">
-        <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-bold" style={{ background: "var(--color-accent-subtle)", border: "1px solid var(--glass-border)" }}>
-          {workspace.name.charAt(0).toUpperCase()}
-        </div>
-        <span className="text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">{relTime(workspace.updated_at)}</span>
-      </div>
-      <h3 className="text-[14px] font-bold text-[var(--text-primary)] leading-snug truncate mb-1">{workspace.name}</h3>
-      <p className="text-[11px] text-[var(--text-muted)]">{backendLabel(workspace.backend)} · {executionTargetLabel(workspace.execution_target)}</p>
-      {workspace.branch && (
-        <p className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
-          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0a3 3 0 103 3H6m0-3h12a3 3 0 003-3V6a3 3 0 00-3-3H9a3 3 0 00-3 3v6z" />
-          </svg>
-          <span className="truncate">{workspace.branch}</span>
-        </p>
-      )}
-      <p className="text-[10px] text-[var(--text-muted)] mt-auto pt-3 truncate font-mono opacity-80">{workspace.worktree_path ?? workspace.repo_path}</p>
     </div>
   );
 });
+
+/* ─── Icons ────────────────────────────────────────────────────────── */
+
+function BranchIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="6" cy="18" r="2" />
+      <circle cx="18" cy="9" r="2" />
+      <path strokeLinecap="round" d="M6 8v8M18 11c0 4-6 3-6 7" />
+    </svg>
+  );
+}

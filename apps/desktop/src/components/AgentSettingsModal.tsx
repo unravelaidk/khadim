@@ -73,7 +73,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
       <div className="absolute inset-0 bg-[var(--surface-ink-25)] backdrop-blur-sm" />
 
       <div
-        className="relative z-10 w-full max-w-[440px] mx-4 glass-panel-strong rounded-[28px] animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[440px] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Agent settings"
@@ -84,14 +84,14 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
             <div
               className="w-9 h-9 rounded-2xl flex items-center justify-center text-[13px] font-bold shrink-0"
               style={{
-                background: `hsl(${hashStr(agent.id)} 45% 90%)`,
-                color: `hsl(${hashStr(agent.id)} 40% 30%)`,
+                background: `oklch(90% 0.04 ${hashStr(agent.id)})`,
+                color: `oklch(35% 0.06 ${hashStr(agent.id)})`,
               }}
             >
               {agent.label.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-[var(--text-primary)] truncate">
+              <h2 className="font-display text-base font-medium text-[var(--text-primary)] truncate">
                 Agent settings
               </h2>
               <div className="flex items-center gap-1.5 mt-0.5">

@@ -291,24 +291,26 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
 
   if (!hasContent && thinkingSteps.length === 0 && !isUser) return null;
 
-  // User message
+  // User message — typographic, flat, no bubble
   if (isUser) {
     return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 flex justify-end">
-        <div className="flex items-start gap-2 md:gap-3 max-w-[92%] md:max-w-[80%]">
-          <div className="flex flex-col items-end min-w-0">
-            <span className="mb-1 flex items-center gap-1.5 px-1 text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)] md:text-[10px]">
-              You
-              {time && <span className="font-mono opacity-80">{time}</span>}
-            </span>
-            <div className="rounded-3xl rounded-tr-lg border border-[var(--glass-border-strong)] bg-[var(--surface-ink-solid)] px-4 py-3 text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] md:px-5 md:py-3.5">
-              <div className="text-sm leading-relaxed text-[var(--text-inverse)]">
-                {message.content}
-              </div>
-            </div>
+      <div className="animate-in group/msg">
+        <div className="mb-1.5 flex items-center gap-2 md:mb-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--color-accent)] md:h-7 md:w-7">
+            <span className="font-display text-[11px] font-semibold text-[var(--color-accent-ink)] md:text-xs">Y</span>
           </div>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] md:h-8 md:w-8">
-            <span className="font-display text-[11px] font-bold text-[var(--color-accent-ink)] md:text-xs">Y</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] md:text-[11px]">
+            You
+          </span>
+          {time && (
+            <span className="font-mono text-[10px] text-[var(--text-muted)] opacity-70 md:text-[11px]">
+              · {time}
+            </span>
+          )}
+        </div>
+        <div className="pl-8 md:pl-9">
+          <div className="whitespace-pre-wrap font-sans text-[15px] leading-[1.65] text-[var(--text-primary)] md:text-[16px] md:leading-[1.7]">
+            {message.content}
           </div>
         </div>
       </div>
@@ -320,16 +322,22 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
   const BackendLogo = backend === "opencode" ? OpenCodeLogo : KhadimLogo;
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 group/msg">
+    <div className="animate-in group/msg">
       {/* Header: avatar + name + timestamp */}
-      <div className="flex items-center gap-2 mb-1.5 md:mb-2">
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xl md:h-7 md:w-7 overflow-hidden">
-          <div className="logo-adaptive h-full w-full [&>svg]:w-full [&>svg]:h-full text-[var(--text-primary)]">
+      <div className="mb-1.5 flex items-center gap-2 md:mb-2">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-xs)] md:h-7 md:w-7">
+          <div className="logo-adaptive h-full w-full text-[var(--color-accent)] [&>svg]:h-full [&>svg]:w-full">
             <BackendLogo />
           </div>
         </div>
-        <span className="text-[11px] font-semibold text-[var(--text-primary)] md:text-xs tracking-wide">{backendLabel}</span>
-        {time && <span className="text-[9px] font-mono text-[var(--text-muted)] opacity-80 md:text-[10px]">{time}</span>}
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] md:text-[11px]">
+          {backendLabel}
+        </span>
+        {time && (
+          <span className="font-mono text-[10px] text-[var(--text-muted)] opacity-70 md:text-[11px]">
+            · {time}
+          </span>
+        )}
       </div>
 
       {/* Message body */}
@@ -340,13 +348,13 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
           </div>
         )}
 
-        <div className={`text-sm leading-[1.7] md:text-[0.9375rem] md:leading-[1.75] ${isStreaming ? "streaming-cursor" : ""}`}>
+        <div className={`font-sans text-[15px] leading-[1.7] md:text-[16px] md:leading-[1.75] ${isStreaming ? "streaming-cursor" : ""}`}>
           <MarkdownRenderer content={message.content} />
         </div>
 
         {/* Copy button — visible on hover */}
         {hasContent && !isStreaming && (
-          <div className="flex items-center gap-0.5 mt-1.5 -ml-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
+          <div className="mt-2 -ml-2 flex items-center gap-0.5 opacity-0 transition-opacity duration-[var(--duration-base)] group-hover/msg:opacity-100">
             <CopyButton text={message.content} />
           </div>
         )}
@@ -362,18 +370,22 @@ export function TypingIndicator({ backend = "khadim" }: { backend?: BackendType 
   const BackendLogo = backend === "opencode" ? OpenCodeLogo : KhadimLogo;
 
   return (
-    <div className="flex gap-2.5 justify-start animate-in fade-in duration-300">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl overflow-hidden">
-        <div className="logo-adaptive h-full w-full [&>svg]:w-full [&>svg]:h-full text-[var(--text-primary)]"><BackendLogo /></div>
-      </div>
-      <div className="flex flex-col items-start">
-        <span className="mb-1 px-1 text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">{backendLabel}</span>
-        <div className="rounded-3xl rounded-tl-lg glass-card-static px-4 py-3">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[var(--text-muted)] animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-2 w-2 rounded-full bg-[var(--text-secondary)] animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-2 w-2 rounded-full bg-[var(--text-primary)] animate-bounce" />
+    <div className="animate-in">
+      <div className="mb-1.5 flex items-center gap-2 md:mb-2">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-xs)] md:h-7 md:w-7">
+          <div className="logo-adaptive h-full w-full text-[var(--color-accent)] [&>svg]:h-full [&>svg]:w-full">
+            <BackendLogo />
           </div>
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] md:text-[11px]">
+          {backendLabel}
+        </span>
+      </div>
+      <div className="pl-8 md:pl-9">
+        <div className="inline-flex items-center gap-1.5">
+          <span className="typing-dot" style={{ animationDelay: "0ms" }} />
+          <span className="typing-dot" style={{ animationDelay: "160ms" }} />
+          <span className="typing-dot" style={{ animationDelay: "320ms" }} />
         </div>
       </div>
     </div>

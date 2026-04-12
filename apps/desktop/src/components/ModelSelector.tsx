@@ -62,7 +62,7 @@ function ModelIcon({ model, size = "md" }: { model: OpenCodeModelOption; size?: 
   return (
     <span
       className={`inline-flex ${sizeClasses} shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[var(--text-inverse)]`}
-      style={{ background: `hsl(${hue}, 55%, 55%)` }}
+      style={{ background: `oklch(60% 0.10 ${hue})` }}
     >
       {key.charAt(0).toUpperCase()}
     </span>

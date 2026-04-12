@@ -30,7 +30,7 @@ export function SettingsPanel({
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
       <div className="shrink-0 px-6 pt-5 pb-0 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">Settings</h1>
+        <h1 className="font-display text-lg font-medium text-[var(--text-primary)] tracking-tight">Settings</h1>
         <button
           onClick={onClose}
           className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"

@@ -85,6 +85,7 @@
   --color-danger-ink: #f48ea2;
   
   --color-warning-text: #e0af68;
+  --color-pop:            #e0af68;
 
   /* Terminal — Tokyo Night Dark ANSI */
   --terminal-bg: #16161e;
@@ -215,6 +216,7 @@
   --color-danger-ink: #6a2a37;
   
   --color-warning-text: #b8750b;
+  --color-pop:            #b8750b;
 
   /* Terminal — Tokyo Night Light ANSI */
   --terminal-bg: #d5d6db;

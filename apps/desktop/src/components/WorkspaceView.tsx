@@ -1,24 +1,37 @@
-import { memo, useEffect, useMemo, useState } from "react";
-import { type Conversation, type GitHubAuthStatus, type OpenCodeConnection, type ProcessOutput, type RepoSlug, type Workspace } from "../lib/bindings";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type Conversation,
+  type GitHubAuthStatus,
+  type OpenCodeConnection,
+  type ProcessOutput,
+  type RepoSlug,
+  type Workspace,
+} from "../lib/bindings";
 import { useGitBranches } from "../hooks/useGitBranches";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
 import { GlassSelect } from "./GlassSelect";
-import { ActivityChart } from "./ActivityChart";
 import { GitHubTab } from "./GitHubTab";
 
-type Tab = "overview" | "agents" | "logs" | "github";
-
-
+/* ─── Helpers ──────────────────────────────────────────────────────── */
 
 function statusText(agent: AgentInstance): string {
   if (agent.status === "running" && agent.currentActivity) return agent.currentActivity;
-  if (agent.status === "running") return "Working...";
-  if (agent.status === "complete" && agent.finishedAt) return `Completed ${relTime(agent.finishedAt)}`;
-  if (agent.status === "complete") return "Completed";
+  if (agent.status === "running") return "Working…";
+  if (agent.status === "complete" && agent.finishedAt) return `Done ${relTime(agent.finishedAt)}`;
+  if (agent.status === "complete") return "Done";
   if (agent.status === "error") return agent.errorMessage ?? "Error";
   return "Idle";
 }
+
+function statusColor(status: AgentInstance["status"]): string {
+  if (status === "running") return "var(--color-accent)";
+  if (status === "complete") return "var(--color-success)";
+  if (status === "error") return "var(--color-danger)";
+  return "var(--scrollbar-thumb)";
+}
+
+/* ─── Props ────────────────────────────────────────────────────────── */
 
 interface WorkspaceViewProps {
   workspace: Workspace;
@@ -28,7 +41,6 @@ interface WorkspaceViewProps {
   gitStatus: string;
   gitDiffStat: string;
   agents: AgentInstance[];
-
   onSelectConversation: (id: string) => void;
   onStartOpenCode: () => void;
   onStopOpenCode: () => void;
@@ -42,6 +54,8 @@ interface WorkspaceViewProps {
   onNavigateToSettings: () => void;
   onGitHubSlugChange: (slug: RepoSlug) => void;
 }
+
+/* ─── Main Component ───────────────────────────────────────────────── */
 
 export function WorkspaceView({
   workspace,
@@ -64,334 +78,494 @@ export function WorkspaceView({
   onNavigateToSettings,
   onGitHubSlugChange,
 }: WorkspaceViewProps) {
-  const [tab, setTab] = useState<Tab>("overview");
   const [branchDraft, setBranchDraft] = useState(workspace.branch ?? "");
   const [branchBusy, setBranchBusy] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+  const [showGitHub, setShowGitHub] = useState(false);
+
   const runningCount = agents.filter((a) => a.status === "running").length;
+
   const { localBranches } = useGitBranches(workspace.repo_path, true);
   const branchOptions = useMemo(
-    () => localBranches.map((branch) => ({
-      value: branch.name,
-      label: `${branch.name}${branch.is_current ? " (current)" : ""}`,
-    })),
+    () =>
+      localBranches.map((b) => ({
+        value: b.name,
+        label: `${b.name}${b.is_current ? " (current)" : ""}`,
+      })),
     [localBranches],
   );
+
+  const sortedAgents = useMemo(() => {
+    return [...agents].sort((a, b) => {
+      const rank = (s: AgentInstance["status"]): number => {
+        if (s === "running") return 0;
+        if (s === "error") return 1;
+        if (s === "complete") return 2;
+        return 3;
+      };
+      return rank(a.status) - rank(b.status);
+    });
+  }, [agents]);
 
   useEffect(() => {
     setBranchDraft(workspace.branch ?? "");
   }, [workspace.branch, workspace.id]);
 
-  async function handleBranchChange(nextBranch: string) {
-    setBranchDraft(nextBranch);
+  const handleBranchChange = useCallback(async (next: string) => {
+    setBranchDraft(next);
     setBranchBusy(true);
     try {
-      await onWorkspaceBranchChange(nextBranch);
+      await onWorkspaceBranchChange(next);
     } finally {
       setBranchBusy(false);
     }
-  }
+  }, [onWorkspaceBranchChange]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
-      {/* Header */}
-      <div className="shrink-0 px-6 pt-4 pb-3 border-b border-[var(--glass-border)]">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-[var(--color-accent-ink)]"
-              style={{
-                background: "var(--color-accent)",
-                boxShadow: "var(--shadow-glow-accent)",
-              }}
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* GitHub slide-over — renders on top, preserving main scroll */}
+      {showGitHub && (
+        <div className="absolute inset-0 z-30 flex flex-col animate-in" style={{ background: "var(--surface-bg)" }}>
+          <div className="shrink-0 border-b border-[var(--glass-border)] px-6 py-3 flex items-center gap-3">
+            <button
+              onClick={() => setShowGitHub(false)}
+              className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)] transition-colors"
             >
-              {workspace.name.charAt(0)}
-            </div>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">{workspace.name} · GitHub</span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+            <GitHubTab
+              authStatus={githubAuthStatus}
+              slug={githubSlug}
+              repoPath={workspace.worktree_path ?? workspace.repo_path}
+              onNavigateToSettings={onNavigateToSettings}
+              onSlugChange={onGitHubSlugChange}
+            />
+          </div>
+        </div>
+      )}
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-thin">
+      <div className="mx-auto w-full max-w-4xl px-6 py-8 sm:px-8">
+
+        {/* ── Workspace Identity ──────────────────────────────────── */}
+        <div className="stagger-in" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
+          <div className="flex items-start justify-between gap-6">
             <div className="min-w-0">
-              <h1 className="text-sm font-bold tracking-tight text-[var(--text-primary)] truncate">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
+                {backendLabel(workspace.backend)} · {executionTargetLabel(workspace.execution_target)}
+              </p>
+              <h1 className="mt-2 font-display text-[28px] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--text-primary)]">
                 {workspace.name}
               </h1>
-              <p className="text-[10px] text-[var(--text-muted)] truncate">
-                {backendLabel(workspace.backend)} · {executionTargetLabel(workspace.execution_target)} · {workspace.repo_path}
-              </p>
+              <p className="mt-2 truncate font-mono text-[11px] text-[var(--text-muted)]">{workspace.repo_path}</p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2 pt-1">
+              <button
+                onClick={onNewAgent}
+                disabled={loading}
+                className="btn-accent h-8 rounded-full px-4 text-[11px] font-semibold disabled:opacity-50"
+              >
+                New agent
+              </button>
+              {connection ? (
+                <button
+                  onClick={onStopOpenCode}
+                  disabled={loading}
+                  className="btn-glass h-8 rounded-full px-3 text-[11px] font-semibold disabled:opacity-50"
+                >
+                  Stop
+                </button>
+              ) : workspace.backend === "opencode" ? (
+                <button
+                  onClick={onStartOpenCode}
+                  disabled={loading}
+                  className="btn-glass h-8 rounded-full px-3 text-[11px] font-semibold disabled:opacity-50"
+                >
+                  Start
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={onNewAgent}
-              disabled={loading}
-              className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold disabled:opacity-50"
-            >
-              New agent
-            </button>
-            {connection ? (
-              <button
-                onClick={onStopOpenCode}
-                disabled={loading}
-                className="h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold disabled:opacity-50"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={onStartOpenCode}
-                disabled={loading || workspace.backend !== "opencode"}
-                className="h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold disabled:opacity-50"
-              >
-                Start
-              </button>
+          {/* Status pills — inline, compact */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Pill>
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: connection ? "var(--color-success)" : "var(--scrollbar-thumb)" }}
+              />
+              {connection ? "Connected" : "Idle"}
+            </Pill>
+            {workspace.branch && (
+              <Pill mono>
+                <BranchIcon />
+                {workspace.branch}
+              </Pill>
             )}
+            <Pill>{agents.length} agent{agents.length !== 1 ? "s" : ""}</Pill>
+            {runningCount > 0 && <Pill accent>{runningCount} running</Pill>}
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mt-3">
-          {(["overview", "agents", "github", "logs"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded-xl text-[11px] font-semibold capitalize transition-all ${
-                tab === t
-                  ? "btn-ink"
-                  : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {t}
-              {t === "agents" && agents.length > 0 && (
-                <span className="ml-1.5 text-[9px] opacity-70">{agents.length}</span>
-              )}
-            </button>
-          ))}
+        {/* ── Separator ──────────────────────────────────────────── */}
+        <hr className="my-8 border-none h-px bg-[var(--glass-border)]" />
+
+        {/* ── Agent Roster ───────────────────────────────────────── */}
+        <div className="stagger-in" style={{ "--stagger-delay": "80ms" } as React.CSSProperties}>
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="font-display text-[20px] font-medium text-[var(--text-primary)]">Agents</h2>
+            {sortedAgents.length > 0 && (
+              <span className="text-[11px] text-[var(--text-muted)]">
+                {runningCount > 0
+                  ? `${runningCount} working right now`
+                  : "All quiet"}
+              </span>
+            )}
+          </div>
+
+          {sortedAgents.length > 0 ? (
+            <div className="mt-4 space-y-1">
+              {sortedAgents.map((agent) => (
+                <AgentRow
+                  key={agent.id}
+                  agent={agent}
+                  onFocus={() => onFocusAgent(agent.id)}
+                  onManage={() => onManageAgent(agent.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 text-center">
+              <p className="font-display text-[16px] font-medium text-[var(--text-secondary)]">
+                No agents yet
+              </p>
+              <p className="mx-auto mt-1 max-w-sm text-[12px] leading-relaxed text-[var(--text-muted)]">
+                Each agent works in its own branch and worktree.
+                Create one to start.
+              </p>
+              <button
+                onClick={onNewAgent}
+                disabled={loading}
+                className="btn-accent mt-4 h-8 rounded-full px-5 text-[11px] font-semibold disabled:opacity-50"
+              >
+                Create first agent
+              </button>
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* Activity chart — above tab content */}
-      <div className="shrink-0 px-6 py-3 border-b border-[var(--glass-border)]">
-        <ActivityChart agents={agents} />
-      </div>
+        {/* ── Repository Pulse ───────────────────────────────────── */}
+        <div className="mt-10 stagger-in" style={{ "--stagger-delay": "160ms" } as React.CSSProperties}>
+          <h2 className="font-display text-[20px] font-medium text-[var(--text-primary)]">
+            Repository
+          </h2>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <CodeBlock label="Status" content={gitStatus || "Working tree clean"} />
+            <CodeBlock label="Diff" content={gitDiffStat || "No changes"} />
+          </div>
+        </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4" style={{ minHeight: 0 }}>
-        {tab === "overview" && (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-            {/* Runtime card */}
-            <section className="rounded-3xl glass-card-static p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-[var(--text-primary)]">Runtime</h2>
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${
-                  connection ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]" : "bg-[var(--surface-ink-5)] text-[var(--text-muted)]"
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${connection ? "bg-[var(--color-success)]" : "bg-[var(--scrollbar-thumb)]"}`} />
-                  {connection ? "connected" : "stopped"}
+        {/* ── Workspace Configuration ────────────────────────────── */}
+        <div className="mt-10 stagger-in" style={{ "--stagger-delay": "240ms" } as React.CSSProperties}>
+          <h2 className="font-display text-[20px] font-medium text-[var(--text-primary)]">
+            Configuration
+          </h2>
+
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            {/* Default branch */}
+            <div>
+              <p className="text-[12px] font-medium text-[var(--text-secondary)]">Default branch</p>
+              <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
+                New agents branch from here.
+              </p>
+              {branchOptions.length > 0 ? (
+                <GlassSelect
+                  value={branchDraft}
+                  onChange={(v) => { void handleBranchChange(v); }}
+                  options={branchOptions}
+                  className="mt-2"
+                />
+              ) : (
+                <p className="mt-2 rounded-[var(--radius-sm)] bg-[var(--surface-ink-4)] px-3 py-2 font-mono text-[11px] text-[var(--text-secondary)]">
+                  {workspace.branch ?? "repo default"}
+                </p>
+              )}
+              {branchBusy && (
+                <p className="mt-1 text-[10px] text-[var(--text-muted)]">Saving…</p>
+              )}
+            </div>
+
+            {/* Runtime info */}
+            <div>
+              <p className="text-[12px] font-medium text-[var(--text-secondary)]">Runtime</p>
+              <dl className="mt-2 space-y-1.5 text-[11px]">
+                <DetailRow label="Backend" value={backendLabel(workspace.backend)} />
+                <DetailRow label="Target" value={executionTargetLabel(workspace.execution_target)} />
+                <DetailRow label="Worktree root" value={workspace.worktree_path ?? "workspace root"} mono />
+                <DetailRow label="Updated" value={relTime(workspace.updated_at)} />
+                {connection && (
+                  <DetailRow label="Endpoint" value={connection.base_url} mono />
+                )}
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Quick Links ────────────────────────────────────────── */}
+        <div className="mt-10 stagger-in" style={{ "--stagger-delay": "300ms" } as React.CSSProperties}>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowGitHub(true)}
+              className="btn-glass h-8 rounded-full px-3.5 text-[11px] font-semibold inline-flex items-center gap-1.5"
+            >
+              <GitHubIcon />
+              GitHub
+            </button>
+            <button
+              onClick={() => setShowLogs((p) => !p)}
+              className="btn-glass h-8 rounded-full px-3.5 text-[11px] font-semibold inline-flex items-center gap-1.5"
+            >
+              <LogIcon />
+              {showLogs ? "Hide logs" : "Logs"}
+            </button>
+          </div>
+
+          {/* Inline logs */}
+          {showLogs && (
+            <div className="mt-4 rounded-[var(--radius-md)] overflow-hidden animate-in" style={{ background: "var(--log-bg)" }}>
+              <div className="px-4 py-2 flex items-center justify-between border-b border-[var(--glass-border)]">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--scrollbar-thumb)]">
+                  Process output
+                </span>
+                <span className="font-mono text-[9px] text-[var(--scrollbar-thumb)]">
+                  {processOutput.length} lines
                 </span>
               </div>
-              <dl className="space-y-2 text-[12px]">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Backend</dt>
-                  <dd className="font-medium text-[var(--text-primary)]">{backendLabel(workspace.backend)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Target</dt>
-                  <dd className="font-medium text-[var(--text-primary)]">{executionTargetLabel(workspace.execution_target)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Repository</dt>
-                  <dd className="font-medium text-[var(--text-primary)] truncate font-mono text-[11px]">{workspace.repo_path}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Default branch</dt>
-                  <dd className="font-medium text-[var(--text-primary)]">{workspace.branch ?? "current repo branch"}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Updated</dt>
-                  <dd className="font-medium text-[var(--text-primary)]">{relTime(workspace.updated_at)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--text-muted)]">Agents</dt>
-                  <dd className="font-medium text-[var(--text-primary)]">
-                    {agents.length}{runningCount > 0 && <span className="text-[var(--color-accent)] ml-1">({runningCount} running)</span>}
-                  </dd>
-                </div>
-              </dl>
-              {connection && (
-                <div className="mt-4 rounded-2xl bg-[var(--surface-ink-3)] p-3 text-[11px] text-[var(--text-secondary)]">
-                  <p className="font-semibold text-[var(--text-primary)]">OpenCode endpoint</p>
-                  <p className="mt-1 break-all font-mono">{connection.base_url}</p>
-                </div>
-              )}
-              <div className="mt-4 rounded-2xl bg-[var(--surface-ink-3)] p-3 text-[11px] text-[var(--text-secondary)]">
-                <p className="font-semibold text-[var(--text-primary)]">Change default branch</p>
-                {branchOptions.length > 0 ? (
-                  <GlassSelect
-                    value={branchDraft}
-                    onChange={(value) => { void handleBranchChange(value); }}
-                    options={branchOptions}
-                    className="mt-2"
-                  />
+              <div
+                className="p-4 overflow-y-auto scrollbar-thin font-mono text-[11px] leading-5 space-y-0.5"
+                style={{ maxHeight: 280 }}
+              >
+                {processOutput.length === 0 ? (
+                  <p className="text-[var(--scrollbar-thumb)]">No output yet.</p>
                 ) : (
-                  <p className="mt-1 font-mono">{workspace.branch ?? "current repo branch"}</p>
+                  processOutput.map((line, i) => (
+                    <div key={`${line.process_id}-${i}`} className="break-words">
+                      <span className={line.stream === "stderr" ? "text-[var(--log-stderr)]" : "text-[var(--log-stdout)]"}>
+                        [{line.stream}]
+                      </span>{" "}
+                      <span className="text-[var(--text-inverse)]">{line.line}</span>
+                    </div>
+                  ))
                 )}
-                <p className="mt-2 text-[10px] text-[var(--text-muted)]">
-                  New agents use this as their base branch.{branchBusy ? " Saving..." : ""}
-                </p>
               </div>
-            </section>
-
-            {/* Git snapshot — main repo */}
-            <section className="rounded-3xl glass-card-static p-4">
-              <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3">Git snapshot (main repo)</h2>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-2">Status</p>
-                  <pre className="rounded-2xl bg-[var(--surface-ink-4)] p-3 text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
-                    {gitStatus || "Working tree clean"}
-                  </pre>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-2">Diff stat</p>
-                  <pre className="rounded-2xl bg-[var(--surface-ink-4)] p-3 text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
-                    {gitDiffStat || "No diff"}
-                  </pre>
-                </div>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {tab === "agents" && (
-          <div className="space-y-3">
-            {agents.map((agent) => (
-              <AgentListRow key={agent.id} agent={agent} onFocusAgent={onFocusAgent} onManageAgent={onManageAgent} />
-            ))}
-
-            {/* Conversation list as secondary section */}
-            {conversations.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-2 px-1">
-                  Conversations
-                </h3>
-                {conversations.map((conversation) => (
-                  <ConversationRow key={conversation.id} conversation={conversation} onSelectConversation={onSelectConversation} />
-                ))}
-              </div>
-            )}
-
-            {agents.length === 0 && conversations.length === 0 && (
-              <div className="py-16 text-center">
-                <p className="text-sm font-medium text-[var(--text-secondary)]">No agents yet</p>
-                <p className="text-[12px] text-[var(--text-muted)] mt-1 max-w-xs mx-auto">
-                  Create an agent to start working. Each agent gets its own worktree so it can work on a separate branch.
-                </p>
-                <button
-                  onClick={onNewAgent}
-                  disabled={loading}
-                  className="mt-4 h-8 px-4 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
-                >
-                  Create first agent
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === "github" && (
-          <GitHubTab
-            authStatus={githubAuthStatus}
-            slug={githubSlug}
-            repoPath={workspace.worktree_path ?? workspace.repo_path}
-            onNavigateToSettings={onNavigateToSettings}
-            onSlugChange={onGitHubSlugChange}
-          />
-        )}
-
-        {tab === "logs" && (
-          <div className="rounded-3xl bg-[var(--log-bg)] text-[var(--text-inverse)] p-4 min-h-[420px]">
-            {/* Process output is still here for backend stdout/stderr; the live native
-                terminal lives in the dock at the bottom of the workspace. */}
-            <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--scrollbar-thumb)] mb-3">
-              Process Output
             </div>
-            <div className="space-y-1 font-mono text-[11px] leading-5">
-              {processOutput.map((line, index) => (
-                <div key={`${line.process_id}-${index}`} className="break-words">
-                  <span className={line.stream === "stderr" ? "text-[var(--log-stderr)]" : "text-[var(--log-stdout)]"}>
-                    [{line.stream}]
-                  </span>{" "}
-                  <span>{line.line}</span>
-                </div>
+          )}
+        </div>
+
+        {/* ── Recent Conversations ───────────────────────────────── */}
+        {conversations.length > 0 && (
+          <div className="mt-10 pb-8 stagger-in" style={{ "--stagger-delay": "360ms" } as React.CSSProperties}>
+            <h2 className="font-display text-[20px] font-medium text-[var(--text-primary)]">
+              Conversations
+            </h2>
+            <div className="mt-4 space-y-0">
+              {conversations.slice(0, 8).map((conv) => (
+                <ConversationRow
+                  key={conv.id}
+                  conversation={conv}
+                  onSelect={() => onSelectConversation(conv.id)}
+                />
               ))}
-              {processOutput.length === 0 && (
-                <div className="text-[var(--scrollbar-thumb)]">No process output yet.</div>
-              )}
             </div>
           </div>
         )}
       </div>
-
+    </div>
     </div>
   );
 }
 
-const AgentListRow = memo(function AgentListRow({
+/* ─── Agent Row ────────────────────────────────────────────────────── */
+
+const AgentRow = memo(function AgentRow({
   agent,
-  onFocusAgent,
-  onManageAgent,
+  onFocus,
+  onManage,
 }: {
   agent: AgentInstance;
-  onFocusAgent: (id: string) => void;
-  onManageAgent: (id: string) => void;
+  onFocus: () => void;
+  onManage: () => void;
 }) {
   return (
-    <div className="rounded-2xl glass-card p-4 transition-all duration-200 hover:shadow-[var(--shadow-glass-sm)]">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{agent.label}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className={`text-[10px] ${agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"} truncate`}>
-              {agent.status === "running" && agent.currentActivity ? agent.currentActivity : agent.status === "running" ? "Working..." : agent.status === "complete" ? "Done" : agent.status === "error" ? (agent.errorMessage ?? "Error") : "Idle"}
+    <div
+      className="group flex items-center gap-4 rounded-[var(--radius-sm)] px-3 py-3 transition-colors hover:bg-[var(--surface-ink-3)] cursor-pointer"
+      onClick={onFocus}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onFocus(); }}
+    >
+      {/* Status dot */}
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ background: statusColor(agent.status) }}
+      />
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+            {agent.label}
+          </p>
+          {agent.branch && (
+            <span className="truncate rounded-md bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+              {agent.branch}
             </span>
-            {agent.branch && <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">{agent.branch}</span>}
-          </div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button onClick={() => onFocusAgent(agent.id)} className="h-7 px-2.5 rounded-xl btn-glass text-[10px] font-semibold">Chat</button>
-          <button onClick={() => onManageAgent(agent.id)} className="h-7 w-7 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors" title="Agent settings">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
-        </div>
+        <p
+          className={`mt-0.5 truncate text-[11px] ${
+            agent.status === "error"
+              ? "text-[var(--color-danger-text-light)]"
+              : "text-[var(--text-muted)]"
+          }`}
+        >
+          {statusText(agent)}
+        </p>
       </div>
 
-      <p className={`text-[10px] mt-2 ml-12 truncate ${agent.status === "error" ? "text-[var(--color-danger-text-light)]" : "text-[var(--text-muted)]"}`}>
-        {statusText(agent)}
-      </p>
-
-      {agent.worktreePath && <p className="text-[10px] font-mono text-[var(--text-muted)] opacity-75 mt-1 ml-12 truncate">{agent.worktreePath}</p>}
-      {agent.status === "running" && agent.startedAt && <p className="text-[9px] text-[var(--text-muted)] mt-1 ml-12 tabular-nums">Started {relTime(agent.startedAt)}</p>}
+      {/* Actions */}
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={(e) => { e.stopPropagation(); onFocus(); }}
+          className="h-7 rounded-[var(--radius-xs)] px-2.5 text-[10px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          Chat
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onManage(); }}
+          className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          title="Settings"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="19" cy="12" r="1" />
+            <circle cx="5" cy="12" r="1" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 });
 
+/* ─── Conversation Row ─────────────────────────────────────────────── */
+
 const ConversationRow = memo(function ConversationRow({
   conversation,
-  onSelectConversation,
+  onSelect,
 }: {
   conversation: Conversation;
-  onSelectConversation: (id: string) => void;
+  onSelect: () => void;
 }) {
   return (
-    <button onClick={() => onSelectConversation(conversation.id)} className="w-full rounded-2xl glass-card p-3 text-left mb-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[12px] font-semibold text-[var(--text-primary)]">{conversation.title ?? "Untitled conversation"}</p>
-          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
-            {backendLabel(conversation.backend)}{conversation.is_active ? " · active" : ""}
-          </p>
-        </div>
-        <span className="text-[10px] text-[var(--text-muted)]">{relTime(conversation.updated_at)}</span>
+    <button
+      onClick={onSelect}
+      className="group flex w-full items-center justify-between gap-4 border-t border-[var(--glass-border)] px-1 py-3 text-left transition-colors first:border-none hover:bg-[var(--surface-ink-3)]"
+    >
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-medium text-[var(--text-primary)] group-hover:text-[var(--color-accent)] transition-colors">
+          {conversation.title ?? "Untitled"}
+        </p>
+        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+          {backendLabel(conversation.backend)}
+          {conversation.is_active ? " · active" : ""}
+        </p>
       </div>
+      <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]">
+        {relTime(conversation.updated_at)}
+      </span>
     </button>
   );
 });
+
+/* ─── Atoms ────────────────────────────────────────────────────────── */
+
+function Pill({
+  children,
+  mono,
+  accent,
+}: {
+  children: React.ReactNode;
+  mono?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${
+        accent
+          ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
+          : "bg-[var(--surface-ink-4)] text-[var(--text-secondary)]"
+      } ${mono ? "font-mono" : ""}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <dt className="text-[var(--text-muted)]">{label}</dt>
+      <dd className={`text-right text-[var(--text-primary)] ${mono ? "font-mono text-[10px]" : ""}`}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function CodeBlock({ label, content }: { label: string; content: string }) {
+  return (
+    <div>
+      <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        {label}
+      </p>
+      <pre
+        className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-ink-4)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]"
+        style={{ maxHeight: 240 }}
+      >
+        {content}
+      </pre>
+    </div>
+  );
+}
+
+function BranchIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="6" cy="18" r="2" />
+      <circle cx="18" cy="9" r="2" />
+      <path strokeLinecap="round" d="M6 8v8M18 11c0 4-6 3-6 7" />
+    </svg>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+    </svg>
+  );
+}
+
+function LogIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h6" />
+    </svg>
+  );
+}

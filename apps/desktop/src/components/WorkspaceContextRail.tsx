@@ -55,7 +55,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       />
 
       {/* Workspace + agent */}
-      <span className="font-semibold text-[var(--text-primary)] truncate">
+      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[140px]">
         {context.workspace_name}
       </span>
       {agentLabel && (
@@ -73,7 +73,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
 
       {/* Branch */}
       <Sep />
-      <span className="inline-flex items-center gap-1 font-mono text-[var(--text-secondary)] truncate">
+      <span className="inline-flex items-center gap-1 font-mono text-[var(--text-secondary)] truncate max-w-[160px]">
         <BranchIcon />
         {branch}
       </span>

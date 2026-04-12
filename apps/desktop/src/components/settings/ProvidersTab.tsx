@@ -6,9 +6,9 @@ import { getProviderIconUrl, isMonochromeProvider } from "../../assets/model-ico
 import { desktopQueryKeys, useProviderStatusesQuery } from "../../lib/queries";
 
 const STATUS_META: Record<string, { label: string; color: string; bgColor: string }> = {
-  active: { label: "Active", color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-  configured: { label: "Key Only", color: "text-sky-400", bgColor: "bg-sky-500/15" },
-  no_key: { label: "No Key", color: "text-amber-400", bgColor: "bg-amber-500/15" },
+  active: { label: "Active", color: "text-[var(--color-success-text)]", bgColor: "bg-[var(--color-success-muted)]" },
+  configured: { label: "Key Only", color: "text-[var(--color-accent)]", bgColor: "bg-[var(--color-accent-subtle)]" },
+  no_key: { label: "No Key", color: "text-[var(--color-pop)]", bgColor: "bg-[var(--color-pop)]/15" },
   inactive: { label: "Inactive", color: "text-[var(--text-muted)]", bgColor: "bg-[var(--glass-bg)]" },
 };
 
@@ -108,7 +108,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
   const effectiveMeta = isCodexProvider && (provider.status === "no_key" || provider.status === "inactive")
     ? { label: "Not Connected", color: "text-[var(--text-muted)]", bgColor: "bg-[var(--glass-bg)]" }
     : isCodexProvider && provider.status === "configured"
-    ? { label: "Connected", color: "text-emerald-400", bgColor: "bg-emerald-500/15" }
+    ? { label: "Connected", color: "text-[var(--color-success-text)]", bgColor: "bg-[var(--color-success-muted)]" }
     : meta;
 
   const [expanded, setExpanded] = useState(false);
@@ -393,7 +393,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                     <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Connect your OpenAI Codex subscription via OAuth.</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${codexConnected ? "bg-emerald-500/15 text-emerald-400" : codexConnecting ? "bg-amber-500/15 text-amber-400" : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${codexConnected ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]" : codexConnecting ? "bg-[var(--color-pop)]/15 text-[var(--color-pop)]" : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"}`}>
                       {codexConnected ? "Connected" : codexConnecting ? "Waiting..." : "Not connected"}
                     </span>
                     <button type="button" onClick={handleCodexConnect} disabled={codexConnecting} className="h-7 px-3 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-50">
@@ -436,7 +436,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
               <>
                 {hasEnvKeyOnly && (
                   <div className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] px-3 py-2">
-                    <svg className="w-3.5 h-3.5 shrink-0 text-sky-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <span className="text-[10px] text-[var(--text-secondary)]">This key is provided by an environment variable and cannot be edited here. You can still add a saved key to override it.</span>
@@ -445,7 +445,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
 
                 {hasSavedKey && savedKeyDisplay && (
                   <div className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-3 py-2">
-                    <svg className="w-3.5 h-3.5 shrink-0 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-success-text)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
                     <span className="flex-1 text-[10px] font-mono text-[var(--text-primary)] truncate">{savedKeyDisplay}</span>
@@ -572,11 +572,11 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
             )}
 
             {discoveryResult && (
-              <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-                <svg className="w-3.5 h-3.5 shrink-0 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 rounded-lg bg-[var(--color-success-muted)] border border-[var(--color-success)]/20 px-3 py-2">
+                <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-success-text)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="text-[10px] text-emerald-300">
+                <span className="text-[10px] text-[var(--color-success-text)]">
                   {discoveryResult.created > 0
                     ? `Activated ${discoveryResult.created} model${discoveryResult.created > 1 ? "s" : ""} (${discoveryResult.total} discovered, ${discoveryResult.total - discoveryResult.created} already configured)`
                     : discoveryResult.total === 0
@@ -611,7 +611,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                           <p className="text-[9px] text-[var(--text-muted)] font-mono truncate">{model.model}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          {model.is_default && <span className="rounded-full px-1.5 py-0.5 text-[8px] font-bold text-sky-400 bg-sky-500/15">DEFAULT</span>}
+                          {model.is_default && <span className="rounded-full px-1.5 py-0.5 text-[8px] font-bold text-[var(--color-accent)] bg-[var(--color-accent-subtle)]">DEFAULT</span>}
                           <button
                             onClick={() => void handleRemoveModel(model.id)}
                             disabled={removingModel === model.id}

@@ -12,7 +12,7 @@ Current scope:
 - in-memory sandbox registry
 - real Firecracker process launch and boot over the Unix socket API
 - per-sandbox runtime directories and cloned writable rootfs disks
-- honest `501` responses for guest file/exec/process APIs that still need a guest agent
+- guest-agent-backed file IO and command/process execution inside the VM
 
 It now launches a real Firecracker microVM if the host has:
 
@@ -20,9 +20,7 @@ It now launches a real Firecracker microVM if the host has:
 - a kernel image
 - a base rootfs image
 
-The remaining gap is guest interaction after boot. File IO and command execution inside the guest still need a guest agent or another transport.
-
-Update: the sandbox runtime now supports guest interaction over SSH when host networking is configured with a TAP device and the guest is reachable.
+The runtime now boots a small guest agent inside the cloned rootfs and talks to it over the guest TAP IP.
 
 ## Run
 
@@ -53,6 +51,8 @@ PORT=4100
 FIRECRACKER_BIN=firecracker
 FIRECRACKER_RUNTIME_DIR=/tmp/khadim-firecracker
 FIRECRACKER_STARTUP_TIMEOUT_MS=5000
+FIRECRACKER_GUEST_AGENT_PORT=4020
+FIRECRACKER_GUEST_AGENT_WAIT_TIMEOUT_MS=15000
 FIRECRACKER_DEFAULT_VCPU=2
 FIRECRACKER_DEFAULT_MEMORY_MIB=2048
 FIRECRACKER_KERNEL_IMAGE=/var/lib/firecracker/vmlinux
@@ -62,16 +62,11 @@ FIRECRACKER_TAP_DEVICE=tap0
 FIRECRACKER_HOST_IP=172.16.0.1
 FIRECRACKER_GUEST_IP=172.16.0.2
 FIRECRACKER_GUEST_MAC=06:00:AC:10:00:02
-FIRECRACKER_SSH_USER=root
-FIRECRACKER_SSH_PORT=22
-FIRECRACKER_SSH_PRIVATE_KEY=/home/hanan/.local/share/firecracker/keys/id_ed25519
-FIRECRACKER_SSH_PUBLIC_KEY=/home/hanan/.local/share/firecracker/keys/id_ed25519.pub
-FIRECRACKER_SSH_WAIT_TIMEOUT_MS=15000
 ```
 
 ## TAP Setup
 
-Guest exec uses SSH over a host TAP device. Create it once on the host:
+Guest exec uses the in-VM guest agent over a host TAP device. Create it once on the host:
 
 ```bash
 sudo ip tuntap add dev tap0 mode tap

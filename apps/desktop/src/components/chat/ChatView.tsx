@@ -197,7 +197,7 @@ export function ChatView({
       {/* ── Message area ────────────────────────────────────────── */}
       <main
         className={`min-h-0 flex-1 overflow-y-auto scrollbar-thin ${
-          !hasContent ? "px-0 py-6" : "pb-36 pt-3 sm:pb-44 md:pb-52 md:pt-6"
+          !hasContent ? "px-0 py-6" : "pb-4 pt-3 md:pt-6"
         }`}
       >
         {!hasContent ? (
@@ -253,22 +253,19 @@ export function ChatView({
         )}
       </main>
 
-      {/* ── Input area (pinned to bottom) ───────────────────────── */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40">
-        <div className="h-8 sm:h-16 bg-gradient-to-t from-[var(--surface-bg)] to-transparent" />
-        <div className="pointer-events-auto bg-[var(--surface-bg)]">
-          <ChatInput
-            value={input}
-            onChange={onInputChange}
-            onSend={onSend}
-            onStop={onStop}
-            isProcessing={isProcessing}
-            availableModels={availableModels}
-            selectedModelKey={selectedModel ? getModelKey(selectedModel) : null}
-            onSelectModel={onSelectModel}
-            modelDisabled={isProcessing}
-          />
-        </div>
+      {/* ── Input area (flex sibling, always visible) ────────────── */}
+      <div className="shrink-0">
+        <ChatInput
+          value={input}
+          onChange={onInputChange}
+          onSend={onSend}
+          onStop={onStop}
+          isProcessing={isProcessing}
+          availableModels={availableModels}
+          selectedModelKey={selectedModel ? getModelKey(selectedModel) : null}
+          onSelectModel={onSelectModel}
+          modelDisabled={isProcessing}
+        />
       </div>
     </div>
   );

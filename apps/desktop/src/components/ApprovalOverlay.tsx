@@ -25,19 +25,19 @@ export function ApprovalOverlay({ approval, onApprove, onDeny }: Props) {
       <div className="absolute inset-0 bg-[var(--surface-ink-25)] backdrop-blur-sm" />
 
       <div
-        className="relative z-10 mx-4 flex max-h-[80vh] w-full max-w-[560px] flex-col rounded-[28px] glass-panel-strong animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 mx-4 flex max-h-[80vh] w-full max-w-[560px] flex-col rounded-[var(--radius-xl)] glass-panel-strong animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Claude Code approval request"
       >
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0">
-          <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300">
+          <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[var(--color-pop)]/15 text-[var(--color-pop)]">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
             </svg>
           </span>
           <div>
-            <h2 className="text-base font-bold text-[var(--text-primary)]">Approval required</h2>
+            <h2 className="font-display text-base font-medium text-[var(--text-primary)]">Approval required</h2>
             <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
               Claude Code wants to use {approval.displayName}
             </p>

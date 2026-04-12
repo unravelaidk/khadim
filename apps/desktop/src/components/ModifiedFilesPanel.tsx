@@ -106,7 +106,18 @@ function ModifiedFilesPanelInner({ repoPath, isStreaming, onOpenFile }: Props) {
     prevStreamingRef.current = isStreaming;
   }, [isStreaming, refresh]);
 
-  if (files.length === 0 && !loading) return null;
+  if (files.length === 0 && !loading) {
+    return (
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-card)]/50">
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--color-success)]" />
+          <span className="flex-1 font-display text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+            No changes
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const totalInsertions = files.reduce((sum, f) => sum + (f.insertions ?? 0), 0);
   const totalDeletions = files.reduce((sum, f) => sum + (f.deletions ?? 0), 0);

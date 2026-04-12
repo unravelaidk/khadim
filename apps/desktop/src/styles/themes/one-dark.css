@@ -85,6 +85,7 @@
   --color-danger-ink: #e78b92;
   
   --color-warning-text: #d19a66;
+  --color-pop:            #d19a66;
 
   /* Terminal — One Dark ANSI */
   --terminal-bg: #1e2127;
@@ -215,6 +216,7 @@
   --color-danger-ink: #c53254;
   
   --color-warning-text: #cb4b16;
+  --color-pop:            #cb4b16;
 
   /* Terminal — One Dark Light ANSI */
   --terminal-bg: #e7e8eb;

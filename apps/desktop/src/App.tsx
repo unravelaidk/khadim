@@ -50,7 +50,6 @@ import { usePluginTabs } from "./hooks/usePluginTabs";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
-import { ActivityChart } from "./components/ActivityChart";
 import { ChatView } from "./components/chat/ChatView";
 import { CreateWorkspaceModal } from "./components/CreateWorkspaceModal";
 import { NewAgentModal } from "./components/NewAgentModal";
@@ -812,97 +811,84 @@ export default function App() {
 
         {/* ── WORK MODE — home views ────────────────────────────── */}
         {!showSettings && interactionMode === "work" && !inWorkspace && workView === "workspaces" && (
-          <div className="flex-1 flex flex-col overflow-y-auto scrollbar-thin" style={{ minHeight: 0 }}>
-            <div className="mx-auto w-full max-w-5xl px-6 pt-5 pb-2">
-              <ActivityChart agents={agents} />
-            </div>
             <WorkspaceList
               workspaces={workspaces}
+              agents={agents}
               onSelect={handleEnterWorkspace}
               onCreateNew={handleOpenCreateWorkspace}
               onDelete={(id) => void handleDeleteWorkspace(id)}
             />
-          </div>
         )}
 
         {/* ── WORK MODE — inside a workspace ────────────────────── */}
-        {!showSettings && interactionMode === "work" && inWorkspace && !focusedAgentId && selectedWorkspace && (
-          <>
-            <WorkspaceContextRail
-              context={workspaceContext}
-              connected={Boolean(connection)}
-              terminalOpen={terminalOpen}
-              onToggleTerminal={() => setTerminalOpen((o) => !o)}
-              onOpenFinder={() => setFinderOpen(true)}
-              onOpenInEditor={handleOpenProjectInEditor}
-            />
-          <WorkspaceView
-            workspace={selectedWorkspace}
-            conversations={conversations}
-            connection={connection}
-            processOutput={activeProcessOutput}
-            gitStatus={gitStatus}
-            gitDiffStat={gitDiffStat}
-            agents={agents}
-            onSelectConversation={handleSelectWorkspaceConversation}
-            onStartOpenCode={() => void handleStartOpenCode()}
-            onStopOpenCode={() => void handleStopOpenCode()}
-            onNewAgent={handleOpenNewAgent}
-            onFocusAgent={handleFocusAgent}
-            onManageAgent={handleManageAgent}
-            onWorkspaceBranchChange={handleWorkspaceBranchChange}
-            loading={loadingWorkspace || focusedAgentIsProcessing}
-            githubAuthStatus={githubAuthStatus}
-            githubSlug={githubSlug}
-            onNavigateToSettings={handleOpenSettingsFromWorkspace}
-            onGitHubSlugChange={() => {
-              if (!repoPath) return;
-              void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.githubSlug(repoPath) }).catch(() => undefined);
-            }}
-          />
-          </>
-        )}
-
-        {!showSettings && interactionMode === "work" && inWorkspace && focusedAgentId && (
-          <>
-            <WorkspaceContextRail
-              context={workspaceContext}
-              agentLabel={focusedAgent?.label ?? null}
-              connected={Boolean(connection)}
-              terminalOpen={terminalOpen}
-              onToggleTerminal={() => setTerminalOpen((o) => !o)}
-              onOpenFinder={() => setFinderOpen(true)}
-              onOpenInEditor={handleOpenProjectInEditor}
-            />
-          <ChatView
-            conversationId={selectedConversationId}
-            messages={messages}
-            title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
-            subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
-            basePath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
-            agent={focusedAgent}
-            showModifiedFiles
-            onOpenFile={handleOpenFileInEditor}
-            input={agentChatInput}
-            onInputChange={setAgentChatInput}
-            onSend={() => void handleChatSend()}
-            onStop={() => void handleAbort()}
-            onNewChat={() => void handleNewConversation()}
-            isProcessing={focusedAgentIsProcessing}
-            streamingContent={focusedAgentStreamingContent}
-            streamingSteps={focusedAgentStreamingSteps}
-            availableModels={availableModels}
-            selectedModel={selectedModel}
-            onSelectModel={(key) => void handleSelectModel(key)}
-            chatEndRef={chatEndRef}
-            backend={selectedWorkspace?.backend ?? "khadim"}
-          />
-          </>
-        )}
-
-        {/* Shared terminal dock — keep mounted so tabs survive collapse/reopen. */}
         {!showSettings && interactionMode === "work" && inWorkspace && selectedWorkspace && (
-          <div className="absolute inset-y-0 right-0 z-50">
+          <div className="flex min-h-0 flex-1 flex-col" style={{ minHeight: 0 }}>
+            {/* Context rail — always visible */}
+            <WorkspaceContextRail
+              context={workspaceContext}
+              agentLabel={focusedAgentId ? (focusedAgent?.label ?? null) : null}
+              connected={Boolean(connection)}
+              terminalOpen={terminalOpen}
+              onToggleTerminal={() => setTerminalOpen((o) => !o)}
+              onOpenFinder={() => setFinderOpen(true)}
+              onOpenInEditor={handleOpenProjectInEditor}
+            />
+
+            {/* Main content — workspace home or agent chat */}
+            <div className="flex min-h-0 flex-1" style={{ minHeight: 0 }}>
+              {!focusedAgentId ? (
+                <WorkspaceView
+                  workspace={selectedWorkspace}
+                  conversations={conversations}
+                  connection={connection}
+                  processOutput={activeProcessOutput}
+                  gitStatus={gitStatus}
+                  gitDiffStat={gitDiffStat}
+                  agents={agents}
+                  onSelectConversation={handleSelectWorkspaceConversation}
+                  onStartOpenCode={() => void handleStartOpenCode()}
+                  onStopOpenCode={() => void handleStopOpenCode()}
+                  onNewAgent={handleOpenNewAgent}
+                  onFocusAgent={handleFocusAgent}
+                  onManageAgent={handleManageAgent}
+                  onWorkspaceBranchChange={handleWorkspaceBranchChange}
+                  loading={loadingWorkspace || focusedAgentIsProcessing}
+                  githubAuthStatus={githubAuthStatus}
+                  githubSlug={githubSlug}
+                  onNavigateToSettings={handleOpenSettingsFromWorkspace}
+                  onGitHubSlugChange={() => {
+                    if (!repoPath) return;
+                    void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.githubSlug(repoPath) }).catch(() => undefined);
+                  }}
+                />
+              ) : (
+                <ChatView
+                  conversationId={selectedConversationId}
+                  messages={messages}
+                  title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
+                  subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
+                  basePath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
+                  agent={focusedAgent}
+                  showModifiedFiles
+                  onOpenFile={handleOpenFileInEditor}
+                  input={agentChatInput}
+                  onInputChange={setAgentChatInput}
+                  onSend={() => void handleChatSend()}
+                  onStop={() => void handleAbort()}
+                  onNewChat={() => void handleNewConversation()}
+                  isProcessing={focusedAgentIsProcessing}
+                  streamingContent={focusedAgentStreamingContent}
+                  streamingSteps={focusedAgentStreamingSteps}
+                  availableModels={availableModels}
+                  selectedModel={selectedModel}
+                  onSelectModel={(key) => void handleSelectModel(key)}
+                  chatEndRef={chatEndRef}
+                  backend={selectedWorkspace?.backend ?? "khadim"}
+                />
+              )}
+            </div>
+
+            {/* Terminal dock — bottom of workspace, always mounted */}
             <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
           </div>
         )}

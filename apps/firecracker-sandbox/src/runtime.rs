@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::{Path, PathBuf}, process::Stdio, sync::Arc
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tokio::{fs, io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, process::Command, time::sleep};
+use tokio::{fs, io::{AsyncReadExt, AsyncWriteExt}, net::{TcpStream, UnixStream}, process::Command, time::{sleep, timeout}};
 use tracing::{info, warn};
 
 use crate::{config::Config, error::AppError, models::{CommandResponse, ExposeResponse, ProcessResponse, SandboxRuntimeInfo, VmConfig}};
@@ -22,10 +22,15 @@ pub struct VmRuntimeHandle {
     pub rootfs_path: String,
     pub host_ip: Option<String>,
     pub guest_ip: Option<String>,
-    pub ssh_user: Option<String>,
-    pub ssh_port: Option<u16>,
-    pub ssh_private_key_path: Option<String>,
+    pub guest_agent_port: u16,
 }
+
+const GUEST_AGENT_SCRIPT_PATH: &str = "/root/khadim-guest-agent.mjs";
+const GUEST_AGENT_LAUNCHER_PATH: &str = "/root/khadim-agent-launcher.sh";
+const GUEST_AGENT_INITTAB_LINE: &str = "::respawn:/bin/sh /root/khadim-agent-launcher.sh";
+const GUEST_AGENT_SYSTEMD_UNIT_PATH: &str = "/etc/systemd/system/khadim-guest-agent.service";
+const GUEST_AGENT_SYSTEMD_WANTS_DIR: &str = "/etc/systemd/system/multi-user.target.wants";
+const GUEST_AGENT_SYSTEMD_WANTS_LINK: &str = "/etc/systemd/system/multi-user.target.wants/khadim-guest-agent.service";
 
 #[async_trait]
 pub trait VmRuntime: Send + Sync {
@@ -64,11 +69,6 @@ impl VmRuntime for FirecrackerRuntime {
     async fn launch(&self, config: &Config, request: LaunchVmRequest) -> Result<VmRuntimeHandle, AppError> {
         ensure_host_prerequisites(config, &request.vm)?;
 
-        let ssh_enabled = config.tap_device.is_some() && config.guest_ip.is_some();
-        if ssh_enabled {
-            ensure_ssh_keypair(config).await?;
-        }
-
         let runtime_dir = PathBuf::from(&config.runtime_dir).join(&request.sandbox_id);
         fs::create_dir_all(&runtime_dir).await?;
 
@@ -98,9 +98,7 @@ impl VmRuntime for FirecrackerRuntime {
                 ))
             })?;
 
-            if ssh_enabled {
-                configure_rootfs_for_ssh(&rootfs_path, config).await?;
-            }
+            configure_rootfs_for_guest_agent(&rootfs_path, &runtime_dir, config).await?;
 
             let stdout = std::fs::File::create(&stdout_log)?;
             let stderr = std::fs::File::create(&stderr_log)?;
@@ -179,9 +177,7 @@ impl VmRuntime for FirecrackerRuntime {
                 .put_json("/actions", &json!({ "action_type": "InstanceStart" }))
                 .await?;
 
-            if ssh_enabled {
-                wait_for_guest_ssh(config).await?;
-            }
+            wait_for_guest_agent(config).await?;
 
             info!(sandbox_id = request.sandbox_id, pid, "started firecracker microVM");
 
@@ -192,9 +188,7 @@ impl VmRuntime for FirecrackerRuntime {
                 rootfs_path: rootfs_path.display().to_string(),
                 host_ip: config.host_ip.clone(),
                 guest_ip: config.guest_ip.clone(),
-                ssh_user: ssh_enabled.then(|| config.ssh_user.clone()),
-                ssh_port: ssh_enabled.then_some(config.ssh_port),
-                ssh_private_key_path: ssh_enabled.then(|| config.ssh_private_key_path.clone()),
+                guest_agent_port: config.guest_agent_port,
             })
         }
         .await;
@@ -216,57 +210,32 @@ impl VmRuntime for FirecrackerRuntime {
     }
 
     async fn read_file(&self, handle: &VmRuntimeHandle, path: &str) -> Result<String, AppError> {
-        let result = run_ssh_command(handle, &["cat".to_string(), path.to_string()]).await?;
-        if result.exit_code != 0 {
-            return Err(AppError::Runtime(format!("failed to read guest file {}: {}", path, result.stderr)));
-        }
-        Ok(result.stdout)
+        let body = guest_agent_request(handle, "POST", "/read-file", Some(json!({ "path": path }))).await?;
+        Ok(body
+            .and_then(|value| value.get("content").and_then(|content| content.as_str()).map(ToString::to_string))
+            .unwrap_or_default())
     }
 
     async fn write_file(&self, handle: &VmRuntimeHandle, path: &str, content: &str) -> Result<(), AppError> {
-        let parent = Path::new(path)
-            .parent()
-            .and_then(|value| value.to_str())
-            .unwrap_or("/");
-        let mkdir_result = run_ssh_shell(handle, &format!("mkdir -p {}", shell_escape(parent))).await?;
-        if mkdir_result.exit_code != 0 {
-            return Err(AppError::Runtime(format!("failed to create guest dir {}: {}", parent, mkdir_result.stderr)));
-        }
-
-        let temp_path = PathBuf::from(&handle.runtime_dir).join("upload.tmp");
-        fs::write(&temp_path, content).await?;
-
-        let destination = guest_target(handle, path)?;
-        let output = Command::new("scp")
-            .arg("-q")
-            .arg("-i")
-            .arg(handle.ssh_private_key_path.as_deref().unwrap_or_default())
-            .arg("-P")
-            .arg(handle.ssh_port.unwrap_or(22).to_string())
-            .arg("-o")
-            .arg("StrictHostKeyChecking=no")
-            .arg("-o")
-            .arg("UserKnownHostsFile=/dev/null")
-            .arg(&temp_path)
-            .arg(destination)
-            .output()
-            .await?;
-
-        let _ = fs::remove_file(&temp_path).await;
-
-        if !output.status.success() {
-            return Err(AppError::Runtime(format!(
-                "failed to copy guest file {}: {}",
-                path,
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
-
+        let _ = guest_agent_request(
+            handle,
+            "POST",
+            "/write-file",
+            Some(json!({ "path": path, "content": content, "encoding": "utf-8" })),
+        )
+        .await?;
         Ok(())
     }
 
     async fn exec(&self, handle: &VmRuntimeHandle, _mode: Option<&str>, script: &str) -> Result<CommandResponse, AppError> {
-        run_ssh_shell(handle, script).await
+        let body = guest_agent_request(
+            handle,
+            "POST",
+            "/exec",
+            Some(json!({ "command": script, "workdir": "/root" })),
+        )
+        .await?;
+        parse_command_response(body)
     }
 
     async fn spawn(&self, handle: &VmRuntimeHandle, command: &[String], cwd: Option<&str>, env: Option<&HashMap<String, String>>) -> Result<ProcessResponse, AppError> {
@@ -274,41 +243,24 @@ impl VmRuntime for FirecrackerRuntime {
             return Err(AppError::BadRequest("command is required".to_string()));
         }
 
-        let env_prefix = env
-            .map(|values| {
-                values
-                    .iter()
-                    .map(|(key, value)| format!("{}={}", key, shell_escape(value)))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
-            .filter(|value| !value.is_empty())
-            .map(|value| format!("export {} && ", value))
-            .unwrap_or_default();
-        let cwd_prefix = cwd
-            .map(|value| format!("cd {} && ", shell_escape(value)))
-            .unwrap_or_default();
-        let command_str = command.iter().map(|value| shell_escape(value)).collect::<Vec<_>>().join(" ");
-        let script = format!("{}{}nohup {} >/tmp/khadim-spawn.log 2>&1 & echo $!", env_prefix, cwd_prefix, command_str);
-
-        let result = run_ssh_shell(handle, &script).await?;
-        if result.exit_code != 0 {
-            return Err(AppError::Runtime(format!("failed to spawn guest process: {}", result.stderr)));
-        }
-
-        let pid = result
-            .stdout
-            .trim()
-            .parse::<u32>()
-            .map_err(|error| AppError::Runtime(format!("failed to parse guest pid '{}': {}", result.stdout.trim(), error)))?;
-        Ok(ProcessResponse { pid })
+        let body = guest_agent_request(
+            handle,
+            "POST",
+            "/spawn",
+            Some(json!({ "command": command, "cwd": cwd, "env": env })),
+        )
+        .await?;
+        let pid = body
+            .and_then(|value| value.get("pid").and_then(|pid| pid.as_u64()))
+            .ok_or_else(|| AppError::Runtime("guest agent spawn response is missing a pid".to_string()))?;
+        Ok(ProcessResponse { pid: pid as u32 })
     }
 
     async fn expose_port(&self, handle: &VmRuntimeHandle, port: u16) -> Result<ExposeResponse, AppError> {
         let target_ip = handle
-            .host_ip
+            .guest_ip
             .as_deref()
-            .or(handle.guest_ip.as_deref())
+            .or(handle.host_ip.as_deref())
             .ok_or_else(|| AppError::BadRequest("guest networking is not configured. Set FIRECRACKER_TAP_DEVICE and FIRECRACKER_GUEST_IP.".to_string()))?;
         Ok(ExposeResponse {
             url: format!("http://{}:{}", target_ip, port),
@@ -346,9 +298,10 @@ fn ensure_host_prerequisites(config: &Config, vm: &VmConfig) -> Result<(), AppEr
         )));
     }
 
-    if config.tap_device.is_some() && config.guest_ip.is_none() {
+    if config.tap_device.is_none() || config.guest_ip.is_none() {
         return Err(AppError::BadRequest(
-            "FIRECRACKER_GUEST_IP is required when FIRECRACKER_TAP_DEVICE is set.".to_string(),
+            "guest agent transport requires FIRECRACKER_TAP_DEVICE and FIRECRACKER_GUEST_IP to be configured."
+                .to_string(),
         ));
     }
 
@@ -356,7 +309,7 @@ fn ensure_host_prerequisites(config: &Config, vm: &VmConfig) -> Result<(), AppEr
         let tap_path = PathBuf::from("/sys/class/net").join(tap_device);
         if !tap_path.exists() {
             return Err(AppError::BadRequest(format!(
-                "Firecracker tap device {} does not exist. Create it first and assign the host-side IP before enabling guest SSH.",
+                "Firecracker tap device {} does not exist. Create it first and assign the host-side IP before using the guest agent transport.",
                 tap_device
             )));
         }
@@ -365,179 +318,517 @@ fn ensure_host_prerequisites(config: &Config, vm: &VmConfig) -> Result<(), AppEr
     Ok(())
 }
 
-async fn ensure_ssh_keypair(config: &Config) -> Result<(), AppError> {
-    if Path::new(&config.ssh_private_key_path).exists() && Path::new(&config.ssh_public_key_path).exists() {
+async fn configure_rootfs_for_guest_agent(rootfs_path: &Path, runtime_dir: &Path, config: &Config) -> Result<(), AppError> {
+    let guest_agent_script = render_guest_agent_script(config.guest_agent_port);
+    let launcher_script = render_guest_agent_launcher(config.guest_agent_port);
+
+    debugfs_write_file(rootfs_path, runtime_dir, GUEST_AGENT_SCRIPT_PATH, &guest_agent_script, "0100644", false).await?;
+    debugfs_write_file(rootfs_path, runtime_dir, GUEST_AGENT_LAUNCHER_PATH, &launcher_script, "0100755", false).await?;
+
+    if debugfs_path_exists(rootfs_path, "/etc/inittab").await? {
+        configure_inittab_for_guest_agent(rootfs_path, runtime_dir).await?;
         return Ok(());
     }
 
-    if let Some(parent) = Path::new(&config.ssh_private_key_path).parent() {
-        fs::create_dir_all(parent).await?;
-    }
-
-    let output = Command::new("ssh-keygen")
-        .arg("-t")
-        .arg("ed25519")
-        .arg("-N")
-        .arg("")
-        .arg("-f")
-        .arg(&config.ssh_private_key_path)
-        .arg("-C")
-        .arg("khadim-firecracker")
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        return Err(AppError::Runtime(format!(
-            "failed to create Firecracker SSH keypair: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-
-    Ok(())
-}
-
-async fn configure_rootfs_for_ssh(rootfs_path: &Path, config: &Config) -> Result<(), AppError> {
-    let public_key = fs::read_to_string(&config.ssh_public_key_path).await?;
-    let authorized_keys_temp = rootfs_path
-        .parent()
-        .unwrap_or_else(|| Path::new("/tmp"))
-        .join("authorized_keys");
-    fs::write(&authorized_keys_temp, public_key).await?;
-
-    let mut commands = vec![
-        "set_inode_field /root uid_lo 0".to_string(),
-        "set_inode_field /root gid 0".to_string(),
-        "set_inode_field /root mode 040700".to_string(),
-        "set_inode_field /root/.ssh uid_lo 0".to_string(),
-        "set_inode_field /root/.ssh gid 0".to_string(),
-        "set_inode_field /root/.ssh mode 040700".to_string(),
-        format!("write {} /root/.ssh/authorized_keys", authorized_keys_temp.display()),
-        "set_inode_field /root/.ssh/authorized_keys uid_lo 0".to_string(),
-        "set_inode_field /root/.ssh/authorized_keys gid 0".to_string(),
-        "set_inode_field /root/.ssh/authorized_keys mode 0100600".to_string(),
-    ];
-
-    let mut command = Command::new("debugfs");
-    command.arg("-w");
-    for debugfs_cmd in commands.drain(..) {
-        command.arg("-R").arg(debugfs_cmd);
-    }
-    command.arg(rootfs_path);
-
-    let output = command.output().await?;
-    let _ = fs::remove_file(&authorized_keys_temp).await;
-
-    if !output.status.success() {
-        return Err(AppError::Runtime(format!(
-            "failed to patch rootfs for SSH access: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-
-    Ok(())
-}
-
-async fn wait_for_guest_ssh(config: &Config) -> Result<(), AppError> {
-    let guest_ip = config
-        .guest_ip
-        .as_deref()
-        .ok_or_else(|| AppError::BadRequest("FIRECRACKER_GUEST_IP is required for guest SSH".to_string()))?;
-
-    let started_at = Instant::now();
-    while started_at.elapsed() < Duration::from_millis(config.ssh_wait_timeout_ms) {
-        let output = Command::new("ssh")
-            .arg("-q")
-            .arg("-i")
-            .arg(&config.ssh_private_key_path)
-            .arg("-p")
-            .arg(config.ssh_port.to_string())
-            .arg("-o")
-            .arg("BatchMode=yes")
-            .arg("-o")
-            .arg("StrictHostKeyChecking=no")
-            .arg("-o")
-            .arg("UserKnownHostsFile=/dev/null")
-            .arg("-o")
-            .arg("ConnectTimeout=2")
-            .arg(format!("{}@{}", config.ssh_user, guest_ip))
-            .arg("true")
-            .output()
-            .await?;
-
-        if output.status.success() {
-            return Ok(());
-        }
-
-        sleep(Duration::from_millis(500)).await;
+    if debugfs_path_exists(rootfs_path, "/etc/systemd/system").await? {
+        configure_systemd_for_guest_agent(rootfs_path, runtime_dir).await?;
+        return Ok(());
     }
 
     Err(AppError::Runtime(
-        "timed out waiting for SSH in the guest. Ensure tap networking is configured and the guest is reachable."
+        "guest rootfs does not provide /etc/inittab or /etc/systemd/system; unable to auto-start the guest agent"
             .to_string(),
     ))
 }
 
-fn guest_target(handle: &VmRuntimeHandle, path: &str) -> Result<String, AppError> {
+async fn configure_inittab_for_guest_agent(rootfs_path: &Path, runtime_dir: &Path) -> Result<(), AppError> {
+
+    let inittab_host_path = runtime_dir.join("inittab");
+    debugfs_dump_file(rootfs_path, "/etc/inittab", &inittab_host_path).await?;
+
+    let mut inittab = fs::read_to_string(&inittab_host_path).await.map_err(|error| {
+        AppError::Runtime(format!("failed to read dumped guest /etc/inittab: {}", error))
+    })?;
+    if !inittab.contains(GUEST_AGENT_INITTAB_LINE) {
+        if !inittab.ends_with('\n') {
+            inittab.push('\n');
+        }
+        inittab.push_str(GUEST_AGENT_INITTAB_LINE);
+        inittab.push('\n');
+        fs::write(&inittab_host_path, inittab).await?;
+        debugfs_write_file(rootfs_path, runtime_dir, "/etc/inittab", &fs::read_to_string(&inittab_host_path).await?, "0100644", true).await?;
+    }
+
+    let _ = fs::remove_file(&inittab_host_path).await;
+    Ok(())
+}
+
+async fn configure_systemd_for_guest_agent(rootfs_path: &Path, runtime_dir: &Path) -> Result<(), AppError> {
+    let service_unit = render_guest_agent_systemd_unit();
+    let replace_existing_unit = debugfs_path_exists(rootfs_path, GUEST_AGENT_SYSTEMD_UNIT_PATH).await?;
+    debugfs_write_file(
+        rootfs_path,
+        runtime_dir,
+        GUEST_AGENT_SYSTEMD_UNIT_PATH,
+        &service_unit,
+        "0100644",
+        replace_existing_unit,
+    )
+    .await?;
+
+    if !debugfs_path_exists(rootfs_path, GUEST_AGENT_SYSTEMD_WANTS_DIR).await? {
+        debugfs_mkdir(rootfs_path, GUEST_AGENT_SYSTEMD_WANTS_DIR).await?;
+    }
+
+    let replace_existing_link = debugfs_path_exists(rootfs_path, GUEST_AGENT_SYSTEMD_WANTS_LINK).await?;
+    debugfs_symlink(
+        rootfs_path,
+        GUEST_AGENT_SYSTEMD_WANTS_LINK,
+        "../khadim-guest-agent.service",
+        replace_existing_link,
+    )
+    .await
+}
+
+fn render_guest_agent_launcher(port: u16) -> String {
+    format!(
+        r#"#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+export KHADIM_GUEST_AGENT_PORT={port}
+LOG_FILE=/tmp/khadim-guest-agent.log
+
+while ! command -v bun >/dev/null 2>&1; do
+  sleep 1
+done
+
+exec bun {script_path} >>"$LOG_FILE" 2>&1
+"#,
+        port = port,
+        script_path = GUEST_AGENT_SCRIPT_PATH,
+    )
+}
+
+fn render_guest_agent_systemd_unit() -> String {
+    format!(
+        r#"[Unit]
+Description=Khadim guest agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh {launcher_path}
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+"#,
+        launcher_path = GUEST_AGENT_LAUNCHER_PATH,
+    )
+}
+
+fn render_guest_agent_script(port: u16) -> String {
+    format!(
+        r#"import {{ mkdir, readFile }} from "node:fs/promises";
+import path from "node:path";
+
+const port = Number(process.env.KHADIM_GUEST_AGENT_PORT || "{port}");
+const rootDir = "/root";
+
+function json(body, status = 200) {{
+  return new Response(JSON.stringify(body), {{
+    status,
+    headers: {{ "content-type": "application/json" }},
+  }});
+}}
+
+function resolveGuestPath(value) {{
+  if (typeof value !== "string" || value.length === 0) throw new Error("path is required");
+  return path.posix.isAbsolute(value) ? value : path.posix.join(rootDir, value);
+}}
+
+function resolveGuestCwd(value) {{
+  if (typeof value !== "string" || value.length === 0) return rootDir;
+  return path.posix.isAbsolute(value) ? value : path.posix.join(rootDir, value);
+}}
+
+async function readJson(req) {{
+  try {{
+    return await req.json();
+  }} catch {{
+    return {{}};
+  }}
+}}
+
+async function collectText(stream) {{
+  if (!stream) return "";
+  return await new Response(stream).text();
+}}
+
+async function execCommand(command, cwd, timeoutSeconds) {{
+  const proc = Bun.spawn(["sh", "-lc", command], {{
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: process.env,
+  }});
+
+  const timeoutMs = Math.max(1, Number(timeoutSeconds || 30)) * 1000;
+  const result = await Promise.race([
+    proc.exited.then((code) => ({{ timedOut: false, code }})),
+    Bun.sleep(timeoutMs).then(() => ({{ timedOut: true, code: -1 }})),
+  ]);
+
+  if (result.timedOut) {{
+    proc.kill();
+  }}
+
+  const [stdout, stderr] = await Promise.all([
+    collectText(proc.stdout),
+    collectText(proc.stderr),
+  ]);
+
+  return {{
+    exitCode: result.timedOut ? -1 : Number(result.code ?? 1),
+    stdout,
+    stderr: result.timedOut ? `Command timed out after ${{timeoutSeconds || 30}}s${{stderr ? `\n${{stderr}}` : ""}}` : stderr,
+  }};
+}}
+
+async function spawnCommand(command, cwd, env) {{
+  const proc = Bun.spawn(command, {{
+    cwd,
+    env: {{ ...process.env, ...(env || {{}}) }},
+    stdout: "ignore",
+    stderr: "ignore",
+  }});
+  return {{ pid: Number(proc.pid || 0) }};
+}}
+
+Bun.serve({{
+  port,
+  hostname: "0.0.0.0",
+  async fetch(req) {{
+    const url = new URL(req.url);
+    try {{
+      if (req.method === "GET" && url.pathname === "/health") {{
+        return json({{ ok: true, service: "khadim-guest-agent" }});
+      }}
+
+      if (req.method === "POST" && url.pathname === "/read-file") {{
+        const body = await readJson(req);
+        const targetPath = resolveGuestPath(body.path);
+        return json({{ content: await readFile(targetPath, "utf8") }});
+      }}
+
+      if (req.method === "POST" && url.pathname === "/write-file") {{
+        const body = await readJson(req);
+        const targetPath = resolveGuestPath(body.path);
+        await mkdir(path.posix.dirname(targetPath), {{ recursive: true }});
+        await Bun.write(targetPath, typeof body.content === "string" ? body.content : "");
+        return json({{ ok: true, path: targetPath }});
+      }}
+
+      if (req.method === "POST" && url.pathname === "/exec") {{
+        const body = await readJson(req);
+        if (typeof body.command !== "string" || body.command.length === 0) {{
+          return json({{ error: "command is required" }}, 400);
+        }}
+        return json(await execCommand(body.command, resolveGuestCwd(body.workdir), body.timeout));
+      }}
+
+      if (req.method === "POST" && url.pathname === "/spawn") {{
+        const body = await readJson(req);
+        if (!Array.isArray(body.command) || body.command.length === 0) {{
+          return json({{ error: "command is required" }}, 400);
+        }}
+        return json(await spawnCommand(body.command.map((value) => String(value)), resolveGuestCwd(body.cwd), body.env));
+      }}
+
+      return json({{ error: "not found" }}, 404);
+    }} catch (error) {{
+      return json({{ error: error instanceof Error ? error.message : String(error) }}, 500);
+    }}
+  }},
+}});
+"#,
+        port = port,
+    )
+}
+
+async fn wait_for_guest_agent(config: &Config) -> Result<(), AppError> {
+    let guest_ip = config
+        .guest_ip
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("FIRECRACKER_GUEST_IP is required for the guest agent".to_string()))?;
+
+    let started_at = Instant::now();
+    while started_at.elapsed() < Duration::from_millis(config.guest_agent_wait_timeout_ms) {
+        match request_json_over_tcp(
+            guest_ip,
+            config.guest_agent_port,
+            "GET",
+            "/health",
+            None,
+            Duration::from_secs(2),
+        )
+        .await
+        {
+            Ok(Some(value)) if value.get("ok").and_then(|ok| ok.as_bool()) == Some(true) => return Ok(()),
+            Ok(_) | Err(_) => sleep(Duration::from_millis(500)).await,
+        }
+    }
+
+    Err(AppError::Runtime(
+        "timed out waiting for the guest agent. Ensure tap networking is configured and the guest can start Bun."
+            .to_string(),
+    ))
+}
+
+async fn guest_agent_request(
+    handle: &VmRuntimeHandle,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Option<Value>, AppError> {
     let guest_ip = handle
         .guest_ip
         .as_deref()
         .ok_or_else(|| AppError::BadRequest("guest networking is not configured. Set FIRECRACKER_TAP_DEVICE and FIRECRACKER_GUEST_IP.".to_string()))?;
-    let ssh_user = handle
-        .ssh_user
-        .as_deref()
-        .ok_or_else(|| AppError::BadRequest("guest SSH is not configured for this sandbox.".to_string()))?;
-    Ok(format!("{}@{}:{}", ssh_user, guest_ip, path))
+
+    request_json_over_tcp(guest_ip, handle.guest_agent_port, method, path, body, Duration::from_secs(30)).await
 }
 
-async fn run_ssh_shell(handle: &VmRuntimeHandle, script: &str) -> Result<CommandResponse, AppError> {
-    run_ssh_command(handle, &["sh".to_string(), "-lc".to_string(), script.to_string()]).await
+async fn request_json_over_tcp(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+    request_timeout: Duration,
+) -> Result<Option<Value>, AppError> {
+    let mut stream = timeout(request_timeout, TcpStream::connect((host, port)))
+        .await
+        .map_err(|_| AppError::Runtime(format!("timed out connecting to guest agent at {}:{}", host, port)))?
+        .map_err(|error| AppError::Runtime(format!("failed to connect to guest agent at {}:{}: {}", host, port, error)))?;
+
+    let payload = match body {
+        Some(value) => serde_json::to_vec(&value)?,
+        None => Vec::new(),
+    };
+    let request = if payload.is_empty() {
+        format!("{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n", method, path, host)
+    } else {
+        format!(
+            "{} {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            method,
+            path,
+            host,
+            payload.len()
+        )
+    };
+
+    timeout(request_timeout, stream.write_all(request.as_bytes()))
+        .await
+        .map_err(|_| AppError::Runtime(format!("timed out sending request to guest agent {}:{}", host, port)))??;
+    if !payload.is_empty() {
+        timeout(request_timeout, stream.write_all(&payload))
+            .await
+            .map_err(|_| AppError::Runtime(format!("timed out sending request body to guest agent {}:{}", host, port)))??;
+    }
+
+    let mut response = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let bytes_read = timeout(request_timeout, stream.read(&mut chunk))
+            .await
+            .map_err(|_| AppError::Runtime(format!("timed out waiting for guest agent response from {}:{}", host, port)))??;
+        if bytes_read == 0 {
+            break;
+        }
+        response.extend_from_slice(&chunk[..bytes_read]);
+        if let Some(expected_len) = expected_http_response_len(&response)? {
+            if response.len() >= expected_len {
+                break;
+            }
+        }
+    }
+
+    parse_http_response(&response)
 }
 
-async fn run_ssh_command(handle: &VmRuntimeHandle, remote_command: &[String]) -> Result<CommandResponse, AppError> {
-    let guest_ip = handle
-        .guest_ip
-        .as_deref()
-        .ok_or_else(|| AppError::BadRequest("guest networking is not configured. Set FIRECRACKER_TAP_DEVICE and FIRECRACKER_GUEST_IP.".to_string()))?;
-    let ssh_key_path = handle
-        .ssh_private_key_path
-        .as_deref()
-        .ok_or_else(|| AppError::BadRequest("guest SSH is not configured for this sandbox.".to_string()))?;
-    let ssh_user = handle
-        .ssh_user
-        .as_deref()
-        .ok_or_else(|| AppError::BadRequest("guest SSH is not configured for this sandbox.".to_string()))?;
-    let ssh_port = handle
-        .ssh_port
-        .ok_or_else(|| AppError::BadRequest("guest SSH is not configured for this sandbox.".to_string()))?;
-
-    let output = Command::new("ssh")
-        .arg("-q")
-        .arg("-i")
-        .arg(ssh_key_path)
-        .arg("-p")
-        .arg(ssh_port.to_string())
-        .arg("-o")
-        .arg("BatchMode=yes")
-        .arg("-o")
-        .arg("StrictHostKeyChecking=no")
-        .arg("-o")
-        .arg("UserKnownHostsFile=/dev/null")
-        .arg("-o")
-        .arg("ConnectTimeout=5")
-        .arg(format!("{}@{}", ssh_user, guest_ip))
-        .args(remote_command)
-        .output()
-        .await?;
+fn parse_command_response(body: Option<Value>) -> Result<CommandResponse, AppError> {
+    let Some(record) = body else {
+        return Err(AppError::Runtime("guest agent command response was empty".to_string()));
+    };
 
     Ok(CommandResponse {
-        exit_code: output.status.code().unwrap_or(255),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: record
+            .get("exitCode")
+            .or_else(|| record.get("exit_code"))
+            .and_then(|value| value.as_i64())
+            .unwrap_or(1) as i32,
+        stdout: record
+            .get("stdout")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        stderr: record
+            .get("stderr")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
-fn shell_escape(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\"'\"'"))
+async fn debugfs_dump_file(rootfs_path: &Path, guest_path: &str, host_path: &Path) -> Result<(), AppError> {
+    let output = Command::new("debugfs")
+        .arg("-R")
+        .arg(format!("dump -p {} {}", guest_path, host_path.display()))
+        .arg(rootfs_path)
+        .output()
+        .await?;
+    if !output.status.success() {
+        return Err(AppError::Runtime(format!(
+            "failed to dump {} from rootfs {}: {}",
+            guest_path,
+            rootfs_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+async fn debugfs_path_exists(rootfs_path: &Path, guest_path: &str) -> Result<bool, AppError> {
+    let output = Command::new("debugfs")
+        .arg("-R")
+        .arg(format!("stat {}", guest_path))
+        .arg(rootfs_path)
+        .output()
+        .await?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("File not found") {
+        return Ok(false);
+    }
+
+    if output.status.success() {
+        return Ok(true);
+    }
+
+    Err(AppError::Runtime(format!(
+        "failed to stat {} in rootfs {}: {}",
+        guest_path,
+        rootfs_path.display(),
+        stderr
+    )))
+}
+
+async fn debugfs_mkdir(rootfs_path: &Path, guest_path: &str) -> Result<(), AppError> {
+    let output = Command::new("debugfs")
+        .arg("-w")
+        .arg("-R")
+        .arg(format!("mkdir {}", guest_path))
+        .arg(rootfs_path)
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Err(AppError::Runtime(format!(
+            "failed to create directory {} in rootfs {}: {}",
+            guest_path,
+            rootfs_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    Ok(())
+}
+
+async fn debugfs_symlink(rootfs_path: &Path, guest_path: &str, target: &str, replace_existing: bool) -> Result<(), AppError> {
+    let mut command = Command::new("debugfs");
+    command.arg("-w");
+    if replace_existing {
+        command.arg("-R").arg(format!("rm {}", guest_path));
+    }
+    command
+        .arg("-R")
+        .arg(format!("symlink {} {}", guest_path, target))
+        .arg(rootfs_path);
+
+    let output = command.output().await?;
+    if !output.status.success() {
+        return Err(AppError::Runtime(format!(
+            "failed to create symlink {} -> {} in rootfs {}: {}",
+            guest_path,
+            target,
+            rootfs_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    Ok(())
+}
+
+async fn debugfs_write_file(
+    rootfs_path: &Path,
+    runtime_dir: &Path,
+    guest_path: &str,
+    content: &str,
+    mode: &str,
+    replace_existing: bool,
+) -> Result<(), AppError> {
+    let temp_name = guest_path.trim_start_matches('/').replace('/', "_");
+    let host_path = runtime_dir.join(format!("debugfs-{}", temp_name));
+    fs::write(&host_path, content).await?;
+
+    let mut write_command = Command::new("debugfs");
+    write_command.arg("-w");
+    if replace_existing {
+        write_command.arg("-R").arg(format!("rm {}", guest_path));
+    }
+    write_command
+        .arg("-R")
+        .arg(format!("write {} {}", host_path.display(), guest_path))
+        .arg(rootfs_path);
+
+    let output = write_command.output().await?;
+
+    if !output.status.success() {
+        let _ = fs::remove_file(&host_path).await;
+        return Err(AppError::Runtime(format!(
+            "failed to write {} into rootfs {}: {}",
+            guest_path,
+            rootfs_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    let metadata_output = Command::new("debugfs")
+        .arg("-w")
+        .arg("-R")
+        .arg(format!("set_inode_field {} uid_lo 0", guest_path))
+        .arg("-R")
+        .arg(format!("set_inode_field {} gid 0", guest_path))
+        .arg("-R")
+        .arg(format!("set_inode_field {} mode {}", guest_path, mode))
+        .arg(rootfs_path)
+        .output()
+        .await?;
+
+    let _ = fs::remove_file(&host_path).await;
+
+    if !metadata_output.status.success() {
+        return Err(AppError::Runtime(format!(
+            "failed to update inode metadata for {} in rootfs {}: {}",
+            guest_path,
+            rootfs_path.display(),
+            String::from_utf8_lossy(&metadata_output.stderr)
+        )));
+    }
+
+    Ok(())
 }
 
 fn binary_exists(name: &str) -> bool {
@@ -724,9 +1015,7 @@ impl VmRuntime for StubRuntime {
             rootfs_path: "/tmp/rootfs.ext4".to_string(),
             host_ip: Some("172.16.0.1".to_string()),
             guest_ip: Some("172.16.0.2".to_string()),
-            ssh_user: Some("root".to_string()),
-            ssh_port: Some(22),
-            ssh_private_key_path: Some("/tmp/id_ed25519".to_string()),
+            guest_agent_port: 4020,
         })
     }
 

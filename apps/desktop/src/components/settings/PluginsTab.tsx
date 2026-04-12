@@ -16,7 +16,7 @@ function StatusBadge({ enabled, error }: { enabled: boolean; error: string | nul
     <span
       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
         enabled
-          ? "bg-emerald-500/15 text-emerald-400"
+          ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"
           : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"
       }`}
     >
@@ -46,7 +46,7 @@ function PermissionPills({ permissions }: { permissions: PluginEntry["permission
       {activePills.map((pill) => (
         <span
           key={pill.label}
-          className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"
+          className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold bg-[var(--color-pop)]/10 text-[var(--color-pop)] border border-[var(--color-pop)]/20"
         >
           {pill.label}
         </span>
@@ -97,7 +97,7 @@ function PluginToolList({ pluginId, tools }: { pluginId: string; tools: PluginTo
                     key={param.name}
                     className={`rounded px-1 py-px text-[8px] font-mono ${
                       param.required
-                        ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                        ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)] border border-[var(--color-accent)]/20"
                         : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"
                     }`}
                     title={`${param.name}: ${param.param_type}${param.required ? " (required)" : ""} — ${param.description}`}
@@ -423,11 +423,11 @@ function InstallSection({ onInstalled }: { onInstalled: () => void }) {
       </div>
 
       {success && (
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-          <svg className="w-3.5 h-3.5 shrink-0 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 rounded-lg bg-[var(--color-success-muted)] border border-[var(--color-success)]/20 px-3 py-2">
+          <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-success-text)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
-          <span className="text-[10px] text-emerald-300">{success}</span>
+          <span className="text-[10px] text-[var(--color-success-text)]">{success}</span>
         </div>
       )}
 

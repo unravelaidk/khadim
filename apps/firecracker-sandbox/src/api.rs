@@ -11,7 +11,8 @@ use crate::{
     error::AppError,
     models::{
         CommandRequest, CommandResponse, CreateSandboxRequest, ExposeRequest, ExposeResponse,
-        FileContentResponse, HealthResponse, ProcessRequest, ProcessResponse, WriteFileRequest,
+        FileContentResponse, GuestExecRequest, GuestReadFileRequest, GuestWriteFileRequest,
+        HealthResponse, ProcessRequest, ProcessResponse, WriteFileRequest,
     },
 };
 
@@ -20,6 +21,9 @@ pub fn router() -> Router<AppState> {
         .route("/health", get(health))
         .route("/v1/sandboxes", post(create_sandbox))
         .route("/v1/sandboxes/:id", get(get_sandbox).delete(delete_sandbox))
+        .route("/v1/sandboxes/:id/write-file", post(write_file_guest))
+        .route("/v1/sandboxes/:id/read-file", post(read_file_guest))
+        .route("/v1/sandboxes/:id/exec", post(run_exec_guest))
         .route("/v1/sandboxes/:id/files", get(read_file).put(write_file))
         .route("/v1/sandboxes/:id/commands", post(run_command))
         .route("/v1/sandboxes/:id/processes", post(start_process))
@@ -107,6 +111,30 @@ async fn write_file(
     })))
 }
 
+async fn read_file_guest(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<GuestReadFileRequest>,
+) -> Result<Json<FileContentResponse>, AppError> {
+    Ok(Json(FileContentResponse {
+        content: state.read_file(&id, &request.path).await?,
+    }))
+}
+
+async fn write_file_guest(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<GuestWriteFileRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    state.write_file(&id, &request.path, &request.content).await?;
+    let _encoding = request.encoding.unwrap_or_else(|| "utf-8".to_string());
+    Ok(Json(json!({
+        "ok": true,
+        "path": request.path,
+        "bytes": request.content.len(),
+    })))
+}
+
 async fn run_command(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -117,6 +145,18 @@ async fn run_command(
             .exec(&id, request.mode.as_deref(), &request.script)
             .await?,
     ))
+}
+
+async fn run_exec_guest(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<GuestExecRequest>,
+) -> Result<Json<CommandResponse>, AppError> {
+    let _timeout = request.timeout;
+    let _trace = request.trace;
+    let _workdir = request.workdir;
+
+    Ok(Json(state.exec(&id, Some("shell"), &request.command).await?))
 }
 
 async fn start_process(

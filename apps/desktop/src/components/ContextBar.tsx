@@ -25,6 +25,20 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+function barColorClass(pct: number | null): string {
+  if (pct === null) return "bg-[var(--text-muted)]";
+  if (pct > 85) return "bg-[var(--color-danger)]";
+  if (pct > 65) return "bg-[var(--color-pop)]";
+  return "bg-[var(--color-success)]";
+}
+
+function barTextClass(pct: number | null): string {
+  if (pct === null) return "text-[var(--text-muted)]";
+  if (pct > 85) return "text-[var(--color-danger-text)]";
+  if (pct > 65) return "text-[var(--color-pop)]";
+  return "text-[var(--color-success-text)]";
+}
+
 interface ContextBarProps {
   agent: AgentInstance | null;
   isStreaming?: boolean;
@@ -36,80 +50,48 @@ export function ContextBar({ agent, isStreaming = false }: ContextBarProps) {
   const { inputTokens, outputTokens, cacheReadTokens } = agent.tokenUsage;
   const ctx = getContextWindow(agent.modelLabel);
 
-  const totalUsed = inputTokens + outputTokens;
   const pct = ctx ? Math.min((inputTokens / ctx.limit) * 100, 100) : null;
 
-  const barColor =
-    pct === null    ? "var(--text-muted)"
-    : pct > 85      ? "var(--color-danger)"
-    : pct > 65      ? "var(--color-pop)"
-    : "var(--color-success)";
-
   return (
-    <div
-      className="shrink-0 px-5 py-2 flex items-center gap-3 border-b border-[var(--glass-border)]"
-      style={{ background: "var(--surface-bg-subtle)" }}
-    >
-      {/* Label */}
-      <span
-        className="font-mono text-[8px] uppercase tracking-[0.15em] shrink-0"
-        style={{ color: "var(--text-muted)" }}
-      >
+    <div className="shrink-0 px-5 py-2 flex items-center gap-3 border-b border-[var(--glass-border)]">
+      <span className="font-mono text-[8px] uppercase tracking-[0.15em] shrink-0 text-[var(--text-muted)]">
         Context
       </span>
 
-      {/* Bar */}
       {pct !== null && (
-        <div
-          className="flex-1 rounded-full overflow-hidden"
-          style={{ height: 3, background: "var(--glass-border-strong)" }}
-        >
+        <div className="flex-1 h-[3px] rounded-full overflow-hidden bg-[var(--glass-border-strong)]">
           <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${pct}%`, background: barColor }}
+            className={`h-full rounded-full transition-all duration-500 ${barColorClass(pct)}`}
+            style={{ width: `${pct}%` }}
           />
         </div>
       )}
 
-      {/* Tokens used / limit */}
-      <span
-        className="font-mono text-[9px] shrink-0 tabular-nums"
-        style={{ color: "var(--text-secondary)" }}
-      >
+      <span className="font-mono text-[9px] shrink-0 tabular-nums text-[var(--text-secondary)]">
         {formatTokens(inputTokens)}
         {ctx ? ` / ${ctx.label}` : " ctx"}
         {pct !== null && (
-          <span style={{ color: "var(--text-muted)" }}>
+          <span className="text-[var(--text-muted)]">
             {" "}· {pct.toFixed(0)}%
           </span>
         )}
       </span>
 
-      {/* Output tokens pill */}
-      <span
-        className="font-mono text-[8px] shrink-0 tabular-nums"
-        style={{ color: "var(--text-muted)" }}
-      >
+      <span className="font-mono text-[8px] shrink-0 tabular-nums text-[var(--text-muted)]">
         +{formatTokens(outputTokens)} out
       </span>
 
-      {/* Cache read — shown when non-zero (indicates cost savings) */}
       {cacheReadTokens > 0 && (
         <span
-          className="font-mono text-[8px] shrink-0 tabular-nums"
-          style={{ color: "var(--color-success-text)", opacity: 0.8 }}
+          className="font-mono text-[8px] shrink-0 tabular-nums text-[var(--color-success-text)] opacity-80"
           title="Cache read tokens (cheaper)"
         >
           {formatTokens(cacheReadTokens)} cached
         </span>
       )}
 
-      {/* Live pulse */}
       {isStreaming && (
-        <span
-          className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse"
-          style={{ background: barColor }}
-        />
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${barColorClass(pct)}`} />
       )}
     </div>
   );

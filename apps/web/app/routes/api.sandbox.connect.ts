@@ -3,6 +3,42 @@ import { getSandboxProvider, withSandboxProviderFallback } from "../agent/sandbo
 import { db, artifacts, chats, projects, workspaceFiles } from "../lib/db";
 import { eq } from "drizzle-orm";
 
+function parseOptionalNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getServerBootWaitMs(defaultMs: number): number {
+  return parseOptionalNumber(process.env.SANDBOX_SERVER_BOOT_WAIT_MS) ?? defaultMs;
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveProjectDevPort(project: { projectType?: string | null; devPort?: number | null }): number {
+  if (typeof project.devPort === "number" && Number.isFinite(project.devPort) && project.devPort > 0) {
+    return project.devPort;
+  }
+
+  return project.projectType === "astro" ? 4321 : 5173;
+}
+
+async function exposePreviewIfAvailable(
+  sandbox: { exposeHttp?: (options: { port: number }) => Promise<string> },
+  port: number
+): Promise<string | null> {
+  if (!sandbox.exposeHttp) {
+    return null;
+  }
+
+  return sandbox.exposeHttp({ port });
+}
+
 // Helper: Start static Bun file server
 async function startStaticServer(sandbox: { writeFile: (path: string, content: string) => Promise<void>; spawn: (cmd: string[], opts?: { cwd?: string }) => Promise<{ pid: number }> }, root: string, port: number): Promise<void> {
   const serverCode = `
@@ -166,11 +202,16 @@ export async function action({ request }: ActionFunctionArgs) {
           );
           
           if (devResult.success) {
-            // Wait a bit for dev server to start
-            await new Promise(r => setTimeout(r, 3000));
+            await sleep(getServerBootWaitMs(3000));
+            const devPort = resolveProjectDevPort(project);
+
+            try {
+              previewUrl = await exposePreviewIfAvailable(sandbox, devPort);
+            } catch (error) {
+              restorationError = error instanceof Error ? error.message : String(error);
+              console.warn(`Failed to expose preview for ${project.projectName}:`, error);
+            }
             
-            // Note: exposeHttp is handled server-side in the remote sandbox
-            // The preview URL would need to be obtained from the sandbox server
             restorationStatus = "dev_server";
             console.log(`Dev server started for ${project.projectName}`);
           } else {
@@ -190,7 +231,15 @@ export async function action({ request }: ActionFunctionArgs) {
               console.log(`Detected static HTML project`);
               const spawn = requireSpawn(sandbox);
               await startStaticServer({ writeFile: sandbox.writeFile, spawn }, ".", 8000);
-              await new Promise(r => setTimeout(r, 500));
+              await sleep(getServerBootWaitMs(500));
+
+              try {
+                previewUrl = await exposePreviewIfAvailable(sandbox, 8000);
+              } catch (error) {
+                restorationError = error instanceof Error ? error.message : String(error);
+                console.warn("Failed to expose static preview:", error);
+              }
+
               restorationStatus = "static";
             }
           }

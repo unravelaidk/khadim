@@ -174,7 +174,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
 function PRStateIcon({ pr }: { pr: GitHubPR }) {
   if (pr.merged_at) {
     return (
-      <svg className="w-4 h-4 shrink-0 mt-0.5 text-purple-400" viewBox="0 0 16 16" fill="currentColor">
+      <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-accent)]" viewBox="0 0 16 16" fill="currentColor">
         <path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218zM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zm8-9a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zM4.25 4a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z" />
       </svg>
     );

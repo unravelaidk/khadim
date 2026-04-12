@@ -110,7 +110,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[520px] mx-4 glass-panel-strong rounded-[28px] animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[520px] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Create workspace"
@@ -121,7 +121,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-muted)]">
               New workspace
             </p>
-            <h2 className="text-lg font-bold text-[var(--text-primary)] mt-0.5">
+            <h2 className="font-display text-lg font-medium text-[var(--text-primary)] mt-0.5">
               Create workspace
             </h2>
           </div>

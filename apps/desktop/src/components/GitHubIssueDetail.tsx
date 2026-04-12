@@ -106,7 +106,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
               issue.state === "open"
                 ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"
-                : "bg-purple-500/10 text-purple-400"
+                : "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
             }`}>
               {issue.state}
             </span>

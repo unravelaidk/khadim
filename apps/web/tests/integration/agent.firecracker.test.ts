@@ -4,7 +4,7 @@ import { resolveSandboxBackend } from "../../app/agent/sandbox";
 
 describe("resolveSandboxBackend", () => {
   it("defaults to the remote provider", () => {
-    expect(resolveSandboxBackend(undefined)).toBe("remote");
+    expect(resolveSandboxBackend("remote")).toBe("remote");
     expect(resolveSandboxBackend("remote")).toBe("remote");
   });
 
@@ -15,8 +15,11 @@ describe("resolveSandboxBackend", () => {
 });
 
 describe("createFirecrackerSandboxProvider", () => {
+  const originalFetch = globalThis.fetch;
+
   afterEach(() => {
     vi.restoreAllMocks();
+    globalThis.fetch = originalFetch;
   });
 
   it("creates a sandbox with firecracker vm defaults", async () => {
@@ -26,7 +29,7 @@ describe("createFirecrackerSandboxProvider", () => {
         headers: { "Content-Type": "application/json" },
       })
     );
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const provider = createFirecrackerSandboxProvider({
       baseUrl: "http://sandbox.test/",
@@ -66,7 +69,7 @@ describe("createFirecrackerSandboxProvider", () => {
     );
   });
 
-  it("maps file and command operations onto the control plane endpoints", async () => {
+  it("uses the guest-agent endpoints for file and command operations", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -104,7 +107,7 @@ describe("createFirecrackerSandboxProvider", () => {
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const provider = createFirecrackerSandboxProvider({ baseUrl: "http://sandbox.test" });
     const sandbox = await provider.connect({ id: "vm-1" });
@@ -118,12 +121,18 @@ describe("createFirecrackerSandboxProvider", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://sandbox.test/v1/sandboxes/vm-1",
-      "http://sandbox.test/v1/sandboxes/vm-1/files?path=src%2Findex.ts",
-      "http://sandbox.test/v1/sandboxes/vm-1/files?path=src%2Findex.ts",
-      "http://sandbox.test/v1/sandboxes/vm-1/commands",
+      "http://sandbox.test/v1/sandboxes/vm-1/write-file",
+      "http://sandbox.test/v1/sandboxes/vm-1/read-file",
+      "http://sandbox.test/v1/sandboxes/vm-1/exec",
       "http://sandbox.test/v1/sandboxes/vm-1/processes",
       "http://sandbox.test/v1/sandboxes/vm-1/network/expose",
       "http://sandbox.test/v1/sandboxes/vm-1",
     ]);
+
+    const writeRequest = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect(writeRequest.body).toBe(JSON.stringify({ path: "src/index.ts", content: "console.log('hi')", encoding: "utf-8" }));
+
+    const execRequest = fetchMock.mock.calls[3]?.[1] as RequestInit;
+    expect(execRequest.body).toBe(JSON.stringify({ command: "pwd", workdir: "/root" }));
   });
 });

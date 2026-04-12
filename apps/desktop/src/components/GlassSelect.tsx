@@ -30,6 +30,7 @@ export function GlassSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(-1);
+  const [openUp, setOpenUp] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -114,6 +115,12 @@ export function GlassSelect({
             if (next) {
               setSearch("");
               setHighlightIndex(-1);
+              // Detect available space below vs above
+              if (wrapperRef.current) {
+                const rect = wrapperRef.current.getBoundingClientRect();
+                const spaceBelow = window.innerHeight - rect.bottom;
+                setOpenUp(spaceBelow < 260);
+              }
               requestAnimationFrame(() => searchRef.current?.focus());
             }
             return next;
@@ -140,7 +147,7 @@ export function GlassSelect({
       {/* Dropdown */}
       {isOpen && (
         <div
-          className="absolute left-0 right-0 z-[120] mt-1.5 overflow-hidden rounded-2xl border border-[var(--glass-border-strong)] bg-[var(--surface-elevated)] shadow-[var(--shadow-glass-lg)] animate-in zoom-in fade-in duration-150"
+          className={`absolute left-0 right-0 z-[120] overflow-hidden rounded-2xl border border-[var(--glass-border-strong)] bg-[var(--surface-elevated)] shadow-[var(--shadow-glass-lg)] animate-in zoom-in fade-in duration-150 ${openUp ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
           role="listbox"
         >
           {/* Search input */}

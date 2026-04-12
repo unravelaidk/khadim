@@ -85,6 +85,7 @@
   --color-danger-ink: #c97881;
   
   --color-warning-text: #ebcb8b;
+  --color-pop:            #ebcb8b;
 
   /* Terminal — Nord Dark ANSI */
   --terminal-bg: #242933;
@@ -215,6 +216,7 @@
   --color-danger-ink: #8b3a42;
   
   --color-warning-text: #c79030;
+  --color-pop:            #c79030;
 
   /* Terminal — Nord Light ANSI */
   --terminal-bg: #e5e9f0;

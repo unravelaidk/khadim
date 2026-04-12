@@ -167,7 +167,7 @@ function ConfiguredModelCard({
           <button onClick={() => onEdit(model)} type="button" className="rounded-lg btn-glass px-2.5 py-1.5 text-xs font-medium">
             Edit
           </button>
-          <button onClick={() => onDelete(model.id)} type="button" className="rounded-lg btn-glass px-2.5 py-1.5 text-xs font-medium text-red-400 hover:text-red-500">
+          <button onClick={() => onDelete(model.id)} type="button" className="rounded-lg btn-glass px-2.5 py-1.5 text-xs font-medium text-[var(--color-danger-text)] hover:text-[var(--color-danger)]">
             Delete
           </button>
         </div>
@@ -394,9 +394,9 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
                 <div className="flex items-center gap-2">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                     codexConnected
-                      ? "bg-emerald-500/20 text-emerald-400"
+                      ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"
                       : codexConnecting
-                        ? "bg-amber-500/20 text-amber-400"
+                        ? "bg-[var(--color-pop)]/20 text-[var(--color-pop)]"
                         : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"
                   }`}>
                     {codexConnected ? "Connected" : codexConnecting ? "Waiting..." : "Not connected"}
@@ -454,7 +454,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
                     </button>
                   </div>
                   {codexStatus?.error && (
-                    <p className="text-xs text-red-400">{codexStatus.error}</p>
+                    <p className="text-xs text-[var(--color-danger-text)]">{codexStatus.error}</p>
                   )}
                 </div>
               )}
@@ -517,7 +517,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
               className="w-full"
             />
             {discovering && <p className="mt-1.5 text-xs text-[var(--text-muted)]">Fetching models...</p>}
-            {discoverError && <p className="mt-1.5 text-xs text-red-400">{discoverError}</p>}
+            {discoverError && <p className="mt-1.5 text-xs text-[var(--color-danger-text)]">{discoverError}</p>}
             {!discovering && !discoverError && providerModelOptions.length === 0 && (
               <p className="mt-1.5 text-xs text-[var(--text-muted)]">
                 {providerHasCredentials || DISCOVERY_WITHOUT_API_KEY.has(form.provider)

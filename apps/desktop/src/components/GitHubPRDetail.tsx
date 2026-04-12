@@ -146,7 +146,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
             <span className="text-[10px] font-mono text-[var(--text-muted)]">#{pr.number}</span>
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
               isMerged
-                ? "bg-purple-500/10 text-purple-400"
+                ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
                 : isClosed
                   ? "bg-[var(--color-danger-muted)] text-[var(--color-danger-text)]"
                   : "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"

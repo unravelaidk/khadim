@@ -85,6 +85,7 @@
   --color-danger-ink: #f5a3b5;
   
   --color-warning-text: #f9e2af;
+  --color-pop:            #f9e2af;
 
   /* Terminal — Catppuccin Mocha ANSI */
   --terminal-bg: #11111b;
@@ -219,6 +220,7 @@
   --color-danger-ink: #f0a1ad;
   
   --color-warning-text: #f5d597;
+  --color-pop:            #f5d597;
 
   /* Terminal — Catppuccin Macchiato ANSI */
   --terminal-bg: #181926;
@@ -353,6 +355,7 @@
   --color-danger-ink: #eca0a1;
   
   --color-warning-text: #e5c890;
+  --color-pop:            #e5c890;
 
   /* Terminal — Catppuccin Frappe ANSI */
   --terminal-bg: #232634;
@@ -487,6 +490,7 @@
   --color-danger-ink: #e6203d;
   
   --color-warning-text: #df8e1d;
+  --color-pop:            #df8e1d;
 
   /* Terminal — Catppuccin Latte ANSI */
   --terminal-bg: #e6e9ef;

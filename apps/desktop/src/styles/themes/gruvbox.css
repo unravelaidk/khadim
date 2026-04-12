@@ -85,6 +85,7 @@
   --color-danger-ink: #fb5f50;
   
   --color-warning-text: #fabd2f;
+  --color-pop:            #fabd2f;
 
   /* Terminal — Gruvbox Dark ANSI */
   --terminal-bg: #1d2021;
@@ -215,6 +216,7 @@
   --color-danger-ink: #7a0405;
   
   --color-warning-text: #b57614;
+  --color-pop:            #b57614;
 
   /* Terminal — Gruvbox Light ANSI */
   --terminal-bg: #f2e5bc;

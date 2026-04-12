@@ -225,24 +225,22 @@ export function createFirecrackerSandboxProvider(
       id: record.id,
       containerId: record.containerId,
       async writeFile(path: string, content: string): Promise<void> {
-        await request<void>(
-          `/v1/sandboxes/${record.id}/files?path=${encodeURIComponent(path)}`,
-          {
-            method: "PUT",
-            body: JSON.stringify({ content, encoding: "utf8" }),
-          }
-        );
+        await request<void>(`/v1/sandboxes/${record.id}/write-file`, {
+          method: "POST",
+          body: JSON.stringify({ path, content, encoding: "utf-8" }),
+        });
       },
       async readFile(path: string): Promise<string> {
-        const result = await request<unknown>(
-          `/v1/sandboxes/${record.id}/files?path=${encodeURIComponent(path)}`
-        );
+        const result = await request<unknown>(`/v1/sandboxes/${record.id}/read-file`, {
+          method: "POST",
+          body: JSON.stringify({ path }),
+        });
         return toTextFile(result);
       },
       async exec(script: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-        const result = await request<unknown>(`/v1/sandboxes/${record.id}/commands`, {
+        const result = await request<unknown>(`/v1/sandboxes/${record.id}/exec`, {
           method: "POST",
-          body: JSON.stringify({ mode: "shell", script }),
+          body: JSON.stringify({ command: script, workdir: "/root" }),
         });
         return toExecResult(result);
       },

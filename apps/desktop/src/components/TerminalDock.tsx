@@ -32,11 +32,11 @@ interface TabState {
 
 // ── Persisted prefs ───────────────────────────────────────────────────
 
-const STORAGE_HEIGHT = "khadim:terminal-dock:width";
+const STORAGE_HEIGHT = "khadim:terminal-dock:height";
 const STORAGE_COLLAPSED = "khadim:terminal-dock:collapsed";
-const MIN_HEIGHT = 280;
-const MAX_HEIGHT = 900;
-const DEFAULT_HEIGHT = 480;
+const MIN_HEIGHT = 140;
+const MAX_HEIGHT = 600;
+const DEFAULT_HEIGHT = 260;
 const COLLAPSED_HEIGHT = 0;
 
 function stored(key: string, fallback: string): string {
@@ -296,25 +296,25 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     }
   }, []);
 
-  // ── Drag to resize ────────────────────────────────────────────────
-  const dragX = useRef(0);
-  const dragW = useRef(0);
+  // ── Drag to resize (vertical) ─────────────────────────────────────
+  const dragY = useRef(0);
+  const dragH = useRef(0);
   const dragging = useRef(false);
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
     if (collapsed) return;
     dragging.current = true;
-    dragX.current = e.clientX;
-    dragW.current = height;
-    document.body.style.cursor = "col-resize";
+    dragY.current = e.clientY;
+    dragH.current = height;
+    document.body.style.cursor = "row-resize";
     document.body.style.userSelect = "none";
   }, [collapsed, height]);
 
   useEffect(() => {
     const move = (e: MouseEvent) => {
       if (!dragging.current) return;
-      const dx = dragX.current - e.clientX;
-      setHeight(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, dragW.current + dx)));
+      const dy = dragY.current - e.clientY;
+      setHeight(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, dragH.current + dy)));
     };
     const up = () => {
       if (!dragging.current) return;
@@ -354,26 +354,29 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
   // ── Derived ───────────────────────────────────────────────────────
   const activeTab = useMemo(() => tabs.find((t) => t.session.id === activeId) ?? null, [tabs, activeId]);
   const runningCount = tabs.filter((t) => !t.exited).length;
-  const dockWidth = collapsed ? COLLAPSED_HEIGHT : height;
+  const dockHeight = collapsed ? COLLAPSED_HEIGHT : height;
 
   // ── Render ────────────────────────────────────────────────────────
   return (
     <div
-      className="relative flex flex-col overflow-hidden border-l border-[var(--glass-border)] h-full"
+      className="relative flex flex-col overflow-hidden border-t border-[var(--glass-border)] shrink-0"
       style={{
-        width: dockWidth,
+        height: dockHeight,
         background: "var(--terminal-bg, var(--surface-bg-subtle))",
-        transition: collapsed ? "width 140ms ease" : undefined,
-        boxShadow: collapsed ? "none" : "-4px 0 24px rgba(0,0,0,0.25)",
+        transition: collapsed ? "height 140ms ease" : undefined,
+        boxShadow: collapsed ? "none" : "0 -4px 24px rgba(0,0,0,0.20)",
       }}
     >
-      {/* Drag handle (left edge) */}
+      {/* Drag handle (top edge) */}
       {!collapsed && (
-        <div onMouseDown={onDragStart} className="absolute -left-1 inset-y-0 w-2 cursor-col-resize z-20 group">
-          <div className="ml-[3px] mt-auto mb-auto w-[2px] h-10 rounded-full bg-[var(--glass-border)] group-hover:bg-[var(--color-accent)] transition-colors" style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)' }} />
+        <div onMouseDown={onDragStart} className="absolute -top-1 inset-x-0 h-2 cursor-row-resize z-20 group">
+          <div className="mx-auto mt-[3px] h-[2px] w-10 rounded-full bg-[var(--glass-border)] group-hover:bg-[var(--color-accent)] transition-colors" />
         </div>
       )}
 
+      {/* Inner content — hidden when collapsed to avoid layout cost */}
+      {!collapsed && (
+      <>
       {/* Header bar */}
       <div
         className="shrink-0 h-8 px-3 flex items-center gap-2 border-b border-[var(--glass-border)] select-none"
@@ -453,7 +456,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
       )}
 
       {/* Body */}
-      <div className="flex-1 min-h-0 p-2 bg-[var(--surface-bg-subtle)]">
+      <div className="flex-1 min-h-0 p-1.5">
           <div
             className="relative h-full overflow-hidden rounded-2xl border"
             style={{
@@ -497,6 +500,8 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
             )}
           </div>
         </div>
+      </>
+      )}
     </div>
   );
 }

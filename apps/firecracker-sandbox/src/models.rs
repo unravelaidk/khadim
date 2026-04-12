@@ -77,9 +77,29 @@ pub struct WriteFileRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct GuestWriteFileRequest {
+    pub path: String,
+    pub content: String,
+    pub encoding: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GuestReadFileRequest {
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CommandRequest {
     pub mode: Option<String>,
     pub script: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GuestExecRequest {
+    pub command: String,
+    pub timeout: Option<u64>,
+    pub workdir: Option<String>,
+    pub trace: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]

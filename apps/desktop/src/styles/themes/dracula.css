@@ -87,6 +87,7 @@
   --color-danger-ink: #ff6b6b;
   
   --color-warning-text: #ffb86c;
+  --color-pop:            #ffb86c;
 
   /* Terminal — Dracula Dark ANSI */
   --terminal-bg: #1e1f29;
@@ -221,6 +222,7 @@
   --color-danger-ink: #9a1d22;
   
   --color-warning-text: #b8750b;
+  --color-pop:            #b8750b;
 
   /* Terminal — Dracula Light ANSI */
   --terminal-bg: #eff0eb;
