@@ -1,7 +1,7 @@
 {
   "name": "@khadim/desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "version:sync": "node ./scripts/sync-version.mjs",

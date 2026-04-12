@@ -1,6 +1,6 @@
 import type { RuntimeSummary } from "../../lib/bindings";
 
-const APP_VERSION = "alpha 1.0";
+const APP_VERSION = __APP_VERSION__;
 
 export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
   return (
