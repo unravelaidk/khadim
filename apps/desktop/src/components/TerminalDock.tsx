@@ -31,10 +31,10 @@ interface TabState {
 // ── Persisted prefs ───────────────────────────────────────────────────
 
 const STORAGE_HEIGHT = "khadim:terminal-dock:height";
-const MIN_HEIGHT = 140;
+const MIN_HEIGHT = 160;
 const MAX_HEIGHT = 600;
-const DEFAULT_HEIGHT = 260;
-const COLLAPSED_BAR_HEIGHT = 32;
+const DEFAULT_HEIGHT = 280;
+const HEADER_HEIGHT = 34;
 
 function stored(key: string, fallback: string): string {
   try { return window.localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -55,11 +55,13 @@ function cssVar(name: string): string {
 }
 
 function buildXtermTheme(): Record<string, string> {
+  // Use the app's surface as bg so the terminal blends in
+  const bg = cssVar("--terminal-bg") || cssVar("--surface-bg-subtle") || "#121212";
   return {
-    background:    cssVar("--terminal-bg")            || "transparent",
+    background:    bg,
     foreground:    cssVar("--terminal-fg")            || cssVar("--text-primary") || "#e0e0e0",
     cursor:        cssVar("--terminal-cursor")        || cssVar("--color-accent") || "#e8e8e8",
-    cursorAccent:  cssVar("--terminal-cursor-accent") || cssVar("--surface-bg") || "#101010",
+    cursorAccent:  cssVar("--terminal-cursor-accent") || bg,
     selectionBackground: cssVar("--terminal-selection") || "rgba(232,232,232,0.18)",
     black:         cssVar("--terminal-black")         || "#1a1a1a",
     red:           cssVar("--terminal-red")           || "#f87171",
@@ -97,6 +99,8 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
   useEffect(() => { tabsRef.current = tabs; }, [tabs]);
 
   const hostMapRef = useRef(new Map<string, HTMLDivElement>());
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
 
   // ── Theme sync ────────────────────────────────────────────────────
   useEffect(() => {
@@ -158,7 +162,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     return () => { alive = false; unOutput?.(); unExit?.(); };
   }, []);
 
-  // ── Spawn ─────────────────────────────────────────────────────────
+  // ── Spawn — uses ref for collapsed to avoid stale closure ─────────
   const createTerminal = useCallback(async () => {
     if (!context) return;
     setError(null);
@@ -173,12 +177,11 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
         { session, term: null, fit: null, pending: [], exited: false, createdAt: Date.now() },
       ]);
       setActiveId(session.id);
-      // Expand if collapsed — do NOT collapse if already open
-      if (collapsed) onToggleCollapsed();
+      if (collapsedRef.current) onToggleCollapsed();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [context, collapsed, onToggleCollapsed]);
+  }, [context, onToggleCollapsed]);
 
   // ── Close ─────────────────────────────────────────────────────────
   const closeTab = useCallback(async (sessionId: string) => {
@@ -204,9 +207,9 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     if (!tab.term) {
       const theme = buildXtermTheme();
       const term = new Terminal({
-        fontFamily: "'Symbols Nerd Font Mono', 'Symbols Nerd Font', var(--font-mono), 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: 12.5,
-        lineHeight: 1.4,
+        fontFamily: "'Symbols Nerd Font Mono', 'Symbols Nerd Font', 'Geist Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 13,
+        lineHeight: 1.35,
         letterSpacing: 0,
         cursorBlink: true,
         cursorStyle: "bar",
@@ -248,7 +251,6 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     });
   }, [activeId]);
 
-  // Re-attach when expanded or tab changes
   useLayoutEffect(() => {
     if (!collapsed) attachActive();
   }, [attachActive, collapsed, height, tabs.length, activeId]);
@@ -310,16 +312,16 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "`") {
         e.preventDefault();
-        if (collapsed && tabsRef.current.length === 0 && context) {
+        if (collapsedRef.current && tabsRef.current.length === 0 && context) {
           void createTerminal();
-          return; // createTerminal already expands
+          return;
         }
         onToggleCollapsed();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [context, collapsed, createTerminal, onToggleCollapsed]);
+  }, [context, createTerminal, onToggleCollapsed]);
 
   // Keep the active tab valid
   useEffect(() => {
@@ -333,17 +335,10 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
   }, [tabs, activeId]);
 
   // ── Derived ───────────────────────────────────────────────────────
-  const activeTab = useMemo(() => tabs.find((t) => t.session.id === activeId) ?? null, [tabs, activeId]);
   const runningCount = tabs.filter((t) => !t.exited).length;
+  const dockHeight = collapsed ? HEADER_HEIGHT : height;
 
   // ── Render ────────────────────────────────────────────────────────
-
-  // When collapsed, show a minimal bar (always mounted, never unmounted)
-  // When expanded, show the full terminal dock
-  // Key: we NEVER unmount the terminal hosts — we just hide them with CSS
-
-  const dockHeight = collapsed ? COLLAPSED_BAR_HEIGHT : height;
-
   return (
     <div
       className="relative flex flex-col overflow-hidden border-t border-[var(--glass-border)] shrink-0"
@@ -359,39 +354,71 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
         </div>
       )}
 
-      {/* Header bar — ALWAYS visible, even when collapsed */}
+      {/* ── Header bar — always visible ─────────────────────────── */}
       <div
-        className="shrink-0 flex items-center gap-2 px-3 select-none"
-        style={{ height: COLLAPSED_BAR_HEIGHT }}
+        className="shrink-0 flex items-center gap-2 px-4 border-b border-[var(--glass-border)] select-none"
+        style={{ height: HEADER_HEIGHT, background: "var(--surface-bg-subtle)" }}
       >
-        {/* Toggle chevron */}
         <button
           onClick={onToggleCollapsed}
           className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors"
-          title={collapsed ? "Expand terminal (⌘`)" : "Collapse terminal (⌘`)"}
+          title={collapsed ? "Expand (⌘`)" : "Collapse (⌘`)"}
         >
           <svg
-            className={`w-3 h-3 transition-transform duration-150 ${collapsed ? "rotate-180" : ""}`}
-            viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}
+            className={`w-3 h-3 transition-transform duration-150 ${collapsed ? "" : "rotate-180"}`}
+            viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5l3 3 3-3" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5l3-3 3 3" />
           </svg>
         </button>
 
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
           <PromptIcon />
           Terminal
-        </div>
+        </span>
 
-        {/* Tab count / running indicator */}
+        {/* Tab pills — always show, inline in the header */}
         {tabs.length > 0 && (
-          <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-mono bg-[var(--surface-ink-4)] text-[var(--text-muted)]">
-            {runningCount > 0 && <span className="w-1 h-1 rounded-full bg-[var(--color-success)]" />}
-            {tabs.length}
-          </span>
+          <div className="flex items-center gap-1 ml-2 overflow-x-auto scrollbar-none">
+            {tabs.map((tab, i) => {
+              const isActive = tab.session.id === activeId;
+              return (
+                <button
+                  key={tab.session.id}
+                  onClick={() => setActiveId(tab.session.id)}
+                  className={`shrink-0 h-5 pl-1.5 pr-1 flex items-center gap-1 rounded text-[9px] font-mono transition-colors ${
+                    isActive
+                      ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]"
+                      : "text-[var(--text-muted)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-secondary)]"
+                  }`}
+                >
+                  <span className={`w-1 h-1 rounded-full ${tab.exited ? "bg-[var(--text-muted)]" : "bg-[var(--color-success)]"}`} />
+                  <span className="truncate max-w-[80px]">{i + 1}</span>
+                  <span
+                    onClick={(e) => { e.stopPropagation(); void closeTab(tab.session.id); }}
+                    className="ml-0.5 w-3 h-3 rounded-sm flex items-center justify-center opacity-0 group-hover:opacity-100 hover:!opacity-100 hover:bg-[var(--glass-bg-strong)] cursor-pointer"
+                    style={{ opacity: isActive ? 0.5 : 0 }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = "1"; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = isActive ? "0.5" : "0"; }}
+                  >
+                    <svg className="w-2 h-2" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
+                    </svg>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
 
-        <div className="ml-auto flex items-center gap-1 shrink-0">
+        {/* Right — new button */}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {runningCount > 0 && collapsed && (
+            <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono bg-[var(--surface-ink-4)] text-[var(--text-muted)]">
+              <span className="w-1 h-1 rounded-full bg-[var(--color-success)]" />
+              {runningCount}
+            </span>
+          )}
           <button
             onClick={() => void createTerminal()}
             disabled={!context}
@@ -401,80 +428,46 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
             <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" d="M6 2v8M2 6h8" />
             </svg>
-            New
           </button>
         </div>
       </div>
 
-      {/* Tab strip + body — hidden via CSS when collapsed, NOT unmounted */}
+      {/* ── Terminal body — hidden via CSS, never unmounted ──────── */}
       <div
-        className="flex flex-col flex-1 min-h-0 overflow-hidden"
-        style={{ display: collapsed ? "none" : undefined }}
+        className="relative flex-1 min-h-0"
+        style={{
+          display: collapsed ? "none" : undefined,
+          background: "var(--terminal-bg, var(--surface-bg-subtle))",
+        }}
       >
-        {/* Tab strip */}
-        {tabs.length > 1 && (
-          <div className="shrink-0 px-2 py-1 border-t border-[var(--glass-border)] flex items-center gap-0.5 overflow-x-auto scrollbar-none">
-            {tabs.map((tab, index) => {
-              const isActive = tab.session.id === activeId;
-              return (
-                <div
-                  key={tab.session.id}
-                  className={`relative shrink-0 h-6 pl-2 pr-1 flex items-center gap-1.5 rounded-md text-[10px] font-medium cursor-pointer transition-colors ${
-                    isActive
-                      ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]"
-                  }`}
-                  onClick={() => setActiveId(tab.session.id)}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      tab.exited ? "bg-[var(--text-muted)]" : "bg-[var(--color-success)]"
-                    }`}
-                  />
-                  <span className="truncate font-mono max-w-[120px]">{shortName(tab.session.cwd)} · {index + 1}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); void closeTab(tab.session.id); }}
-                    className="ml-0.5 h-4 w-4 rounded-sm flex items-center justify-center opacity-40 hover:opacity-100 hover:bg-[var(--glass-bg-strong)]"
-                  >
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}>
-                      <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
-                    </svg>
-                  </button>
-                </div>
-              );
-            })}
+        {error && (
+          <div className="absolute top-0 inset-x-0 z-10 px-4 py-1.5 text-[10px] text-[var(--color-danger-text)] bg-[var(--color-danger-bg-strong)] border-b border-[var(--color-danger-border)]">
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 font-semibold hover:underline">dismiss</button>
           </div>
         )}
 
-        {/* Terminal body — no inner card, just the terminal surface */}
-        <div className="flex-1 min-h-0 border-t border-[var(--glass-border)]">
-          {error && (
-            <div className="px-3 py-2 text-[10px] text-[var(--color-danger-text)] border-b border-[var(--glass-border)]">
-              {error}
-            </div>
-          )}
-
-          {tabs.length === 0 ? (
-            <EmptyState context={context} onCreate={() => void createTerminal()} />
-          ) : (
-            tabs.map((tab) => (
-              <div
-                key={tab.session.id}
-                ref={(node) => {
-                  if (node) {
-                    hostMapRef.current.set(tab.session.id, node);
-                    if (!collapsed && tab.session.id === activeId) {
-                      requestAnimationFrame(() => attachActive());
-                    }
-                  } else {
-                    hostMapRef.current.delete(tab.session.id);
+        {tabs.length === 0 ? (
+          <EmptyState context={context} onCreate={() => void createTerminal()} />
+        ) : (
+          tabs.map((tab) => (
+            <div
+              key={tab.session.id}
+              ref={(node) => {
+                if (node) {
+                  hostMapRef.current.set(tab.session.id, node);
+                  if (!collapsedRef.current && tab.session.id === activeId) {
+                    requestAnimationFrame(() => attachActive());
                   }
-                }}
-                className={`terminal-host absolute inset-0 px-2 py-1 ${tab.session.id === activeId ? "block" : "hidden"}`}
-              />
-            ))
-          )}
-        </div>
+                } else {
+                  hostMapRef.current.delete(tab.session.id);
+                }
+              }}
+              className={`terminal-host absolute inset-0 p-1 ${tab.session.id === activeId ? "" : "invisible pointer-events-none"}`}
+              style={{ background: "var(--terminal-bg, var(--surface-bg-subtle))" }}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -484,11 +477,11 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
 
 function EmptyState({ context, onCreate }: { context: DesktopWorkspaceContext | null; onCreate: () => void }) {
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
       <p className="text-[11px] max-w-xs text-center leading-relaxed">
         {context
-          ? <>Terminal in <span className="font-mono text-[var(--text-secondary)]">{shortName(context.cwd)}</span></>
-          : "Enter a workspace to spawn a terminal."}
+          ? <>Shell in <span className="font-mono text-[var(--text-secondary)]">{shortName(context.cwd)}</span></>
+          : "Enter a workspace to open a terminal."}
       </p>
       <button
         onClick={onCreate}
@@ -496,7 +489,7 @@ function EmptyState({ context, onCreate }: { context: DesktopWorkspaceContext | 
         className="h-7 px-3 rounded-md btn-glass text-[10px] font-semibold disabled:opacity-40 inline-flex items-center gap-1.5"
       >
         <PromptIcon />
-        Open terminal
+        Open
       </button>
     </div>
   );
