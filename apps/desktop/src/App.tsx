@@ -60,6 +60,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { WorkspaceContextRail } from "./components/WorkspaceContextRail";
 import { TerminalDock } from "./components/TerminalDock";
 import { FileFinder } from "./components/FileFinder";
+import { GitChangesPanel } from "./components/GitChangesPanel";
 
 initWebviewZoom();
 
@@ -118,6 +119,7 @@ export default function App() {
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const {
@@ -838,64 +840,82 @@ export default function App() {
               onToggleTerminal={() => setTerminalOpen((o) => !o)}
               onOpenFinder={() => setFinderOpen(true)}
               onOpenInEditor={handleOpenProjectInEditor}
+              changesOpen={changesOpen}
+              onToggleChanges={() => setChangesOpen((o) => !o)}
+              hasFocusedAgent={Boolean(focusedAgentId)}
             />
 
-            {/* Main content — workspace home or agent chat */}
+            {/* ── Cockpit: center + right dock ────────────────────── */}
             <div className="flex min-h-0 flex-1" style={{ minHeight: 0 }}>
-              {!focusedAgentId ? (
-                <WorkspaceView
-                  workspace={selectedWorkspace}
-                  conversations={conversations}
-                  connection={connection}
-                  processOutput={activeProcessOutput}
-                  gitStatus={gitStatus}
-                  gitDiffStat={gitDiffStat}
-                  agents={agents}
-                  onSelectConversation={handleSelectWorkspaceConversation}
-                  onStartOpenCode={() => void handleStartOpenCode()}
-                  onStopOpenCode={() => void handleStopOpenCode()}
-                  onNewAgent={handleOpenNewAgent}
-                  onFocusAgent={handleFocusAgent}
-                  onManageAgent={handleManageAgent}
-                  onWorkspaceBranchChange={handleWorkspaceBranchChange}
-                  loading={loadingWorkspace || focusedAgentIsProcessing}
-                  githubAuthStatus={githubAuthStatus}
-                  githubSlug={githubSlug}
-                  onNavigateToSettings={handleOpenSettingsFromWorkspace}
-                  onGitHubSlugChange={() => {
-                    if (!repoPath) return;
-                    void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.githubSlug(repoPath) }).catch(() => undefined);
-                  }}
-                />
-              ) : (
-                <ChatView
-                  conversationId={selectedConversationId}
-                  messages={messages}
-                  title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
-                  subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
-                  basePath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
-                  agent={focusedAgent}
-                  showModifiedFiles
-                  onOpenFile={handleOpenFileInEditor}
-                  input={agentChatInput}
-                  onInputChange={setAgentChatInput}
-                  onSend={() => void handleChatSend()}
-                  onStop={() => void handleAbort()}
-                  onNewChat={() => void handleNewConversation()}
-                  isProcessing={focusedAgentIsProcessing}
-                  streamingContent={focusedAgentStreamingContent}
-                  streamingSteps={focusedAgentStreamingSteps}
-                  availableModels={availableModels}
-                  selectedModel={selectedModel}
-                  onSelectModel={(key) => void handleSelectModel(key)}
-                  chatEndRef={chatEndRef}
-                  backend={selectedWorkspace?.backend ?? "khadim"}
-                />
+
+              {/* Center panel — workspace home or agent chat */}
+              <div className="flex min-h-0 flex-1 flex-col" style={{ minWidth: 0 }}>
+                {!focusedAgentId ? (
+                  <WorkspaceView
+                    workspace={selectedWorkspace}
+                    conversations={conversations}
+                    connection={connection}
+                    processOutput={activeProcessOutput}
+                    gitStatus={gitStatus}
+                    gitDiffStat={gitDiffStat}
+                    agents={agents}
+                    onSelectConversation={handleSelectWorkspaceConversation}
+                    onStartOpenCode={() => void handleStartOpenCode()}
+                    onStopOpenCode={() => void handleStopOpenCode()}
+                    onNewAgent={handleOpenNewAgent}
+                    onFocusAgent={handleFocusAgent}
+                    onManageAgent={handleManageAgent}
+                    onWorkspaceBranchChange={handleWorkspaceBranchChange}
+                    loading={loadingWorkspace || focusedAgentIsProcessing}
+                    githubAuthStatus={githubAuthStatus}
+                    githubSlug={githubSlug}
+                    onNavigateToSettings={handleOpenSettingsFromWorkspace}
+                    onGitHubSlugChange={() => {
+                      if (!repoPath) return;
+                      void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.githubSlug(repoPath) }).catch(() => undefined);
+                    }}
+                  />
+                ) : (
+                  <ChatView
+                    conversationId={selectedConversationId}
+                    messages={messages}
+                    title={focusedAgent?.label ?? activeConversation?.title ?? "Chat"}
+                    subtitle={focusedAgent?.currentActivity ?? (activeConversation ? (activeConversation.title ?? "Active conversation") : "No conversation")}
+                    basePath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
+                    agent={focusedAgent}
+                    onOpenFile={handleOpenFileInEditor}
+                    input={agentChatInput}
+                    onInputChange={setAgentChatInput}
+                    onSend={() => void handleChatSend()}
+                    onStop={() => void handleAbort()}
+                    onNewChat={() => void handleNewConversation()}
+                    isProcessing={focusedAgentIsProcessing}
+                    streamingContent={focusedAgentStreamingContent}
+                    streamingSteps={focusedAgentStreamingSteps}
+                    availableModels={availableModels}
+                    selectedModel={selectedModel}
+                    onSelectModel={(key) => void handleSelectModel(key)}
+                    chatEndRef={chatEndRef}
+                    backend={selectedWorkspace?.backend ?? "khadim"}
+                  />
+                )}
+
+                {/* Terminal dock — bottom of center panel */}
+                <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
+              </div>
+
+              {/* Right dock — git changes (visible when agent focused + panel open) */}
+              {focusedAgentId && changesOpen && (
+                <div className="shrink-0 animate-in" style={{ width: 280 }}>
+                  <GitChangesPanel
+                    repoPath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
+                    isStreaming={focusedAgentIsProcessing}
+                    onOpenFile={handleOpenFileInEditor}
+                    onClose={() => setChangesOpen(false)}
+                  />
+                </div>
               )}
             </div>
-
-            {/* Terminal dock — bottom of workspace, always mounted */}
-            <TerminalDock context={workspaceContext} collapsed={!terminalOpen} onToggleCollapsed={() => setTerminalOpen((o) => !o)} />
           </div>
         )}
 

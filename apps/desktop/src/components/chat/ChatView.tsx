@@ -9,7 +9,6 @@ import type { AgentInstance, LocalChatConversation } from "../../lib/types";
 import { ChatMessage, TypingIndicator } from "../ChatMessage";
 import { ChatInput } from "../ChatInput";
 import { ContextBar } from "../ContextBar";
-import { ModifiedFilesPanel } from "../ModifiedFilesPanel";
 import { WelcomeScreen } from "../WelcomeScreen";
 import { StatusIndicator } from "../StatusIndicator";
 
@@ -72,8 +71,7 @@ interface ChatViewProps {
   // ── Optional: agent context (shows ContextBar + status dot) ───
   agent?: AgentInstance | null;
 
-  // ── Optional: modified files side-panel (workspace chat) ──────
-  showModifiedFiles?: boolean;
+  // ── Optional: open file callback (for tool step links) ──────
   onOpenFile?: (path: string) => void;
 
   // ── Backend type for logo/name display ────────────────────────
@@ -100,7 +98,6 @@ export function ChatView({
   chatEndRef,
   basePath,
   agent,
-  showModifiedFiles = false,
   onOpenFile,
   backend = "khadim",
 }: ChatViewProps) {
@@ -120,7 +117,6 @@ export function ChatView({
       : null;
 
   const hasContent = displayMessages.length > 0 || isProcessing;
-  const showSidePanel = showModifiedFiles && basePath;
   const effectiveBasePath = basePath ?? undefined;
 
   // ── Header status dot ─────────────────────────────────────────
@@ -197,8 +193,8 @@ export function ChatView({
         {!hasContent ? (
           <WelcomeScreen input={input} setInput={onInputChange} onSend={onSend} compact hideInput />
         ) : (
-          <div className={`mx-auto flex gap-4 px-4 md:px-6 ${showSidePanel ? "max-w-6xl" : "max-w-3xl"}`}>
-            <div className={`min-w-0 flex-1 ${showSidePanel ? "max-w-3xl" : ""}`}>
+          <div className="mx-auto flex gap-4 px-4 md:px-6 max-w-3xl">
+            <div className="min-w-0 flex-1">
               <div className="space-y-6">
                   {displayMessages.map((message) => (
                     <ChatMessage key={message.id} message={message} basePath={effectiveBasePath} backend={backend} />
@@ -230,17 +226,6 @@ export function ChatView({
                   <div ref={chatEndRef} />
                 </div>
             </div>
-
-            {/* ── Optional: modified files side panel ───────────── */}
-            {showSidePanel && basePath && (
-              <div className="hidden xl:block w-[260px] shrink-0 sticky top-0 self-start">
-                <ModifiedFilesPanel
-                  repoPath={basePath}
-                  isStreaming={isProcessing}
-                  onOpenFile={onOpenFile}
-                />
-              </div>
-            )}
           </div>
         )}
       </main>

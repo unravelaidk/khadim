@@ -10,6 +10,9 @@ interface Props {
   onToggleTerminal?: () => void;
   onOpenFinder?: () => void;
   onOpenInEditor?: () => void;
+  changesOpen?: boolean;
+  onToggleChanges?: () => void;
+  hasFocusedAgent?: boolean;
   className?: string;
 }
 
@@ -21,6 +24,9 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
   onToggleTerminal,
   onOpenFinder,
   onOpenInEditor,
+  changesOpen,
+  onToggleChanges,
+  hasFocusedAgent,
   className,
 }: Props) {
   if (!context) return null;
@@ -125,6 +131,22 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
           )}
         </button>
       )}
+
+      {/* Changes panel toggle — only when agent is focused */}
+      {hasFocusedAgent && onToggleChanges && (
+        <button
+          onClick={onToggleChanges}
+          className={`ml-1 h-6 px-2 rounded-lg inline-flex items-center gap-1.5 text-[10px] font-semibold transition-colors ${
+            changesOpen
+              ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
+              : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
+          }`}
+          title={changesOpen ? "Hide changes" : "Show changes"}
+        >
+          <DiffIcon />
+          <span>Changes</span>
+        </button>
+      )}
     </div>
   );
 });
@@ -173,6 +195,14 @@ function TerminalIcon() {
   return (
     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 5l3 3-3 3M8 11h5" />
+    </svg>
+  );
+}
+
+function DiffIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" d="M3 8h10M8 3v10" />
     </svg>
   );
 }
