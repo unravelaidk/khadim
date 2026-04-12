@@ -235,14 +235,18 @@ export function SkillsTab() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Header card */}
-      <div className="rounded-2xl glass-card-static p-5">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-[13px] font-bold text-[var(--text-primary)]">Skills</h2>
+      {/* Header */}
+      <div>
+        <div className="flex items-center justify-between">
+          <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+            Specialized instruction sets that give the agent expertise in specific tasks.
+            Each skill is a <code className="text-[10px] font-mono px-1 py-px rounded bg-[var(--glass-bg)] border border-[var(--glass-border)]">SKILL.md</code> file
+            discovered from your configured directories.
+          </p>
           <button
             onClick={() => void load()}
             disabled={loading}
-            className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50"
+            className="shrink-0 h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50 ml-3"
             title="Refresh"
           >
             <svg
@@ -256,14 +260,9 @@ export function SkillsTab() {
             </svg>
           </button>
         </div>
-        <p className="text-[11px] text-[var(--text-muted)] mb-4">
-          Skills are specialized instruction sets that give the agent expertise in specific tasks.
-          Each skill is a <code className="text-[10px] font-mono px-1 py-px rounded bg-[var(--glass-bg)] border border-[var(--glass-border)]">SKILL.md</code> file
-          discovered from your configured directories.
-        </p>
 
         {/* Stats bar */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mt-4">
           <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
             {enabledCount} active
           </span>
@@ -272,10 +271,10 @@ export function SkillsTab() {
             {skills.length} discovered
           </span>
         </div>
-
-        {/* Directory management */}
-        <DirectoryManager dirs={dirs} onAdd={handleAddDir} onRemove={handleRemoveDir} />
       </div>
+
+      {/* Directory management */}
+      <DirectoryManager dirs={dirs} onAdd={handleAddDir} onRemove={handleRemoveDir} />
 
       {/* Skills list */}
       {loading && skills.length === 0 ? (

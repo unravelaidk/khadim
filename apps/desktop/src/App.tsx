@@ -106,6 +106,11 @@ export default function App() {
   // ── GitHub ──────────────────────────────────────────────────────
   // ── Chat / streaming (for the focused agent) ────────────────────
   const [agentChatInput, setAgentChatInput] = useState("");
+
+  // Chat tools state (shared across modes)
+  const [chatSystemPrompt, setChatSystemPrompt] = useState("");
+  const [chatTemperature, setChatTemperature] = useState<"precise" | "balanced" | "creative">("balanced");
+  const [chatAttachments, setChatAttachments] = useState<Array<{ name: string; path: string; preview: string; content: string; size: number }>>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingSteps, setStreamingSteps] = useState<ThinkingStepData[]>([]);
@@ -248,6 +253,29 @@ export default function App() {
     setGlobalError: setError,
     onCloseSettings: handleCloseSettings,
   });
+
+  // Enhanced standalone send: prepend system prompt + attachments into the input
+  const handleEnhancedStandaloneSend = useCallback(() => {
+    // Build context prefix from system prompt and attachments
+    const parts: string[] = [];
+    if (chatSystemPrompt.trim()) {
+      parts.push(`[Instructions: ${chatSystemPrompt.trim()}]`);
+    }
+    if (chatAttachments.length > 0) {
+      for (const file of chatAttachments) {
+        parts.push(`<file name="${file.name}" path="${file.path}">\n${file.content}\n</file>`);
+      }
+    }
+    if (parts.length > 0) {
+      const prefix = parts.join("\n\n") + "\n\n";
+      setStandaloneChatInput(prefix + standaloneChatInput);
+      setChatAttachments([]);
+      // Defer send to next frame so state settles
+      requestAnimationFrame(() => handleStandaloneChatSend());
+    } else {
+      handleStandaloneChatSend();
+    }
+  }, [chatSystemPrompt, chatAttachments, standaloneChatInput, handleStandaloneChatSend, setStandaloneChatInput]);
 
   const handleNewAgentForWorkspace = useCallback((workspaceId: string) => {
     handleEnterWorkspace(workspaceId);
@@ -803,7 +831,7 @@ export default function App() {
               basePath={chatDirectory}
               input={standaloneChatInput}
               onInputChange={setStandaloneChatInput}
-              onSend={handleStandaloneChatSend}
+              onSend={handleEnhancedStandaloneSend}
               onStop={() => void handleStandaloneChatAbort()}
               onNewChat={handleNewStandaloneChat}
               isProcessing={activeStandaloneIsProcessing}
@@ -813,6 +841,12 @@ export default function App() {
               selectedModel={chatSelectedModel}
               onSelectModel={(key) => void handleChatSelectModel(key)}
               chatEndRef={chatEndRef}
+              systemPrompt={chatSystemPrompt}
+              onSystemPromptChange={setChatSystemPrompt}
+              temperature={chatTemperature}
+              onTemperatureChange={setChatTemperature}
+              attachments={chatAttachments}
+              onAttachmentsChange={setChatAttachments}
             />
           );
         })()}
@@ -897,6 +931,12 @@ export default function App() {
                     onSelectModel={(key) => void handleSelectModel(key)}
                     chatEndRef={chatEndRef}
                     backend={selectedWorkspace?.backend ?? "khadim"}
+                    systemPrompt={chatSystemPrompt}
+                    onSystemPromptChange={setChatSystemPrompt}
+                    temperature={chatTemperature}
+                    onTemperatureChange={setChatTemperature}
+                    attachments={chatAttachments}
+                    onAttachmentsChange={setChatAttachments}
                   />
                 )}
 

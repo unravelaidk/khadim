@@ -79,10 +79,10 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
         aria-label="Agent settings"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
+        <div className="flex items-center justify-between px-6 pt-6 pb-3">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-9 h-9 rounded-2xl flex items-center justify-center text-[13px] font-bold shrink-0"
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-bold shrink-0"
               style={{
                 background: `oklch(90% 0.04 ${hashStr(agent.id)})`,
                 color: `oklch(35% 0.06 ${hashStr(agent.id)})`,
@@ -91,8 +91,8 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
               {agent.label.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h2 className="font-display text-base font-medium text-[var(--text-primary)] truncate">
-                Agent settings
+              <h2 className="font-display text-[15px] font-semibold text-[var(--text-primary)] truncate tracking-tight">
+                Agent Settings
               </h2>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -101,7 +101,12 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
                   : agent.status === "error" ? "bg-[var(--color-danger)]"
                   : "bg-[var(--scrollbar-thumb)]"
                 }`} />
-                <span className={`text-[10px] font-semibold ${statusColor}`}>
+                <span className={`text-[10px] font-medium ${
+                  agent.status === "running" ? "text-[var(--color-accent)]"
+                  : agent.status === "complete" ? "text-[var(--color-success-strong)]"
+                  : agent.status === "error" ? "text-[var(--color-danger-text-light)]"
+                  : "text-[var(--text-muted)]"
+                }`}>
                   {statusText}
                 </span>
               </div>
@@ -109,7 +114,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -121,7 +126,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
         <div className="h-px bg-[var(--glass-border)] mx-6" />
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-5">
+        <div className="px-6 py-4 space-y-4">
           {/* Name */}
           <label className="block">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
@@ -138,38 +143,38 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
           </label>
 
           {/* Info grid */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             {/* Model */}
-             <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
+             <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-2.5">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-0.5">
                 Model
               </span>
-              <span className="text-[12px] font-medium text-[var(--text-primary)] truncate block">
+              <span className="text-[11px] font-medium text-[var(--text-primary)] truncate block">
                 {agent.modelLabel ?? "Default"}
               </span>
             </div>
 
             {/* Status */}
-            <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
+            <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-2.5">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-0.5">
                 Status
               </span>
-              <span className={`text-[12px] font-medium truncate block ${statusColor}`}>
+              <span className={`text-[11px] font-medium truncate block ${statusColor}`}>
                 {statusText}
               </span>
             </div>
 
             {/* Branch */}
             {agent.branch && (
-              <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3 col-span-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
+              <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-2.5 col-span-2">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-0.5">
                   Branch
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <svg className="w-3 h-3 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0a3 3 0 103 3H6m0-3h12a3 3 0 003-3V6a3 3 0 00-3-3H9a3 3 0 00-3 3v6z" />
                   </svg>
-                  <span className="text-[12px] font-mono font-medium text-[var(--text-primary)] truncate">
+                  <span className="text-[11px] font-mono font-medium text-[var(--text-primary)] truncate">
                     {agent.branch}
                   </span>
                 </div>
@@ -178,11 +183,11 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
 
             {/* Worktree */}
             {agent.worktreePath && (
-              <div className="rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-3 col-span-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-1">
+              <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-2.5 col-span-2">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-0.5">
                   Worktree
                 </span>
-                <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate block">
+                <span className="text-[10px] font-mono text-[var(--text-secondary)] truncate block">
                   {agent.worktreePath}
                 </span>
               </div>
@@ -203,19 +208,19 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
 
           {/* Error message */}
           {agent.status === "error" && agent.errorMessage && (
-            <div className="rounded-2xl bg-[var(--color-danger-bg-strong)] border border-[var(--color-danger-border)] p-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-danger)] block mb-1">
+            <div className="rounded-xl bg-[var(--color-danger-bg-strong)] border border-[var(--color-danger-border)] p-3">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-danger)] block mb-0.5">
                 Error
               </span>
-              <p className="text-[12px] text-[var(--color-danger-text)]">
+              <p className="text-[11px] text-[var(--color-danger-text)] leading-relaxed">
                 {agent.errorMessage}
               </p>
             </div>
           )}
 
           {/* Danger zone */}
-          <div className="rounded-2xl border border-[var(--color-danger-border)] bg-[var(--color-danger-subtle)] p-4">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--color-danger-text-light)] mb-2">
+          <div className="rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-subtle)] p-4">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--color-danger-text-light)] mb-2">
               Danger zone
             </h3>
             <p className="text-[11px] text-[var(--text-muted)] mb-3">
@@ -271,7 +276,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
+        <div className="flex items-center justify-end gap-2 px-6 pb-5 pt-1">
           <button
             onClick={onClose}
             className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"

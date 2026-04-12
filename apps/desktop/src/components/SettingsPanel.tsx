@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ModelSettingsTab } from "./ModelSettingsTab";
 import { AboutTab } from "./settings/AboutTab";
 import { AccountsTab } from "./settings/AccountsTab";
-import { TABS } from "./settings/constants";
 import { GeneralTab } from "./settings/GeneralTab";
 import { PluginsTab } from "./settings/PluginsTab";
 import { ProvidersTab } from "./settings/ProvidersTab";
@@ -10,6 +9,22 @@ import { SkillsTab } from "./settings/SkillsTab";
 import type { SettingsPanelProps, SettingsTab } from "./settings/types";
 
 export type { CatppuccinVariant, ThemeFamily, ThemeMode } from "./settings/types";
+
+/**
+ * Grouped navigation — items with separator lines between groups.
+ */
+const NAV_ITEMS: Array<{ id: SettingsTab; label: string } | "sep"> = [
+  { id: "general", label: "General" },
+  "sep",
+  { id: "providers", label: "Providers" },
+  { id: "models", label: "Models" },
+  "sep",
+  { id: "plugins", label: "Plugins" },
+  { id: "skills", label: "Skills" },
+  "sep",
+  { id: "accounts", label: "Accounts" },
+  { id: "about", label: "About" },
+];
 
 export function SettingsPanel({
   onClose,
@@ -26,11 +41,33 @@ export function SettingsPanel({
   onChatDirectoryChange,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top on tab change
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab]);
+
+  // Keyboard shortcut: Escape to close
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const activeLabel = NAV_ITEMS.find(
+    (item): item is { id: SettingsTab; label: string } => item !== "sep" && item.id === activeTab,
+  )?.label ?? "Settings";
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="shrink-0 px-6 pt-5 pb-0 flex items-center justify-between">
-        <h1 className="font-display text-lg font-medium text-[var(--text-primary)] tracking-tight">Settings</h1>
+    <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-200" style={{ minHeight: 0 }}>
+      {/* ── Header: title + close ────────────────────────────────── */}
+      <div className="shrink-0 px-8 pt-6 pb-0 flex items-center justify-between">
+        <h1 className="font-display text-xl font-semibold text-[var(--text-primary)] tracking-tight">
+          Settings
+        </h1>
         <button
           onClick={onClose}
           className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
@@ -42,29 +79,38 @@ export function SettingsPanel({
         </button>
       </div>
 
-      <div className="shrink-0 px-6 pt-3 pb-0">
-        <div className="flex gap-0.5 rounded-2xl bg-[var(--glass-bg)] p-0.5 border border-[var(--glass-border)]">
-          {TABS.map(({ id, label, icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
-                activeTab === id
-                  ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)]"
-                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
-                {id === "general" && <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth={1.8} />}
-              </svg>
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* ── Tab bar: grouped, inline separators ──────────────────── */}
+      <div className="shrink-0 px-8 pt-3 pb-0">
+        <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-thin">
+          {NAV_ITEMS.map((item, i) =>
+            item === "sep" ? (
+              <div
+                key={`sep-${i}`}
+                className="w-px h-4 bg-[var(--glass-border)] mx-1.5 shrink-0"
+              />
+            ) : (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`shrink-0 px-3 py-1.5 rounded-[var(--radius-sm)] text-[11px] font-semibold transition-all duration-150 ${
+                  activeTab === item.id
+                    ? "bg-[var(--surface-card)] text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] border border-[var(--glass-border)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] border border-transparent"
+                }`}
+              >
+                {item.label}
+              </button>
+            ),
+          )}
+        </nav>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-6" style={{ minHeight: 0 }}>
+      {/* ── Scrollable content ───────────────────────────────────── */}
+      <div
+        ref={contentRef}
+        className="flex-1 overflow-y-auto scrollbar-thin px-8 py-6"
+        style={{ minHeight: 0 }}
+      >
         <div className="mx-auto max-w-2xl">
           {activeTab === "general" && (
             <GeneralTab

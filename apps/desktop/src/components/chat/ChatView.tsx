@@ -7,10 +7,12 @@ import type {
 } from "../../lib/bindings";
 import type { AgentInstance, LocalChatConversation } from "../../lib/types";
 import { ChatMessage, TypingIndicator } from "../ChatMessage";
-import { ChatInput } from "../ChatInput";
+import { ChatInput, type ChatAttachment } from "../ChatInput";
 import { ContextBar } from "../ContextBar";
 import { WelcomeScreen } from "../WelcomeScreen";
 import { StatusIndicator } from "../StatusIndicator";
+
+type TempPreset = "precise" | "balanced" | "creative";
 
 function getModelKey(model: OpenCodeModelRef) {
   return `${model.provider_id}:${model.model_id}`;
@@ -76,6 +78,14 @@ interface ChatViewProps {
 
   // ── Backend type for logo/name display ────────────────────────
   backend?: string;
+
+  // ── Chat tools ────────────────────────────────────────────────
+  systemPrompt?: string;
+  onSystemPromptChange?: (v: string) => void;
+  temperature?: TempPreset;
+  onTemperatureChange?: (preset: TempPreset) => void;
+  attachments?: ChatAttachment[];
+  onAttachmentsChange?: (files: ChatAttachment[]) => void;
 }
 
 export function ChatView({
@@ -100,6 +110,12 @@ export function ChatView({
   agent,
   onOpenFile,
   backend = "khadim",
+  systemPrompt,
+  onSystemPromptChange,
+  temperature,
+  onTemperatureChange,
+  attachments,
+  onAttachmentsChange,
 }: ChatViewProps) {
   // ── Normalise messages ────────────────────────────────────────
   const displayMessages = useMemo(() => {
@@ -242,6 +258,12 @@ export function ChatView({
           selectedModelKey={selectedModel ? getModelKey(selectedModel) : null}
           onSelectModel={onSelectModel}
           modelDisabled={isProcessing}
+          systemPrompt={systemPrompt}
+          onSystemPromptChange={onSystemPromptChange}
+          temperature={temperature}
+          onTemperatureChange={onTemperatureChange}
+          attachments={attachments}
+          onAttachmentsChange={onAttachmentsChange}
         />
       </div>
     </div>

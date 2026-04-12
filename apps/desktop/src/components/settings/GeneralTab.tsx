@@ -60,14 +60,13 @@ export function GeneralTab({
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Appearance</h2>
-        <p className="text-[11px] text-[var(--text-muted)] mb-5">Choose your preferred theme family and mode.</p>
+    <div className="space-y-8 animate-in fade-in duration-200">
+      <div>
+        <p className="text-[12px] text-[var(--text-secondary)] mb-6 leading-relaxed">Appearance, editor, and workspace preferences.</p>
 
-        <div className="space-y-5">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">Theme Family</p>
+        <div className="space-y-6">
+          <section>
+            <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Theme</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {THEME_FAMILIES.map((family) => (
                 <ThemeFamilyCard
@@ -79,10 +78,10 @@ export function GeneralTab({
                 />
               ))}
             </div>
-          </div>
+          </section>
 
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">Mode</p>
+          <section>
+            <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Mode</h3>
             <div className="flex gap-3">
               <button
                 onClick={() => onSetThemeMode("dark")}
@@ -119,7 +118,7 @@ export function GeneralTab({
                 {selectedFamily.label} doesn't have an official light variant. Light mode will use the default light theme.
               </p>
             )}
-          </div>
+          </section>
 
           {themeFamily === "catppuccin" && (
             <CatppuccinVariantSelector
@@ -132,8 +131,10 @@ export function GeneralTab({
         </div>
       </div>
 
-      <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Chat Directory</h2>
+      <div className="h-px bg-[var(--glass-border)]" />
+
+      <section>
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">Chat Directory</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Set a working directory for standalone chat mode. The agent can read, write, and list files inside this folder. When not set, the agent uses an empty temporary directory.
         </p>
@@ -187,11 +188,12 @@ export function GeneralTab({
             New chat sessions will use this directory. Existing sessions keep their original directory until you start a new conversation.
           </p>
         )}
-      </div>
+      </section>
 
-      {/* Default Editor */}
-      <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Default Editor</h2>
+      <div className="h-px bg-[var(--glass-border)]" />
+
+      <section>
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">Default Editor</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Choose which code editor opens files and projects from Khadim.
         </p>
@@ -230,7 +232,7 @@ export function GeneralTab({
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

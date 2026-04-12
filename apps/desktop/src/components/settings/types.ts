@@ -21,12 +21,6 @@ export interface ThemeFamilyOption {
   hasLightVariant: boolean;
 }
 
-export interface TabDef {
-  id: SettingsTab;
-  label: string;
-  icon: string;
-}
-
 export interface SettingsPanelProps {
   onClose: () => void;
   runtime: RuntimeSummary | null;

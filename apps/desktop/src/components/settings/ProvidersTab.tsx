@@ -25,9 +25,11 @@ export function ProvidersTab() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="rounded-2xl glass-card-static p-5">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-[13px] font-bold text-[var(--text-primary)]">Providers</h2>
+      <div>
+        <div className="flex items-center justify-between">
+          <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+            Overview of all available AI providers and their connection status.
+          </p>
           <button
             onClick={() => void refresh()}
             disabled={loading}
@@ -39,9 +41,7 @@ export function ProvidersTab() {
             </svg>
           </button>
         </div>
-        <p className="text-[11px] text-[var(--text-muted)] mb-4">
-          Overview of all available AI providers and their connection status.
-        </p>
+      </div>
 
         {loading && statuses.length === 0 ? (
           <div className="space-y-2">
@@ -73,7 +73,6 @@ export function ProvidersTab() {
             )}
           </div>
         )}
-      </div>
     </div>
   );
 }

@@ -347,24 +347,27 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
   const showBaseUrlField = Boolean(providerInfo?.needs_base_url || form.baseUrl.trim());
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="rounded-2xl glass-card-static p-5">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Model Settings</h2>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">Configure AI providers and models for your desktop agent.</p>
+    <div className="space-y-8 animate-in fade-in duration-200">
+      {/* Description & active model */}
+      <div>
+        <p className="text-[12px] text-[var(--text-secondary)] mb-4 leading-relaxed">Configure AI providers and models for your desktop agent.</p>
         {defaultModel && (
-          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl glass-panel px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl glass-panel px-3 py-2 text-xs">
             <span className="text-[var(--text-muted)]">Default model:</span>
             <span className="font-medium text-[var(--text-primary)]">{defaultModel.name}</span>
-            <span className="text-[var(--text-muted)]">({defaultModel.provider} / {defaultModel.model})</span>
+            <span className="text-[var(--text-muted)]">{defaultModel.provider} / {defaultModel.model}</span>
           </div>
         )}
       </div>
 
-      <div className="rounded-2xl glass-card-static p-5">
+      <section className="rounded-2xl glass-card-static p-5">
         <div className="flex items-center justify-between">
           <div>
-             <h3 className="text-base font-semibold text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
-            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">Pick a provider and select a model. Provider credentials are managed in the Providers tab.</p>
+             <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
+            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+              Pick a provider and select a model. Provider credentials are managed in the
+              <button type="button" onClick={onOpenProviders} className="text-[var(--color-accent)] hover:underline underline-offset-2 ml-1 font-medium">Providers</button> tab.
+            </p>
           </div>
         </div>
 
@@ -461,11 +464,11 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
             </div>
           )}
 
-          {!providerHasCredentials && (
+          {!providerHasCredentials && !DISCOVERY_WITHOUT_API_KEY.has(form.provider) && (
             <div className="rounded-xl glass-panel px-3.5 py-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-[var(--text-secondary)]">
-                  Add your {providerInfo?.name ?? form.provider} credentials in the Providers tab before selecting a model here.
+                  Add your {providerInfo?.name ?? form.provider} credentials in the Providers tab first.
                 </p>
                 <button
                   type="button"
@@ -567,16 +570,18 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
             {saving ? "Saving..." : editingId ? "Update Model" : "Add Model"}
           </button>
         </div>
-      </div>
+      </section>
 
-      <div className="rounded-2xl glass-card-static p-5">
-        <h3 className="text-base font-semibold text-[var(--text-primary)]">Configured Models</h3>
+      <div className="h-px bg-[var(--glass-border)]" />
+
+      <section>
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Configured Models</h3>
         {loading ? (
           <p className="mt-3 text-sm text-[var(--text-muted)]">Loading...</p>
         ) : models.length === 0 ? (
           <p className="mt-3 text-sm text-[var(--text-muted)]">No models configured yet. Add one above.</p>
         ) : (
-          <div className="mt-4 space-y-2">
+          <div className="mt-1 space-y-2">
             {models.map((model) => (
               <ConfiguredModelCard
                 key={model.id}
@@ -594,7 +599,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
         {activeModelName && (
           <p className="mt-4 text-xs text-[var(--text-muted)]">Desktop default: {activeModelName}</p>
         )}
-      </div>
+      </section>
     </div>
   );
 }
