@@ -15,9 +15,7 @@ import {
 
 interface Props {
   context: DesktopWorkspaceContext | null;
-  /** Controlled collapsed state from the parent. */
   collapsed: boolean;
-  /** Callback to toggle collapsed. */
   onToggleCollapsed: () => void;
 }
 
@@ -33,11 +31,10 @@ interface TabState {
 // ── Persisted prefs ───────────────────────────────────────────────────
 
 const STORAGE_HEIGHT = "khadim:terminal-dock:height";
-const STORAGE_COLLAPSED = "khadim:terminal-dock:collapsed";
 const MIN_HEIGHT = 140;
 const MAX_HEIGHT = 600;
 const DEFAULT_HEIGHT = 260;
-const COLLAPSED_HEIGHT = 0;
+const COLLAPSED_BAR_HEIGHT = 32;
 
 function stored(key: string, fallback: string): string {
   try { return window.localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -59,10 +56,10 @@ function cssVar(name: string): string {
 
 function buildXtermTheme(): Record<string, string> {
   return {
-    background:    cssVar("--terminal-bg")            || "#101010",
-    foreground:    cssVar("--terminal-fg")            || "#e0e0e0",
-    cursor:        cssVar("--terminal-cursor")        || "#e8e8e8",
-    cursorAccent:  cssVar("--terminal-cursor-accent") || "#101010",
+    background:    cssVar("--terminal-bg")            || "transparent",
+    foreground:    cssVar("--terminal-fg")            || cssVar("--text-primary") || "#e0e0e0",
+    cursor:        cssVar("--terminal-cursor")        || cssVar("--color-accent") || "#e8e8e8",
+    cursorAccent:  cssVar("--terminal-cursor-accent") || cssVar("--surface-bg") || "#101010",
     selectionBackground: cssVar("--terminal-selection") || "rgba(232,232,232,0.18)",
     black:         cssVar("--terminal-black")         || "#1a1a1a",
     red:           cssVar("--terminal-red")           || "#f87171",
@@ -91,7 +88,6 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     return Number.isFinite(h) ? h : DEFAULT_HEIGHT;
   });
 
-  useEffect(() => { storeValue(STORAGE_COLLAPSED, collapsed ? "1" : "0"); }, [collapsed]);
   useEffect(() => { storeValue(STORAGE_HEIGHT, String(height)); }, [height]);
 
   const [tabs, setTabs] = useState<TabState[]>([]);
@@ -103,7 +99,6 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
   const hostMapRef = useRef(new Map<string, HTMLDivElement>());
 
   // ── Theme sync ────────────────────────────────────────────────────
-  // Watch for data-theme-* attribute changes and reapply the xterm theme.
   useEffect(() => {
     const applyTheme = () => {
       const theme = buildXtermTheme();
@@ -113,20 +108,15 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
         try {
           const rows = tab.term.rows ?? 0;
           if (rows > 0) tab.term.refresh(0, rows - 1);
-        } catch {
-          /* ignore repaint failures */
-        }
+        } catch { /* ignore */ }
       }
     };
-    // Initial apply after mount.
     applyTheme();
-    // Watch the shell element for theme attribute changes.
     const shell = document.querySelector(".glass-page-shell");
     if (!shell) return;
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.type === "attributes" && m.attributeName?.startsWith("data-theme")) {
-          // Small delay so the CSS variables actually update first.
           requestAnimationFrame(applyTheme);
           return;
         }
@@ -157,8 +147,8 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
         if (t.term) {
           t.term.write(
             p.code != null
-              ? `\r\n\x1b[2m[process exited with code ${p.code}]\x1b[0m\r\n`
-              : `\r\n\x1b[2m[process exited]\x1b[0m\r\n`,
+              ? `\r\n\x1b[2m[exited ${p.code}]\x1b[0m\r\n`
+              : `\r\n\x1b[2m[exited]\x1b[0m\r\n`,
           );
         }
         return { ...t, exited: true, session: { ...t.session, running: false } };
@@ -180,21 +170,15 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
       );
       setTabs((prev) => [
         ...prev,
-        {
-          session,
-          term: null,
-          fit: null,
-          pending: [],
-          exited: false,
-          createdAt: Date.now(),
-        },
+        { session, term: null, fit: null, pending: [], exited: false, createdAt: Date.now() },
       ]);
       setActiveId(session.id);
+      // Expand if collapsed — do NOT collapse if already open
       if (collapsed) onToggleCollapsed();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [context]);
+  }, [context, collapsed, onToggleCollapsed]);
 
   // ── Close ─────────────────────────────────────────────────────────
   const closeTab = useCallback(async (sessionId: string) => {
@@ -220,9 +204,9 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     if (!tab.term) {
       const theme = buildXtermTheme();
       const term = new Terminal({
-        fontFamily: "'Symbols Nerd Font Mono', 'Symbols Nerd Font', var(--font-mono), 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontFamily: "'Symbols Nerd Font Mono', 'Symbols Nerd Font', var(--font-mono), 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: 12.5,
-        lineHeight: 1.35,
+        lineHeight: 1.4,
         letterSpacing: 0,
         cursorBlink: true,
         cursorStyle: "bar",
@@ -234,14 +218,8 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
       const fit = new FitAddon();
       const webLinks = new WebLinksAddon(async (_event, uri) => {
         if (!uri.startsWith("http://") && !uri.startsWith("https://")) return;
-        try {
-          await openUrl(uri);
-        } catch (error) {
-          console.warn("Failed to open terminal link:", uri, error);
-        }
-      }, {
-        urlRegex: /https?:\/\/[^\s"'<>`]+/gi,
-      });
+        try { await openUrl(uri); } catch { /* */ }
+      }, { urlRegex: /https?:\/\/[^\s"'<>`]+/gi });
       term.loadAddon(fit);
       term.loadAddon(webLinks);
       term.open(host);
@@ -258,7 +236,6 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
       host.appendChild(tab.term.element);
     }
 
-    // Defer fitting until after paint so the active panel definitely has size.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         try { tab.fit?.fit(); } catch { /* */ }
@@ -271,11 +248,12 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     });
   }, [activeId]);
 
+  // Re-attach when expanded or tab changes
   useLayoutEffect(() => {
     if (!collapsed) attachActive();
   }, [attachActive, collapsed, height, tabs.length, activeId]);
 
-  // ── Auto-fit ──────────────────────────────────────────────────────
+  // ── Auto-fit on resize ────────────────────────────────────────────
   useEffect(() => {
     if (collapsed || !activeId) return;
     const host = hostMapRef.current.get(activeId);
@@ -296,7 +274,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     }
   }, []);
 
-  // ── Drag to resize (vertical) ─────────────────────────────────────
+  // ── Drag to resize ────────────────────────────────────────────────
   const dragY = useRef(0);
   const dragH = useRef(0);
   const dragging = useRef(false);
@@ -327,20 +305,23 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  // ── Keyboard: Cmd/Ctrl + ` ────────────────────────────────────────
+  // ── Keyboard: ⌘` ──────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "`") {
         e.preventDefault();
-        if (collapsed && tabsRef.current.length === 0 && context) void createTerminal();
+        if (collapsed && tabsRef.current.length === 0 && context) {
+          void createTerminal();
+          return; // createTerminal already expands
+        }
         onToggleCollapsed();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [context, createTerminal]);
+  }, [context, collapsed, createTerminal, onToggleCollapsed]);
 
-  // Keep the active tab valid as tabs are added/removed.
+  // Keep the active tab valid
   useEffect(() => {
     if (tabs.length === 0) {
       if (activeId !== null) setActiveId(null);
@@ -354,41 +335,46 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
   // ── Derived ───────────────────────────────────────────────────────
   const activeTab = useMemo(() => tabs.find((t) => t.session.id === activeId) ?? null, [tabs, activeId]);
   const runningCount = tabs.filter((t) => !t.exited).length;
-  const dockHeight = collapsed ? COLLAPSED_HEIGHT : height;
 
   // ── Render ────────────────────────────────────────────────────────
+
+  // When collapsed, show a minimal bar (always mounted, never unmounted)
+  // When expanded, show the full terminal dock
+  // Key: we NEVER unmount the terminal hosts — we just hide them with CSS
+
+  const dockHeight = collapsed ? COLLAPSED_BAR_HEIGHT : height;
+
   return (
     <div
       className="relative flex flex-col overflow-hidden border-t border-[var(--glass-border)] shrink-0"
       style={{
         height: dockHeight,
-        background: "var(--terminal-bg, var(--surface-bg-subtle))",
-        transition: collapsed ? "height 140ms ease" : undefined,
-        boxShadow: collapsed ? "none" : "0 -4px 24px rgba(0,0,0,0.20)",
+        transition: "height 180ms var(--ease-out-quart)",
       }}
     >
-      {/* Drag handle (top edge) */}
+      {/* Drag handle */}
       {!collapsed && (
         <div onMouseDown={onDragStart} className="absolute -top-1 inset-x-0 h-2 cursor-row-resize z-20 group">
           <div className="mx-auto mt-[3px] h-[2px] w-10 rounded-full bg-[var(--glass-border)] group-hover:bg-[var(--color-accent)] transition-colors" />
         </div>
       )}
 
-      {/* Inner content — hidden when collapsed to avoid layout cost */}
-      {!collapsed && (
-      <>
-      {/* Header bar */}
+      {/* Header bar — ALWAYS visible, even when collapsed */}
       <div
-        className="shrink-0 h-8 px-3 flex items-center gap-2 border-b border-[var(--glass-border)] select-none"
-        style={{ background: "var(--surface-bg-subtle)" }}
+        className="shrink-0 flex items-center gap-2 px-3 select-none"
+        style={{ height: COLLAPSED_BAR_HEIGHT }}
       >
+        {/* Toggle chevron */}
         <button
           onClick={onToggleCollapsed}
           className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors"
-          title="Close terminal (⌘`)"
+          title={collapsed ? "Expand terminal (⌘`)" : "Collapse terminal (⌘`)"}
         >
-          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}>
-            <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
+          <svg
+            className={`w-3 h-3 transition-transform duration-150 ${collapsed ? "rotate-180" : ""}`}
+            viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5l3 3 3-3" />
           </svg>
         </button>
 
@@ -397,16 +383,20 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
           Terminal
         </div>
 
-        {/* Right actions */}
+        {/* Tab count / running indicator */}
+        {tabs.length > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-mono bg-[var(--surface-ink-4)] text-[var(--text-muted)]">
+            {runningCount > 0 && <span className="w-1 h-1 rounded-full bg-[var(--color-success)]" />}
+            {tabs.length}
+          </span>
+        )}
+
         <div className="ml-auto flex items-center gap-1 shrink-0">
-          <kbd className="hidden sm:inline-flex h-5 items-center px-1.5 rounded text-[9px] font-mono text-[var(--text-muted)] bg-[var(--glass-bg)] border border-[var(--glass-border)]">
-            ⌘`
-          </kbd>
           <button
             onClick={() => void createTerminal()}
             disabled={!context}
-            className="h-6 px-2.5 rounded-lg text-[10px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] disabled:opacity-40 inline-flex items-center gap-1 transition-colors"
-            title={context ? `New terminal in ${context.cwd}` : "No workspace"}
+            className="h-6 px-2 rounded-md text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] disabled:opacity-40 inline-flex items-center gap-1 transition-colors"
+            title={context ? `New terminal in ${shortName(context.cwd)}` : "No workspace"}
           >
             <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" d="M6 2v8M2 6h8" />
@@ -416,92 +406,76 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
         </div>
       </div>
 
-      {/* Tab strip — separate scrollable row */}
-      {tabs.length > 0 && (
-        <div className="shrink-0 px-2 py-1 border-b border-[var(--glass-border)] flex items-center gap-1 overflow-x-auto scrollbar-none" style={{ background: "var(--surface-bg-subtle)" }}>
-          {tabs.map((tab, index) => {
-            const isActive = tab.session.id === activeId;
-            return (
-              <div
-                key={tab.session.id}
-                className={`relative shrink-0 h-7 pl-2.5 pr-1 flex items-center gap-1.5 rounded-lg text-[10.5px] font-medium cursor-pointer transition-colors ${
-                  isActive
-                    ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]"
-                }`}
-                onClick={() => setActiveId(tab.session.id)}
-                title={`${tab.session.cwd} \u2022 session ${tab.session.id.slice(0, 6)}`}
-              >
-                {isActive && (
-                  <span className="absolute left-1.5 right-1.5 bottom-0 h-[2px] rounded-full bg-[var(--color-accent)]" />
-                )}
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    tab.exited ? "bg-[var(--text-muted)]" : "bg-[var(--color-success)]"
-                  }`}
-                />
-                <span className="truncate font-mono max-w-[140px]">{shortName(tab.session.cwd)} \u00b7 {index + 1}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); void closeTab(tab.session.id); }}
-                  className="ml-0.5 h-4 w-4 rounded-sm flex items-center justify-center opacity-50 hover:opacity-100 hover:bg-[var(--glass-bg-strong)]"
-                >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}>
-                    <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
-                  </svg>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Body */}
-      <div className="flex-1 min-h-0 p-1.5">
-          <div
-            className="relative h-full overflow-hidden rounded-2xl border"
-            style={{
-              borderColor: "var(--glass-border-strong, var(--glass-border))",
-              background: "var(--terminal-bg, var(--surface-bg-subtle))",
-              boxShadow: "var(--shadow-glass-sm)",
-            }}
-          >
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-px"
-              style={{ background: "var(--glass-shine, rgba(255,255,255,0.08))" }}
-            />
-            {error && (
-              <div className="absolute top-2 left-2 right-2 z-10 rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg-strong)] px-2 py-1 text-[10px] text-[var(--color-danger-text)]">
-                {error}
-              </div>
-            )}
-            {tabs.length === 0 ? (
-              <EmptyState context={context} onCreate={() => void createTerminal()} />
-            ) : (
-              tabs.map((tab) => (
+      {/* Tab strip + body — hidden via CSS when collapsed, NOT unmounted */}
+      <div
+        className="flex flex-col flex-1 min-h-0 overflow-hidden"
+        style={{ display: collapsed ? "none" : undefined }}
+      >
+        {/* Tab strip */}
+        {tabs.length > 1 && (
+          <div className="shrink-0 px-2 py-1 border-t border-[var(--glass-border)] flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+            {tabs.map((tab, index) => {
+              const isActive = tab.session.id === activeId;
+              return (
                 <div
                   key={tab.session.id}
-                  ref={(node) => {
-                    if (node) {
-                      hostMapRef.current.set(tab.session.id, node);
-                      if (!collapsed && tab.session.id === activeId) {
-                        requestAnimationFrame(() => attachActive());
-                      }
-                    } else {
-                      hostMapRef.current.delete(tab.session.id);
-                    }
-                  }}
-                  className={`terminal-host absolute inset-0 px-2 py-2 ${tab.session.id === activeId ? "block" : "hidden"}`}
-                  style={{
-                    background: "var(--terminal-bg, var(--surface-bg-subtle))",
-                    borderColor: "var(--glass-border)",
-                  }}
-                />
-              ))
-            )}
+                  className={`relative shrink-0 h-6 pl-2 pr-1 flex items-center gap-1.5 rounded-md text-[10px] font-medium cursor-pointer transition-colors ${
+                    isActive
+                      ? "bg-[var(--glass-bg-strong)] text-[var(--text-primary)]"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]"
+                  }`}
+                  onClick={() => setActiveId(tab.session.id)}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      tab.exited ? "bg-[var(--text-muted)]" : "bg-[var(--color-success)]"
+                    }`}
+                  />
+                  <span className="truncate font-mono max-w-[120px]">{shortName(tab.session.cwd)} · {index + 1}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void closeTab(tab.session.id); }}
+                    className="ml-0.5 h-4 w-4 rounded-sm flex items-center justify-center opacity-40 hover:opacity-100 hover:bg-[var(--glass-bg-strong)]"
+                  >
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}>
+                      <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
+        )}
+
+        {/* Terminal body — no inner card, just the terminal surface */}
+        <div className="flex-1 min-h-0 border-t border-[var(--glass-border)]">
+          {error && (
+            <div className="px-3 py-2 text-[10px] text-[var(--color-danger-text)] border-b border-[var(--glass-border)]">
+              {error}
+            </div>
+          )}
+
+          {tabs.length === 0 ? (
+            <EmptyState context={context} onCreate={() => void createTerminal()} />
+          ) : (
+            tabs.map((tab) => (
+              <div
+                key={tab.session.id}
+                ref={(node) => {
+                  if (node) {
+                    hostMapRef.current.set(tab.session.id, node);
+                    if (!collapsed && tab.session.id === activeId) {
+                      requestAnimationFrame(() => attachActive());
+                    }
+                  } else {
+                    hostMapRef.current.delete(tab.session.id);
+                  }
+                }}
+                className={`terminal-host absolute inset-0 px-2 py-1 ${tab.session.id === activeId ? "block" : "hidden"}`}
+              />
+            ))
+          )}
         </div>
-      </>
-      )}
+      </div>
     </div>
   );
 }
@@ -510,20 +484,16 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
 
 function EmptyState({ context, onCreate }: { context: DesktopWorkspaceContext | null; onCreate: () => void }) {
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em]">
-        <PromptIcon />
-        Native shell
-      </div>
+    <div className="h-full flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
       <p className="text-[11px] max-w-xs text-center leading-relaxed">
         {context
-          ? <>A PTY-backed terminal in <span className="font-mono text-[var(--text-secondary)]">{shortName(context.cwd)}</span> that follows the active agent's worktree.</>
+          ? <>Terminal in <span className="font-mono text-[var(--text-secondary)]">{shortName(context.cwd)}</span></>
           : "Enter a workspace to spawn a terminal."}
       </p>
       <button
         onClick={onCreate}
         disabled={!context}
-        className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold disabled:opacity-40 inline-flex items-center gap-2"
+        className="h-7 px-3 rounded-md btn-glass text-[10px] font-semibold disabled:opacity-40 inline-flex items-center gap-1.5"
       >
         <PromptIcon />
         Open terminal
