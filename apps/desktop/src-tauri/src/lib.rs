@@ -180,6 +180,7 @@ pub fn run() {
             commands::rpa::delete_credential,
             commands::rpa::list_memory_stores,
             commands::rpa::list_agent_memory_stores,
+            commands::rpa::ensure_agent_memory_store,
             commands::rpa::get_or_create_chat_memory_store,
             commands::rpa::create_memory_store,
             commands::rpa::update_memory_store,

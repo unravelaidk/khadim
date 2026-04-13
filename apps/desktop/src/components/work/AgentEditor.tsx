@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from "react";
-import type { ManagedAgent, Environment } from "../../lib/types";
+import type { ManagedAgent, Environment, MemoryStore } from "../../lib/types";
 import { GlassSelect } from "../GlassSelect";
-import { useDockerAvailableQuery } from "../../lib/queries";
+import { useDockerAvailableQuery, useAgentMemoryStoresQuery, useMemoryStoresQuery } from "../../lib/queries";
 
 /* ─── Tool option ──────────────────────────────────────────────────── */
 
@@ -66,6 +66,8 @@ export interface AgentEditorData {
   maxTurns: number;
   maxTokens: number;
   variables?: Record<string, string>;
+  /** Memory store to link to this agent. "auto" = create one automatically, "" = none, or a store ID */
+  memoryStoreId: string;
 }
 
 export function AgentEditor({
@@ -91,6 +93,23 @@ export function AgentEditor({
   const [environmentId, setEnvironmentId] = useState(agent?.environmentId ?? "");
   const [maxTurns, setMaxTurns] = useState(agent?.maxTurns ?? 25);
   const [maxTokens, setMaxTokens] = useState(agent?.maxTokens ?? 100000);
+
+  // Memory store: query existing stores linked to this agent + all available stores
+  const agentMemStoresQ = useAgentMemoryStoresQuery(agent?.id ?? null, Boolean(agent?.id));
+  const allMemStoresQ = useMemoryStoresQuery();
+  const agentLinkedStores = agentMemStoresQ.data ?? [];
+  const allStores = allMemStoresQ.data ?? [];
+  const currentLinkedStoreId = agentLinkedStores.length > 0 ? agentLinkedStores[0].id : null;
+  const [memoryStoreId, setMemoryStoreId] = useState<string>(
+    currentLinkedStoreId ?? (agent ? "" : "auto"),
+  );
+  // Update when the query loads
+  React.useEffect(() => {
+    if (currentLinkedStoreId && memoryStoreId === "" && agent) {
+      setMemoryStoreId(currentLinkedStoreId);
+    }
+  }, [currentLinkedStoreId, memoryStoreId, agent]);
+
   const [variables, setVariables] = useState<[string, string][]>(
     agent?.variables ? Object.entries(agent.variables) : [],
   );
@@ -144,6 +163,7 @@ export function AgentEditor({
       maxTurns,
       maxTokens,
       variables: Object.keys(vars).length > 0 ? vars : undefined,
+      memoryStoreId,
     };
   };
 
@@ -163,6 +183,23 @@ export function AgentEditor({
       detail: e.description || `${e.runnerType} runner`,
     })),
   ];
+
+  // Build memory store options for GlassSelect
+  const memoryStoreOptions = useMemo(() => {
+    const opts = [
+      { value: "auto", label: "Auto-create", detail: "A private memory store will be created for this agent" },
+      { value: "", label: "None", detail: "No persistent memory" },
+    ];
+    for (const store of allStores) {
+      const isLinked = agentLinkedStores.some((s) => s.id === store.id);
+      opts.push({
+        value: store.id,
+        label: store.name + (isLinked ? " (current)" : ""),
+        detail: store.description || store.scopeType,
+      });
+    }
+    return opts;
+  }, [allStores, agentLinkedStores]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -281,6 +318,36 @@ export function AgentEditor({
               </div>
             </div>
           )}
+
+          {/* ── Memory ─────────────────────────────────────────── */}
+          <div className="mt-6">
+            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Memory</label>
+            <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
+              Persistent memory the agent can read and write across runs
+            </p>
+            <div className="mt-2">
+              <GlassSelect
+                options={memoryStoreOptions}
+                value={memoryStoreId}
+                onChange={setMemoryStoreId}
+                placeholder="Select memory store..."
+              />
+            </div>
+            {memoryStoreId === "auto" && (
+              <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
+                A private memory store will be created when the agent first runs.
+              </p>
+            )}
+            {memoryStoreId && memoryStoreId !== "auto" && (() => {
+              const selected = allStores.find((s) => s.id === memoryStoreId);
+              if (!selected) return null;
+              return (
+                <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
+                  {selected.entryCount} entries · {selected.scopeType} scope
+                </p>
+              );
+            })()}
+          </div>
 
           {/* ── Tools ──────────────────────────────────────────── */}
           <div className="mt-8">

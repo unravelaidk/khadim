@@ -390,6 +390,15 @@ pub(crate) fn list_agent_memory_stores(
 }
 
 #[tauri::command]
+pub(crate) fn ensure_agent_memory_store(
+    state: State<'_, Arc<AppState>>,
+    agent_id: String,
+    agent_name: String,
+) -> Result<MemoryStore, AppError> {
+    state.db.ensure_agent_memory_store(&agent_id, &agent_name)
+}
+
+#[tauri::command]
 pub(crate) fn get_or_create_chat_memory_store(
     state: State<'_, Arc<AppState>>,
     workspace_id: Option<String>,

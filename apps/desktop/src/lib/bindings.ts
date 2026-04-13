@@ -901,6 +901,9 @@ export const commands = {
   listAgentMemoryStores: (agentId: string) =>
     invoke<MemoryStoreRecord[]>("list_agent_memory_stores", { agentId }),
 
+  ensureAgentMemoryStore: (agentId: string, agentName: string) =>
+    invoke<MemoryStoreRecord>("ensure_agent_memory_store", { agentId, agentName }),
+
   getOrCreateChatMemoryStore: (workspaceId?: string | null) =>
     invoke<MemoryStoreRecord>("get_or_create_chat_memory_store", { workspaceId: workspaceId ?? null }),
 

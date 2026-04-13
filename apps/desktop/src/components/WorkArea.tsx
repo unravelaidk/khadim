@@ -60,7 +60,7 @@ import {
   useAgentEditorModelsQuery,
   desktopQueryKeys,
 } from "../lib/queries";
-import { events } from "../lib/bindings";
+import { events, commands } from "../lib/bindings";
 import type { AgentStreamEvent, ThinkingStepData, UpsertManagedAgentInput, UpsertEnvironmentInput, UpsertCredentialInput } from "../lib/bindings";
 import { applyStreamingStepEvent, finalizeSteps, formatStreamingError } from "../lib/streaming";
 
@@ -75,6 +75,7 @@ interface WorkAreaProps {
 
 export function WorkArea({ view, onNavigate }: WorkAreaProps) {
   // ── Data queries ──────────────────────────────────────────────────
+  const queryClient = useQueryClient();
   const agentsQ = useManagedAgentsQuery();
   const sessionsQ = useAgentRunsQuery();
   const environmentsQ = useEnvironmentsQuery();
@@ -163,15 +164,55 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
         max_tokens: data.maxTokens,
         variables: data.variables ?? {},
       };
+
+      let agentId = editingAgentId;
       if (editingAgentId) {
         await updateAgent.mutateAsync({ id: editingAgentId, input });
       } else {
-        await createAgent.mutateAsync(input);
+        const created = await createAgent.mutateAsync(input);
+        agentId = created.id;
       }
+
+      // Handle memory store linking
+      if (agentId && data.memoryStoreId) {
+        if (data.memoryStoreId === "auto") {
+          // Ensure a memory store exists for this agent
+          try {
+            await commands.ensureAgentMemoryStore(agentId, data.name);
+          } catch (e) {
+            console.warn("Failed to ensure agent memory store:", e);
+          }
+        } else {
+          // Link the selected existing store to this agent
+          try {
+            const store = (memoryStoresQ.data ?? []).find((s) => s.id === data.memoryStoreId);
+            if (store) {
+              const linkedIds = store.linkedAgentIds.includes(agentId)
+                ? store.linkedAgentIds
+                : [...store.linkedAgentIds, agentId];
+              const primaryIds = store.primaryForAgentIds.includes(agentId)
+                ? store.primaryForAgentIds
+                : [...store.primaryForAgentIds, agentId];
+              await commands.updateMemoryStore(store.id, {
+                name: store.name,
+                description: store.description,
+                scope_type: store.scopeType as "chat" | "agent" | "shared",
+                linked_agent_ids: linkedIds,
+                primary_for_agent_ids: primaryIds,
+              });
+            }
+          } catch (e) {
+            console.warn("Failed to link memory store:", e);
+          }
+        }
+        void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.memoryStores }).catch(() => undefined);
+        void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentMemoryStores(agentId) }).catch(() => undefined);
+      }
+
       setEditorMode("closed");
       setEditingAgentId(null);
     },
-    [editingAgentId, createAgent, updateAgent],
+    [editingAgentId, createAgent, updateAgent, memoryStoresQ.data, queryClient],
   );
 
   // ── Environment editor save ───────────────────────────────────────

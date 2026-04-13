@@ -244,6 +244,7 @@ impl Database {
     pub fn delete_credential(&self, id: &str) -> Result<(), AppError> { self.automation_repo.delete_credential(id) }
     pub fn list_memory_stores(&self, workspace_id: Option<&str>) -> Result<Vec<MemoryStore>, AppError> { self.automation_repo.list_memory_stores(workspace_id) }
     pub fn list_agent_memory_stores(&self, agent_id: &str) -> Result<Vec<MemoryStore>, AppError> { self.automation_repo.list_agent_memory_stores(agent_id) }
+    pub fn ensure_agent_memory_store(&self, agent_id: &str, agent_name: &str) -> Result<MemoryStore, AppError> { self.automation_repo.ensure_agent_memory_store(agent_id, agent_name) }
     pub fn get_or_create_chat_memory_store(&self, workspace_id: Option<&str>) -> Result<MemoryStore, AppError> { self.automation_repo.get_or_create_chat_memory_store(workspace_id) }
     pub fn create_memory_store(&self, store: &MemoryStore) -> Result<(), AppError> { self.automation_repo.create_memory_store(store) }
     pub fn update_memory_store(&self, store: &MemoryStore) -> Result<(), AppError> { self.automation_repo.update_memory_store(store) }

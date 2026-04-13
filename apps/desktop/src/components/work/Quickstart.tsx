@@ -31,6 +31,7 @@ const TEMPLATES: AgentTemplate[] = [
       environmentId: "",
       maxTurns: 25,
       maxTokens: 100000,
+      memoryStoreId: "auto",
     },
   },
   {
@@ -52,6 +53,7 @@ const TEMPLATES: AgentTemplate[] = [
       environmentId: "",
       maxTurns: 15,
       maxTokens: 50000,
+      memoryStoreId: "auto",
     },
   },
   {
@@ -73,6 +75,7 @@ const TEMPLATES: AgentTemplate[] = [
       environmentId: "",
       maxTurns: 30,
       maxTokens: 80000,
+      memoryStoreId: "auto",
     },
   },
   {
@@ -94,6 +97,7 @@ const TEMPLATES: AgentTemplate[] = [
       environmentId: "",
       maxTurns: 50,
       maxTokens: 150000,
+      memoryStoreId: "auto",
     },
   },
   {
@@ -115,6 +119,7 @@ const TEMPLATES: AgentTemplate[] = [
       environmentId: "",
       maxTurns: 20,
       maxTokens: 60000,
+      memoryStoreId: "auto",
     },
   },
   {
@@ -136,6 +141,7 @@ const TEMPLATES: AgentTemplate[] = [
       environmentId: "",
       maxTurns: 40,
       maxTokens: 120000,
+      memoryStoreId: "auto",
     },
   },
 ];

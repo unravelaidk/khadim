@@ -62,6 +62,17 @@ pub async fn execute_local_run(
     // Record the initial user turn
     let _ = record_turn(&db, &run_id, 1, "user", None, Some(&prompt), None, None, None);
 
+    // Ensure the agent has a memory store (create one if missing)
+    match db.ensure_agent_memory_store(&agent.id, &agent.name) {
+        Ok(store) => {
+            log::info!("Agent '{}' using memory store '{}' ({})", agent.name, store.name, store.id);
+        }
+        Err(e) => {
+            log::warn!("Failed to ensure memory store for agent '{}': {}", agent.name, e.message);
+            // Non-fatal — the agent can still run without persistent memory
+        }
+    }
+
     // Create a temporary workspace for this run
     let run_dir = std::env::temp_dir().join(format!("khadim-run-{}", &run_id[..8]));
     if let Err(e) = std::fs::create_dir_all(&run_dir) {
@@ -171,6 +182,7 @@ pub async fn execute_local_run(
     let result = {
         let mut session = session.lock().await;
         session.active_conversation_id = Some(agent.id.clone());
+        session.active_agent_id = Some(agent.id.clone());
         crate::khadim_agent::orchestrator::run_prompt_with_plugins(
             &mut session,
             &prompt,

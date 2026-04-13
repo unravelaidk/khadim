@@ -501,6 +501,44 @@ impl AutomationRepository {
         })
     }
 
+    /// Ensure the agent has at least one linked memory store.
+    /// If the agent already has a linked store, returns it.
+    /// Otherwise creates a new private agent memory store and links it.
+    pub(crate) fn ensure_agent_memory_store(
+        &self,
+        agent_id: &str,
+        agent_name: &str,
+    ) -> Result<MemoryStore, AppError> {
+        let existing = self.list_agent_memory_stores(agent_id)?;
+        if let Some(primary) = existing
+            .iter()
+            .find(|s| s.primary_for_agent_ids.iter().any(|id| id == agent_id))
+        {
+            return Ok(primary.clone());
+        }
+        if let Some(linked) = existing.into_iter().next() {
+            return Ok(linked);
+        }
+
+        let timestamp = now();
+        let store = MemoryStore {
+            id: uuid::Uuid::new_v4().to_string(),
+            workspace_id: None,
+            scope_type: "agent".to_string(),
+            name: format!("{} Memory", agent_name),
+            description: format!("Private memory for agent '{}'.", agent_name),
+            chat_read_access: "none".to_string(),
+            linked_agent_ids: vec![agent_id.to_string()],
+            linked_agent_names: vec![agent_name.to_string()],
+            primary_for_agent_ids: vec![agent_id.to_string()],
+            entry_count: 0,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
+        };
+        self.create_memory_store(&store)?;
+        Ok(store)
+    }
+
     pub(crate) fn get_or_create_chat_memory_store(&self, workspace_id: Option<&str>) -> Result<MemoryStore, AppError> {
         let conn = self.ctx.conn();
         let workspace_id = workspace_id.map(ToOwned::to_owned);
