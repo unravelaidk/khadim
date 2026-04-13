@@ -269,8 +269,9 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
             name: data.name,
             description: data.description,
             scope_type: data.scopeType,
-            linked_agent_ids: data.agentId ? [data.agentId] : [],
-            primary_for_agent_ids: data.agentId ? [data.agentId] : [],
+            chat_read_access: data.chatReadAccess,
+            linked_agent_ids: data.agentIds,
+            primary_for_agent_ids: data.agentIds,
           },
         });
       } else {
@@ -278,8 +279,9 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
           name: data.name,
           description: data.description,
           scope_type: data.scopeType,
-          linked_agent_ids: data.agentId ? [data.agentId] : [],
-          primary_for_agent_ids: data.agentId ? [data.agentId] : [],
+          chat_read_access: data.chatReadAccess,
+          linked_agent_ids: data.agentIds,
+          primary_for_agent_ids: data.agentIds,
         });
       }
       setMemStoreEditorOpen(false);
