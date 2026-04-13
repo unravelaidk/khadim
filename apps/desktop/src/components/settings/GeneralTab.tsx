@@ -16,6 +16,8 @@ export function GeneralTab({
   onSetCatppuccinVariant,
   chatDirectory,
   onChatDirectoryChange,
+  chatAutoAccessSharedMemory,
+  onSetChatAutoAccessSharedMemory,
 }: GeneralTabProps) {
   const [picking, setPicking] = useState(false);
   const [detectedEditors, setDetectedEditors] = useState<DetectedEditor[]>([]);
@@ -188,6 +190,47 @@ export function GeneralTab({
             New chat sessions will use this directory. Existing sessions keep their original directory until you start a new conversation.
           </p>
         )}
+      </section>
+
+      <div className="h-px bg-[var(--glass-border)]" />
+
+      <section>
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">Chat Memory</h3>
+        <p className="text-[11px] text-[var(--text-muted)] mb-4">
+          Let standalone chat recall shared memory that has been explicitly marked as chat-readable. Private agent memory stays private.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => onSetChatAutoAccessSharedMemory(!chatAutoAccessSharedMemory)}
+          className={`w-full rounded-xl border px-4 py-3 text-left transition-all duration-150 ${
+            chatAutoAccessSharedMemory
+              ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+              : "border-[var(--glass-border)] bg-[var(--glass-bg)] hover:bg-[var(--glass-bg-strong)]"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[12px] font-semibold text-[var(--text-primary)]">Allow chat to use shared memory</p>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                When enabled, chat can automatically recall shared stores with chat access turned on.
+              </p>
+            </div>
+            <span
+              className={`inline-flex h-6 w-11 items-center rounded-full border px-0.5 transition-colors ${
+                chatAutoAccessSharedMemory
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]"
+                  : "border-[var(--glass-border)] bg-[var(--surface-ink-5)]"
+              }`}
+            >
+              <span
+                className={`h-5 w-5 rounded-full bg-white transition-transform ${
+                  chatAutoAccessSharedMemory ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </span>
+          </div>
+        </button>
       </section>
 
       <div className="h-px bg-[var(--glass-border)]" />

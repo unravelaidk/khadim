@@ -34,14 +34,18 @@ function mergePersistedState(
   agents: AgentInstance[],
   persisted: PersistedAgentState[],
 ): AgentInstance[] {
-  const persistedMap = new Map(persisted.map((p) => [p.id, p]));
-  return agents.map((agent) => {
+  const persistedMap = new Map(persisted.map((p) => [p.id, p]));  return agents.map((agent) => {
     const saved = persistedMap.get(agent.id);
     if (!saved) return agent;
+    // If a previous session was "running" when the app closed, it's no longer
+    // streaming after restart. Reset to "idle" so the UI doesn't get stuck
+    // showing a permanent typing indicator.
+    const restoredStatus = saved.status === "running" ? "idle" as const : saved.status;
+    const restoredActivity = saved.status === "running" ? null : saved.currentActivity;
     return {
       ...agent,
-      status: saved.status,
-      currentActivity: saved.currentActivity,
+      status: restoredStatus,
+      currentActivity: restoredActivity,
       startedAt: saved.startedAt,
       finishedAt: saved.finishedAt,
       errorMessage: saved.errorMessage,

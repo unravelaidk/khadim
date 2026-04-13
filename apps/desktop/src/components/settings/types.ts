@@ -34,6 +34,8 @@ export interface SettingsPanelProps {
   onSetCatppuccinVariant: (variant: CatppuccinVariant) => void;
   chatDirectory: string | null;
   onChatDirectoryChange: (dir: string | null) => void;
+  chatAutoAccessSharedMemory: boolean;
+  onSetChatAutoAccessSharedMemory: (enabled: boolean) => void;
 }
 
 export interface GeneralTabProps {
@@ -45,4 +47,6 @@ export interface GeneralTabProps {
   onSetCatppuccinVariant: (variant: CatppuccinVariant) => void;
   chatDirectory: string | null;
   onChatDirectoryChange: (dir: string | null) => void;
+  chatAutoAccessSharedMemory: boolean;
+  onSetChatAutoAccessSharedMemory: (enabled: boolean) => void;
 }

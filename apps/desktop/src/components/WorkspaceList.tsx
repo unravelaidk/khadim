@@ -3,6 +3,7 @@ import type { Workspace } from "../lib/bindings";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, relTime } from "../lib/ui";
 import { StatusPill } from "./StatusIndicator";
+import { BranchIcon } from "./shared/Icons";
 
 /* ─── Props ────────────────────────────────────────────────────────── */
 
@@ -224,16 +225,3 @@ const WorkspaceRow = memo(function WorkspaceRow({
     </div>
   );
 });
-
-/* ─── Icons ────────────────────────────────────────────────────────── */
-
-function BranchIcon() {
-  return (
-    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <circle cx="6" cy="6" r="2" />
-      <circle cx="6" cy="18" r="2" />
-      <circle cx="18" cy="9" r="2" />
-      <path strokeLinecap="round" d="M6 8v8M18 11c0 4-6 3-6 7" />
-    </svg>
-  );
-}

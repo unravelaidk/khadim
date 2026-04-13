@@ -41,11 +41,32 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
     return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   }, []);
 
-  /* ─── Compact: just the example rows ─────────────────────────── */
+  /* ─── Compact: greeting + example rows ───────────────────────── */
   if (compact) {
+    const dateLabel = new Date().toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
     return (
-      <div className="mx-auto w-full max-w-2xl px-5 pb-6 pt-2">
-        <p className="mb-3 px-1 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
+      <div className="mx-auto w-full max-w-2xl px-5 pb-6 pt-8">
+        <div
+          className="mb-10 stagger-in"
+          style={{ ["--stagger-delay" as string]: "0ms" }}
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
+            {dateLabel}
+          </p>
+          <p className="mt-5 text-[15px] text-[var(--text-secondary)]">{greeting}.</p>
+          <h1 className="mt-1 font-display text-[34px] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--text-primary)]">
+            What can I do for you?
+          </h1>
+        </div>
+
+        <p
+          className="mb-3 px-1 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)] stagger-in"
+          style={{ ["--stagger-delay" as string]: "120ms" }}
+        >
           Starters
         </p>
         <ul className="flex flex-col">

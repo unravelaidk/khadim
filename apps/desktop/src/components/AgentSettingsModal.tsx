@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import type { OpenCodeModelOption } from "../lib/bindings";
 import type { AgentInstance } from "../lib/types";
+import { agentStatusColorClass, agentStatusWord } from "../lib/agent-utils";
+import { ModelSelector } from "./ModelSelector";
+import { CloseIcon } from "./shared/Icons";
 
 interface Props {
   isOpen: boolean;
@@ -7,9 +11,12 @@ interface Props {
   onClose: () => void;
   onRename: (agentId: string, newLabel: string) => void;
   onDelete: (agentId: string, deleteWorktree: boolean) => void;
+  availableModels?: OpenCodeModelOption[];
+  selectedModelKey?: string | null;
+  onSelectModel?: (key: string) => void;
 }
 
-export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete }: Props) {
+export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete, availableModels, selectedModelKey, onSelectModel }: Props) {
   const [label, setLabel] = useState(agent.label);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteWorktree, setDeleteWorktree] = useState(true);
@@ -52,17 +59,8 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
 
   if (!isOpen) return null;
 
-  const statusColor =
-    agent.status === "running" ? "text-[var(--color-accent)]"
-    : agent.status === "complete" ? "text-[var(--color-success-strong)]"
-    : agent.status === "error" ? "text-[var(--color-danger-text-light)]"
-    : "text-[var(--text-muted)]";
-
-  const statusText =
-    agent.status === "running" ? "Running"
-    : agent.status === "complete" ? "Completed"
-    : agent.status === "error" ? "Error"
-    : "Idle";
+  const statusColor = agentStatusColorClass(agent.status);
+  const statusText = agentStatusWord(agent.status);
 
   return (
     <div
@@ -117,9 +115,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
             className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <CloseIcon />
           </button>
         </div>
 
@@ -142,18 +138,31 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete 
             />
           </label>
 
+          {/* Model selector */}
+          <label className="block">
+            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              Model
+            </span>
+            {availableModels && availableModels.length > 0 && onSelectModel ? (
+              <div className="mt-1.5">
+                <ModelSelector
+                  models={availableModels}
+                  selectedModelKey={selectedModelKey ?? null}
+                  onSelectModel={onSelectModel}
+                  disabled={agent.status === "running"}
+                  direction="down"
+                  className="w-full"
+                />
+              </div>
+            ) : (
+              <div className="mt-1.5 rounded-2xl glass-input px-3 py-2.5 text-sm text-[var(--text-primary)]">
+                {agent.modelLabel ?? "Default"}
+              </div>
+            )}
+          </label>
+
           {/* Info grid */}
           <div className="grid grid-cols-2 gap-2">
-            {/* Model */}
-             <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-2.5">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-0.5">
-                Model
-              </span>
-              <span className="text-[11px] font-medium text-[var(--text-primary)] truncate block">
-                {agent.modelLabel ?? "Default"}
-              </span>
-            </div>
-
             {/* Status */}
             <div className="rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] p-2.5">
               <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] block mb-0.5">

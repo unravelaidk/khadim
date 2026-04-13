@@ -106,6 +106,178 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface ManagedAgentRecord {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  tools: string[];
+  trigger_type: "manual" | "schedule" | "event";
+  trigger_config: string | null;
+  approval_mode: "auto" | "ask" | "never";
+  runner_type: "local" | "docker" | "cloud";
+  harness: "khadim" | "opencode" | "claude_code" | "docker";
+  status: "active" | "inactive" | "paused";
+  model_id: string | null;
+  environment_id: string | null;
+  max_turns: number;
+  max_tokens: number;
+  variables: Record<string, string>;
+  version: number;
+  total_sessions: number;
+  success_rate: number;
+  last_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertManagedAgentInput {
+  name: string;
+  description: string;
+  instructions: string;
+  tools: string[];
+  trigger_type: "manual" | "schedule" | "event";
+  trigger_config?: string | null;
+  approval_mode: "auto" | "ask" | "never";
+  runner_type: "local" | "docker" | "cloud";
+  harness?: "khadim" | "opencode" | "claude_code" | "docker" | null;
+  status?: "active" | "inactive" | "paused" | null;
+  model_id?: string | null;
+  environment_id?: string | null;
+  max_turns: number;
+  max_tokens: number;
+  variables?: Record<string, string> | null;
+}
+
+export interface EnvironmentProfile {
+  id: string;
+  name: string;
+  description: string;
+  variables: Record<string, string>;
+  credential_ids: string[];
+  runner_type: "local" | "docker" | "cloud";
+  docker_image: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertEnvironmentInput {
+  name: string;
+  description: string;
+  variables?: Record<string, string> | null;
+  credential_ids: string[];
+  runner_type: "local" | "docker" | "cloud";
+  docker_image?: string | null;
+  is_default: boolean;
+}
+
+export interface CredentialRecord {
+  id: string;
+  name: string;
+  credential_type: "api_key" | "oauth" | "login" | "certificate";
+  service: string | null;
+  metadata: Record<string, string>;
+  has_secret: boolean;
+  last_used_at: string | null;
+  used_by_agents: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertCredentialInput {
+  name: string;
+  credential_type: "api_key" | "oauth" | "login" | "certificate";
+  service?: string | null;
+  metadata?: Record<string, string> | null;
+  secret_value?: string | null;
+}
+
+export interface MemoryStoreRecord {
+  id: string;
+  workspace_id: string | null;
+  scope_type: "chat" | "agent" | "shared" | string;
+  name: string;
+  description: string;
+  chat_read_access: "none" | "read" | string;
+  linked_agent_ids: string[];
+  linked_agent_names: string[];
+  primary_for_agent_ids: string[];
+  entry_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertMemoryStoreInput {
+  workspace_id?: string | null;
+  scope_type?: "chat" | "agent" | "shared" | null;
+  name: string;
+  description: string;
+  chat_read_access?: "none" | "read" | null;
+  linked_agent_ids?: string[] | null;
+  primary_for_agent_ids?: string[] | null;
+}
+
+export interface MemoryEntryRecord {
+  id: string;
+  store_id: string;
+  key: string;
+  content: string;
+  kind: string;
+  source_session_id: string | null;
+  source_conversation_id: string | null;
+  source_message_id: string | null;
+  confidence: number;
+  recall_count: number;
+  last_recalled_at: string | null;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMemoryEntryInput {
+  store_id: string;
+  key: string;
+  content: string;
+  kind?: string | null;
+  source_session_id?: string | null;
+  source_conversation_id?: string | null;
+  source_message_id?: string | null;
+  confidence?: number | null;
+  is_pinned?: boolean | null;
+}
+
+export interface AgentRunRecord {
+  id: string;
+  agent_id: string | null;
+  agent_name: string | null;
+  automation_id: string | null;
+  environment_id: string | null;
+  status: "pending" | "running" | "completed" | "failed" | "aborted";
+  trigger: "manual" | "scheduled" | "event" | "chat";
+  harness: "khadim" | "opencode" | "claude_code" | "docker";
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  result_summary: string | null;
+  error_message: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+}
+
+export interface AgentRunTurnRecord {
+  id: string;
+  run_id: string;
+  turn_number: number;
+  role: "user" | "agent" | "tool";
+  tool_name: string | null;
+  content: string | null;
+  token_input: number | null;
+  token_output: number | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
 export interface ThinkingStepData {
   id: string;
   title: string;
@@ -686,6 +858,97 @@ export const commands = {
       conversationId: conversationId ?? null,
     }),
 
+  // RPA platform
+  listManagedAgents: () =>
+    invoke<ManagedAgentRecord[]>("list_managed_agents"),
+
+  createManagedAgent: (input: UpsertManagedAgentInput) =>
+    invoke<ManagedAgentRecord>("create_managed_agent", { input }),
+
+  updateManagedAgent: (id: string, input: UpsertManagedAgentInput) =>
+    invoke<ManagedAgentRecord>("update_managed_agent", { id, input }),
+
+  deleteManagedAgent: (id: string) =>
+    invoke<void>("delete_managed_agent", { id }),
+
+  listEnvironments: () =>
+    invoke<EnvironmentProfile[]>("list_environments"),
+
+  createEnvironment: (input: UpsertEnvironmentInput) =>
+    invoke<EnvironmentProfile>("create_environment", { input }),
+
+  updateEnvironment: (id: string, input: UpsertEnvironmentInput) =>
+    invoke<EnvironmentProfile>("update_environment", { id, input }),
+
+  deleteEnvironment: (id: string) =>
+    invoke<void>("delete_environment", { id }),
+
+  listCredentials: () =>
+    invoke<CredentialRecord[]>("list_credentials"),
+
+  createCredential: (input: UpsertCredentialInput) =>
+    invoke<CredentialRecord>("create_credential", { input }),
+
+  updateCredential: (id: string, input: UpsertCredentialInput) =>
+    invoke<CredentialRecord>("update_credential", { id, input }),
+
+  deleteCredential: (id: string) =>
+    invoke<void>("delete_credential", { id }),
+
+  listMemoryStores: (workspaceId?: string | null) =>
+    invoke<MemoryStoreRecord[]>("list_memory_stores", { workspaceId: workspaceId ?? null }),
+
+  listAgentMemoryStores: (agentId: string) =>
+    invoke<MemoryStoreRecord[]>("list_agent_memory_stores", { agentId }),
+
+  getOrCreateChatMemoryStore: (workspaceId?: string | null) =>
+    invoke<MemoryStoreRecord>("get_or_create_chat_memory_store", { workspaceId: workspaceId ?? null }),
+
+  createMemoryStore: (input: UpsertMemoryStoreInput) =>
+    invoke<MemoryStoreRecord>("create_memory_store", { input }),
+
+  updateMemoryStore: (id: string, input: UpsertMemoryStoreInput) =>
+    invoke<MemoryStoreRecord>("update_memory_store", { id, input }),
+
+  deleteMemoryStore: (id: string) =>
+    invoke<void>("delete_memory_store", { id }),
+
+  linkMemoryStoreToAgent: (storeId: string, agentId: string, isPrimaryWriteTarget?: boolean | null) =>
+    invoke<void>("link_memory_store_to_agent", { storeId, agentId, isPrimaryWriteTarget: isPrimaryWriteTarget ?? null }),
+
+  unlinkMemoryStoreFromAgent: (storeId: string, agentId: string) =>
+    invoke<void>("unlink_memory_store_from_agent", { storeId, agentId }),
+
+  setAgentPrimaryMemoryStore: (storeId: string, agentId: string) =>
+    invoke<void>("set_agent_primary_memory_store", { storeId, agentId }),
+
+  listMemoryEntries: (storeId: string) =>
+    invoke<MemoryEntryRecord[]>("list_memory_entries", { storeId }),
+
+  createMemoryEntry: (input: CreateMemoryEntryInput) =>
+    invoke<MemoryEntryRecord>("create_memory_entry", { input }),
+
+  updateMemoryEntry: (id: string, input: CreateMemoryEntryInput) =>
+    invoke<MemoryEntryRecord>("update_memory_entry", { id, input }),
+
+  deleteMemoryEntry: (id: string) =>
+    invoke<void>("delete_memory_entry", { id }),
+
+  listAgentRuns: () =>
+    invoke<AgentRunRecord[]>("list_agent_runs"),
+
+  listAgentRunTurns: (runId: string) =>
+    invoke<AgentRunTurnRecord[]>("list_agent_run_turns", { runId }),
+
+  runManagedAgent: (agentId: string, trigger?: string) =>
+    invoke<AgentRunRecord>("run_managed_agent", { agentId, trigger }),
+
+  stopAgentRun: (runId: string) =>
+    invoke<void>("stop_agent_run", { runId }),
+
+  checkDockerAvailable: () =>
+    invoke<boolean>("check_docker_available"),
+
   // Terminal
   terminalCreate: (
     workspaceId: string,
@@ -1051,6 +1314,7 @@ export const commands = {
     workspaceId: string,
     sessionId: string,
     conversationId?: string | null,
+    activeAgentId?: string | null,
     content?: string,
     model?: OpenCodeModelRef | null,
   ) =>
@@ -1058,6 +1322,7 @@ export const commands = {
       workspaceId,
       sessionId,
       conversationId,
+      activeAgentId,
       content,
       model,
     }),
@@ -1066,6 +1331,7 @@ export const commands = {
     workspaceId: string,
     sessionId: string,
     conversationId?: string | null,
+    activeAgentId?: string | null,
     content?: string,
     model?: OpenCodeModelRef | null,
   ) =>
@@ -1073,6 +1339,7 @@ export const commands = {
       workspaceId,
       sessionId,
       conversationId,
+      activeAgentId,
       content,
       model,
     }),

@@ -71,6 +71,10 @@ function normalizeQuestionPayload(value: unknown): QuestionItem[] {
     .filter((item): item is QuestionItem => item != null);
 }
 
+function stripInternalReminderBlocks(value: string): string {
+  return value.replace(/\s*<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "").trimEnd();
+}
+
 interface UseAgentStreamHandlerArgs {
   queryClient: QueryClient;
   selectedWorkspaceId: string | null;
@@ -150,15 +154,16 @@ export function useAgentStreamHandler({
         chatErroredSessionsRef.current.delete(evt.session_id);
         setChatConversations((prev) => prev.map((conversation) => {
           if (conversation.sessionId !== evt.session_id) return conversation;
+          const nextContent = stripInternalReminderBlocks(conversation.streamingContent + evt.content);
           return {
             ...conversation,
             isProcessing: true,
-            streamingContent: conversation.streamingContent + evt.content,
+            streamingContent: nextContent,
           };
         }));
 
         if (chatActiveConvIdRef.current === standaloneConversation?.id) {
-          chatStreamingContentRef.current += evt.content;
+          chatStreamingContentRef.current = stripInternalReminderBlocks(chatStreamingContentRef.current + evt.content);
           setChatStreamingContent(chatStreamingContentRef.current);
         }
       } else if (evt.event_type === "step_start" || evt.event_type === "step_update" || evt.event_type === "step_complete") {
@@ -201,7 +206,7 @@ export function useAgentStreamHandler({
           chatErroredSessionsRef.current.add(evt.session_id);
         }
 
-        const finalContent = standaloneConversation?.streamingContent ?? "";
+        const finalContent = stripInternalReminderBlocks(standaloneConversation?.streamingContent ?? "");
         const finalSteps = finalizeSteps(standaloneConversation?.streamingSteps ?? []);
         const convId = standaloneConversation?.id ?? null;
 
@@ -242,6 +247,12 @@ export function useAgentStreamHandler({
         if (evt.event_type === "error") {
           setError(formatStreamingError(evt.content));
         }
+
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: desktopQueryKeys.memoryStores }),
+          queryClient.invalidateQueries({ queryKey: desktopQueryKeys.chatMemoryStore(null) }),
+          queryClient.invalidateQueries({ queryKey: ["memory-entries"] }),
+        ]).catch(() => undefined);
       }
       return;
     }
@@ -254,7 +265,7 @@ export function useAgentStreamHandler({
     if (evt.event_type === "text_delta" && evt.content) {
       erroredAgentSessionsRef.current.delete(evt.session_id);
       if (isActiveSession) {
-        setStreamingContent((prev) => prev + evt.content);
+        setStreamingContent((prev) => stripInternalReminderBlocks(prev + evt.content));
       }
 
       setAgents((prev) => {
@@ -262,7 +273,7 @@ export function useAgentStreamHandler({
         const next = prev.map((agent) => {
           if (agent.sessionId !== evt.session_id) return agent;
           changed = true;
-          const newContent = agent.streamingContent + evt.content;
+          const newContent = stripInternalReminderBlocks(agent.streamingContent + evt.content);
           return {
             ...agent,
             streamingContent: newContent,
@@ -404,6 +415,12 @@ export function useAgentStreamHandler({
         });
         return changed ? next : prev;
       });
+
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.memoryStores }),
+        queryClient.invalidateQueries({ queryKey: desktopQueryKeys.workspaceMemoryStores(selectedWorkspaceId) }),
+        queryClient.invalidateQueries({ queryKey: ["memory-entries"] }),
+      ]).catch(() => undefined);
     } else if (evt.event_type === "usage_update" && evt.metadata) {
       erroredAgentSessionsRef.current.delete(evt.session_id);
       const inputTokens = (evt.metadata as Record<string, number>).input_tokens ?? 0;

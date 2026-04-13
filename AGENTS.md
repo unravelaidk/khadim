@@ -83,7 +83,9 @@ This should stay a narrow integration:
 
 - Work in progress is in `apps/desktop`.
 - This is separate from the web app Hono RPC migration above.
-- Goal is to replace the current desktop mock shell with a real native runtime for workspace management and OpenCode integration.
+- **The desktop app is pivoting from a developer-focused coding tool to an agentic RPA (Robotic Process Automation) platform.**
+- See `apps/desktop/DESIGN.md` for the full product design document.
+- Goal: an open-source, local-first agentic automation platform that uses AI coding agents to write and execute automation scripts on the fly.
 
 ### Implemented So Far
 
@@ -185,6 +187,12 @@ This should stay a narrow integration:
 
 ### Recent Desktop Update
 
+- The desktop backend command surface was split out of `apps/desktop/src-tauri/src/lib.rs` into focused modules under `apps/desktop/src-tauri/src/commands/` so the Tauri entrypoint is now mainly composition/bootstrap code instead of a command dump.
+- The managed-agent Docker path is now wired more cleanly for the RPA pivot:
+  - environment `docker_image` values are persisted from the desktop UI instead of being dropped on save
+  - Docker runs now inject resolved credential secrets into container env vars
+  - the default sandbox image was reduced from `ubuntu:22.04` to `debian:bookworm-slim`
+  - this keeps the sandbox smaller while staying `bash`-friendly and glibc-friendly for a future native Khadim runtime inside Docker
 - The desktop styling baseline in `apps/desktop/src/styles.css` was updated to match the web app token system more closely:
   - CSS variable driven glass tokens
   - shared glass utility classes
@@ -214,6 +222,98 @@ This should stay a narrow integration:
 6. Replace the current lightweight git snapshot with a structured diff workspace.
 7. Add richer worktree-aware context switching so terminal, finder, and diff follow the active agent/worktree.
 8. Re-run `cargo check` and `bun run build` after each major desktop milestone.
+
+### Docker Sandbox Direction
+
+- The current Docker runner is intentionally lightweight:
+  - it creates a constrained container
+  - injects variables and credential-derived env vars
+  - writes the rendered instructions into the container
+  - executes shell-script-style instructions
+  - streams logs back into the existing run/session UI
+- The current default image is `debian:bookworm-slim`.
+- `debian:bookworm-slim` is the preferred baseline for now because:
+  - it is materially smaller than the old Ubuntu default
+  - it already fits the current `bash`-based entrypoint assumptions
+  - it is glibc-based, which makes a future native Khadim binary in-container much easier than an Alpine/musl path
+- We are explicitly not treating Alpine as the default sandbox yet because it would likely force either:
+  - a separate musl build/distribution strategy for Khadim
+  - or a more fragile bootstrap/install story inside the container
+
+### Full Docker Runtime Plan
+
+The next step should be a **full Khadim-native Docker runner**, since Khadim is already the in-repo orchestrator and is the easiest path to full in-container orchestration.
+
+#### Phase 1 — Stabilize the current script runner
+
+1. Keep `debian:bookworm-slim` as the default sandbox image.
+2. Make the current Docker runner more explicit about what it supports:
+   - shell-script execution
+   - env/secret injection
+   - run logs + exit code persistence
+3. Add clearer run metadata so the UI can distinguish:
+   - script-mode Docker run
+   - full agent-runtime Docker run
+
+#### Phase 2 — Define a Khadim runtime image
+
+1. Add a dedicated Dockerfile for the managed-agent runner image.
+2. Base it on a small glibc image, likely `debian:bookworm-slim`.
+3. Install only the runtime essentials needed for agent execution:
+   - Khadim binary
+   - shell/runtime helpers
+   - CA certificates
+   - git if tool access requires it
+4. Keep the image focused on execution, not development.
+
+#### Phase 3 — Run Khadim inside the container
+
+1. Replace the current shell-script entrypoint with a real Khadim invocation.
+2. Pass the rendered agent prompt, environment, and model selection into the container runtime.
+3. Stream structured Khadim events out of the container instead of only raw stdout.
+4. Preserve the existing desktop event model:
+   - `text_delta`
+   - `step_start`
+   - `step_update`
+   - `step_complete`
+   - `done`
+   - `error`
+
+#### Phase 4 — Isolate runtime inputs cleanly
+
+1. Formalize what enters the container:
+   - prompt
+   - model/provider selection
+   - env vars
+   - credential-derived secrets
+   - optional mounted workspace/data directories
+2. Separate runner configuration from agent definition so Docker policy is not hidden inside prompt text.
+3. Add resource and network policy controls for the container:
+   - memory
+   - CPU
+   - network on/off or scoped modes
+   - optional readonly rootfs/tmpfs/mounts
+
+#### Phase 5 — Support workspace-aware execution
+
+1. Decide which runs need mounted project state vs isolated scratch containers.
+2. For coding-domain agent runs, mount a controlled workspace path.
+3. For pure RPA/connector runs, prefer isolated task-specific runtime state.
+4. Make the execution context visible in the UI so users understand what the container can access.
+
+#### Phase 6 — Make Docker a first-class runner type
+
+1. Add richer status/diagnostics for image pull, create, start, stop, and cleanup.
+2. Surface Docker runner health and image readiness in the desktop UI.
+3. Allow selecting between:
+   - lightweight script sandbox
+   - full Khadim runtime image
+4. Add tests around:
+   - env injection
+   - secret injection
+   - image selection
+   - run lifecycle transitions
+   - failure cleanup
 
 ### Native Workspace Build Plan
 
@@ -417,3 +517,72 @@ Planned improvements:
 - The Tauri dialog plugin is now wired and available for native folder picking.
 - `apps/desktop/src/lib/mock-data.ts` remains stale and should be removed during the remaining frontend cleanup.
 - The current Rust warnings reported by `cargo check` are unrelated pre-existing warnings in plugin code and not part of the desktop transport/worktree changes.
+
+## RPA Pivot Direction
+
+### Product Vision
+
+Khadim is pivoting from a developer-focused coding tool to an **open-source, local-first agentic automation platform**.
+
+The core insight: instead of building pre-made RPA blocks (like UiPath/n8n), Khadim uses AI coding agents to **write and execute automation scripts on the fly**. When a UI changes or an edge case appears, the agent can see the screen, understand what broke, rewrite the script, and retry.
+
+### Target Users
+
+1. **Simple users** — use the chat interface to describe tasks in plain English
+2. **Power users** — build multi-step automations, configure triggers, manage agents
+3. **Enterprise** — deploy managed agents, monitor fleet, audit trail, team management
+
+### Deployment Model
+
+- **Desktop app** — build, test, run automations locally. Docker for headless local execution.
+- **Web app** — cloud control plane. Deploy managed agents, monitor runs, team dashboards.
+- **Shared core** — same agent engine, same tool system, same data model.
+- **Enterprise focus, open-source distribution.**
+
+### Key Concepts
+
+- **Automation** — a saved, runnable task (promoted from a chat conversation or built in the editor)
+- **Agent** — a managed, persistent automation persona with instructions, tools, and triggers (inspired by Claude managed agents)
+- **Run** — a single execution of an automation or agent task
+- **Connector** — a configured external service (email, browser, spreadsheet, API)
+- **Domain** — a pluggable set of tools (coding, RPA, connectors). The agent engine is domain-agnostic.
+
+### Architecture Principle
+
+The existing agent orchestrator (`khadim_agent`) already does: LLM → plan → call tools → loop. It doesn't care if the tools are `read_file`, `screenshot`, or `send_email`. The coding tools become one "domain" among many:
+
+- `domains/coding` — existing file read/write, shell, grep, LSP, git
+- `domains/rpa` — screenshot, OCR, mouse/keyboard, browser automation
+- `domains/connectors` — email, spreadsheet, HTTP, file ops
+- `plugins/` — WASM user-extensible tools (already built)
+
+### What to Keep
+
+- `khadim_ai/` — LLM client, model management, streaming
+- `khadim_agent/` — orchestrator, session management, tool loop
+- `khadim_code/tools.rs` — Tool trait (extract to shared location)
+- `plugins/` — WASM plugin system
+- `db.rs` — SQLite (extend with new tables)
+- `process.rs` — process management
+- Chat UI, ApprovalOverlay, QuestionOverlay, streaming infrastructure
+- All existing Tauri event/streaming architecture
+
+### What Changes
+
+- Sidebar: keep Chat/Work mode switcher. Chat stays simple (conversation list). Work mode gets: Agents → Sessions → Environments → Credentials → Memory → Analytics
+- Coding tools move to `domains/coding` (kept but not the default)
+- New RPA tools: screenshot (xcap), input simulation (enigo), browser (chromiumoxide), OCR
+- New data model: automations, runs, run_steps, schedules, connectors tables
+- New screens: Dashboard, AutomationList, AgentEditor, RunDetail
+- Vocabulary: workspace → project, conversation → chat/draft, backend → runner
+
+### Implementation Phases
+
+1. **Foundation** — extract Tool trait, create domain structure, add RPA mode, screenshot tool, new DB tables, sidebar redesign
+2. **Core RPA** — screen capture, browser automation, email/spreadsheet connectors, Dashboard, AutomationList, RunDetail, "Save as Automation" from chat
+3. **Managed Agents** — agent CRUD, AgentEditor, scheduling (tokio-cron), Docker runner (bollard), agent lifecycle
+4. **Polish + Enterprise** — audit trail, screenshot gallery, connector verification, agent templates, export/import, web app shared data model
+
+### Full Design Document
+
+See `apps/desktop/DESIGN.md` for complete screen layouts, data model, component mapping, and Rust module plan.

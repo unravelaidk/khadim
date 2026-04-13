@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { Conversation, OpenCodeModelOption, OpenCodeModelRef, PendingApproval, PendingQuestion, ThinkingStepData, Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
@@ -81,6 +81,24 @@ export function useAgentChatActions({
     return nextModel;
   }, [selectedModel, selectedWorkspace, setSelectedModelOverride, setSetting]);
 
+  // Timeout ref: if agent stays "Starting..." for too long, reset it.
+  const startingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear the timeout when any streaming content arrives (called from outside
+  // via the agents array changing from "Starting..." to something else).
+  useEffect(() => {
+    if (!focusedAgentId) return;
+    const agent = agents.find((a) => a.id === focusedAgentId);
+    if (!agent) return;
+    // If agent moved past "Starting..." or is no longer running, clear timeout
+    if (agent.status !== "running" || agent.currentActivity !== "Starting...") {
+      if (startingTimeoutRef.current) {
+        clearTimeout(startingTimeoutRef.current);
+        startingTimeoutRef.current = null;
+      }
+    }
+  }, [agents, focusedAgentId]);
+
   const handleChatSend = useCallback(async () => {
     if (!selectedWorkspace || !agentChatInput.trim()) return;
 
@@ -148,6 +166,7 @@ export function useAgentChatActions({
           selectedWorkspace.id,
           conversation.backend_session_id,
           conversation.id,
+          focusedAgentId,
           content,
           modelForSend,
         );
@@ -168,7 +187,37 @@ export function useAgentChatActions({
           modelForSend,
         );
       }
+
+      // Start a timeout — if no stream events arrive within 30s, reset the agent
+      // so the UI doesn't stay stuck on "Starting..." forever.
+      if (focusedAgentId) {
+        const agentId = focusedAgentId;
+        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
+        startingTimeoutRef.current = setTimeout(() => {
+          startingTimeoutRef.current = null;
+          setAgents((prev) => prev.map((agent) => {
+            if (agent.id !== agentId) return agent;
+            // Only reset if still stuck on "Starting..."
+            if (agent.status !== "running" || agent.currentActivity !== "Starting...") return agent;
+            return {
+              ...agent,
+              status: "error" as const,
+              currentActivity: null,
+              errorMessage: "No response from backend — the agent may not be connected.",
+              finishedAt: new Date().toISOString(),
+            };
+          }));
+          setIsProcessing(false);
+          setStreamingContent("");
+          setStreamingSteps([]);
+          setError("No response from backend — the agent may not be connected.");
+        }, 30_000);
+      }
     } catch (error) {
+      if (startingTimeoutRef.current) {
+        clearTimeout(startingTimeoutRef.current);
+        startingTimeoutRef.current = null;
+      }
       const message = getErrorMessage(error);
       setError(message);
       setIsProcessing(false);

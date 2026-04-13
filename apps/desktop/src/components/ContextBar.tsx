@@ -1,4 +1,5 @@
 import type { AgentInstance } from "../lib/types";
+import { formatTokens } from "../lib/agent-utils";
 
 /** Known model context windows in tokens. Matched via substring of modelLabel (case-insensitive). */
 const MODEL_CONTEXT_WINDOWS: Array<{ match: string; limit: number; label: string }> = [
@@ -17,12 +18,6 @@ function getContextWindow(modelLabel: string | null): { limit: number; label: st
   if (!modelLabel) return null;
   const lower = modelLabel.toLowerCase();
   return MODEL_CONTEXT_WINDOWS.find((m) => lower.includes(m.match)) ?? null;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `${Math.round(n / 1_000)}k`;
-  return String(n);
 }
 
 function barColorClass(pct: number | null): string {

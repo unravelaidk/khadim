@@ -1,9 +1,12 @@
 import type { ThinkingStepData } from "./bindings";
 
-/** Top-level interaction mode: chat (standalone LLM) vs work (workspace/agents) */
+/** Top-level interaction mode: chat (standalone LLM) vs work (platform) */
 export type InteractionMode = "chat" | "work";
 
-/** Sub-view within work mode when no workspace is entered yet */
+/** Sub-view within work mode — the platform nav */
+export type WorkView = "dashboard" | "agents" | "sessions" | "environments" | "credentials" | "memory" | "analytics";
+
+/** @deprecated — kept for compatibility during migration */
 export type WorkHomeView = "workspaces";
 
 /** A local-only chat conversation (no workspace, no backend yet) */
@@ -40,6 +43,139 @@ export type GitHubSubView =
 
 /** Status of an individual agent within a workspace */
 export type AgentStatus = "idle" | "running" | "complete" | "error";
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RPA Platform Types
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** A managed agent definition */
+export interface ManagedAgent {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  tools: string[];             // enabled tool domain IDs
+  triggerType: "manual" | "schedule" | "event";
+  triggerConfig?: string;      // JSON
+  approvalMode: "auto" | "ask" | "never";
+  runnerType: "local" | "docker" | "cloud";
+  harness: "khadim" | "opencode" | "claude_code" | "docker";
+  status: "active" | "inactive" | "paused";
+  /** Which model powers this agent */
+  modelId: string | null;
+  /** Optional runtime environment profile */
+  environmentId: string | null;
+  /** Max turns per session before auto-stopping */
+  maxTurns: number;
+  /** Max tokens per session */
+  maxTokens: number;
+  /** Template variables used in instructions (e.g. {{output_path}}) */
+  variables: Record<string, string>;
+  /** Agent version — incremented on each save */
+  version: number;
+  stats: {
+    totalSessions: number;
+    successRate: number;
+    lastRunAt: string | null;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A session (execution) record */
+export interface SessionRecord {
+  id: string;
+  agentId: string | null;
+  agentName: string | null;
+  automationId: string | null;
+  environmentId: string | null;
+  status: "pending" | "running" | "completed" | "failed" | "aborted";
+  trigger: "manual" | "scheduled" | "event" | "chat";
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  resultSummary: string | null;
+  errorMessage: string | null;
+  tokenUsage: {
+    inputTokens: number;
+    outputTokens: number;
+  } | null;
+}
+
+/** A turn within a session transcript */
+export interface SessionTurn {
+  id: string;
+  turnNumber: number;
+  role: "user" | "agent" | "tool";
+  toolName: string | null;
+  content: string | null;
+  tokenInput: number | null;
+  tokenOutput: number | null;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+/** An environment configuration */
+export interface Environment {
+  id: string;
+  name: string;
+  description: string;
+  variables: Record<string, string>;
+  credentialIds: string[];
+  runnerType: "local" | "docker" | "cloud";
+  dockerImage: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A stored credential */
+export interface Credential {
+  id: string;
+  name: string;
+  type: "api_key" | "oauth" | "login" | "certificate";
+  service: string | null;
+  /** Non-secret metadata visible in UI (e.g. username, host) */
+  metadata: Record<string, string>;
+  lastUsedAt: string | null;
+  usedByAgents: string[];  // agent names
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A memory store */
+export interface MemoryStore {
+  id: string;
+  workspaceId: string | null;
+  scopeType: "chat" | "agent" | "shared" | string;
+  name: string;
+  description: string;
+  chatReadAccess: "none" | "read" | string;
+  linkedAgentIds: string[];
+  linkedAgentNames: string[];
+  primaryForAgentIds: string[];
+  entryCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A single memory entry */
+export interface MemoryEntry {
+  id: string;
+  storeId: string;
+  key: string;
+  content: string;
+  kind: string;
+  sourceSessionId: string | null;
+  sourceConversationId: string | null;
+  sourceMessageId: string | null;
+  confidence: number;
+  recallCount: number;
+  lastRecalledAt: string | null;
+  isPinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /** Represents a running or completed agent session inside a workspace.
  *  Each agent operates in its own git worktree branched off the main repo. */

@@ -324,7 +324,7 @@ export function useStandaloneChat({
           }
         }
 
-        await commands.khadimSendStreaming(standaloneWorkspaceId, sessionId, null, text, modelForSend);
+        await commands.khadimSendStreaming(standaloneWorkspaceId, sessionId, null, null, text, modelForSend);
       } catch (error) {
         if (conversationId) {
           setChatConversations((prev) => prev.map((conversation) =>

@@ -12,6 +12,7 @@ import { commands } from "../lib/bindings";
 import { desktopQueryKeys } from "../lib/queries";
 import { ModelSelector } from "./ModelSelector";
 import { getProviderIconUrl, resolveModelIcon, isMonochromeProvider } from "../assets/model-icons";
+import { getModelKey } from "../lib/model-selection";
 
 type FormState = {
   name: string;
@@ -53,10 +54,6 @@ function toModelOption(providerName: string, providerId: string, modelId: string
     model_name: modelName,
     is_default: false,
   };
-}
-
-function getModelKey(model: Pick<OpenCodeModelOption, "provider_id" | "model_id">) {
-  return `${model.provider_id}:${model.model_id}`;
 }
 
 function formatProviderWarning(error: unknown) {

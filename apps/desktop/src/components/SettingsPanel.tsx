@@ -39,6 +39,8 @@ export function SettingsPanel({
   onSetCatppuccinVariant,
   chatDirectory,
   onChatDirectoryChange,
+  chatAutoAccessSharedMemory,
+  onSetChatAutoAccessSharedMemory,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -122,6 +124,8 @@ export function SettingsPanel({
               onSetCatppuccinVariant={onSetCatppuccinVariant}
               chatDirectory={chatDirectory}
               onChatDirectoryChange={onChatDirectoryChange}
+              chatAutoAccessSharedMemory={chatAutoAccessSharedMemory}
+              onSetChatAutoAccessSharedMemory={onSetChatAutoAccessSharedMemory}
             />
           )}
           {activeTab === "providers" && <ProvidersTab />}

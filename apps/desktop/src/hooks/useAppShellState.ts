@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { PendingQuestion } from "../lib/bindings";
-import type { AgentInstance, InteractionMode, WorkHomeView } from "../lib/types";
+import type { AgentInstance, InteractionMode, WorkView } from "../lib/types";
 
 interface UseAppShellStateArgs {
   setFocusedAgentId: Dispatch<SetStateAction<string | null>>;
@@ -19,7 +19,7 @@ export function useAppShellState({
   setAgents,
 }: UseAppShellStateArgs) {
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("chat");
-  const [workView, setWorkView] = useState<WorkHomeView>("workspaces");
+  const [workView, setWorkView] = useState<WorkView>("dashboard");
   const [inWorkspace, setInWorkspace] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -38,7 +38,7 @@ export function useAppShellState({
 
   const handleExitWorkspace = useCallback(() => {
     setInWorkspace(false);
-    setWorkView("workspaces");
+    setWorkView("dashboard");
   }, []);
 
   const handleFocusAgent = useCallback((agentId: string) => {
@@ -100,12 +100,13 @@ export function useAppShellState({
     setShowSettings(false);
   }, []);
 
-  const handleNavigateWork = useCallback((view: WorkHomeView) => {
+  const handleNavigateWork = useCallback((view: WorkView) => {
     setWorkView(view);
     setShowSettings(false);
   }, []);
 
-  const sidebarWorkView: WorkHomeView | "workspace" = inWorkspace ? "workspace" : workView;
+  /** @deprecated — kept for compatibility */
+  const sidebarWorkView: WorkView = workView;
 
   return {
     interactionMode,

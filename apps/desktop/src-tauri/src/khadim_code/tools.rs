@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::db::{Database, MemoryEntry, MemoryStore};
 use crate::khadim_agent::KhadimManager;
 use crate::opencode::AgentStreamEvent;
 use async_trait::async_trait;
@@ -56,6 +57,482 @@ fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
     }
 
     Ok(normalized)
+}
+
+fn maybe_workspace_scope(workspace_id: &str) -> Option<&str> {
+    (workspace_id != "__chat__").then_some(workspace_id)
+}
+
+fn split_terms(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|part| part.len() >= 2)
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn resolve_memory_stores(
+    db: &Database,
+    workspace_id: &str,
+    conversation_id: Option<&str>,
+) -> Result<(MemoryStore, Vec<MemoryStore>), AppError> {
+    let workspace_scope = maybe_workspace_scope(workspace_id);
+    let chat_store = db.get_or_create_chat_memory_store(workspace_scope)?;
+    let mut stores = vec![chat_store.clone()];
+    let mut seen = std::collections::HashSet::from([chat_store.id.clone()]);
+
+    if db.get_setting("memory:chat_auto_access_shared")?.as_deref() == Some("true") {
+        for store in db.list_memory_stores(workspace_scope)? {
+            if store.scope_type == "shared"
+                && store.chat_read_access == "read"
+                && match workspace_scope {
+                    Some(workspace_id) => store.workspace_id.as_deref() == Some(workspace_id),
+                    None => store.workspace_id.is_none(),
+                }
+                && seen.insert(store.id.clone())
+            {
+                stores.push(store);
+            }
+        }
+    }
+
+    if let Some(agent_id) = conversation_id {
+        for store in db.list_agent_memory_stores(agent_id)? {
+            if seen.insert(store.id.clone()) {
+                stores.push(store);
+            }
+        }
+    }
+
+    Ok((chat_store, stores))
+}
+
+fn score_memory_entry(
+    entry: &MemoryEntry,
+    store: &MemoryStore,
+    query_terms: &[String],
+    preferred_agent_id: Option<&str>,
+    chat_store_id: &str,
+) -> i64 {
+    let mut score = 0_i64;
+    let key = entry.key.to_lowercase();
+    let content = entry.content.to_lowercase();
+
+    if entry.is_pinned {
+        score += 50;
+    }
+    if store.id == chat_store_id {
+        score += 25;
+    }
+    if let Some(agent_id) = preferred_agent_id {
+        if store.primary_for_agent_ids.iter().any(|id| id == agent_id) {
+            score += 35;
+        } else if store.linked_agent_ids.iter().any(|id| id == agent_id) {
+            score += 20;
+        }
+    }
+
+    for term in query_terms {
+        if key == *term {
+            score += 40;
+        } else if key.contains(term) {
+            score += 18;
+        }
+        if content.contains(term) {
+            score += 10;
+        }
+    }
+
+    score += (entry.confidence * 10.0).round() as i64;
+    score += entry.recall_count.min(10);
+    score
+}
+
+fn fallback_memory_score(entry: &MemoryEntry, store: &MemoryStore, preferred_agent_id: Option<&str>, chat_store_id: &str) -> i64 {
+    let mut score = 0_i64;
+    if entry.is_pinned {
+        score += 50;
+    }
+    if store.id == chat_store_id {
+        score += 20;
+    }
+    if let Some(agent_id) = preferred_agent_id {
+        if store.primary_for_agent_ids.iter().any(|id| id == agent_id) {
+            score += 30;
+        } else if store.linked_agent_ids.iter().any(|id| id == agent_id) {
+            score += 15;
+        }
+    }
+    score += (entry.confidence * 10.0).round() as i64;
+    score += entry.recall_count.min(10);
+    score
+}
+
+fn resolve_memory_write_store(
+    db: &Database,
+    workspace_id: &str,
+    conversation_id: Option<&str>,
+) -> Result<MemoryStore, AppError> {
+    if let Some(agent_id) = conversation_id {
+        let linked = db.list_agent_memory_stores(agent_id)?;
+        if let Some(primary) = linked
+            .iter()
+            .find(|store| store.primary_for_agent_ids.iter().any(|id| id == agent_id))
+        {
+            return Ok(primary.clone());
+        }
+        if let Some(existing) = linked.into_iter().next() {
+            return Ok(existing);
+        }
+
+        if let Some(workspace_scope) = maybe_workspace_scope(workspace_id) {
+            let now = chrono::Utc::now().to_rfc3339();
+            let store = MemoryStore {
+                id: uuid::Uuid::new_v4().to_string(),
+                workspace_id: Some(workspace_scope.to_string()),
+                scope_type: "agent".to_string(),
+                name: format!("Agent Memory {}", &agent_id[..agent_id.len().min(8)]),
+                description: "Private memory for this agent.".to_string(),
+                chat_read_access: "none".to_string(),
+                linked_agent_ids: vec![agent_id.to_string()],
+                linked_agent_names: Vec::new(),
+                primary_for_agent_ids: vec![agent_id.to_string()],
+                entry_count: 0,
+                created_at: now.clone(),
+                updated_at: now,
+            };
+            db.create_memory_store(&store)?;
+            return Ok(store);
+        }
+    }
+
+    db.get_or_create_chat_memory_store(maybe_workspace_scope(workspace_id))
+}
+
+pub struct MemorySearchTool {
+    db: Database,
+    workspace_id: String,
+    conversation_id: Option<String>,
+    agent_id: Option<String>,
+}
+
+impl MemorySearchTool {
+    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
+        Self { db, workspace_id, conversation_id, agent_id }
+    }
+}
+
+#[async_trait]
+impl Tool for MemorySearchTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_search".to_string(),
+            description: "Search saved memory for prior preferences, project facts, workflows, and durable context relevant to the current task.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What to search memory for"},
+                    "limit": {"type": "integer", "description": "Maximum results to return (default: 5)"}
+                },
+                "required": ["query"]
+            }),
+            prompt_snippet: "- memory_search: Search saved memory before answering questions about prior preferences, decisions, workflows, or project facts".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let query = input
+            .get("query")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim();
+        let limit = input.get("limit").and_then(|value| value.as_u64()).unwrap_or(5) as usize;
+
+        let memory_scope_id = self.agent_id.as_deref().or(self.conversation_id.as_deref());
+        let (chat_store, stores) = resolve_memory_stores(&self.db, &self.workspace_id, memory_scope_id)?;
+        let query_terms = split_terms(query);
+        let mut matches = Vec::<(MemoryStore, MemoryEntry, i64)>::new();
+
+        for store in &stores {
+            for entry in self.db.list_memory_entries(&store.id)? {
+                let score = score_memory_entry(
+                    &entry,
+                    store,
+                    &query_terms,
+                    memory_scope_id,
+                    &chat_store.id,
+                );
+                if score > 0 {
+                    matches.push((store.clone(), entry, score));
+                }
+            }
+        }
+
+        if matches.is_empty() {
+            for store in &stores {
+                for entry in self.db.list_memory_entries(&store.id)? {
+                    let score = fallback_memory_score(
+                        &entry,
+                        store,
+                        memory_scope_id,
+                        &chat_store.id,
+                    );
+                    matches.push((store.clone(), entry, score));
+                }
+            }
+        }
+
+        matches.sort_by(|a, b| b.2.cmp(&a.2));
+        matches.truncate(limit);
+
+        if matches.is_empty() {
+            return Ok(ToolResult {
+                content: if query.is_empty() {
+                    "No saved memory is available in the current scope.".to_string()
+                } else {
+                    format!("No memory matches found for: {query}")
+                },
+                metadata: Some(json!({"results": []})),
+            });
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut result_rows = Vec::new();
+        let mut lines = Vec::new();
+
+        for (store, entry, score) in matches {
+            let mut updated = entry.clone();
+            updated.recall_count += 1;
+            updated.last_recalled_at = Some(now.clone());
+            updated.updated_at = now.clone();
+            let _ = self.db.update_memory_entry(&updated);
+
+            result_rows.push(json!({
+                "id": entry.id,
+                "store_id": store.id,
+                "store_scope": store.scope_type,
+                "key": entry.key,
+                "kind": entry.kind,
+                "content": entry.content,
+                "confidence": entry.confidence,
+                "score": score,
+            }));
+            lines.push(format!(
+                "- id={} [{}:{}] {}",
+                entry.id,
+                store.scope_type,
+                entry.key,
+                entry.content.replace('\n', " ")
+            ));
+        }
+
+        let mode_label = if self.workspace_id == "__chat__" {
+            "standalone chat"
+        } else if self.agent_id.is_some() || self.conversation_id.is_some() {
+            "agent/workspace"
+        } else {
+            "workspace"
+        };
+
+        Ok(ToolResult {
+            content: format!(
+                "Memory scope: {mode_label}\n{}",
+                lines.join("\n")
+            ),
+            metadata: Some(json!({"results": result_rows, "scope": mode_label})),
+        })
+    }
+}
+
+pub struct MemoryGetTool {
+    db: Database,
+    workspace_id: String,
+    conversation_id: Option<String>,
+    agent_id: Option<String>,
+}
+
+pub struct MemorySaveTool {
+    db: Database,
+    workspace_id: String,
+    conversation_id: Option<String>,
+    agent_id: Option<String>,
+}
+
+impl MemorySaveTool {
+    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
+        Self { db, workspace_id, conversation_id, agent_id }
+    }
+}
+
+#[async_trait]
+impl Tool for MemorySaveTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_save".to_string(),
+            description: "Save a durable fact, preference, workflow, or project detail to memory when it will likely matter again later.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Short stable label for the memory, like 'preferred_answer_style'"},
+                    "content": {"type": "string", "description": "The durable fact to save"},
+                    "kind": {"type": "string", "description": "One of fact, preference, workflow, task, project, contact"},
+                    "confidence": {"type": "number", "description": "Confidence from 0 to 1 (default: 0.9)"}
+                },
+                "required": ["key", "content"]
+            }),
+            prompt_snippet: "- memory_save: Save durable user preferences, project facts, and recurring workflows that will matter in future turns".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let key = input
+            .get("key")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("memory_save requires a key"))?
+            .trim();
+        let content = input
+            .get("content")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("memory_save requires content"))?
+            .trim();
+        if key.is_empty() || content.is_empty() {
+            return Err(AppError::invalid_input("memory_save requires non-empty key and content"));
+        }
+
+        let memory_scope_id = self.agent_id.as_deref().or(self.conversation_id.as_deref());
+        let store = resolve_memory_write_store(&self.db, &self.workspace_id, memory_scope_id)?;
+        let kind = input
+            .get("kind")
+            .and_then(|value| value.as_str())
+            .unwrap_or("fact")
+            .trim()
+            .to_string();
+        let confidence = input
+            .get("confidence")
+            .and_then(|value| value.as_f64())
+            .unwrap_or(0.9)
+            .clamp(0.0, 1.0);
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let existing = self.db.list_memory_entries(&store.id)?;
+        if let Some(entry) = existing.into_iter().find(|entry| entry.key == key) {
+            let mut updated = entry.clone();
+            updated.content = content.to_string();
+            updated.kind = kind.clone();
+            updated.confidence = updated.confidence.max(confidence);
+            updated.source_conversation_id = self.conversation_id.clone();
+            updated.updated_at = now;
+            self.db.update_memory_entry(&updated)?;
+            return Ok(ToolResult {
+                content: format!("Updated memory '{}' in {} store", key, store.scope_type),
+                metadata: Some(json!({
+                    "id": updated.id,
+                    "store_id": store.id,
+                    "store_scope": store.scope_type,
+                    "action": "updated",
+                })),
+            });
+        }
+
+        let entry = MemoryEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            store_id: store.id.clone(),
+            key: key.to_string(),
+            content: content.to_string(),
+            kind,
+            source_session_id: None,
+            source_conversation_id: self.conversation_id.clone(),
+            source_message_id: None,
+            confidence,
+            recall_count: 0,
+            last_recalled_at: None,
+            is_pinned: false,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        self.db.create_memory_entry(&entry)?;
+
+        Ok(ToolResult {
+            content: format!("Saved memory '{}' in {} store", key, store.scope_type),
+            metadata: Some(json!({
+                "id": entry.id,
+                "store_id": store.id,
+                "store_scope": store.scope_type,
+                "action": "created",
+            })),
+        })
+    }
+}
+
+impl MemoryGetTool {
+    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
+        Self { db, workspace_id, conversation_id, agent_id }
+    }
+}
+
+#[async_trait]
+impl Tool for MemoryGetTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_get".to_string(),
+            description: "Fetch a specific saved memory entry by id after using memory_search.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "Memory entry id returned by memory_search"}
+                },
+                "required": ["id"]
+            }),
+            prompt_snippet: "- memory_get: Read the full details of a specific saved memory after searching".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let id = input
+            .get("id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("memory_get requires an id"))?;
+
+        let memory_scope_id = self.agent_id.as_deref().or(self.conversation_id.as_deref());
+        let (_, stores) = resolve_memory_stores(&self.db, &self.workspace_id, memory_scope_id)?;
+
+        for store in stores {
+            for entry in self.db.list_memory_entries(&store.id)? {
+                if entry.id == id {
+                    let mut updated = entry.clone();
+                    updated.recall_count += 1;
+                    updated.last_recalled_at = Some(chrono::Utc::now().to_rfc3339());
+                    updated.updated_at = chrono::Utc::now().to_rfc3339();
+                    let _ = self.db.update_memory_entry(&updated);
+
+                    return Ok(ToolResult {
+                        content: format!(
+                            "id: {}\nkey: {}\nkind: {}\nstore_scope: {}\nconfidence: {:.2}\ncontent: {}",
+                            entry.id,
+                            entry.key,
+                            entry.kind,
+                            store.scope_type,
+                            entry.confidence,
+                            entry.content,
+                        ),
+                        metadata: Some(json!({
+                            "id": entry.id,
+                            "store_id": store.id,
+                            "store_scope": store.scope_type,
+                            "key": entry.key,
+                            "kind": entry.kind,
+                            "content": entry.content,
+                            "confidence": entry.confidence,
+                            "source_conversation_id": entry.source_conversation_id,
+                            "source_message_id": entry.source_message_id,
+                        })),
+                    });
+                }
+            }
+        }
+
+        Err(AppError::not_found(format!("Memory entry not found or not accessible: {id}")))
+    }
 }
 
 pub struct ReadTool {

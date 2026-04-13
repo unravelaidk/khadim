@@ -10,7 +10,7 @@ function readThemeFamily() {
 }
 
 function readThemeMode() {
-  return (localStorage.getItem(THEME_MODE_KEY) as ThemeMode) ?? "dark";
+  return (localStorage.getItem(THEME_MODE_KEY) as ThemeMode) ?? "light";
 }
 
 function readCatppuccinVariant() {

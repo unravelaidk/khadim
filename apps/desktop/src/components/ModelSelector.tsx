@@ -1,6 +1,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import type { OpenCodeModelOption } from "../lib/bindings";
 import { resolveModelIcon, getProviderIconUrl, isMonochromeProvider } from "../assets/model-icons";
+import { getModelKey } from "../lib/model-selection";
 
 /* ─── Provider display labels ──────────────────────────────────────── */
 const PROVIDER_LABELS: Record<string, string> = {
@@ -27,10 +28,6 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 function getProviderLabel(providerId: string): string {
   return PROVIDER_LABELS[providerId] ?? providerId;
-}
-
-function getModelKey(model: OpenCodeModelOption): string {
-  return `${model.provider_id}:${model.model_id}`;
 }
 
 /* ─── Model Icon Badge ─────────────────────────────────────────────── */

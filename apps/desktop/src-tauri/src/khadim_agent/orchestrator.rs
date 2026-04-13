@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::db::Database;
 use crate::khadim_agent::modes::{build_mode, chat_mode};
 use crate::khadim_agent::session::KhadimSession;
 use crate::khadim_agent::KhadimManager;
@@ -7,7 +8,7 @@ use crate::khadim_ai::types::{
 };
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
-use crate::khadim_code::tools::{QuestionTool, Tool};
+use crate::khadim_code::tools::{MemoryGetTool, MemorySaveTool, MemorySearchTool, QuestionTool, Tool};
 use crate::opencode::AgentStreamEvent;
 use crate::plugins::PluginManager;
 use serde_json::{json, Value};
@@ -98,6 +99,19 @@ fn emit_tool_step_complete(
     });
 }
 
+fn memory_scope_prompt(session: &KhadimSession) -> String {
+    if session.workspace_id == "__chat__" {
+        "Runtime context:\n- You are in standalone chat mode.\n- Memory tools read from chat memory, plus chat-readable shared memory only when the user enabled that setting.\n- memory_save writes to the chat memory store.".to_string()
+    } else if let Some(agent_id) = session.active_agent_id.as_deref() {
+        format!(
+            "Runtime context:\n- You are in a workspace/agent run.\n- Active agent scope: {}\n- memory_search and memory_get can access stores linked to this agent.\n- memory_save writes to this agent's primary memory store, or auto-creates a private agent store if none exists.",
+            agent_id
+        )
+    } else {
+        "Runtime context:\n- You are in a workspace run without an active agent scope.\n- memory tools default to workspace chat memory and any permitted shared memory.\n- memory_save writes to the workspace chat memory store.".to_string()
+    }
+}
+
 /// Try to repair truncated JSON from models that hit output token limits.
 /// Handles common cases like `{"path":"foo.html","content":"<div>...` (unclosed string/object).
 fn try_repair_json(raw: &str) -> Option<Value> {
@@ -163,7 +177,7 @@ pub async fn run_prompt(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     manager: Option<&Arc<KhadimManager>>,
 ) -> Result<String, AppError> {
-    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager, None).await
+    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager, None, None).await
 }
 
 pub async fn run_prompt_with_plugins(
@@ -175,6 +189,7 @@ pub async fn run_prompt_with_plugins(
     skill_manager: Option<&Arc<crate::skills::SkillManager>>,
     khadim_manager: Option<&Arc<KhadimManager>>,
     app: Option<&AppHandle>,
+    db: Option<Database>,
 ) -> Result<String, AppError> {
     let mut plugin_tools: Vec<Arc<dyn Tool>> = match (plugin_manager, app) {
         (Some(pm), Some(handle)) => crate::plugins::collect_plugin_tools(pm, handle),
@@ -189,6 +204,27 @@ pub async fn run_prompt_with_plugins(
             session.workspace_id.clone(),
             tx.clone(),
             mgr.clone(),
+        )));
+    }
+
+    if let Some(db) = db {
+        plugin_tools.push(Arc::new(MemorySearchTool::new(
+            db.clone(),
+            session.workspace_id.clone(),
+            session.active_conversation_id.clone(),
+            session.active_agent_id.clone(),
+        )));
+        plugin_tools.push(Arc::new(MemoryGetTool::new(
+            db.clone(),
+            session.workspace_id.clone(),
+            session.active_conversation_id.clone(),
+            session.active_agent_id.clone(),
+        )));
+        plugin_tools.push(Arc::new(MemorySaveTool::new(
+            db,
+            session.workspace_id.clone(),
+            session.active_conversation_id.clone(),
+            session.active_agent_id.clone(),
         )));
     }
 
@@ -212,7 +248,7 @@ pub async fn run_prompt_with_plugins(
         build_mode()
     };
     let client = ModelClient::from_selection(selection).await?;
-    let system_prompt = runtime.build_prompt(&mode);
+    let system_prompt = format!("{}\n\n{}", runtime.build_prompt(&mode), memory_scope_prompt(session));
 
     repair_session_messages(&mut session.messages);
 

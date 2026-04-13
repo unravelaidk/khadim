@@ -20,7 +20,7 @@ import {
   useStopOpenCodeMutation,
 } from "../lib/queries";
 import { getModelSettingKey } from "../lib/model-selection";
-import type { AgentInstance, WorkHomeView } from "../lib/types";
+import type { AgentInstance, WorkView } from "../lib/types";
 import { createAgentInstance } from "../lib/types";
 import { extractSessionId } from "../lib/ui";
 
@@ -42,7 +42,7 @@ interface UseWorkspaceActionsArgs {
   inWorkspace: boolean;
   setError: Dispatch<SetStateAction<string | null>>;
   setInWorkspace: Dispatch<SetStateAction<boolean>>;
-  setWorkView: Dispatch<SetStateAction<WorkHomeView>>;
+  setWorkView: Dispatch<SetStateAction<WorkView>>;
   setSelectedWorkspaceId: Dispatch<SetStateAction<string | null>>;
   setSelectedConversationId: Dispatch<SetStateAction<string | null>>;
   setFocusedAgentId: Dispatch<SetStateAction<string | null>>;
@@ -100,7 +100,7 @@ export function useWorkspaceActions({
     try {
       if (id === selectedWorkspaceId) {
         setInWorkspace(false);
-        setWorkView("workspaces");
+        setWorkView("dashboard");
         setSelectedWorkspaceId(null);
       }
       await deleteWorkspaceMutation.mutateAsync(id);
@@ -375,6 +375,7 @@ export function useWorkspaceActions({
             selectedWorkspace.id,
             updatedConversation.backend_session_id,
             updatedConversation.id,
+            null,
             issuePrompt,
             modelRef,
           );

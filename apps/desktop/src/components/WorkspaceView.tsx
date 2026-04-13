@@ -10,20 +10,15 @@ import {
 import { useGitBranches } from "../hooks/useGitBranches";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, executionTargetLabel, relTime } from "../lib/ui";
+import { agentStatusText, formatTokens } from "../lib/agent-utils";
 import { StatusIndicator, StatusPill } from "./StatusIndicator";
 import { GlassSelect } from "./GlassSelect";
 import { GitHubTab } from "./GitHubTab";
+import { BranchIcon } from "./shared/Icons";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
-function statusText(agent: AgentInstance): string {
-  if (agent.status === "running" && agent.currentActivity) return agent.currentActivity;
-  if (agent.status === "running") return "Working…";
-  if (agent.status === "complete" && agent.finishedAt) return `Done ${relTime(agent.finishedAt)}`;
-  if (agent.status === "complete") return "Done";
-  if (agent.status === "error") return agent.errorMessage ?? "Error";
-  return "Idle";
-}
+const statusText = agentStatusText;
 
 /* ─── Props ────────────────────────────────────────────────────────── */
 
@@ -150,7 +145,7 @@ export function WorkspaceView({
                 )}
               </div>
             </div>
-            <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+            <div className="mt-1.5 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
               <span>{backendLabel(workspace.backend)}</span>
               <span className="opacity-40">·</span>
               <span>{executionTargetLabel(workspace.execution_target)}</span>
@@ -166,11 +161,11 @@ export function WorkspaceView({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               onClick={onNewAgent}
               disabled={loading}
-              className="btn-accent h-8 rounded-full px-4 text-[11px] font-semibold disabled:opacity-50"
+              className="btn-accent h-10 rounded-full px-5 text-[13px] font-semibold disabled:opacity-50"
             >
               New agent
             </button>
@@ -178,7 +173,7 @@ export function WorkspaceView({
               <button
                 onClick={onStopOpenCode}
                 disabled={loading}
-                className="btn-glass h-8 rounded-full px-3 text-[11px] font-semibold disabled:opacity-50"
+                className="btn-glass h-10 rounded-full px-4 text-[13px] font-semibold disabled:opacity-50"
               >
                 Stop
               </button>
@@ -186,7 +181,7 @@ export function WorkspaceView({
               <button
                 onClick={onStartOpenCode}
                 disabled={loading}
-                className="btn-glass h-8 rounded-full px-3 text-[11px] font-semibold disabled:opacity-50"
+                className="btn-glass h-10 rounded-full px-4 text-[13px] font-semibold disabled:opacity-50"
               >
                 Start
               </button>
@@ -197,21 +192,21 @@ export function WorkspaceView({
 
       {/* ── Tab navigation ─────────────────────────────────────── */}
       <div className="shrink-0 px-6 border-b border-[var(--glass-border)]">
-        <nav className="flex gap-0 -mb-px max-w-5xl" aria-label="Workspace sections">
+        <nav className="flex gap-1 -mb-px max-w-5xl" aria-label="Workspace sections">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative px-3 py-2.5 text-[12px] font-medium transition-colors ${
+              className={`relative px-4 py-3 text-[13px] font-medium transition-colors ${
                 activeTab === tab.id
                   ? "text-[var(--text-primary)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
               }`}
             >
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-2">
                 {tab.label}
                 {tab.count != null && (
-                  <span className={`rounded-md px-1 py-px font-mono text-[9px] ${
+                  <span className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] ${
                     activeTab === tab.id
                       ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
                       : "bg-[var(--surface-ink-4)] text-[var(--text-muted)]"
@@ -221,7 +216,7 @@ export function WorkspaceView({
                 )}
               </span>
               {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[var(--color-accent)]" />
+                <span className="absolute bottom-0 left-4 right-4 h-[2px] rounded-full bg-[var(--color-accent)]" />
               )}
             </button>
           ))}
@@ -275,8 +270,8 @@ export function WorkspaceView({
             <div className="animate-in">
               <div className="grid gap-8 lg:grid-cols-2 max-w-3xl">
                 <div>
-                  <p className="text-[12px] font-medium text-[var(--text-secondary)]">Default branch</p>
-                  <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
+                  <p className="text-[14px] font-medium text-[var(--text-secondary)]">Default branch</p>
+                  <p className="mt-0.5 text-[13px] text-[var(--text-muted)]">
                     New agents branch from here.
                   </p>
                   {branchOptions.length > 0 ? (
@@ -297,8 +292,8 @@ export function WorkspaceView({
                 </div>
 
                 <div>
-                  <p className="text-[12px] font-medium text-[var(--text-secondary)]">Runtime</p>
-                  <dl className="mt-2 space-y-2 text-[11px]">
+                  <p className="text-[14px] font-medium text-[var(--text-secondary)]">Runtime</p>
+                  <dl className="mt-2 space-y-3 text-[13px]">
                     <DetailRow label="Backend" value={backendLabel(workspace.backend)} />
                     <DetailRow label="Target" value={executionTargetLabel(workspace.execution_target)} />
                     <DetailRow label="Worktree root" value={workspace.worktree_path ?? "workspace root"} mono />
@@ -329,16 +324,16 @@ export function WorkspaceView({
           {activeTab === "logs" && (
             <div className="animate-in">
               <div className="rounded-[var(--radius-md)] overflow-hidden" style={{ background: "var(--log-bg)" }}>
-                <div className="px-4 py-2 flex items-center justify-between border-b border-[var(--glass-border)]">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--scrollbar-thumb)]">
+                <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--glass-border)]">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--scrollbar-thumb)]">
                     Process output
                   </span>
-                  <span className="font-mono text-[9px] text-[var(--scrollbar-thumb)]">
+                  <span className="font-mono text-[11px] text-[var(--scrollbar-thumb)]">
                     {processOutput.length} lines
                   </span>
                 </div>
                 <div
-                  className="p-4 overflow-y-auto scrollbar-thin font-mono text-[11px] leading-5 space-y-0.5"
+                  className="p-4 overflow-y-auto scrollbar-thin font-mono text-[13px] leading-6 space-y-0.5"
                   style={{ maxHeight: "calc(100vh - 300px)" }}
                 >
                   {processOutput.length === 0 ? (
@@ -377,29 +372,29 @@ const AgentRow = memo(function AgentRow({
 }) {
   return (
     <div
-      className="group flex items-center gap-4 rounded-[var(--radius-sm)] px-3 py-3 transition-colors hover:bg-[var(--surface-ink-3)] cursor-pointer"
+      className="group flex items-center gap-4 rounded-[var(--radius-md)] px-4 py-4 transition-colors hover:bg-[var(--surface-ink-3)] cursor-pointer"
       onClick={onFocus}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onFocus(); }}
     >
       {/* Status indicator — shape + color */}
-      <StatusIndicator status={agent.status} size="md" />
+      <StatusIndicator status={agent.status} size="lg" />
 
       {/* Info */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+        <div className="flex items-center gap-2.5">
+          <p className="truncate text-[15px] font-medium text-[var(--text-primary)]">
             {agent.label}
           </p>
           {agent.branch && (
-            <span className="truncate rounded-md bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+            <span className="truncate rounded-md bg-[var(--surface-ink-4)] px-2 py-1 font-mono text-[12px] text-[var(--text-muted)]">
               {agent.branch}
             </span>
           )}
         </div>
         <p
-          className={`mt-0.5 truncate text-[11px] ${
+          className={`mt-1 truncate text-[13px] ${
             agent.status === "error"
               ? "text-[var(--color-danger-text-light)]"
               : agent.status === "running"
@@ -413,28 +408,28 @@ const AgentRow = memo(function AgentRow({
 
       {/* Token usage (if available) */}
       {agent.tokenUsage && (agent.tokenUsage.inputTokens > 0 || agent.tokenUsage.outputTokens > 0) && (
-        <span className="hidden md:inline-flex shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+        <span className="hidden md:inline-flex shrink-0 font-mono text-[12px] tabular-nums text-[var(--text-muted)]">
           {formatTokens(agent.tokenUsage.inputTokens)} in · {formatTokens(agent.tokenUsage.outputTokens)} out
         </span>
       )}
 
-      {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Actions — always visible, not hidden on hover */}
+      <div className="flex shrink-0 items-center gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); onFocus(); }}
-          className="h-7 rounded-[var(--radius-xs)] px-2.5 text-[10px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          className="h-9 rounded-[var(--radius-sm)] px-4 text-[13px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
         >
           Chat
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onManage(); }}
-          className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
           title="Settings"
         >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="1" />
-            <circle cx="19" cy="12" r="1" />
-            <circle cx="5" cy="12" r="1" />
+          <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="1.5" />
+            <circle cx="19" cy="12" r="1.5" />
+            <circle cx="5" cy="12" r="1.5" />
           </svg>
         </button>
       </div>
@@ -446,31 +441,31 @@ const AgentRow = memo(function AgentRow({
 
 function EmptyAgents({ onNewAgent, loading }: { onNewAgent: () => void; loading: boolean }) {
   return (
-    <div className="py-16 text-center">
-      <div className="mx-auto max-w-sm">
-        <p className="font-display text-lg font-medium text-[var(--text-primary)]">
+    <div className="py-20 text-center">
+      <div className="mx-auto max-w-md">
+        <p className="font-display text-xl font-medium text-[var(--text-primary)]">
           No agents yet
         </p>
-        <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-muted)]">
+        <p className="mt-3 text-[15px] leading-relaxed text-[var(--text-muted)]">
           Each agent works in its own branch and worktree.
           Give it a task and it'll get to work — you can run
           multiple agents in parallel.
         </p>
-        <div className="mt-6 flex flex-col items-center gap-3">
+        <div className="mt-8 flex flex-col items-center gap-4">
           <button
             onClick={onNewAgent}
             disabled={loading}
-            className="btn-accent h-9 rounded-full px-6 text-[12px] font-semibold disabled:opacity-50"
+            className="btn-accent h-11 rounded-full px-8 text-[14px] font-semibold disabled:opacity-50"
           >
             Create first agent
           </button>
-          <div className="flex items-center gap-4 text-[10px] text-[var(--text-muted)]">
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[9px]">⌘P</kbd>
+          <div className="flex items-center gap-5 text-[12px] text-[var(--text-muted)]">
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded bg-[var(--surface-ink-4)] px-2 py-1 font-mono text-[11px]">⌘P</kbd>
               Find files
             </span>
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[9px]">⌘`</kbd>
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded bg-[var(--surface-ink-4)] px-2 py-1 font-mono text-[11px]">⌘`</kbd>
               Terminal
             </span>
           </div>
@@ -484,9 +479,9 @@ function EmptyAgents({ onNewAgent, loading }: { onNewAgent: () => void; loading:
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className="flex items-start justify-between gap-4 text-[13px]">
       <dt className="text-[var(--text-muted)]">{label}</dt>
-      <dd className={`text-right text-[var(--text-primary)] ${mono ? "font-mono text-[10px]" : ""}`}>
+      <dd className={`text-right text-[var(--text-primary)] ${mono ? "font-mono text-[12px]" : ""}`}>
         {value}
       </dd>
     </div>
@@ -496,32 +491,15 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
 function CodeBlock({ label, content }: { label: string; content: string }) {
   return (
     <div>
-      <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
+      <p className="mb-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
         {label}
       </p>
       <pre
-        className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-ink-4)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]"
+        className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--surface-ink-4)] p-4 font-mono text-[13px] leading-relaxed text-[var(--text-secondary)]"
         style={{ maxHeight: 320 }}
       >
         {content}
       </pre>
     </div>
   );
-}
-
-function BranchIcon() {
-  return (
-    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <circle cx="6" cy="6" r="2" />
-      <circle cx="6" cy="18" r="2" />
-      <circle cx="18" cy="9" r="2" />
-      <path strokeLinecap="round" d="M6 8v8M18 11c0 4-6 3-6 7" />
-    </svg>
-  );
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return String(n);
 }

@@ -6,6 +6,7 @@ import type {
   ThinkingStepData,
 } from "../../lib/bindings";
 import type { AgentInstance, LocalChatConversation } from "../../lib/types";
+import { getModelKey, findSelectedModelOption } from "../../lib/model-selection";
 import { ChatMessage, TypingIndicator } from "../ChatMessage";
 import { ChatInput, type ChatAttachment } from "../ChatInput";
 import { ContextBar } from "../ContextBar";
@@ -13,15 +14,6 @@ import { WelcomeScreen } from "../WelcomeScreen";
 import { StatusIndicator } from "../StatusIndicator";
 
 type TempPreset = "precise" | "balanced" | "creative";
-
-function getModelKey(model: OpenCodeModelRef) {
-  return `${model.provider_id}:${model.model_id}`;
-}
-
-function findSelectedModelOption(models: OpenCodeModelOption[], selected: OpenCodeModelRef | null) {
-  if (!selected) return null;
-  return models.find((m) => getModelKey(m) === getModelKey(selected)) ?? null;
-}
 
 /** Normalise local chat messages into the StoredMessage shape used by ChatMessage. */
 function localToStored(conv: LocalChatConversation): Array<StoredMessage & { thinkingSteps?: ThinkingStepData[] }> {
@@ -58,6 +50,10 @@ interface ChatViewProps {
   isProcessing: boolean;
   streamingContent: string;
   streamingSteps: ThinkingStepData[];
+
+  // ── Post-completion ───────────────────────────────────────────
+  /** Called when user wants to promote this chat into a managed agent */
+  onSaveAsAgent?: () => void;
 
   // ── Model selector ────────────────────────────────────────────
   availableModels: OpenCodeModelOption[];
@@ -102,6 +98,7 @@ export function ChatView({
   isProcessing,
   streamingContent,
   streamingSteps,
+  onSaveAsAgent,
   availableModels,
   selectedModel,
   onSelectModel,
@@ -157,12 +154,12 @@ export function ChatView({
   return (
     <div className="relative flex flex-col overflow-hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="shrink-0 px-6 py-3 border-b border-[var(--glass-border)] flex items-center justify-between gap-4">
+      <div className="shrink-0 px-6 py-4 border-b border-[var(--glass-border)] flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           {statusDot}
           {!agent && (
             <svg
-              className="w-4 h-4 shrink-0 text-[var(--text-muted)]"
+              className="w-5 h-5 shrink-0 text-[var(--text-muted)]"
               fill="none"
               stroke="currentColor"
               strokeWidth={1.8}
@@ -176,21 +173,21 @@ export function ChatView({
             </svg>
           )}
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">{headerTitle}</h2>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate">{headerSubtitle}</p>
+            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">{headerTitle}</h2>
+            <p className="text-[12px] text-[var(--text-muted)] mt-0.5 truncate">{headerSubtitle}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {modelLabel && (
-            <span className="inline-flex items-center gap-1.5 rounded-full glass-panel px-2.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+            <span className="inline-flex items-center gap-1.5 rounded-full glass-panel px-3 py-1 text-[12px] font-medium text-[var(--text-secondary)]">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
               {modelLabel}
             </span>
           )}
           <button
             onClick={onNewChat}
-            className="h-7 px-2.5 rounded-xl text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+            className="h-9 px-4 rounded-xl text-[13px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
           >
             New
           </button>
@@ -238,6 +235,24 @@ export function ChatView({
                   {isProcessing && !streamingContent && streamingSteps.length === 0 ? (
                     <TypingIndicator backend={backend} />
                   ) : null}
+
+                  {/* Save as Agent action — shown after completion */}
+                  {onSaveAsAgent && !isProcessing && displayMessages.length >= 2 && displayMessages[displayMessages.length - 1]?.role === "assistant" && (
+                    <div className="mt-4 mb-2 flex items-center gap-3">
+                      <button
+                        onClick={onSaveAsAgent}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--glass-bg)] px-4 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Save as Agent
+                      </button>
+                      <span className="text-[12px] text-[var(--text-muted)]">
+                        Turn this into a reusable automation
+                      </span>
+                    </div>
+                  )}
 
                   <div ref={chatEndRef} />
                 </div>

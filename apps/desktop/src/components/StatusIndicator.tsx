@@ -9,7 +9,7 @@ interface Props {
   /** Override the label text. */
   label?: string;
   /** Size variant. Default: "sm" */
-  size?: "xs" | "sm" | "md";
+  size?: "xs" | "sm" | "md" | "lg";
   className?: string;
 }
 
@@ -41,9 +41,10 @@ const STATUS_CONFIG: Record<AgentStatus, { icon: string; color: string; label: s
 };
 
 const SIZE_MAP = {
-  xs: { box: 12, icon: 8, text: "text-[9px]" },
-  sm: { box: 16, icon: 10, text: "text-[10px]" },
-  md: { box: 20, icon: 12, text: "text-[11px]" },
+  xs: { box: 14, icon: 10, text: "text-[10px]" },
+  sm: { box: 18, icon: 12, text: "text-[12px]" },
+  md: { box: 22, icon: 14, text: "text-[13px]" },
+  lg: { box: 26, icon: 16, text: "text-[14px]" },
 };
 
 function StatusIcon({ status, size }: { status: AgentStatus; size: number }) {

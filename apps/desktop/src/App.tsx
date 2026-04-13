@@ -42,7 +42,7 @@ import { useWorkspaceActions } from "./hooks/useWorkspaceActions";
 import { applyStreamingStepEvent, deriveCurrentActivity, extractStreamPreview, finalizeSteps, formatStreamingError, getErrorMessage, hasFinishedAfter } from "./lib/streaming";
 import { initWebviewZoom } from "./lib/webview-zoom";
 import { findSelectedModelOption, getModelKey, getModelSettingKey, parseStoredModel, resolvePreferredModel, selectModelByKey } from "./lib/model-selection";
-import type { AgentInstance, InteractionMode, WorkHomeView } from "./lib/types";
+import type { AgentInstance, InteractionMode, WorkView } from "./lib/types";
 import { createAgentInstance, createLocalConversation } from "./lib/types";
 import { useStandaloneChat } from "./hooks/useStandaloneChat";
 import { useAgentPersistence } from "./hooks/useAgentPersistence";
@@ -51,6 +51,9 @@ import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
 import { ChatView } from "./components/chat/ChatView";
+import { ChatHomeView } from "./components/chat/ChatHomeView";
+import { MemoryView } from "./components/chat/MemoryView";
+import { CustomAgentsView } from "./components/chat/CustomAgentsView";
 import { CreateWorkspaceModal } from "./components/CreateWorkspaceModal";
 import { NewAgentModal } from "./components/NewAgentModal";
 import { AgentSettingsModal } from "./components/AgentSettingsModal";
@@ -58,7 +61,9 @@ import { QuestionOverlay } from "./components/QuestionOverlay";
 import { ApprovalOverlay } from "./components/ApprovalOverlay";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WorkspaceContextRail } from "./components/WorkspaceContextRail";
+import { WorkArea } from "./components/WorkArea";
 import { TerminalDock } from "./components/TerminalDock";
+import { useManagedAgentsQuery, useAgentRunsQuery } from "./lib/queries";
 import { FileFinder } from "./components/FileFinder";
 import { GitChangesPanel } from "./components/GitChangesPanel";
 
@@ -81,9 +86,9 @@ export default function App() {
     handleToggleTheme,
   } = useThemePreferences();
 
-  // ── Plugin tab state (chat mode sidebar + content area) ─────────
-  // null = built-in Chats; "{pluginId}:{tabLabel}" = plugin-owned
-  const [activePluginTab, setActivePluginTab] = useState<string | null>(null);
+  // ── Chat view state (sidebar + content area) ────────────────────
+  // Values: "home" | "chats" | "memory" | "agents" | "plugin:<id>:<label>"
+  const [chatView, setChatView] = useState<string>("home");
   const pluginTabs = usePluginTabs();
 
   // ── Workspace state ─────────────────────────────────────────────
@@ -163,6 +168,13 @@ export default function App() {
     setPendingQuestion,
     setAgents,
   });
+
+  // ── RPA platform data (for sidebar badges) ──────────────────────
+  const rpaManagedAgentsQ = useManagedAgentsQuery(interactionMode === "work");
+  const rpaRunsQ = useAgentRunsQuery(interactionMode === "work");
+  const rpaActiveAgentCount = (rpaManagedAgentsQ.data ?? []).filter(a => a.status === "active").length;
+  const rpaLiveSessionCount = (rpaRunsQ.data ?? []).filter(s => s.status === "running" || s.status === "pending").length;
+
   const { data: runtime = null } = useRuntimeSummaryQuery();
   const { data: githubAuthStatus = null } = useGitHubAuthStatusQuery();
   const { data: workspaces = [] } = useWorkspacesQuery();
@@ -195,6 +207,7 @@ export default function App() {
     Boolean(selectedWorkspaceId),
   );
   const { data: storedChatDirectory = null } = useSettingQuery("khadim:chat_directory");
+  const { data: chatAutoAccessSharedMemorySetting = null } = useSettingQuery("memory:chat_auto_access_shared");
   const setSettingMutation = useSetSettingMutation();
   // ── Derived state ───────────────────────────────────────────────
   const storedSelectedModel = useMemo(() => parseStoredModel(storedWorkspaceModel), [storedWorkspaceModel]);
@@ -462,8 +475,18 @@ export default function App() {
             conv.worktree_path ?? null,
           );
           if (existing) {
-            instance.status = existing.status;
-            instance.currentActivity = existing.currentActivity;
+            // Don't restore "running" from a stale agent — if there's no
+            // active streaming content, the stream is dead and we should
+            // show idle/complete instead of a permanent spinner.
+            const isActuallyStreaming = existing.status === "running" &&
+              (existing.streamingContent.length > 0 || existing.streamingSteps.length > 0);
+            if (existing.status === "running" && !isActuallyStreaming) {
+              instance.status = existing.finishedAt ? "complete" : "idle";
+              instance.currentActivity = null;
+            } else {
+              instance.status = existing.status;
+              instance.currentActivity = existing.currentActivity;
+            }
             instance.startedAt = existing.startedAt;
             instance.finishedAt = existing.finishedAt;
             instance.errorMessage = existing.errorMessage;
@@ -654,6 +677,14 @@ export default function App() {
 
     void events.onAgentStream((evt: AgentStreamEvent) => {
       if (!alive) return;
+
+      if (evt.workspace_id.startsWith("run:")) {
+        void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentRuns }).catch(() => undefined);
+        if (evt.event_type === "step_complete" || evt.event_type === "done" || evt.event_type === "error") {
+          void queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentRunTurns(evt.session_id) }).catch(() => undefined);
+        }
+      }
+
       handleAgentStreamEvent(evt);
     }).then((fn) => { unlistenStream = fn; });
 
@@ -723,29 +754,13 @@ export default function App() {
         onSelectChat={handleSelectChat}
         onNewChat={handleNewStandaloneChat}
         onDeleteChat={handleDeleteStandaloneChat}
-        activePluginTab={activePluginTab}
-        onSetPluginTab={setActivePluginTab}
-        // Work mode — home props
+        chatView={chatView}
+        onSetChatView={setChatView}
+        // Work mode — platform nav
         workView={sidebarWorkView}
-        workspaces={workspaces}
-        selectedWorkspaceId={selectedWorkspaceId}
-        onSelectWorkspace={handleEnterWorkspace}
         onNavigateWork={handleNavigateWork}
-        onNewWorkspace={handleOpenCreateWorkspace}
-        onNewAgentForWorkspace={handleNewAgentForWorkspace}
-        onFocusAgentFromHome={handleFocusAgentFromHome}
-        agents={agents}
-        // Work mode — workspace props
-        activeWorkspace={selectedWorkspace}
-        onExitWorkspace={handleExitWorkspace}
-        focusedAgentId={focusedAgentId}
-        onFocusAgent={handleFocusAgent}
-        onNewAgent={handleOpenNewAgent}
-        onRemoveAgent={handleRemoveAgent}
-        onManageWorkspace={handleManageWorkspace}
-        onManageAgent={handleManageAgent}
-        activeWorkspaceConnected={Boolean(connection)}
-        githubAuthenticated={githubAuthStatus?.authenticated ?? false}
+        activeAgentCount={interactionMode === "work" ? rpaActiveAgentCount : agents.filter(a => a.status === "running").length}
+        liveSessionCount={rpaLiveSessionCount}
         themeMode={themeMode}
         onToggleTheme={handleToggleTheme}
         onOpenSettings={handleOpenSettings}
@@ -786,36 +801,76 @@ export default function App() {
             onSetCatppuccinVariant={handleSetCatppuccinVariant}
             chatDirectory={chatDirectory}
             onChatDirectoryChange={(dir) => void handleChatDirectoryChange(dir)}
+            chatAutoAccessSharedMemory={chatAutoAccessSharedMemorySetting === "true"}
+            onSetChatAutoAccessSharedMemory={(enabled) => {
+              void setSettingMutation.mutateAsync({
+                key: "memory:chat_auto_access_shared",
+                value: enabled ? "true" : "false",
+              });
+            }}
           />
         )}
 
         {/* ── CHAT MODE ─────────────────────────────────────────── */}
         {!showSettings && interactionMode === "chat" && (() => {
-          // If a plugin tab with a content_element is active, let the plugin
-          // own the entire content div. Otherwise show the default ChatView.
-          if (activePluginTab) {
+          // Plugin-owned content: let the custom element fill the pane.
+          if (chatView.startsWith("plugin:")) {
             const activeEntry = pluginTabs.find(
-              (t) => `${t.pluginId}:${t.tab.label}` === activePluginTab
+              (t) => `plugin:${t.pluginId}:${t.tab.label}` === chatView
             );
             if (activeEntry?.tab.content_element) {
-              // Use React.createElement with the custom element tag name (string).
-              // Web components are valid HTML elements; we bypass TS's strict JSX check.
               const tag = activeEntry.tab.content_element;
               return (
-                // Flex column that fills the parent — same shape as ChatView's root.
-                // The custom element is a flex child with flex:1 so it fills this.
-                <div key={activePluginTab} style={{ display: "flex", flexDirection: "column", flex: "1 1 0%", minHeight: 0 }}>
+                <div key={chatView} style={{ display: "flex", flexDirection: "column", flex: "1 1 0%", minHeight: 0 }}>
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {(React as any).createElement(tag, {
                     "data-plugin-id": activeEntry.pluginId,
-                    // connectedCallback also sets flex:1 via cssText; these are
-                    // merged — belt-and-suspenders to ensure the element fills the parent.
                     style: { flex: 1, minHeight: 0, width: "100%" },
                   })}
                 </div>
               );
             }
           }
+
+          if (chatView === "home") {
+            return (
+              <ChatHomeView
+                conversations={chatConversations}
+                onSelectChat={(id) => {
+                  handleSelectChat(id);
+                  setChatView("chats");
+                }}
+                onNewChat={() => {
+                  handleNewStandaloneChat();
+                  setChatView("chats");
+                }}
+                onStartWith={(prompt) => {
+                  handleNewStandaloneChat();
+                  setStandaloneChatInput(prompt);
+                  setChatView("chats");
+                }}
+                onOpenMemory={() => setChatView("memory")}
+                onOpenAgents={() => setChatView("agents")}
+              />
+            );
+          }
+
+          if (chatView === "memory") {
+            return <MemoryView />;
+          }
+
+          if (chatView === "agents") {
+            return (
+              <CustomAgentsView
+                onRequestChat={(agent) => {
+                  handleNewStandaloneChat();
+                  setChatSystemPrompt(agent.systemPrompt);
+                  setChatView("chats");
+                }}
+              />
+            );
+          }
+
           return (
             <ChatView
               localConversation={activeChatConv}
@@ -851,14 +906,11 @@ export default function App() {
           );
         })()}
 
-        {/* ── WORK MODE — home views ────────────────────────────── */}
-        {!showSettings && interactionMode === "work" && !inWorkspace && workView === "workspaces" && (
-            <WorkspaceList
-              workspaces={workspaces}
-              agents={agents}
-              onSelect={handleEnterWorkspace}
-              onCreateNew={handleOpenCreateWorkspace}
-              onDelete={(id) => void handleDeleteWorkspace(id)}
+        {/* ── WORK MODE — platform views ───────────────────────────── */}
+        {!showSettings && interactionMode === "work" && (
+            <WorkArea
+              view={workView}
+              onNavigate={handleNavigateWork}
             />
         )}
 
@@ -1002,6 +1054,9 @@ export default function App() {
             onClose={() => setAgentSettingsTarget(null)}
             onRename={handleRenameAgent}
             onDelete={(id, deleteWorktree) => void handleRemoveAgent(id, deleteWorktree)}
+            availableModels={availableModels}
+            selectedModelKey={selectedModel ? `${selectedModel.provider_id}:${selectedModel.model_id}` : null}
+            onSelectModel={(key) => void handleSelectModel(key)}
           />
         );
       })()}
