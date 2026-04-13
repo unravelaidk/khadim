@@ -225,19 +225,20 @@ export function WorkDashboard({
                 <div className="flex items-center gap-1">
                   <InputPillButton ariaLabel="Attach context">
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-6M9 15h6" />
                     </svg>
                   </InputPillButton>
                   <InputPillButton ariaLabel="Use the web">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="9" />
-                      <path strokeLinecap="round" d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" />
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
+                      <rect x="2" y="3" width="20" height="14" rx="2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8M12 17v4" />
                     </svg>
                   </InputPillButton>
                   <InputPillButton ariaLabel="Choose tools" wide>
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317a1.724 1.724 0 013.35 0l.39 1.57a1.724 1.724 0 002.573 1.066l1.41-.815a1.724 1.724 0 012.37 2.37l-.815 1.41a1.724 1.724 0 001.066 2.573l1.57.39a1.724 1.724 0 010 3.35l-1.57.39a1.724 1.724 0 00-1.066 2.573l.815 1.41a1.724 1.724 0 01-2.37 2.37l-1.41-.815a1.724 1.724 0 00-2.573 1.066l-.39 1.57a1.724 1.724 0 01-3.35 0l-.39-1.57a1.724 1.724 0 00-2.573-1.066l-1.41.815a1.724 1.724 0 01-2.37-2.37l.815-1.41a1.724 1.724 0 00-1.066-2.573l-1.57-.39a1.724 1.724 0 010-3.35l1.57-.39a1.724 1.724 0 001.066-2.573l-.815-1.41a1.724 1.724 0 012.37-2.37l1.41.815a1.724 1.724 0 002.573-1.066l.39-1.57z" />
-                      <circle cx="12" cy="12" r="3" />
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
                     </svg>
                     <span className="text-[12px] font-medium">Tools</span>
                   </InputPillButton>

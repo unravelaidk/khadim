@@ -63,50 +63,7 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
           </h1>
         </div>
 
-        <p
-          className="mb-3 px-1 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)] stagger-in"
-          style={{ ["--stagger-delay" as string]: "120ms" }}
-        >
-          Starters
-        </p>
-        <ul className="flex flex-col">
-          {examples.map((ex, i) => (
-            <li
-              key={ex.title}
-              className="stagger-in"
-              style={{ ["--stagger-delay" as string]: `${i * 60}ms` }}
-            >
-              <button
-                onClick={() => {
-                  setInput(ex.prompt);
-                  textareaRef.current?.focus();
-                }}
-                className="group flex w-full items-baseline gap-4 border-t border-[var(--glass-border)] px-1 py-3 text-left transition-colors last:border-b hover:bg-[var(--color-accent-subtle)]"
-              >
-                <span className="w-4 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span className="flex-1">
-                  <span className="block font-display text-md font-medium leading-snug text-[var(--text-primary)]">
-                    {ex.title}
-                  </span>
-                  <span className="block text-[13px] leading-snug text-[var(--text-secondary)]">
-                    {ex.desc}
-                  </span>
-                </span>
-                <svg
-                  className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] transition-all duration-[var(--duration-base)] group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M17 7H7M17 7v10" />
-                </svg>
-              </button>
-            </li>
-          ))}
-        </ul>
+
       </div>
     );
   }

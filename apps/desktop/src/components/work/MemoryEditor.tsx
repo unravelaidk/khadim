@@ -5,75 +5,25 @@ import React, { useState } from "react";
 export interface MemoryStoreEditorData {
   name: string;
   description: string;
-  agentIds: string[];
-  scopeType: "agent" | "shared";
-  chatReadAccess: "none" | "read";
 }
 
 interface MemoryStoreEditorProps {
-  store: {
-    id: string;
-    name: string;
-    description: string;
-    agentIds: string[];
-    scopeType: "agent" | "shared";
-    chatReadAccess: "none" | "read";
-  } | null;
-  availableAgents: { id: string; name: string }[];
+  store: { id: string; name: string; description: string } | null;
   onSave: (data: MemoryStoreEditorData) => void;
   onCancel: () => void;
   onDelete?: () => void;
 }
 
-type AccessMode = "private" | "shared" | "global";
-
 export function MemoryStoreEditor({
   store,
-  availableAgents,
   onSave,
   onCancel,
   onDelete,
 }: MemoryStoreEditorProps) {
   const [name, setName] = useState(store?.name ?? "");
   const [description, setDescription] = useState(store?.description ?? "");
-  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(
-    new Set(store?.agentIds ?? []),
-  );
-
-  // Derive access mode from existing state
-  const initialMode: AccessMode = store
-    ? store.scopeType === "shared" && store.agentIds.length === 0
-      ? store.chatReadAccess === "read" ? "global" : "shared"
-      : "private"
-    : "private";
-  const [accessMode, setAccessMode] = useState<AccessMode>(initialMode);
-
-  const toggleAgent = (id: string) => {
-    setSelectedAgentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const canSave = name.trim().length > 0;
-
-  const handleSave = () => {
-    const agentIds = Array.from(selectedAgentIds);
-    const scopeType: "agent" | "shared" =
-      accessMode === "private" && agentIds.length > 0 ? "agent" : "shared";
-    const chatReadAccess: "none" | "read" =
-      accessMode === "global" ? "read" : "none";
-
-    onSave({
-      name: name.trim(),
-      description: description.trim(),
-      agentIds,
-      scopeType,
-      chatReadAccess,
-    });
-  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -87,7 +37,7 @@ export function MemoryStoreEditor({
           </svg>
         </button>
         <h1 className="flex-1 font-display text-[18px] font-semibold tracking-tight text-[var(--text-primary)]">
-          {store ? "Edit memory store" : "New memory store"}
+          {store ? "Edit memory" : "New memory"}
         </h1>
         <div className="flex items-center gap-2">
           {onDelete && store && (
@@ -99,7 +49,7 @@ export function MemoryStoreEditor({
             </button>
           )}
           <button
-            onClick={handleSave}
+            onClick={() => onSave({ name: name.trim(), description: description.trim() })}
             disabled={!canSave}
             className="btn-accent inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
           >
@@ -115,8 +65,9 @@ export function MemoryStoreEditor({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Invoice Processing Knowledge"
+              placeholder="e.g. Project Knowledge, Customer Preferences"
               className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              autoFocus
             />
           </div>
 
@@ -125,107 +76,14 @@ export function MemoryStoreEditor({
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What kind of knowledge goes here? (optional)"
+              placeholder="What kind of things should be remembered here? (optional)"
               className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
-          {/* ── Access mode ──────────────────────────────────────── */}
-          <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Who can access this store?</label>
-            <div className="mt-2 flex flex-col gap-1">
-              <button
-                onClick={() => setAccessMode("private")}
-                className={`flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left transition-colors ${
-                  accessMode === "private" ? "bg-[var(--surface-elevated)]" : "hover:bg-[var(--glass-bg)]"
-                }`}
-              >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                  accessMode === "private" ? "border-[var(--text-primary)]" : "border-[var(--glass-border-strong)]"
-                }`}>
-                  {accessMode === "private" && <span className="h-2 w-2 rounded-full bg-[var(--text-primary)]" />}
-                </span>
-                <span>
-                  <span className="text-[13px] font-medium text-[var(--text-primary)]">Specific agents</span>
-                  <span className="ml-2 text-[11px] text-[var(--text-muted)]">Only selected agents can read and write</span>
-                </span>
-              </button>
-
-              <button
-                onClick={() => setAccessMode("shared")}
-                className={`flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left transition-colors ${
-                  accessMode === "shared" ? "bg-[var(--surface-elevated)]" : "hover:bg-[var(--glass-bg)]"
-                }`}
-              >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                  accessMode === "shared" ? "border-[var(--text-primary)]" : "border-[var(--glass-border-strong)]"
-                }`}>
-                  {accessMode === "shared" && <span className="h-2 w-2 rounded-full bg-[var(--text-primary)]" />}
-                </span>
-                <span>
-                  <span className="text-[13px] font-medium text-[var(--text-primary)]">All agents</span>
-                  <span className="ml-2 text-[11px] text-[var(--text-muted)]">Any agent can read and write to this store</span>
-                </span>
-              </button>
-
-              <button
-                onClick={() => setAccessMode("global")}
-                className={`flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left transition-colors ${
-                  accessMode === "global" ? "bg-[var(--surface-elevated)]" : "hover:bg-[var(--glass-bg)]"
-                }`}
-              >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                  accessMode === "global" ? "border-[var(--text-primary)]" : "border-[var(--glass-border-strong)]"
-                }`}>
-                  {accessMode === "global" && <span className="h-2 w-2 rounded-full bg-[var(--text-primary)]" />}
-                </span>
-                <span>
-                  <span className="text-[13px] font-medium text-[var(--text-primary)]">Global</span>
-                  <span className="ml-2 text-[11px] text-[var(--text-muted)]">All agents + chat mode can read this store</span>
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* ── Agent selector (only for "private" mode) ─────────── */}
-          {accessMode === "private" && availableAgents.length > 0 && (
-            <div className="mt-6">
-              <label className="block text-[12px] font-medium text-[var(--text-secondary)]">
-                Select agents
-              </label>
-              <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                Pick one or more agents that should have access to this store.
-              </p>
-              <div className="mt-2 flex flex-col gap-1">
-                {availableAgents.map((agent) => {
-                  const checked = selectedAgentIds.has(agent.id);
-                  return (
-                    <button
-                      key={agent.id}
-                      onClick={() => toggleAgent(agent.id)}
-                      className={`flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left transition-colors ${
-                        checked ? "bg-[var(--surface-elevated)]" : "hover:bg-[var(--glass-bg)]"
-                      }`}
-                    >
-                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${
-                        checked
-                          ? "border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--surface-bg)]"
-                          : "border-[var(--glass-border-strong)] text-transparent"
-                      }`}>
-                        ✓
-                      </span>
-                      <span className="text-[13px] text-[var(--text-primary)]">{agent.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedAgentIds.size === 0 && (
-                <p className="mt-2 text-[10px] text-[var(--color-warning)]">
-                  No agents selected — this store won't be accessible to any agent until you select at least one.
-                </p>
-              )}
-            </div>
-          )}
+          <p className="mt-6 text-[11px] leading-relaxed text-[var(--text-muted)]">
+            You can link agents to this memory later from the agent editor.
+          </p>
 
           <div className="h-12" />
         </div>

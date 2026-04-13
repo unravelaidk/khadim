@@ -268,20 +268,13 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
           input: {
             name: data.name,
             description: data.description,
-            scope_type: data.scopeType,
-            chat_read_access: data.chatReadAccess,
-            linked_agent_ids: data.agentIds,
-            primary_for_agent_ids: data.agentIds,
           },
         });
       } else {
         await createMemStore.mutateAsync({
           name: data.name,
           description: data.description,
-          scope_type: data.scopeType,
-          chat_read_access: data.chatReadAccess,
-          linked_agent_ids: data.agentIds,
-          primary_for_agent_ids: data.agentIds,
+          scope_type: "shared",
         });
       }
       setMemStoreEditorOpen(false);
@@ -464,7 +457,6 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
     return (
       <MemoryStoreEditor
         store={null}
-        availableAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
         onSave={handleMemStoreSave}
         onCancel={() => setMemStoreEditorOpen(false)}
       />
