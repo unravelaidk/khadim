@@ -1,6 +1,7 @@
 @import url("https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=satoshi@400,500,600,700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
+@import "remixicon/fonts/remixicon.css";
 @source "../../plugins";
 @source "../plugins";
 

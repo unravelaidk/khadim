@@ -20,22 +20,22 @@ const STARTERS = [
   {
     title: "Summarise my day",
     prompt: "Give me a brief recap of what I've been working on today based on my recent chats.",
-    icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    icon: "ri-file-text-line",
   },
   {
     title: "Draft an email",
     prompt: "Help me draft an email — I'll tell you the context and you give me three concise variants.",
-    icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+    icon: "ri-mail-line",
   },
   {
     title: "Plan a feature",
     prompt: "I want to plan a new feature. Ask me clarifying questions, then propose a phased plan.",
-    icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+    icon: "ri-task-line",
   },
   {
     title: "Think out loud",
     prompt: "I want to think something through. Ask me questions and help me find the argument I'm missing.",
-    icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z",
+    icon: "ri-chat-1-line",
   },
 ];
 
@@ -115,9 +115,7 @@ export function ChatHomeView({
               className="group flex items-start gap-3 rounded-[16px] border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-3.5 text-left transition-colors hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)]"
             >
               <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--glass-bg)] text-[var(--text-secondary)]">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d={s.icon} />
-                </svg>
+                <i className={`${s.icon} text-[16px] leading-none`} />
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[13.5px] font-semibold text-[var(--text-primary)]">{s.title}</p>
@@ -125,9 +123,7 @@ export function ChatHomeView({
                   {s.prompt}
                 </p>
               </div>
-              <svg className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
+              <i className="ri-arrow-right-s-line text-[14px] leading-none mt-1 text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
             </button>
           ))}
         </div>
@@ -186,9 +182,7 @@ export function ChatHomeView({
                           {preview}
                         </span>
                       </span>
-                      <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
+                      <i className="ri-arrow-right-s-line text-[14px] leading-none text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
                     </button>
                   </li>
                 );

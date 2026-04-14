@@ -158,19 +158,7 @@ export function ChatView({
         <div className="flex items-center gap-3 min-w-0">
           {statusDot}
           {!agent && (
-            <svg
-              className="w-5 h-5 shrink-0 text-[var(--text-muted)]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
-              />
-            </svg>
+            <i className="ri-chat-1-line text-[20px] leading-none text-[var(--text-muted)]" />
           )}
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">{headerTitle}</h2>
@@ -243,9 +231,7 @@ export function ChatView({
                         onClick={onSaveAsAgent}
                         className="inline-flex items-center gap-2 rounded-full bg-[var(--glass-bg)] px-4 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
                       >
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                        </svg>
+                        <i className="ri-add-line text-[14px] leading-none" />
                         Save as Agent
                       </button>
                       <span className="text-[12px] text-[var(--text-muted)]">

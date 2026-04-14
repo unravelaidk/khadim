@@ -159,9 +159,7 @@ export function CustomAgentsView({
             onClick={handleCreate}
             className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full btn-accent px-4 text-[12px] font-semibold"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.4} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
+            <i className="ri-add-line text-[14px] leading-none" />
             New agent
           </button>
         </header>
@@ -258,9 +256,7 @@ function AgentEditor({
           onClick={onCancel}
           className="inline-flex items-center gap-1.5 text-[12px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
         >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
+          <i className="ri-arrow-left-s-line text-[14px] leading-none" />
           Back to agents
         </button>
 

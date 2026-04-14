@@ -122,50 +122,71 @@ export function WorkspaceView({
     { id: "logs", label: "Logs", count: processOutput.length > 0 ? processOutput.length : undefined },
   ];
 
+  // Workspace name initial + hue for the badge
+  const initial = workspace.name.charAt(0).toUpperCase();
+  const hue = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < workspace.name.length; i++) h = (h + workspace.name.charCodeAt(i) * 37) % 360;
+    return h;
+  }, [workspace.name]);
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* ── Compact header with key info + actions ─────────────── */}
+      {/* ── Header — compact, identity-forward ─────────────── */}
       <div className="shrink-0 px-6 py-5 border-b border-[var(--glass-border)]">
         <div className="flex items-start justify-between gap-4 max-w-5xl">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <h1 className="font-display text-xl font-medium tracking-[-0.01em] text-[var(--text-primary)]">
-                {workspace.name}
-              </h1>
-              <div className="flex items-center gap-1.5">
-                <StatusPill
-                  status={connection ? "running" : "idle"}
-                  label={connection ? "Connected" : "Idle"}
-                />
-                {runningCount > 0 && (
-                  <StatusPill status="running" label={`${runningCount} running`} />
-                )}
-                {errorCount > 0 && (
-                  <StatusPill status="error" label={`${errorCount} error${errorCount > 1 ? "s" : ""}`} />
+          <div className="flex items-center gap-4 min-w-0">
+            {/* Workspace badge */}
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] font-display text-[15px] font-semibold"
+              style={{
+                background: `oklch(50% 0.04 ${hue} / 0.12)`,
+                color: `oklch(75% 0.06 ${hue})`,
+              }}
+            >
+              {initial}
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h1 className="font-display text-[18px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
+                  {workspace.name}
+                </h1>
+                <div className="flex items-center gap-1.5">
+                  <StatusPill
+                    status={connection ? "running" : "idle"}
+                    label={connection ? "Connected" : "Idle"}
+                  />
+                  {runningCount > 0 && (
+                    <StatusPill status="running" label={`${runningCount} running`} />
+                  )}
+                  {errorCount > 0 && (
+                    <StatusPill status="error" label={`${errorCount} error${errorCount > 1 ? "s" : ""}`} />
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                <span>{backendLabel(workspace.backend)}</span>
+                <span className="opacity-30">·</span>
+                <span>{executionTargetLabel(workspace.execution_target)}</span>
+                {workspace.branch && (
+                  <>
+                    <span className="opacity-30">·</span>
+                    <span className="inline-flex items-center gap-1 font-mono text-[10px]">
+                      <BranchIcon />
+                      {workspace.branch}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
-            <div className="mt-1.5 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <span>{backendLabel(workspace.backend)}</span>
-              <span className="opacity-40">·</span>
-              <span>{executionTargetLabel(workspace.execution_target)}</span>
-              {workspace.branch && (
-                <>
-                  <span className="opacity-40">·</span>
-                  <span className="inline-flex items-center gap-1 font-mono">
-                    <BranchIcon />
-                    {workspace.branch}
-                  </span>
-                </>
-              )}
-            </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={onNewAgent}
               disabled={loading}
-              className="btn-accent h-10 rounded-full px-5 text-[13px] font-semibold disabled:opacity-50"
+              className="btn-accent h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
             >
               New agent
             </button>
@@ -173,7 +194,7 @@ export function WorkspaceView({
               <button
                 onClick={onStopOpenCode}
                 disabled={loading}
-                className="btn-glass h-10 rounded-full px-4 text-[13px] font-semibold disabled:opacity-50"
+                className="btn-glass h-9 rounded-full px-4 text-[12px] font-semibold disabled:opacity-50"
               >
                 Stop
               </button>
@@ -181,7 +202,7 @@ export function WorkspaceView({
               <button
                 onClick={onStartOpenCode}
                 disabled={loading}
-                className="btn-glass h-10 rounded-full px-4 text-[13px] font-semibold disabled:opacity-50"
+                className="btn-glass h-9 rounded-full px-4 text-[12px] font-semibold disabled:opacity-50"
               >
                 Start
               </button>
@@ -192,21 +213,21 @@ export function WorkspaceView({
 
       {/* ── Tab navigation ─────────────────────────────────────── */}
       <div className="shrink-0 px-6 border-b border-[var(--glass-border)]">
-        <nav className="flex gap-1 -mb-px max-w-5xl" aria-label="Workspace sections">
+        <nav className="flex gap-0 -mb-px max-w-5xl" aria-label="Workspace sections">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative px-4 py-3 text-[13px] font-medium transition-colors ${
+              className={`relative px-4 py-3 text-[12px] font-semibold transition-colors ${
                 activeTab === tab.id
                   ? "text-[var(--text-primary)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
               }`}
             >
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5">
                 {tab.label}
                 {tab.count != null && (
-                  <span className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] ${
+                  <span className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-none ${
                     activeTab === tab.id
                       ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
                       : "bg-[var(--surface-ink-4)] text-[var(--text-muted)]"
@@ -227,13 +248,13 @@ export function WorkspaceView({
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         <div className="max-w-5xl px-6 py-6">
 
-          {/* AGENTS TAB — the primary surface */}
+          {/* AGENTS TAB */}
           {activeTab === "agents" && (
             <div className="animate-in">
               {sortedAgents.length > 0 ? (
-                <div className="space-y-1">
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                   {sortedAgents.map((agent) => (
-                    <AgentRow
+                    <AgentTile
                       key={agent.id}
                       agent={agent}
                       onFocus={() => onFocusAgent(agent.id)}
@@ -271,7 +292,7 @@ export function WorkspaceView({
               <div className="grid gap-8 lg:grid-cols-2 max-w-3xl">
                 <div>
                   <p className="text-[14px] font-medium text-[var(--text-secondary)]">Default branch</p>
-                  <p className="mt-0.5 text-[13px] text-[var(--text-muted)]">
+                  <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
                     New agents branch from here.
                   </p>
                   {branchOptions.length > 0 ? (
@@ -359,9 +380,9 @@ export function WorkspaceView({
   );
 }
 
-/* ─── Agent Row (redesigned) ───────────────────────────────────────── */
+/* ─── Agent Tile — card layout instead of flat row ─────────────────── */
 
-const AgentRow = memo(function AgentRow({
+const AgentTile = memo(function AgentTile({
   agent,
   onFocus,
   onManage,
@@ -370,67 +391,69 @@ const AgentRow = memo(function AgentRow({
   onFocus: () => void;
   onManage: () => void;
 }) {
+  const isRunning = agent.status === "running";
+  const isError = agent.status === "error";
+
   return (
     <div
-      className="group flex items-center gap-4 rounded-[var(--radius-md)] px-4 py-4 transition-colors hover:bg-[var(--surface-ink-3)] cursor-pointer"
+      className="group relative flex flex-col rounded-[14px] border border-[var(--glass-border)] bg-[var(--surface-card)] p-4 transition-[border-color,background] duration-[var(--duration-base)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)] cursor-pointer"
       onClick={onFocus}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onFocus(); }}
     >
-      {/* Status indicator — shape + color */}
-      <StatusIndicator status={agent.status} size="lg" />
-
-      {/* Info */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2.5">
-          <p className="truncate text-[15px] font-medium text-[var(--text-primary)]">
-            {agent.label}
-          </p>
-          {agent.branch && (
-            <span className="truncate rounded-md bg-[var(--surface-ink-4)] px-2 py-1 font-mono text-[12px] text-[var(--text-muted)]">
-              {agent.branch}
-            </span>
-          )}
-        </div>
-        <p
-          className={`mt-1 truncate text-[13px] ${
-            agent.status === "error"
-              ? "text-[var(--color-danger-text-light)]"
-              : agent.status === "running"
-                ? "text-[var(--color-accent)]"
-                : "text-[var(--text-muted)]"
-          }`}
-        >
-          {statusText(agent)}
+      {/* Top row: status + name + branch */}
+      <div className="flex items-center gap-3">
+        <StatusIndicator status={agent.status} size="md" />
+        <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-[var(--text-primary)]">
+          {agent.label}
         </p>
+        {agent.branch && (
+          <span className="shrink-0 truncate max-w-[120px] rounded-md bg-[var(--surface-ink-4)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+            {agent.branch}
+          </span>
+        )}
       </div>
 
-      {/* Token usage (if available) */}
+      {/* Status line */}
+      <p
+        className={`mt-2 truncate text-[12px] ${
+          isError
+            ? "text-[var(--color-danger-text-light)]"
+            : isRunning
+              ? "text-[var(--color-accent)]"
+              : "text-[var(--text-muted)]"
+        }`}
+      >
+        {statusText(agent)}
+      </p>
+
+      {/* Token usage */}
       {agent.tokenUsage && (agent.tokenUsage.inputTokens > 0 || agent.tokenUsage.outputTokens > 0) && (
-        <span className="hidden md:inline-flex shrink-0 font-mono text-[12px] tabular-nums text-[var(--text-muted)]">
+        <p className="mt-1.5 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
           {formatTokens(agent.tokenUsage.inputTokens)} in · {formatTokens(agent.tokenUsage.outputTokens)} out
-        </span>
+        </p>
       )}
 
-      {/* Actions — always visible, not hidden on hover */}
-      <div className="flex shrink-0 items-center gap-2">
+      {/* Running glow bar at bottom */}
+      {isRunning && (
+        <div className="absolute bottom-0 left-4 right-4 h-[2px] rounded-full bg-[var(--color-accent)] opacity-40 status-pulse" />
+      )}
+
+      {/* Actions — top-right */}
+      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onFocus(); }}
-          className="h-9 rounded-[var(--radius-sm)] px-4 text-[13px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          className="h-7 rounded-[var(--radius-xs)] px-2.5 text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
         >
           Chat
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onManage(); }}
-          className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
           title="Settings"
         >
-          <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="1.5" />
-            <circle cx="19" cy="12" r="1.5" />
-            <circle cx="5" cy="12" r="1.5" />
-          </svg>
+          <i className="ri-more-line text-[14px] leading-none" />
         </button>
       </div>
     </div>
@@ -443,29 +466,31 @@ function EmptyAgents({ onNewAgent, loading }: { onNewAgent: () => void; loading:
   return (
     <div className="py-20 text-center">
       <div className="mx-auto max-w-md">
-        <p className="font-display text-xl font-medium text-[var(--text-primary)]">
+        <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-[14px] bg-[var(--surface-ink-4)]">
+          <i className="ri-robot-2-line text-[20px] leading-none text-[var(--text-muted)]" />
+        </div>
+        <p className="font-display text-[18px] font-medium text-[var(--text-primary)]">
           No agents yet
         </p>
-        <p className="mt-3 text-[15px] leading-relaxed text-[var(--text-muted)]">
+        <p className="mt-3 text-[13px] leading-relaxed text-[var(--text-muted)] max-w-sm mx-auto">
           Each agent works in its own branch and worktree.
-          Give it a task and it'll get to work — you can run
-          multiple agents in parallel.
+          Give it a task and it'll work in parallel.
         </p>
-        <div className="mt-8 flex flex-col items-center gap-4">
+        <div className="mt-7 flex flex-col items-center gap-3">
           <button
             onClick={onNewAgent}
             disabled={loading}
-            className="btn-accent h-11 rounded-full px-8 text-[14px] font-semibold disabled:opacity-50"
+            className="btn-accent h-10 rounded-full px-7 text-[13px] font-semibold disabled:opacity-50"
           >
             Create first agent
           </button>
-          <div className="flex items-center gap-5 text-[12px] text-[var(--text-muted)]">
+          <div className="flex items-center gap-5 text-[11px] text-[var(--text-muted)]">
             <span className="inline-flex items-center gap-1.5">
-              <kbd className="rounded bg-[var(--surface-ink-4)] px-2 py-1 font-mono text-[11px]">⌘P</kbd>
+              <kbd className="rounded bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[10px]">⌘P</kbd>
               Find files
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <kbd className="rounded bg-[var(--surface-ink-4)] px-2 py-1 font-mono text-[11px]">⌘`</kbd>
+              <kbd className="rounded bg-[var(--surface-ink-4)] px-1.5 py-0.5 font-mono text-[10px]">⌘`</kbd>
               Terminal
             </span>
           </div>
@@ -491,11 +516,11 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
 function CodeBlock({ label, content }: { label: string; content: string }) {
   return (
     <div>
-      <p className="mb-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
+      <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
         {label}
       </p>
       <pre
-        className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--surface-ink-4)] p-4 font-mono text-[13px] leading-relaxed text-[var(--text-secondary)]"
+        className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--surface-ink-4)] p-4 font-mono text-[12px] leading-relaxed text-[var(--text-secondary)]"
         style={{ maxHeight: 320 }}
       >
         {content}

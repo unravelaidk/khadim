@@ -70,6 +70,13 @@ export interface AgentEditorData {
   memoryStoreId: string;
 }
 
+/* ── Section icon — remixicon inline icon for form labels ──────────── */
+function SectionIcon({ icon }: { icon: string }) {
+  return (
+    <i className={`${icon} text-[14px] leading-none text-[var(--text-muted)]`} />
+  );
+}
+
 export function AgentEditor({
   agent,
   availableModels,
@@ -209,9 +216,7 @@ export function AgentEditor({
           onClick={onCancel}
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
+          <i className="ri-arrow-left-s-line text-[16px] leading-none" />
         </button>
         <h1 className="flex-1 font-display text-[18px] font-semibold tracking-tight text-[var(--text-primary)]">
           {agent ? "Edit agent" : "New agent"}
@@ -242,7 +247,10 @@ export function AgentEditor({
 
           {/* ── Identity ───────────────────────────────────────── */}
           <div>
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Name</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-user-line" />
+              Name
+            </label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -252,7 +260,10 @@ export function AgentEditor({
           </div>
 
           <div className="mt-4">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Description</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-align-left" />
+              Description
+            </label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -263,7 +274,10 @@ export function AgentEditor({
 
           {/* ── Instructions ───────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Instructions</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-file-text-line" />
+              Instructions
+            </label>
             <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
               Tell the agent what to do. Be specific. Use {"{{variables}}"} for dynamic values.
             </p>
@@ -278,7 +292,10 @@ export function AgentEditor({
 
           {/* ── Model ──────────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Model</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-sparkling-2-line" />
+              Model
+            </label>
             <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
               Which LLM powers this agent
             </p>
@@ -292,9 +309,7 @@ export function AgentEditor({
                 />
               ) : (
                 <div className="flex items-center gap-2 rounded-2xl glass-input px-3 py-2.5 text-[12px] text-[var(--text-muted)]">
-                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-                  </svg>
+                  <i className="ri-error-warning-line text-[16px] leading-none" />
                   No models configured — add one in Settings → Providers
                 </div>
               )}
@@ -304,7 +319,10 @@ export function AgentEditor({
           {/* ── Environment ────────────────────────────────────── */}
           {availableEnvironments.length > 0 && (
             <div className="mt-6">
-              <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Environment</label>
+              <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                <SectionIcon icon="ri-server-line" />
+                Environment
+              </label>
               <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
                 Which credentials and variables the agent can access
               </p>
@@ -321,7 +339,10 @@ export function AgentEditor({
 
           {/* ── Memory ─────────────────────────────────────────── */}
           <div className="mt-6">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Memory</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-brain-line" />
+              Memory
+            </label>
             <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
               Persistent memory the agent can read and write across runs
             </p>
@@ -351,7 +372,10 @@ export function AgentEditor({
 
           {/* ── Tools ──────────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Tools</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-tools-line" />
+              Tools
+            </label>
             <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
               What can this agent access?
             </p>
@@ -387,7 +411,10 @@ export function AgentEditor({
 
           {/* ── Trigger ────────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Trigger</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-flashlight-line" />
+              Trigger
+            </label>
             <div className="mt-2 flex flex-col gap-1">
               {TRIGGER_OPTIONS.map((opt) => (
                 <button
@@ -439,7 +466,10 @@ export function AgentEditor({
 
           {/* ── Approval ───────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Human approval</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-shield-check-line" />
+              Human approval
+            </label>
             <div className="mt-2 flex flex-col gap-1">
               {APPROVAL_OPTIONS.map((opt) => (
                 <button
@@ -469,7 +499,10 @@ export function AgentEditor({
 
           {/* ── Guardrails ─────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Guardrails</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-equalizer-line" />
+              Guardrails
+            </label>
             <div className="mt-2 flex gap-4">
               <div className="flex-1">
                 <label className="block text-[11px] text-[var(--text-muted)]">Max turns</label>
@@ -498,7 +531,10 @@ export function AgentEditor({
 
           {/* ── Runner ─────────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Runner</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-server-line" />
+              Runner
+            </label>
             <div className="mt-2 flex gap-2">
               {RUNNER_OPTIONS.map((opt) => {
                 const isDocker = opt.id === "docker";
@@ -526,7 +562,10 @@ export function AgentEditor({
 
           {/* ── Harness ────────────────────────────────────────── */}
           <div className="mt-8">
-            <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Harness</label>
+            <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+              <SectionIcon icon="ri-cpu-line" />
+              Harness
+            </label>
             <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
               Choose which agent engine runs the instructions. When using Docker runner, the harness runs inside the container.
             </p>
@@ -563,7 +602,10 @@ export function AgentEditor({
           {/* ── Template Variables ──────────────────────────────── */}
           <div className="mt-8">
             <div className="flex items-center justify-between">
-              <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Variables</label>
+              <label className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                <SectionIcon icon="ri-code-s-slash-line" />
+                Variables
+              </label>
               <button
                 onClick={addVariable}
                 className="text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"

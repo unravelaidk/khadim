@@ -773,10 +773,7 @@ export default function App() {
           <div className="shrink-0 px-6 pt-4">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-danger-border)] bg-[var(--color-danger-bg-strong)] px-4 py-3 text-[12px] flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <svg className="w-4 h-4 shrink-0 text-[var(--color-danger)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" d="M8 5v3.5M8 10.5v.5" />
-                  <circle cx="8" cy="8" r="6.5" />
-                </svg>
+                <i className="ri-pause-line text-[16px] leading-none text-[var(--color-danger)]" />
                 <span className="text-[var(--color-danger-text)] truncate">{error}</span>
               </div>
               <button className="shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-[var(--color-danger-text)] hover:bg-[var(--color-danger-muted)] transition-colors" onClick={() => setError(null)}>Dismiss</button>

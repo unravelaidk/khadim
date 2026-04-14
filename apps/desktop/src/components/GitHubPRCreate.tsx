@@ -53,9 +53,7 @@ export function GitHubPRCreate({ slug, repoPath, onCreated, onCancel }: GitHubPR
           onClick={onCancel}
           className="h-7 w-7 shrink-0 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
+          <i className="ri-arrow-left-s-line text-[14px] leading-none" />
         </button>
         <h2 className="text-sm font-bold text-[var(--text-primary)]">New Pull Request</h2>
         <span className="text-[10px] font-mono text-[var(--text-muted)]">

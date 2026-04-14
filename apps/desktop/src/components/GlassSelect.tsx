@@ -133,15 +133,7 @@ export function GlassSelect({
         <span className={`min-w-0 truncate ${selectedOption ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
           {selectedOption?.label ?? placeholder}
         </span>
-        <svg
-          className={`h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
+        <i className="ri-arrow-down-s-line text-[14px] leading-none" />
       </button>
 
       {/* Dropdown */}
@@ -153,9 +145,7 @@ export function GlassSelect({
           {/* Search input */}
           {showSearch && (
             <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
-              <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
+              <i className="ri-search-line text-[14px] leading-none text-[var(--text-muted)]" />
               <input
                 ref={searchRef}
                 type="text"
@@ -170,10 +160,7 @@ export function GlassSelect({
                   onClick={() => setSearch("")}
                   className="shrink-0 rounded-full p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                 >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
+                  <i className="ri-close-line text-[10px] leading-none" />
                 </button>
               )}
             </div>
@@ -218,9 +205,7 @@ export function GlassSelect({
                     </span>
                     {isSelected && (
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-ink)]">
-                        <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                        </svg>
+                        <i className="ri-check-line text-[12px] leading-none" />
                       </span>
                     )}
                   </button>

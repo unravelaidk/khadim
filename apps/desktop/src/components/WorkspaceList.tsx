@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import React, { memo, useMemo, useState } from "react";
 import type { Workspace } from "../lib/bindings";
 import type { AgentInstance } from "../lib/types";
 import { backendLabel, relTime } from "../lib/ui";
@@ -20,7 +20,6 @@ interface Props {
 export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDelete }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Attach running agent counts per workspace
   const agentsByWorkspace = useMemo(() => {
     const map = new Map<string, { running: number; total: number }>();
     for (const agent of agents) {
@@ -32,24 +31,24 @@ export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDel
     return map;
   }, [agents]);
 
-  // Global stats
   const totalRunning = agents.filter((a) => a.status === "running").length;
+  const totalAgents = agents.length;
 
   /* ── Empty state ────────────────────────────────────────────────── */
   if (workspaces.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-6 pb-24">
-        <div className="stagger-in" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
-            Work mode
-          </p>
+        <div className="stagger-in max-w-sm text-center" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-[16px] bg-[var(--surface-ink-4)]">
+            <i className="ri-folder-3-line text-[24px] leading-none text-[var(--text-muted)]" />
+          </div>
           <h1
-            className="mt-3 font-display font-medium tracking-[-0.02em] text-[var(--text-primary)]"
-            style={{ fontSize: "var(--text-2xl)", lineHeight: 1.15 }}
+            className="font-display font-medium tracking-[-0.02em] text-[var(--text-primary)]"
+            style={{ fontSize: "var(--text-xl)" }}
           >
             No workspaces yet
           </h1>
-          <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[var(--text-secondary)]">
+          <p className="mt-3 text-[13px] leading-relaxed text-[var(--text-secondary)]">
             Create a workspace from a local git repository.
             Each workspace can run multiple agents in isolated worktrees.
           </p>
@@ -71,39 +70,51 @@ export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDel
 
         {/* Header */}
         <div className="stagger-in" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
-          <div className="flex items-start justify-between gap-6">
+          <div className="flex items-end justify-between gap-6">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
                 Work mode
               </p>
-              <h1 className="mt-2 font-display text-[28px] font-medium leading-[1.1] tracking-[-0.02em] text-[var(--text-primary)]">
+              <h1 className="mt-2 font-display font-medium leading-[1.1] tracking-[-0.02em] text-[var(--text-primary)]" style={{ fontSize: "clamp(1.5rem, 2vw + 0.5rem, 1.75rem)" }}>
                 Workspaces
               </h1>
-              <p className="mt-2 text-[13px] text-[var(--text-secondary)]">
-                {workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}
-                {totalRunning > 0 && (
-                  <span className="text-[var(--color-accent)]"> · {totalRunning} agent{totalRunning !== 1 ? "s" : ""} running</span>
-                )}
-              </p>
             </div>
-            <button
-              onClick={onCreateNew}
-              className="btn-accent mt-1 h-8 shrink-0 rounded-full px-4 text-[11px] font-semibold"
-            >
-              New workspace
-            </button>
+            <div className="flex items-center gap-4">
+              {/* Compact stats */}
+              <div className="hidden sm:flex items-center gap-3 text-[11px] tabular-nums text-[var(--text-muted)]">
+                <span>{workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}</span>
+                {totalAgents > 0 && (
+                  <>
+                    <span className="opacity-30">·</span>
+                    <span>{totalAgents} agent{totalAgents !== 1 ? "s" : ""}</span>
+                  </>
+                )}
+                {totalRunning > 0 && (
+                  <>
+                    <span className="opacity-30">·</span>
+                    <span className="text-[var(--color-accent)]">{totalRunning} running</span>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={onCreateNew}
+                className="btn-accent h-8 shrink-0 rounded-full px-4 text-[11px] font-semibold"
+              >
+                New workspace
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Separator */}
         <hr className="my-6 border-none h-px bg-[var(--glass-border)]" />
 
-        {/* Workspace list — flat rows, not cards */}
-        <div className="space-y-0">
+        {/* Workspace grid — two-column for wider screens, single for narrow */}
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {workspaces.map((workspace, i) => {
             const agentInfo = agentsByWorkspace.get(workspace.id);
             return (
-              <WorkspaceRow
+              <WorkspaceCard
                 key={workspace.id}
                 workspace={workspace}
                 agentCount={agentInfo?.total ?? 0}
@@ -122,9 +133,9 @@ export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDel
   );
 }
 
-/* ─── Workspace Row ────────────────────────────────────────────────── */
+/* ─── Workspace Card ───────────────────────────────────────────────── */
 
-const WorkspaceRow = memo(function WorkspaceRow({
+const WorkspaceCard = memo(function WorkspaceCard({
   workspace,
   agentCount,
   runningCount,
@@ -143,61 +154,76 @@ const WorkspaceRow = memo(function WorkspaceRow({
   onConfirmDeleteChange: (id: string | null) => void;
   delay: number;
 }) {
+  const initial = workspace.name.charAt(0).toUpperCase();
+
+  // Generate a subtle hue from the workspace name for the initial badge
+  const hue = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < workspace.name.length; i++) h = (h + workspace.name.charCodeAt(i) * 37) % 360;
+    return h;
+  }, [workspace.name]);
+
   return (
     <div
-      className="group stagger-in flex items-center gap-4 border-t border-[var(--glass-border)] first:border-none py-4 px-2 -mx-2 rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--surface-ink-3)] cursor-pointer"
+      className="group stagger-in relative flex flex-col rounded-[16px] border border-[var(--glass-border)] bg-[var(--surface-card)] p-5 transition-[border-color,background] duration-[var(--duration-base)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)] cursor-pointer"
       style={{ "--stagger-delay": `${delay}ms` } as React.CSSProperties}
       onClick={() => onSelect(workspace.id)}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(workspace.id); }}
       tabIndex={0}
       role="button"
     >
-      {/* Initial */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--surface-ink-4)] font-display text-[15px] font-semibold text-[var(--text-primary)]">
-        {workspace.name.charAt(0).toUpperCase()}
-      </div>
-
-      {/* Info */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+      {/* Top row: initial + name + status */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] font-display text-[14px] font-semibold"
+          style={{
+            background: `oklch(50% 0.04 ${hue} / 0.12)`,
+            color: `oklch(75% 0.06 ${hue})`,
+          }}
+        >
+          {initial}
+        </div>
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[14px] font-medium text-[var(--text-primary)] group-hover:text-[var(--color-accent)] transition-colors">
             {workspace.name}
           </p>
-          {runningCount > 0 && (
-            <StatusPill status="running" label={`${runningCount} running`} />
-          )}
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-          <span>{backendLabel(workspace.backend)}</span>
-          {workspace.branch && (
-            <>
-              <span className="opacity-40">·</span>
-              <span className="inline-flex items-center gap-1 font-mono text-[10px]">
-                <BranchIcon />
-                {workspace.branch}
-              </span>
-            </>
-          )}
-          {agentCount > 0 && (
-            <>
-              <span className="opacity-40">·</span>
-              <span>{agentCount} agent{agentCount !== 1 ? "s" : ""}</span>
-            </>
-          )}
-        </div>
+        {runningCount > 0 && (
+          <StatusPill status="running" label={`${runningCount} running`} />
+        )}
       </div>
 
-      {/* Timestamp */}
-      <span className="hidden sm:block shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]">
-        {relTime(workspace.updated_at)}
-      </span>
+      {/* Meta row */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--text-muted)]">
+        <span>{backendLabel(workspace.backend)}</span>
+        {workspace.branch && (
+          <>
+            <span className="opacity-30">·</span>
+            <span className="inline-flex items-center gap-1 font-mono text-[10px]">
+              <BranchIcon />
+              {workspace.branch}
+            </span>
+          </>
+        )}
+        {agentCount > 0 && (
+          <>
+            <span className="opacity-30">·</span>
+            <span>{agentCount} agent{agentCount !== 1 ? "s" : ""}</span>
+          </>
+        )}
+      </div>
 
-      {/* Path */}
-      <span className="hidden lg:block shrink-0 max-w-[200px] truncate font-mono text-[10px] text-[var(--text-muted)] opacity-60">
-        {workspace.worktree_path ?? workspace.repo_path}
-      </span>
+      {/* Footer: path + timestamp */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate font-mono text-[10px] text-[var(--text-muted)] opacity-50">
+          {workspace.worktree_path ?? workspace.repo_path}
+        </span>
+        <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-muted)] opacity-60">
+          {relTime(workspace.updated_at)}
+        </span>
+      </div>
 
-      {/* Delete */}
+      {/* Delete button — top-right, revealed on hover */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -209,7 +235,7 @@ const WorkspaceRow = memo(function WorkspaceRow({
           }
         }}
         onBlur={() => { if (confirmDelete) onConfirmDeleteChange(null); }}
-        className={`shrink-0 transition-all duration-150 ${
+        className={`absolute top-3 right-3 transition-all duration-150 ${
           confirmDelete
             ? "rounded-[var(--radius-xs)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] text-[var(--color-danger)] px-2 py-1 text-[10px] font-semibold opacity-100"
             : "opacity-0 group-hover:opacity-100 h-7 w-7 flex items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)]"
@@ -217,9 +243,7 @@ const WorkspaceRow = memo(function WorkspaceRow({
         title={confirmDelete ? "Click again to confirm" : "Delete workspace"}
       >
         {confirmDelete ? "Delete?" : (
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
+          <i className="ri-delete-bin-line text-[14px] leading-none" />
         )}
       </button>
     </div>

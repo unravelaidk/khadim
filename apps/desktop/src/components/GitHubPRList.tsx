@@ -135,9 +135,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
                 <span className="text-[10px] text-[var(--text-muted)]">{relTime(pr.created_at)}</span>
                 {pr.comments > 0 && (
                   <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-muted)]">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                    </svg>
+                    <i className="ri-chat-1-line text-[12px] leading-none" />
                     {pr.comments}
                   </span>
                 )}
@@ -174,28 +172,20 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
 function PRStateIcon({ pr }: { pr: GitHubPR }) {
   if (pr.merged_at) {
     return (
-      <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-accent)]" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218zM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zm8-9a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zM4.25 4a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z" />
-      </svg>
+      <i className="ri-git-pull-request-line text-[16px] leading-none mt-0.5 text-[var(--color-accent)]" />
     );
   }
   if (pr.state === "closed") {
     return (
-      <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-danger-text)]" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.251 2.251 0 0 1 3.25 1zm9.5 5.5a.75.75 0 0 1 .75.75v3.378a2.251 2.251 0 1 1-1.5 0V7.25a.75.75 0 0 1 .75-.75zm-2.03-5.273a.75.75 0 0 1 1.06 0l2 2a.75.75 0 0 1-1.06 1.06L12 3.56l-.72.72a.75.75 0 0 1-1.06-1.06l2-2z" />
-      </svg>
+      <i className="ri-git-pull-request-line text-[16px] leading-none mt-0.5 text-[var(--color-danger-text)]" />
     );
   }
   if (pr.draft) {
     return (
-      <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--text-muted)]" viewBox="0 0 16 16" fill="currentColor">
-        <path fillRule="evenodd" d="M2.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zM3.25 1a2.25 2.25 0 0 0-.75 4.372v5.256a2.251 2.251 0 1 0 1.5 0V5.372A2.251 2.251 0 0 0 3.25 1zm0 11a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z" />
-      </svg>
+      <i className="ri-git-branch-line text-[16px] leading-none mt-0.5 text-[var(--text-muted)]" />
     );
   }
   return (
-    <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-success-text)]" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354zM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0z" />
-    </svg>
+    <i className="ri-git-merge-line text-[16px] leading-none mt-0.5 text-[var(--color-success-text)]" />
   );
 }

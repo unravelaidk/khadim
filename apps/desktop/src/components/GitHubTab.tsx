@@ -25,9 +25,7 @@ export function GitHubTab({ authStatus, slug, repoPath, onNavigateToSettings, on
     return (
       <div className="py-12 text-center">
         <div className="w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
-          <svg className="w-5 h-5 text-[var(--text-muted)]" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-          </svg>
+          <i className="ri-github-fill text-[20px] leading-none text-[var(--text-muted)]" />
         </div>
         <p className="text-[13px] font-semibold text-[var(--text-primary)]">GitHub not connected</p>
         <p className="text-[11px] text-[var(--text-muted)] mt-1 max-w-xs mx-auto">
@@ -68,10 +66,7 @@ export function GitHubTab({ authStatus, slug, repoPath, onNavigateToSettings, on
             }`}
           >
             <span className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01" />
-              </svg>
+              <i className="ri-error-warning-line text-[14px] leading-none" />
               Issues
             </span>
           </button>
@@ -84,9 +79,7 @@ export function GitHubTab({ authStatus, slug, repoPath, onNavigateToSettings, on
             }`}
           >
             <span className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354z" />
-              </svg>
+              <i className="ri-git-merge-line text-[14px] leading-none" />
               Pull Requests
             </span>
           </button>
@@ -196,9 +189,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
         {/* Header */}
         <div className="text-center">
           <div className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
-            <svg className="w-5 h-5 text-[var(--text-muted)]" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M2 2.5A2.5 2.5 0 014.5 0h8.75a.75.75 0 01.75.75v12.5a.75.75 0 01-.75.75h-2.5a.75.75 0 110-1.5h1.75v-2h-8a1 1 0 00-.714 1.7.75.75 0 01-1.072 1.05A2.495 2.495 0 012 11.5v-9zm10.5-1h-8a1 1 0 00-1 1v6.708A2.486 2.486 0 014.5 9h8.5V1.5zM5 12.25v3.25a.25.25 0 00.4.2l1.45-1.087a.25.25 0 01.3 0L8.6 15.7a.25.25 0 00.4-.2v-3.25a.25.25 0 00-.25-.25h-3.5a.25.25 0 00-.25.25z" />
-            </svg>
+            <i className="ri-file-list-line text-[20px] leading-none text-[var(--text-muted)]" />
           </div>
           <p className="text-[13px] font-semibold text-[var(--text-primary)]">
             Publish to GitHub
@@ -262,10 +253,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
                     : "glass-card-static text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0110 0v4" />
-                </svg>
+                <i className="ri-lock-line text-[14px] leading-none" />
                 Private
               </button>
               <button
@@ -278,11 +266,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
                     : "glass-card-static text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="2" y1="12" x2="22" y2="12" />
-                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                </svg>
+                <i className="ri-earth-line text-[14px] leading-none" />
                 Public
               </button>
             </div>
@@ -306,9 +290,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
               </>
             ) : (
               <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
-                </svg>
+                <i className="ri-upload-line text-[16px] leading-none" />
                 Create repository & push
               </>
             )}

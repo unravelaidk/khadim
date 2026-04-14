@@ -185,24 +185,14 @@ export function ModelSelector({
           <ModelIcon model={selectedModel} />
         ) : (
           <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-card)] ring-1 ring-[var(--glass-border)]">
-            <svg className="h-3.5 w-3.5 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5m-4.75-11.396c.251.023.501.05.75.082M12 12.75l-3-3m3 3 3-3" />
-            </svg>
+            <i className="ri-sparkling-2-line text-[14px] leading-none text-[var(--text-muted)]" />
           </span>
         )}
         <span className="min-w-0 truncate font-medium">
           {selectedModel?.model_name ?? "Select model"}
         </span>
         {/* Chevron */}
-        <svg
-          className={`ml-auto h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
+        <i className="ri-arrow-down-s-line text-[12px] leading-none" />
       </button>
 
       {/* ── Dropdown ───────────────────────────────────────────── */}
@@ -215,9 +205,7 @@ export function ModelSelector({
         >
           {/* Search */}
           <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
-            <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
+            <i className="ri-search-line text-[14px] leading-none text-[var(--text-muted)]" />
             <input
               ref={searchRef}
               type="text"
@@ -232,10 +220,7 @@ export function ModelSelector({
                 onClick={() => setSearch("")}
                 className="shrink-0 rounded-full p-0.5 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                  <i className="ri-close-line text-[10px] leading-none" />
               </button>
             )}
           </div>
@@ -244,9 +229,7 @@ export function ModelSelector({
           <div className="max-h-64 overflow-y-auto overscroll-contain p-1.5 scrollbar-thin">
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center gap-1.5 px-3 py-5 text-center">
-                <svg className="h-5 w-5 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                </svg>
+                <i className="ri-search-line text-[20px] leading-none text-[var(--text-muted)]" />
                 <p className="text-[12px] text-[var(--text-muted)]">No models found</p>
               </div>
             ) : hasMultipleProviders ? (
@@ -349,9 +332,7 @@ function ModelItem({
       )}
       {isSelected && (
         <span className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-ink)]">
-          <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
+          <i className="ri-check-line text-[12px] leading-none" />
         </span>
       )}
     </button>

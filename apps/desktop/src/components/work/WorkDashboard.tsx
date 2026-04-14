@@ -3,10 +3,8 @@ import type { ManagedAgent, SessionRecord } from "../../lib/types";
 import { relTime } from "../../lib/ui";
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Work Dashboard — "I've got things moving."
-   Greeting-led control surface inspired by conversational home screens,
-   adapted for Khadim's managed-agent domain. Dark, typography-led,
-   calm density. The chrome recedes; the work comes forward.
+   Work Dashboard — mission control for Khadim's managed agent surface.
+   Typography-driven, asymmetric, calm density.
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface WorkDashboardProps {
@@ -79,32 +77,26 @@ export function WorkDashboard({
   );
   const greeting = useMemo(() => {
     const h = new Date().getHours();
-    return h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening.";
+    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   }, []);
 
   const headline = liveSessions.length > 0
-    ? "I've got things moving."
+    ? "Things are moving."
     : activeAgents.length > 0
       ? "Everything's ready."
       : "Let's build something.";
 
-  const statLine = [
-    liveSessions.length > 0 && `${liveSessions.length} live`,
-    completedToday.length > 0 && `${completedToday.length} done today`,
-    scheduledAgents.length > 0 && `${scheduledAgents.length} scheduled`,
-  ].filter(Boolean).join(" · ") || "No runs yet today";
-
-  /* ── First-run: unchanged empty state ───────────────────────────── */
+  /* ── First-run: empty state ─────────────────────────────────────── */
   if (agents.length === 0) {
     return (
       <div className="flex h-full items-center">
-        <div className="px-12 py-16 max-w-lg">
+        <div className="px-12 py-16 max-w-lg stagger-in" style={{ "--stagger-delay": "0ms" } as React.CSSProperties}>
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
             {dateLabel}
           </p>
-          <h1 className="mt-6 font-display text-[40px] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--text-primary)]">
-            {greeting}<br />
-            <span className="text-[var(--text-secondary)]">Let's build your first agent.</span>
+          <h1 className="mt-6 font-display font-medium leading-[1.05] tracking-[-0.03em] text-[var(--text-primary)]" style={{ fontSize: "clamp(2rem, 3vw + 1rem, 2.75rem)" }}>
+            {greeting}.<br />
+            <span className="text-[var(--text-secondary)]">Build your first agent.</span>
           </h1>
           <p className="mt-6 max-w-md text-[15px] leading-relaxed text-[var(--text-secondary)]">
             An agent is a persistent automation — give it instructions, pick its tools,
@@ -128,84 +120,73 @@ export function WorkDashboard({
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto scrollbar-thin">
         <div className="mx-auto w-full max-w-4xl px-8 pt-10 pb-16 xl:px-12">
 
-          {/* ── Header: date + greeting ───────────────────────── */}
+          {/* ── Header ────────────────────────────────────────── */}
           <header
-            className="flex items-start justify-between gap-6 stagger-in"
-            style={{ ["--stagger-delay" as string]: "0ms" }}
+            className="stagger-in"
+            style={{ "--stagger-delay": "0ms" } as React.CSSProperties}
           >
-            <div className="min-w-0">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
-                {dateLabel}
-              </p>
-              <p className="mt-5 text-[15px] text-[var(--text-secondary)]">{greeting}</p>
-              <h1 className="mt-1 font-display text-[40px] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--text-primary)]">
-                {headline}
-              </h1>
-              <p className="mt-3 text-[13px] text-[var(--text-muted)]">{statLine}</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
+              {dateLabel}
+            </p>
+            <div className="mt-5 flex items-end justify-between gap-8">
+              <div className="min-w-0">
+                <p className="text-[14px] text-[var(--text-secondary)]">{greeting}.</p>
+                <h1
+                  className="mt-1 font-display font-medium leading-[1.05] tracking-[-0.03em] text-[var(--text-primary)]"
+                  style={{ fontSize: "clamp(1.75rem, 2.5vw + 0.75rem, 2.5rem)" }}
+                >
+                  {headline}
+                </h1>
+              </div>
+              {scheduledAgents.length > 0 && (
+                <button
+                  onClick={onNavigateAgents}
+                  className="hidden shrink-0 items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-2 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] sm:inline-flex"
+                >
+                  Full plan
+                  <i className="ri-arrow-right-s-line text-[14px] leading-none" />
+                </button>
+              )}
             </div>
-
-            {scheduledAgents.length > 0 && (
-              <button
-                onClick={onNavigateAgents}
-                className="hidden shrink-0 items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-2 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] sm:inline-flex"
-              >
-                See full plan
-                <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            )}
           </header>
 
-          {/* ── Status chip row ───────────────────────────────── */}
+          {/* ── Live pulse strip — asymmetric, not a grid ─────── */}
           <div
-            className="mt-8 grid grid-cols-1 gap-2 stagger-in sm:grid-cols-3"
-            style={{ ["--stagger-delay" as string]: "80ms" }}
+            className="mt-10 stagger-in"
+            style={{ "--stagger-delay": "60ms" } as React.CSSProperties}
           >
-            <StatusTile
-              label="In progress"
-              tone="live"
-              title={firstLive?.agentName ?? "No live runs"}
-              meta={firstLive
-                ? firstLive.resultSummary ?? "Running…"
-                : "Trigger an agent to start."}
-              subMeta={firstLive?.startedAt ? `Started ${relTime(firstLive.startedAt)}` : undefined}
-              count={liveSessions.length}
-              onClick={firstLive ? () => onViewSession(firstLive.id) : onNavigateSessions}
-              clickable={Boolean(firstLive) || liveSessions.length > 0}
-            />
-            <StatusTile
-              label="Done"
-              tone="done"
-              title={firstDone?.agentName ?? "Nothing yet today"}
-              meta={firstDone
-                ? firstDone.resultSummary ?? "Completed successfully"
-                : "Completed sessions will land here."}
-              subMeta={firstDone?.finishedAt ? `${relTime(firstDone.finishedAt)}` : undefined}
-              count={completedToday.length}
-              onClick={firstDone ? () => onViewSession(firstDone.id) : onNavigateSessions}
-              clickable={completedToday.length > 0}
-            />
-            <StatusTile
-              label="Upcoming"
-              tone="upcoming"
-              title={firstScheduled?.name ?? "No schedule set"}
-              meta={firstScheduled
-                ? firstScheduled.description || "Scheduled run"
-                : "Give an agent a schedule trigger."}
-              subMeta={firstScheduled ? readableSchedule(firstScheduled.triggerConfig) : undefined}
-              count={scheduledAgents.length}
-              onClick={firstScheduled ? () => onRunAgent(firstScheduled.id) : onNavigateAgents}
-              clickable={scheduledAgents.length > 0}
-            />
+            <div className="flex items-center gap-3">
+              <PulseCounter
+                n={liveSessions.length}
+                label="live"
+                tone="live"
+                onClick={firstLive ? () => onViewSession(firstLive.id) : onNavigateSessions}
+              />
+              <PulseCounter
+                n={completedToday.length}
+                label="done today"
+                tone="done"
+                onClick={firstDone ? () => onViewSession(firstDone.id) : onNavigateSessions}
+              />
+              <PulseCounter
+                n={scheduledAgents.length}
+                label="scheduled"
+                tone="muted"
+                onClick={firstScheduled ? () => onRunAgent(firstScheduled.id) : onNavigateAgents}
+              />
+              <span className="flex-1" />
+              <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+                {activeAgents.length} agent{activeAgents.length === 1 ? "" : "s"} active
+              </span>
+            </div>
           </div>
 
-          {/* ── Ad-hoc prompt ─────────────────────────────────── */}
+          {/* ── Prompt bar ────────────────────────────────────── */}
           <div
             className="mt-8 stagger-in"
-            style={{ ["--stagger-delay" as string]: "160ms" }}
+            style={{ "--stagger-delay": "120ms" } as React.CSSProperties}
           >
-            <div className="group relative rounded-[22px] border border-[var(--glass-border)] bg-[var(--surface-card)] transition-colors duration-[var(--duration-base)] focus-within:border-[var(--color-accent-muted)] focus-within:shadow-[0_0_0_4px_var(--color-accent-subtle)]">
+            <div className="group relative overflow-hidden rounded-[20px] border border-[var(--glass-border)] bg-[var(--surface-card)] transition-[border-color,box-shadow] duration-[var(--duration-base)] focus-within:border-[var(--color-accent-muted)] focus-within:shadow-[0_0_0_4px_var(--color-accent-subtle)]">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -216,142 +197,117 @@ export function WorkDashboard({
                     onCreateAgent();
                   }
                 }}
-                placeholder="Ask Khadim. Or describe what you want automated."
+                placeholder="Describe what you want automated…"
                 rows={1}
                 className="block w-full resize-none bg-transparent px-6 pt-5 pb-3 text-[15px] leading-[1.55] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
                 style={{ minHeight: "3.25rem", maxHeight: "40vh" }}
               />
-              <div className="flex items-center justify-between px-3 pb-3 pt-1">
+              <div className="flex items-center justify-between px-4 pb-3 pt-0.5">
                 <div className="flex items-center gap-1">
-                  <InputPillButton ariaLabel="Attach context">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-6M9 15h6" />
-                    </svg>
-                  </InputPillButton>
-                  <InputPillButton ariaLabel="Use the web">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-                      <rect x="2" y="3" width="20" height="14" rx="2" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8M12 17v4" />
-                    </svg>
-                  </InputPillButton>
-                  <InputPillButton ariaLabel="Choose tools" wide>
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
-                    </svg>
-                    <span className="text-[12px] font-medium">Tools</span>
-                  </InputPillButton>
+                  <PromptTool label="Context" icon="ri-attachment-2" />
+              <PromptTool label="Browser" icon="ri-computer-line" />
+              <PromptTool label="Tools" icon="ri-tools-line" />
                 </div>
                 <button
                   onClick={onCreateAgent}
                   disabled={!input.trim()}
-                  aria-label="Start an agent from this prompt"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full btn-accent disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
+                  aria-label="Go"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full btn-accent disabled:cursor-not-allowed disabled:opacity-20 disabled:shadow-none"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
-                  </svg>
+                  <i className="ri-arrow-up-line text-[14px] leading-none" />
                 </button>
               </div>
             </div>
 
-            {/* Action chips */}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              <ActionChip
-                label="New agent"
-                onClick={onCreateAgent}
-                icon={<path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />}
-              />
-              <ActionChip
-                label="Review sessions"
-                onClick={onNavigateSessions}
-                icon={<path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h16" />}
-              />
-              <ActionChip
-                label="Run agent"
-                onClick={firstScheduled ? () => onRunAgent(firstScheduled.id) : onNavigateAgents}
-                icon={<path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />}
-              />
-              <ActionChip
-                label="Automate"
-                onClick={onCreateAgent}
-                icon={<path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />}
-              />
+            {/* Quick actions — inline, not chips */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <QuickAction label="New agent" onClick={onCreateAgent} />
+              <QuickAction label="Review sessions" onClick={onNavigateSessions} />
+              {firstScheduled && (
+                <QuickAction label={`Run ${firstScheduled.name}`} onClick={() => onRunAgent(firstScheduled.id)} />
+              )}
             </div>
           </div>
 
-          {/* ── "Your day, handled" — proactive stream ─────────── */}
+          {/* ── Feed — proactive surface ──────────────────────── */}
           <section
             className="mt-14 stagger-in"
-            style={{ ["--stagger-delay" as string]: "240ms" }}
+            style={{ "--stagger-delay": "200ms" } as React.CSSProperties}
           >
             <div className="flex items-baseline justify-between gap-4">
-              <div className="flex items-baseline gap-3">
-                <h2 className="font-display text-[15px] font-medium text-[var(--text-primary)]">
-                  Your day, handled
-                </h2>
-                <span className="rounded-full bg-[var(--glass-bg)] px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-secondary)]">
-                  Proactive
-                </span>
-                <p className="hidden text-[12px] text-[var(--text-muted)] md:inline">
-                  I'll keep working and surface what needs you.
-                </p>
-              </div>
+              <h2 className="font-display text-[15px] font-medium text-[var(--text-primary)]">
+                Feed
+              </h2>
               <button
                 onClick={onNavigateSessions}
-                className="text-[12px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                className="text-[11px] font-mono uppercase tracking-[0.14em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
               >
-                View timeline
+                All sessions →
               </button>
             </div>
 
-            <div className="mt-4 flex flex-col gap-3">
-              {needsAttention.slice(0, 1).map((s) => (
-                <ProactiveCard
+            <div className="mt-5 flex flex-col gap-2">
+              {/* Needs attention — most urgent first */}
+              {needsAttention.slice(0, 2).map((s) => (
+                <FeedItem
                   key={s.id}
-                  flag="Needs your input"
-                  flagTone="alert"
-                  title={`Review: ${s.agentName ?? "session"}`}
-                  body={s.resultSummary ?? "Waiting for a decision to continue."}
-                  timestamp={s.startedAt ? `Since ${relTime(s.startedAt)}` : undefined}
-                  primary={{ label: "Review", onClick: () => onViewSession(s.id) }}
-                  secondary={{ label: "Not now" }}
-                />
-              ))}
-
-              {liveSessions.filter((s) => !needsAttention.includes(s)).slice(0, 1).map((s) => (
-                <ProactiveCard
-                  key={s.id}
-                  flag="Running in background"
-                  flagTone="live"
+                  tone="alert"
+                  flag="Needs input"
                   title={s.agentName ?? "Session"}
-                  body={s.resultSummary ?? "Step in progress…"}
-                  timestamp={s.startedAt ? `Started ${relTime(s.startedAt)}` : undefined}
-                  progress={0.42}
-                  primary={{ label: "View progress", onClick: () => onViewSession(s.id) }}
+                  body={s.resultSummary ?? "Waiting for your decision."}
+                  time={s.startedAt ? relTime(s.startedAt) : undefined}
+                  action={{ label: "Review", onClick: () => onViewSession(s.id) }}
                 />
               ))}
 
+              {/* Live sessions */}
+              {liveSessions
+                .filter((s) => !needsAttention.includes(s))
+                .slice(0, 2)
+                .map((s) => (
+                  <FeedItem
+                    key={s.id}
+                    tone="live"
+                    flag="Running"
+                    title={s.agentName ?? "Session"}
+                    body={s.resultSummary ?? "In progress…"}
+                    time={s.startedAt ? relTime(s.startedAt) : undefined}
+                    action={{ label: "View", onClick: () => onViewSession(s.id) }}
+                  />
+                ))}
+
+              {/* Next scheduled */}
               {firstScheduled && (
-                <ProactiveCard
-                  flag="Coming up"
-                  flagTone="upcoming"
+                <FeedItem
+                  tone="upcoming"
+                  flag="Upcoming"
                   title={firstScheduled.name}
-                  body={firstScheduled.description || "Scheduled automation ready to fire."}
-                  timestamp={readableSchedule(firstScheduled.triggerConfig) ?? "Scheduled"}
-                  primary={{ label: "Run now", onClick: () => onRunAgent(firstScheduled.id) }}
-                  secondary={{ label: "Edit", onClick: onNavigateAgents }}
+                  body={firstScheduled.description || "Scheduled automation."}
+                  time={readableSchedule(firstScheduled.triggerConfig)}
+                  action={{ label: "Run now", onClick: () => onRunAgent(firstScheduled.id) }}
                 />
               )}
 
-              {needsAttention.length === 0 && liveSessions.length === 0 && !firstScheduled && (
-                <div className="rounded-[18px] border border-dashed border-[var(--glass-border)] px-6 py-8 text-center">
+              {/* Completed today — last 2 */}
+              {completedToday.slice(0, 2).map((s) => (
+                <FeedItem
+                  key={s.id}
+                  tone="done"
+                  flag="Done"
+                  title={s.agentName ?? "Session"}
+                  body={s.resultSummary ?? "Completed."}
+                  time={s.finishedAt ? relTime(s.finishedAt) : undefined}
+                  action={{ label: "View", onClick: () => onViewSession(s.id) }}
+                />
+              ))}
+
+              {needsAttention.length === 0 && liveSessions.length === 0 && !firstScheduled && completedToday.length === 0 && (
+                <div className="rounded-[16px] border border-dashed border-[var(--glass-border)] px-6 py-10 text-center">
                   <p className="text-[13px] text-[var(--text-secondary)]">
-                    Nothing needs you right now.
+                    Nothing yet today.
                   </p>
                   <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-                    Triggered runs and schedule fires will appear here.
+                    Triggered runs and schedules will appear here.
                   </p>
                 </div>
               )}
@@ -360,323 +316,275 @@ export function WorkDashboard({
         </div>
       </div>
 
-      {/* ── Right rail — today's plan + quick wins ───────────── */}
-      <aside className="hidden w-[320px] shrink-0 overflow-y-auto scrollbar-thin border-l border-[var(--glass-border)] px-6 py-10 xl:block">
-        <div
-          className="stagger-in"
-          style={{ ["--stagger-delay" as string]: "120ms" }}
-        >
-          <div className="flex items-baseline justify-between">
-            <h3 className="font-display text-[15px] font-medium text-[var(--text-primary)]">
-              Today's schedule
+      {/* ── Right rail — schedule + stats ─────────────────────── */}
+      <aside className="hidden w-[300px] shrink-0 overflow-y-auto scrollbar-thin border-l border-[var(--glass-border)] xl:block">
+        <div className="px-6 py-10">
+          {/* Schedule */}
+          <div
+            className="stagger-in"
+            style={{ "--stagger-delay": "100ms" } as React.CSSProperties}
+          >
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-display text-[14px] font-medium text-[var(--text-primary)]">
+                Schedule
+              </h3>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              </span>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-0">
+              {scheduledAgents.slice(0, 5).map((agent, i) => (
+                <ScheduleRow
+                  key={agent.id}
+                  index={i}
+                  time={readableSchedule(agent.triggerConfig) ?? "Scheduled"}
+                  name={agent.name}
+                  desc={agent.description || "Managed agent"}
+                  onRun={() => onRunAgent(agent.id)}
+                />
+              ))}
+              {scheduledAgents.length === 0 && (
+                <p className="py-4 text-[12px] text-[var(--text-muted)]">
+                  No scheduled runs. Add a cron trigger to an agent.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Stats strip */}
+          <div
+            className="mt-10 stagger-in"
+            style={{ "--stagger-delay": "180ms" } as React.CSSProperties}
+          >
+            <h3 className="font-display text-[14px] font-medium text-[var(--text-primary)]">
+              Stats
             </h3>
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
-              {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-            </span>
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
+              <StatCell label="Active agents" value={activeAgents.length} />
+              <StatCell label="Done today" value={completedToday.length} />
+              <StatCell label="Total sessions" value={sessions.length} />
+              <StatCell label="Scheduled" value={scheduledAgents.length} />
+            </dl>
           </div>
 
-          <div className="mt-5 flex flex-col gap-4">
-            {scheduledAgents.slice(0, 4).map((agent, i) => (
-              <AgendaRow
-                key={agent.id}
-                dot={AGENDA_DOT_COLORS[i % AGENDA_DOT_COLORS.length]}
-                time={readableSchedule(agent.triggerConfig) ?? "Scheduled"}
-                title={agent.name}
-                meta={agent.description || "Managed automation"}
-                onRun={() => onRunAgent(agent.id)}
-              />
-            ))}
-            {scheduledAgents.length === 0 && (
-              <p className="text-[13px] text-[var(--text-muted)]">
-                No scheduled runs. Give an agent a cron trigger to plan your day.
+          {/* Health */}
+          {activeAgents.length > 0 && (
+            <div
+              className="mt-10 stagger-in"
+              style={{ "--stagger-delay": "260ms" } as React.CSSProperties}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-success-muted)] text-[var(--color-success-text)]">
+                  <i className="ri-check-line text-[12px] leading-none" />
+                </span>
+                <p className="text-[13px] font-medium text-[var(--text-primary)]">All systems nominal</p>
+              </div>
+              <p className="mt-1.5 pl-[30px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+                {activeAgents.length} agent{activeAgents.length === 1 ? "" : "s"} ready ·{" "}
+                {completedToday.length} completed today
               </p>
-            )}
-          </div>
-        </div>
-
-        <div
-          className="mt-10 rounded-[18px] border border-[var(--glass-border)] bg-[var(--glass-bg)] px-5 py-4 stagger-in"
-          style={{ ["--stagger-delay" as string]: "200ms" }}
-        >
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-success-muted)] text-[var(--color-success-text)]">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </span>
-            <p className="text-[13px] font-medium text-[var(--text-primary)]">Runs on track</p>
-          </div>
-          <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-            {activeAgents.length} active agent{activeAgents.length === 1 ? "" : "s"} · {" "}
-            {completedToday.length} completed today
-          </p>
-        </div>
-
-        <div
-          className="mt-8 stagger-in"
-          style={{ ["--stagger-delay" as string]: "280ms" }}
-        >
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-accent-subtle)] text-[var(--color-accent)]">
-              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.4} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </span>
-            <p className="text-[13px] font-medium text-[var(--text-primary)]">Quick wins</p>
-            <span className="text-[11px] text-[var(--text-muted)]">Handled for you</span>
-          </div>
-          <ul className="mt-3 flex flex-col gap-2.5">
-            <QuickWin text={`${sessions.length} total sessions logged`} />
-            <QuickWin text={`${agents.length} managed agent${agents.length === 1 ? "" : "s"} configured`} />
-            {completedToday.length > 0 && (
-              <QuickWin text={`${completedToday.length} completion${completedToday.length === 1 ? "" : "s"} since midnight`} />
-            )}
-          </ul>
+            </div>
+          )}
         </div>
       </aside>
     </div>
   );
 }
 
-/* ─── Status tile ──────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════
+   Sub-components — each earns its place
+   ═══════════════════════════════════════════════════════════════════════ */
 
-function StatusTile({
+/* ── Pulse counter — compact inline metric with colored dot ───────── */
+
+function PulseCounter({
+  n,
   label,
   tone,
-  title,
-  meta,
-  subMeta,
-  count,
   onClick,
-  clickable,
 }: {
+  n: number;
   label: string;
-  tone: "live" | "done" | "upcoming";
-  title: string;
-  meta: string;
-  subMeta?: string;
-  count: number;
+  tone: "live" | "done" | "muted";
   onClick: () => void;
-  clickable: boolean;
 }) {
-  const toneCls =
-    tone === "live"
-      ? "text-[var(--color-pop)]"
-      : tone === "done"
-        ? "text-[var(--color-success-text)]"
-        : "text-[var(--text-secondary)]";
   const dotCls =
     tone === "live"
       ? "bg-[var(--color-pop)] status-pulse"
       : tone === "done"
         ? "bg-[var(--color-success)]"
-        : "bg-[var(--text-secondary)] opacity-60";
+        : "bg-[var(--text-muted)] opacity-50";
 
   return (
     <button
-      onClick={clickable ? onClick : undefined}
-      disabled={!clickable}
-      className={`group relative flex flex-col items-start gap-2 rounded-[18px] border border-[var(--glass-border)] bg-[var(--surface-card)] px-5 py-4 text-left transition-colors ${
-        clickable ? "hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)]" : "opacity-85"
-      }`}
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] px-3.5 py-1.5 text-[12px] tabular-nums text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)]"
     >
-      <div className="flex w-full items-center justify-between">
-        <span className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] ${toneCls}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${dotCls}`} />
-          {label}
-        </span>
-        {count > 1 && (
-          <span className="text-[10px] tabular-nums text-[var(--text-muted)]">×{count}</span>
-        )}
-      </div>
-      <p className="truncate text-[14px] font-medium text-[var(--text-primary)]">{title}</p>
-      <p className="line-clamp-2 text-[12px] leading-snug text-[var(--text-secondary)]">{meta}</p>
-      {subMeta && (
-        <p className="mt-auto text-[11px] tabular-nums text-[var(--text-muted)]">{subMeta}</p>
-      )}
-      {clickable && (
-        <svg
-          className="absolute right-4 top-4 h-3.5 w-3.5 text-[var(--text-muted)] opacity-0 transition-all duration-[var(--duration-base)] group-hover:translate-x-0.5 group-hover:opacity-100"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.8}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      )}
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+      <span className="font-semibold text-[var(--text-primary)]">{n}</span>
+      <span>{label}</span>
     </button>
   );
 }
 
-/* ─── Input pill button ────────────────────────────────────────────── */
+/* ── Prompt bar tool button ───────────────────────────────────────── */
 
-function InputPillButton({
-  children,
-  ariaLabel,
-  wide,
+function PromptTool({
+  icon,
+  label,
 }: {
-  children: React.ReactNode;
-  ariaLabel: string;
-  wide?: boolean;
+  icon: string;
+  label: string;
 }) {
   return (
     <button
       type="button"
-      aria-label={ariaLabel}
-      className={`inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 text-[var(--text-muted)] transition-colors hover:border-[var(--glass-border)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)] ${
-        wide ? "h-8" : "h-8 w-8 justify-center px-0"
-      }`}
+      className="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
     >
-      {children}
+      <i className={`${icon} text-[14px] leading-none`} />
+      <span className="text-[11px] font-medium">{label}</span>
     </button>
   );
 }
 
-/* ─── Action chip ──────────────────────────────────────────────────── */
+/* ── Quick action — text link style, not pill ─────────────────────── */
 
-function ActionChip({
-  label,
-  onClick,
-  icon,
-}: {
-  label: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-}) {
+function QuickAction({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)] hover:text-[var(--text-primary)]"
+      className="rounded-full border border-[var(--glass-border)] px-3 py-1 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)]"
     >
-      <svg className="h-3.5 w-3.5 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        {icon}
-      </svg>
       {label}
     </button>
   );
 }
 
-/* ─── Proactive card ───────────────────────────────────────────────── */
+/* ── Feed item — the core proactive unit ──────────────────────────── */
 
-function ProactiveCard({
+const TONE_STYLES = {
+  alert: {
+    dot: "bg-[var(--color-danger)]",
+    flag: "text-[var(--color-danger-text)]",
+    flagBg: "bg-[var(--color-danger-muted)]",
+  },
+  live: {
+    dot: "bg-[var(--color-pop)] status-pulse",
+    flag: "text-[var(--color-accent)]",
+    flagBg: "bg-[var(--color-accent-subtle)]",
+  },
+  upcoming: {
+    dot: "bg-[var(--text-secondary)] opacity-60",
+    flag: "text-[var(--text-secondary)]",
+    flagBg: "bg-[var(--glass-bg-strong)]",
+  },
+  done: {
+    dot: "bg-[var(--color-success)]",
+    flag: "text-[var(--color-success-text)]",
+    flagBg: "bg-[var(--color-success-muted)]",
+  },
+} as const;
+
+function FeedItem({
+  tone,
   flag,
-  flagTone,
   title,
   body,
-  timestamp,
-  progress,
-  primary,
-  secondary,
+  time,
+  action,
 }: {
+  tone: keyof typeof TONE_STYLES;
   flag: string;
-  flagTone: "alert" | "live" | "upcoming";
   title: string;
   body: string;
-  timestamp?: string;
-  progress?: number;
-  primary?: { label: string; onClick?: () => void };
-  secondary?: { label: string; onClick?: () => void };
+  time?: string;
+  action?: { label: string; onClick: () => void };
 }) {
-  const flagCls =
-    flagTone === "alert"
-      ? "bg-[var(--color-danger-muted)] text-[var(--color-danger-text)]"
-      : flagTone === "live"
-        ? "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
-        : "bg-[var(--glass-bg-strong)] text-[var(--text-secondary)]";
+  const s = TONE_STYLES[tone];
 
   return (
-    <article className="rounded-[18px] border border-[var(--glass-border)] bg-[var(--surface-card)] px-6 py-5 transition-colors hover:border-[var(--glass-border-strong)]">
-      <div className="flex items-start justify-between gap-4">
-        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${flagCls}`}>
-          {flag}
-        </span>
-        {timestamp && (
-          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
-            {timestamp}
+    <div className="group flex gap-3.5 rounded-[14px] px-4 py-4 transition-colors hover:bg-[var(--surface-ink-3)]">
+      {/* Timeline dot */}
+      <div className="flex flex-col items-center pt-1.5">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
+        <span className="mt-2 w-px flex-1 bg-[var(--glass-border)]" />
+      </div>
+
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${s.flag} ${s.flagBg}`}>
+            {flag}
           </span>
+          {time && (
+            <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+              {time}
+            </span>
+          )}
+        </div>
+        <p className="mt-2 text-[14px] font-medium text-[var(--text-primary)]">
+          {title}
+        </p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--text-secondary)] line-clamp-2">
+          {body}
+        </p>
+        {action && (
+          <button
+            onClick={action.onClick}
+            className="mt-2.5 text-[12px] font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+          >
+            {action.label} →
+          </button>
         )}
       </div>
-      <h4 className="mt-3 font-display text-[16px] font-medium leading-snug text-[var(--text-primary)]">
-        {title}
-      </h4>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--text-secondary)]">{body}</p>
-
-      {progress !== undefined && (
-        <div className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-[var(--glass-bg)]">
-          <div
-            className="h-full rounded-full bg-[var(--color-accent)] transition-all duration-700"
-            style={{ width: `${Math.round(progress * 100)}%` }}
-          />
-        </div>
-      )}
-
-      {(primary || secondary) && (
-        <div className="mt-4 flex items-center gap-2">
-          {primary && (
-            <button
-              onClick={primary.onClick}
-              className="inline-flex h-8 items-center rounded-full btn-accent px-4 text-[12px] font-semibold"
-            >
-              {primary.label}
-            </button>
-          )}
-          {secondary && (
-            <button
-              onClick={secondary.onClick}
-              className="inline-flex h-8 items-center rounded-full px-4 text-[12px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
-            >
-              {secondary.label}
-            </button>
-          )}
-        </div>
-      )}
-    </article>
+    </div>
   );
 }
 
-/* ─── Agenda row (right rail) ──────────────────────────────────────── */
+/* ── Schedule row — right rail timeline ───────────────────────────── */
 
-const AGENDA_DOT_COLORS = [
+const SCHED_ACCENTS = [
   "var(--color-accent)",
   "var(--color-success)",
   "var(--color-pop)",
   "var(--text-secondary)",
+  "var(--color-accent)",
 ];
 
-function AgendaRow({
-  dot,
+function ScheduleRow({
+  index,
   time,
-  title,
-  meta,
+  name,
+  desc,
   onRun,
 }: {
-  dot: string;
+  index: number;
   time: string;
-  title: string;
-  meta: string;
+  name: string;
+  desc: string;
   onRun: () => void;
 }) {
+  const accent = SCHED_ACCENTS[index % SCHED_ACCENTS.length];
+
   return (
-    <div className="group flex items-start gap-3">
-      <div className="relative mt-1.5 flex h-full flex-col items-center">
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: dot }}
-        />
-      </div>
+    <div className="group flex items-start gap-3 border-b border-[var(--glass-border)] py-3.5 last:border-none">
+      <span
+        className="mt-1 h-2 w-2 shrink-0 rounded-full"
+        style={{ background: accent }}
+      />
       <div className="min-w-0 flex-1">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
           {time}
         </p>
         <p className="mt-1 truncate text-[13px] font-medium text-[var(--text-primary)]">
-          {title}
+          {name}
         </p>
-        <p className="mt-0.5 truncate text-[11px] text-[var(--text-muted)]">{meta}</p>
+        <p className="mt-0.5 truncate text-[11px] text-[var(--text-muted)]">{desc}</p>
       </div>
       <button
         onClick={onRun}
-        className="shrink-0 rounded-full border border-[var(--glass-border)] px-3 py-1 text-[11px] font-medium text-[var(--text-secondary)] opacity-0 transition-all hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] group-hover:opacity-100"
+        className="shrink-0 rounded-full border border-[var(--glass-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text-muted)] opacity-0 transition-all hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] group-hover:opacity-100"
       >
         Run
       </button>
@@ -684,22 +592,23 @@ function AgendaRow({
   );
 }
 
-/* ─── Quick win bullet ─────────────────────────────────────────────── */
+/* ── Stat cell — small label / big number ─────────────────────────── */
 
-function QuickWin({ text }: { text: string }) {
+function StatCell({ label, value }: { label: string; value: number }) {
   return (
-    <li className="flex items-start gap-2 text-[12px] leading-snug text-[var(--text-secondary)]">
-      <svg className="mt-0.5 h-3 w-3 shrink-0 text-[var(--color-success-text)]" fill="none" stroke="currentColor" strokeWidth={2.4} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-      </svg>
-      <span>{text}</span>
-    </li>
+    <div>
+      <dt className="text-[11px] font-mono uppercase tracking-[0.12em] text-[var(--text-muted)]">
+        {label}
+      </dt>
+      <dd className="mt-1 font-display text-[22px] font-medium tabular-nums tracking-[-0.02em] text-[var(--text-primary)]">
+        {value}
+      </dd>
+    </div>
   );
 }
 
-/* ─── Helpers ──────────────────────────────────────────────────────── */
+/* ── Helpers ──────────────────────────────────────────────────────── */
 
-/** Best-effort humanisation of a schedule triggerConfig (JSON). */
 function readableSchedule(cfg?: string | null): string | undefined {
   if (!cfg) return undefined;
   try {
@@ -708,7 +617,6 @@ function readableSchedule(cfg?: string | null): string | undefined {
     if (parsed.interval) return `Every ${parsed.interval}`;
     if (parsed.cron) return parsed.cron;
   } catch {
-    // Not JSON — fall through and return the raw string truncated.
     return cfg.length > 20 ? cfg.slice(0, 20) + "…" : cfg;
   }
   return undefined;

@@ -103,9 +103,7 @@ function GitChangesPanelInner({ repoPath, isStreaming, onOpenFile, onClose }: Pr
           className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors"
           title="Close changes panel"
         >
-          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6}>
-            <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
-          </svg>
+          <i className="ri-close-line text-[12px] leading-none" />
         </button>
 
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -114,9 +112,7 @@ function GitChangesPanelInner({ repoPath, isStreaming, onOpenFile, onClose }: Pr
         </div>
 
         {loading && (
-          <svg className="w-3 h-3 dot-spinner text-[var(--text-muted)] ml-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v4m0 10v4m9-9h-4M7 12H3m15.364 6.364-2.828-2.828M8.464 8.464 5.636 5.636m12.728 0-2.828 2.828M8.464 15.536l-2.828 2.828" />
-          </svg>
+          <i className="ri-loader-4-line text-[12px] leading-none dot-spinner text-[var(--text-muted)] ml-1" />
         )}
 
         <div className="ml-auto flex items-center gap-2 text-[10px]">
@@ -130,10 +126,7 @@ function GitChangesPanelInner({ repoPath, isStreaming, onOpenFile, onClose }: Pr
           className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors"
           title="Refresh"
         >
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
-            <path strokeLinecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10-1.64 1.36A9 9 0 0 1 3.51 15" />
-          </svg>
+          <i className="ri-refresh-line text-[12px] leading-none" />
         </button>
       </div>
 
@@ -203,8 +196,6 @@ export const GitChangesPanel = memo(GitChangesPanelInner);
 
 function DiffIcon() {
   return (
-    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" d="M3 8h10M8 3v10" />
-    </svg>
+    <i className="ri-add-line text-[12px] leading-none" />
   );
 }

@@ -364,12 +364,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
           className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors"
           title={collapsed ? "Expand (⌘`)" : "Collapse (⌘`)"}
         >
-          <svg
-            className={`w-3 h-3 transition-transform duration-150 ${collapsed ? "" : "rotate-180"}`}
-            viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5l3-3 3 3" />
-          </svg>
+          <i className="ri-arrow-up-s-line text-[12px] leading-none" />
         </button>
 
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
@@ -401,9 +396,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
                     onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = "1"; }}
                     onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = isActive ? "0.5" : "0"; }}
                   >
-                    <svg className="w-2 h-2" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
-                    </svg>
+                    <i className="ri-close-line text-[12px] leading-none" />
                   </span>
                 </button>
               );
@@ -425,9 +418,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
             className="h-6 px-2 rounded-md text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] disabled:opacity-40 inline-flex items-center gap-1 transition-colors"
             title={context ? `New terminal in ${shortName(context.cwd)}` : "No workspace"}
           >
-            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" d="M6 2v8M2 6h8" />
-            </svg>
+            <i className="ri-add-line text-[12px] leading-none" />
           </button>
         </div>
       </div>
@@ -497,9 +488,7 @@ function EmptyState({ context, onCreate }: { context: DesktopWorkspaceContext | 
 
 function PromptIcon() {
   return (
-    <svg className="w-3 h-3 text-[var(--color-accent)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 5l3 3-3 3M8 11h5" />
-    </svg>
+    <i className="ri-terminal-box-line text-[12px] leading-none text-[var(--color-accent)]" />
   );
 }
 

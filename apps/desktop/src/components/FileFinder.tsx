@@ -758,52 +758,38 @@ const HighlightedText = memo(function HighlightedText({
 
 function SearchIcon() {
   return (
-    <svg className="w-4 h-4 text-[var(--text-muted)] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <circle cx="11" cy="11" r="8" />
-      <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-    </svg>
+    <i className="ri-search-line text-[16px] leading-none text-[var(--text-muted)]" />
   );
 }
 
 function CloseIcon() {
   return (
-    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
-    </svg>
+    <i className="ri-close-line text-[14px] leading-none" />
   );
 }
 
 function ChevronIcon() {
   return (
-    <svg className="w-3 h-3 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" d="M9 5l7 7-7 7" />
-    </svg>
+    <i className="ri-arrow-right-s-line text-[12px] leading-none text-[var(--text-muted)]" />
   );
 }
 
 function FileIcon({ ext }: { ext: string }) {
   const color = extColor(ext);
   return (
-    <svg className={`w-4 h-4 shrink-0 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 2.25H6a1.5 1.5 0 00-1.5 1.5v16.5A1.5 1.5 0 006 21.75h12a1.5 1.5 0 001.5-1.5V7.5L14.25 2.25z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 2.25V7.5h5.25" />
-    </svg>
+    <i className="ri-file-line text-[16px] leading-none" />
   );
 }
 
 function BinaryIcon() {
   return (
-    <svg className="w-8 h-8 text-[var(--text-muted)] mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-    </svg>
+    <i className="ri-file-text-line text-[20px] leading-none text-[var(--text-muted)] mx-auto" />
   );
 }
 
 function SymbolIcon() {
   return (
-    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h6" />
-    </svg>
+    <i className="ri-menu-line text-[12px] leading-none" />
   );
 }
 

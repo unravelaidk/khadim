@@ -175,9 +175,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
             className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <i className="ri-close-line text-[16px] leading-none" />
           </button>
         </div>
 
@@ -366,9 +364,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
           {/* Info note */}
           <div className="flex items-start gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--glass-bg)] rounded-2xl px-3 py-2.5 border border-[var(--glass-border)]">
-            <svg className="w-3.5 h-3.5 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <i className="ri-stop-circle-line text-[14px] leading-none mt-0.5" />
             <span>
               Each agent gets its own worktree. Existing branches can be reused, and the worktree directory will be unique under <span className="font-mono text-[10px]">.khadim-worktrees/</span>
             </span>

@@ -33,19 +33,7 @@ function SkillCard({
               : "bg-[var(--glass-bg-strong)]"
           }`}
         >
-          <svg
-            className={`w-4 h-4 ${skill.enabled ? "text-[var(--color-accent)]" : "text-[var(--text-muted)]"}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.8}
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-            />
-          </svg>
+          <i className="ri-book-open-line text-[16px] leading-none" />
         </span>
 
         {/* Info */}
@@ -134,9 +122,7 @@ function DirectoryManager({
           disabled={adding}
           className="h-6 px-2.5 rounded-lg btn-glass text-[10px] font-semibold flex items-center gap-1.5 disabled:opacity-40"
         >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
+          <i className="ri-add-line text-[12px] leading-none" />
           Add
         </button>
       </div>
@@ -147,9 +133,7 @@ function DirectoryManager({
             key={dir}
             className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2.5 py-1.5 group"
           >
-            <svg className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-            </svg>
+            <i className="ri-archive-line text-[14px] leading-none text-[var(--text-muted)]" />
             <span className="flex-1 text-[10px] font-mono text-[var(--text-secondary)] truncate select-all" title={dir}>
               {dir}
             </span>
@@ -159,9 +143,7 @@ function DirectoryManager({
                 className="opacity-0 group-hover:opacity-100 h-5 w-5 flex items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-all"
                 title="Remove directory"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <i className="ri-close-line text-[12px] leading-none" />
               </button>
             )}
           </div>
@@ -249,15 +231,7 @@ export function SkillsTab() {
             className="shrink-0 h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50 ml-3"
             title="Refresh"
           >
-            <svg
-              className={`w-3.5 h-3.5 ${loading ? "dot-spinner" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <i className="ri-loader-4-line text-[14px] leading-none" />
           </button>
         </div>
 
@@ -287,13 +261,7 @@ export function SkillsTab() {
         <div className="rounded-2xl glass-card-static p-8 text-center">
           <div className="flex justify-center mb-3">
             <div className="h-12 w-12 rounded-2xl bg-[var(--glass-bg-strong)] flex items-center justify-center">
-              <svg className="w-6 h-6 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-                />
-              </svg>
+              <i className="ri-book-open-line text-[20px] leading-none text-[var(--text-muted)]" />
             </div>
           </div>
           <p className="text-[12px] font-semibold text-[var(--text-primary)] mb-1">No skills found</p>

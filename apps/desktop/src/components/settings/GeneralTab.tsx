@@ -93,9 +93,7 @@ export function GeneralTab({
                     : "bg-[var(--glass-bg)] text-[var(--text-primary)] border-[var(--glass-border)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
                 }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
+                <i className="ri-moon-line text-[16px] leading-none" />
                 Dark
               </button>
               <button
@@ -109,9 +107,7 @@ export function GeneralTab({
                     : "bg-[var(--glass-bg)] text-[var(--text-primary)] border-[var(--glass-border)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
                 }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
+                <i className="ri-sun-line text-[16px] leading-none" />
                 Light
               </button>
             </div>
@@ -145,16 +141,12 @@ export function GeneralTab({
           <div className="min-w-0 flex-1">
             {chatDirectory ? (
               <div className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2">
-                <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
+                <i className="ri-folder-3-line text-[14px] leading-none text-[var(--color-accent)]" />
                 <span className="text-[11px] font-mono text-[var(--text-primary)] truncate">{chatDirectory}</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--glass-border)] px-3 py-2">
-                <svg className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
+                <i className="ri-folder-3-line text-[14px] leading-none text-[var(--text-muted)]" />
                 <span className="text-[11px] text-[var(--text-muted)] italic">Not set — using temporary directory</span>
               </div>
             )}
@@ -166,9 +158,7 @@ export function GeneralTab({
               disabled={picking}
               className="h-8 px-3.5 rounded-xl btn-glass text-[11px] font-semibold flex items-center gap-2"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
+              <i className="ri-folder-3-line text-[14px] leading-none" />
               {picking ? "Picking..." : chatDirectory ? "Change" : "Choose folder"}
             </button>
             {chatDirectory && (
@@ -177,9 +167,7 @@ export function GeneralTab({
                 className="h-8 w-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg-strong)] transition-colors"
                 title="Clear chat directory"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <i className="ri-close-line text-[14px] leading-none" />
               </button>
             )}
           </div>
@@ -414,9 +402,7 @@ function ThemeFamilyCard({
         </div>
         {isSelected && (
           <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: previewAccent }}>
-            <svg className="w-2.5 h-2.5" fill="none" stroke={isDark ? "#000" : "#fff"} strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+            <i className="ri-check-line text-[12px] leading-none" />
           </div>
         )}
         {!family.hasLightVariant && (

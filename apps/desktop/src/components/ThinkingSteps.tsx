@@ -52,68 +52,43 @@ function resolveFilePath(filePath: string | undefined, basePath: string | undefi
 function ToolGlyph({ tool, running, complete, errored }: { tool?: string; running: boolean; complete: boolean; errored: boolean }) {
   if (running) {
     return (
-      <svg className="h-3.5 w-3.5 dot-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v4m0 10v4m9-9h-4M7 12H3m15.364 6.364-2.828-2.828M8.464 8.464 5.636 5.636m12.728 0-2.828 2.828M8.464 15.536l-2.828 2.828" />
-      </svg>
+      <i className="ri-loader-4-line text-[14px] leading-none dot-spinner" />
     );
   }
 
   if (errored) {
     return (
-      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-      </svg>
+      <i className="ri-error-warning-line text-[14px] leading-none" />
     );
   }
 
   if (complete) {
     return (
-      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m5 12 5 5L20 7" />
-      </svg>
+      <i className="ri-check-line text-[14px] leading-none" />
     );
   }
 
   switch (tool) {
     case "read":
       return (
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
+        <i className="ri-eye-line text-[14px] leading-none" />
       );
     case "write":
       return (
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
-        </svg>
+        <i className="ri-code-line text-[14px] leading-none" />
       );
     case "bash":
     case "exec":
       return (
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m4 17 6-6-6-6" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19h8" />
-        </svg>
+        <i className="ri-arrow-left-s-line text-[14px] leading-none" />
       );
     case "task":
       return (
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6h11" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h11" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18h11" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="m3 6 1.5 1.5L6.5 5" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="m3 12 1.5 1.5L6.5 11" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="m3 18 1.5 1.5L6.5 17" />
-        </svg>
+        <i className="ri-menu-line text-[14px] leading-none" />
       );
     default:
       return (
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v20M2 12h20" />
-        </svg>
+        <i className="ri-add-circle-line text-[14px] leading-none" />
       );
   }
 }
@@ -200,10 +175,7 @@ function FileContentBlock({
       {/* File header */}
       <div className="flex items-center justify-between gap-2 rounded-t-lg bg-[var(--surface-ink-4)] px-3 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
-          </svg>
+          <i className="ri-file-line text-[14px] leading-none text-[var(--text-muted)]" />
           {displayPath && (
             <span className="truncate font-mono text-[11px] text-[var(--text-secondary)]" title={displayPath}>
               {displayPath}
@@ -226,13 +198,9 @@ function FileContentBlock({
           title={copied ? "Copied!" : "Copy file content"}
         >
           {copied ? (
-            <svg className="w-3.5 h-3.5 text-[var(--color-success)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+            <i className="ri-check-line text-[14px] leading-none text-[var(--color-success)]" />
           ) : (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
+            <i className="ri-file-copy-line text-[14px] leading-none" />
           )}
         </button>
       </div>
@@ -346,19 +314,13 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
                   title={`Open ${step.filename ?? "file"} in editor`}
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] active:scale-95"
                 >
-                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 3h6v6" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 14 21 3" />
-                  </svg>
+                  <i className="ri-file-edit-line text-[12px] leading-none" />
                   Open
                 </button>
               )}
                {canToggle && !running && (
                  <span className="ml-auto text-[var(--text-muted)]">
-                   <svg className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : "rotate-0"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                     <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-                  </svg>
+                   <i className="ri-arrow-down-s-line text-[14px] leading-none" />
                 </span>
               )}
             </div>
@@ -464,12 +426,7 @@ function ThinkingStepsComponent({ steps, basePath, isStreaming = false }: Thinki
           {!hasRunning && `${completedCount}/${steps.length}`}
         </span>
         {!hasRunning && (
-          <svg
-            className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform duration-200 ${showExpanded ? "rotate-0" : "-rotate-90"}`}
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-          </svg>
+          <i className="ri-arrow-down-s-line text-[14px] leading-none" />
         )}
       </button>
 

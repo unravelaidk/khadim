@@ -132,9 +132,7 @@ export function GitHubIssueList({ slug, onSelectIssue, onCreateIssue }: GitHubIs
                 </span>
                 {issue.comments > 0 && (
                   <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-muted)]">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                    </svg>
+                    <i className="ri-chat-1-line text-[12px] leading-none" />
                     {issue.comments}
                   </span>
                 )}
@@ -171,16 +169,10 @@ export function GitHubIssueList({ slug, onSelectIssue, onCreateIssue }: GitHubIs
 function IssueStateIcon({ state }: { state: string }) {
   if (state === "open") {
     return (
-      <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-success-text)]" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
-        <path fillRule="evenodd" d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0z" />
-      </svg>
+      <i className="ri-checkbox-blank-circle-line text-[16px] leading-none mt-0.5 text-[var(--color-success-text)]" />
     );
   }
   return (
-    <svg className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-accent)]" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M11.28 6.78a.75.75 0 00-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l3.5-3.5z" />
-      <path fillRule="evenodd" d="M16 8A8 8 0 110 8a8 8 0 0116 0zm-1.5 0a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
-    </svg>
+    <i className="ri-check-double-line text-[16px] leading-none mt-0.5 text-[var(--color-accent)]" />
   );
 }

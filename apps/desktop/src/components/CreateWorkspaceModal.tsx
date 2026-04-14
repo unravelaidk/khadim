@@ -130,9 +130,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
             className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <i className="ri-close-line text-[16px] leading-none" />
           </button>
         </div>
 
@@ -173,9 +171,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
                 className="shrink-0 h-[42px] w-[42px] flex items-center justify-center rounded-2xl btn-glass"
                 title="Browse..."
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
+                <i className="ri-folder-3-line text-[16px] leading-none" />
               </button>
             </div>
           </label>

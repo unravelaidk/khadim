@@ -33,9 +33,7 @@ function BrandHeader({
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
           {__APP_VERSION__}
-          <svg className="h-2.5 w-2.5 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
+          <i className="ri-arrow-down-s-line text-[10px] leading-none text-[var(--text-muted)]" />
         </span>
       </div>
       {mode === "chat" && (
@@ -45,9 +43,7 @@ function BrandHeader({
           title="New chat"
           aria-label="New chat"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-          </svg>
+          <i className="ri-edit-line text-[16px] leading-none" />
         </button>
       )}
     </div>
@@ -67,12 +63,12 @@ function ModeSwitcher({
     {
       id: "chat",
       label: "Chat",
-      icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z",
+      icon: "ri-chat-1-line",
     },
     {
       id: "work",
       label: "Work",
-      icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+      icon: "ri-apps-2-line",
     },
   ];
 
@@ -91,15 +87,7 @@ function ModeSwitcher({
                   : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               }`}
             >
-              <svg
-                className="h-3.5 w-3.5 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
-              </svg>
+              <i className={`${icon} text-[14px] leading-none shrink-0`} />
               <span>{label}</span>
             </button>
           );
@@ -205,9 +193,7 @@ export function Sidebar({
       <div className="mt-auto shrink-0 px-3 pt-2">
         <div className="flex items-start gap-3 rounded-[14px] bg-[var(--glass-bg)] px-3 py-2.5">
           <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-subtle)] text-[var(--color-accent)]">
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+            <i className="ri-flashlight-line text-[14px] leading-none" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold leading-tight text-[var(--text-primary)]">Proactive mode</p>
@@ -239,14 +225,9 @@ export function Sidebar({
           title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
         >
           {themeMode === "dark" ? (
-            <svg className="h-[14px] w-[14px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="4" />
-              <path strokeLinecap="round" d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" />
-            </svg>
+            <i className="ri-sun-line text-[14px] leading-none" />
           ) : (
-            <svg className="h-[15px] w-[15px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
+            <i className="ri-moon-line text-[15px] leading-none" />
           )}
         </button>
         <button
@@ -259,11 +240,7 @@ export function Sidebar({
           title="Settings"
           aria-label="Settings"
         >
-          <svg className="h-[14px] w-[14px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <circle cx="12" cy="5" r="1.2" />
-            <circle cx="12" cy="12" r="1.2" />
-            <circle cx="12" cy="19" r="1.2" />
-          </svg>
+          <i className="ri-more-2-line text-[14px] leading-none" />
         </button>
       </div>
     </aside>
@@ -277,30 +254,23 @@ export function Sidebar({
 
 /* ─── Plugin Tab Strip ─────────────────────────────────────────────── */
 
-/** Icon map: icon name from plugin.toml → inline SVG path */
+/** Icon map: icon name from plugin.toml → remixicon class */
 function PluginTabIcon({ icon }: { icon: string | null }) {
-  const paths: Record<string, string> = {
-    calendar: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
-    notes: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
-    tasks: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
-    search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
-    settings: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
-    bookmark: "M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z",
-    chart: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-    clock: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
-    timer: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
-    grid: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
-    puzzle: "M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z",
+  const iconMap: Record<string, string> = {
+    calendar: "ri-calendar-line",
+    notes: "ri-file-text-line",
+    tasks: "ri-task-line",
+    search: "ri-search-line",
+    settings: "ri-settings-3-line",
+    bookmark: "ri-bookmark-line",
+    chart: "ri-bar-chart-line",
+    clock: "ri-time-line",
+    timer: "ri-timer-line",
+    grid: "ri-grid-line",
+    puzzle: "ri-puzzle-line",
   };
-  const d = icon && paths[icon]
-    ? paths[icon]
-    : "M4 6h16M4 10h16M4 14h16M4 18h16"; // fallback: lines icon
-
-  return (
-    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
-    </svg>
-  );
+  const cls = icon && iconMap[icon] ? iconMap[icon] : "ri-menu-line";
+  return <i className={`${cls} text-[16px] leading-none shrink-0`} />;
 }
 
 interface ChatSidebarProps {
@@ -316,10 +286,10 @@ interface ChatSidebarProps {
 /* ─── Nav icons for built-in chat views ────────────────────────────── */
 
 const CHAT_NAV_ICONS: Record<string, string> = {
-  home:   "M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10",
-  chats:  "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z",
-  memory: "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25",
-  agents: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+  home:   "ri-home-4-line",
+  chats:  "ri-chat-1-line",
+  memory: "ri-book-open-line",
+  agents: "ri-settings-3-line",
 };
 
 const BUILTIN_CHAT_VIEWS: { view: string; label: string }[] = [
@@ -352,15 +322,9 @@ function ChatNavItem({
       }`}
     >
       {typeof icon === "string" ? (
-        <svg
-          className={`h-[17px] w-[17px] shrink-0 ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.7}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
-        </svg>
+        <i
+          className={`${icon} text-[17px] leading-none shrink-0 ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}
+        />
       ) : (
         <span className={`flex h-[17px] w-[17px] shrink-0 items-center justify-center ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
           {icon}
@@ -445,9 +409,7 @@ function ChatSidebar({
                 className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--color-accent)]"
                 title="New chat"
               >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
+                <i className="ri-add-line text-[14px] leading-none" />
               </button>
             </div>
 
@@ -521,9 +483,7 @@ const ChatSidebarItem = memo(function ChatSidebarItem({
         className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] opacity-0 transition-all duration-[var(--duration-fast)] hover:bg-[var(--color-danger-muted)] hover:text-[var(--color-danger-text)] focus:opacity-100 group-hover:opacity-100"
         title="Delete chat"
       >
-        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
+        <i className="ri-delete-bin-line text-[14px] leading-none" />
       </button>
     </div>
   );
@@ -577,9 +537,7 @@ function WorkHomeSidebar({
           className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--color-accent)]"
           title="New workspace"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
+          <i className="ri-add-line text-[16px] leading-none" />
         </button>
       </div>
 
@@ -606,9 +564,7 @@ function WorkHomeSidebar({
                 onClick={onNewWorkspace}
                 className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-accent px-5 font-sans text-[13px] font-medium tracking-wide"
               >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
+                <i className="ri-add-line text-[14px] leading-none" />
                 New workspace
               </button>
             </div>
@@ -703,9 +659,7 @@ const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
             className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--color-accent-subtle)] hover:text-[var(--color-accent)]"
             title="New agent in workspace"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
+            <i className="ri-add-line text-[14px] leading-none" />
           </button>
         </div>
       </div>
@@ -790,9 +744,7 @@ function WorkspaceSidebar({
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
             title="Back to workspaces"
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
+            <i className="ri-arrow-left-s-line text-[16px] leading-none" />
           </button>
           <span className="font-mono text-[12px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Workspace</span>
         </div>
@@ -812,10 +764,7 @@ function WorkspaceSidebar({
                 className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
                 title="Workspace settings"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
+                <i className="ri-settings-3-line text-[16px] leading-none" />
               </button>
             </div>
 
@@ -854,9 +803,7 @@ function WorkspaceSidebar({
             className="inline-flex h-9 items-center gap-1.5 rounded-full btn-accent px-4 text-[12px] font-semibold"
             title="New agent"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
+            <i className="ri-add-line text-[14px] leading-none" />
             Agent
           </button>
         </div>
@@ -892,9 +839,7 @@ function WorkspaceSidebar({
                   onClick={onNewAgent}
                   className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-accent px-5 text-[13px] font-medium"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
+                  <i className="ri-add-line text-[14px] leading-none" />
                   Create agent
                 </button>
               </div>

@@ -180,9 +180,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete,
                   Branch
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <svg className="w-3 h-3 shrink-0 text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0a3 3 0 103 3H6m0-3h12a3 3 0 003-3V6a3 3 0 00-3-3H9a3 3 0 00-3 3v6z" />
-                  </svg>
+                  <i className="ri-git-branch-line text-[12px] leading-none text-[var(--text-muted)]" />
                   <span className="text-[11px] font-mono font-medium text-[var(--text-primary)] truncate">
                     {agent.branch}
                   </span>

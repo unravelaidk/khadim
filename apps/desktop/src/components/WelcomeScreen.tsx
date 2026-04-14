@@ -121,9 +121,7 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
                 aria-label="Send prompt"
                 className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full btn-accent disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
               >
-                <svg className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
+                <i className="ri-arrow-right-line text-[20px] leading-none" />
               </button>
             </div>
           </div>
@@ -163,15 +161,7 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
                     {ex.desc}
                   </span>
                 </span>
-                <svg
-                  className="mt-2 h-4 w-4 shrink-0 text-[var(--text-muted)] transition-all duration-[var(--duration-base)] group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M17 7H7M17 7v10" />
-                </svg>
+                <i className="ri-arrow-right-up-line text-[16px] leading-none mt-2 text-[var(--text-muted)] transition-all duration-[var(--duration-base)] group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]" />
               </button>
             </li>
           ))}

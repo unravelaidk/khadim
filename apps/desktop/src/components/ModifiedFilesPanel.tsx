@@ -45,16 +45,11 @@ function dirname(p: string): string {
 function FileIcon({ status }: { status: string }) {
   if (status === "D") {
     return (
-      <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M8 6V4h8v2m-9 0v14h10V6H7Z" />
-      </svg>
+      <i className="ri-delete-bin-line text-[14px] leading-none" />
     );
   }
   return (
-    <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
-    </svg>
+    <i className="ri-file-line text-[14px] leading-none" />
   );
 }
 
@@ -144,16 +139,9 @@ function ModifiedFilesPanelInner({ repoPath, isStreaming, onOpenFile }: Props) {
           {files.length}
         </span>
         {loading && (
-          <svg className="h-3 w-3 animate-spin text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v4m0 10v4m9-9h-4M7 12H3m15.364 6.364-2.828-2.828M8.464 8.464 5.636 5.636m12.728 0-2.828 2.828M8.464 15.536l-2.828 2.828" />
-          </svg>
+          <i className="ri-loader-4-line text-[12px] leading-none animate-spin text-[var(--text-muted)]" />
         )}
-        <svg
-          className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform duration-200 ${collapsed ? "-rotate-90" : "rotate-0"}`}
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-        </svg>
+        <i className="ri-arrow-down-s-line text-[14px] leading-none" />
       </button>
 
       {!collapsed && (

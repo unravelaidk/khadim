@@ -112,9 +112,7 @@ function QuestionCard({
               {/* Checkmark */}
               {selected && (
                 <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-ink)]">
-                  <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m5 12 5 5L20 7" />
-                  </svg>
+                  <i className="ri-check-line text-[12px] leading-none" />
                 </span>
               )}
             </button>
@@ -200,9 +198,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15 text-[var(--color-accent)]">
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
+              <i className="ri-stop-circle-line text-[16px] leading-none" />
             </span>
             <div>
               <h2 className="font-display text-base font-medium text-[var(--text-primary)]">
@@ -218,9 +214,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
             className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Dismiss"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <i className="ri-close-line text-[16px] leading-none" />
           </button>
         </div>
 

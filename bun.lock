@@ -7,7 +7,7 @@
     },
     "apps/desktop": {
       "name": "@khadim/desktop",
-      "version": "0.1.0",
+      "version": "0.5.3",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.2.92",
         "@tanstack/react-query": "^5.96.2",
@@ -22,6 +22,7 @@
         "react-markdown": "^10.1.0",
         "react-syntax-highlighter": "^16.1.0",
         "remark-gfm": "^4.0.1",
+        "remixicon": "^4.9.1",
       },
       "devDependencies": {
         "@tailwindcss/vite": "^4.1.18",
@@ -77,9 +78,6 @@
     },
     "apps/firecracker-sandbox": {
       "name": "@khadim/firecracker-sandbox",
-      "dependencies": {
-        "dotenv": "^17.2.3",
-      },
     },
     "apps/web": {
       "name": "@khadim/web",
@@ -2313,6 +2311,8 @@
     "remark-smartypants": ["remark-smartypants@3.0.2", "", { "dependencies": { "retext": "^9.0.0", "retext-smartypants": "^6.0.0", "unified": "^11.0.4", "unist-util-visit": "^5.0.0" } }, "sha512-ILTWeOriIluwEvPjv67v7Blgrcx+LZOkAUVtKI3putuhlZm84FnqDORNXPPm+HY3NdZOMhyDwZ1E+eZB/Df5dA=="],
 
     "remark-stringify": ["remark-stringify@11.0.0", "", { "dependencies": { "@types/mdast": "^4.0.0", "mdast-util-to-markdown": "^2.0.0", "unified": "^11.0.0" } }, "sha512-1OSmLd3awB/t8qdoEOMazZkNsfVTeY4fTsgzcQFdXNq8ToTN4ZGwrMnlda4K6smTFKD+GRV6O48i6Z4iKgPPpw=="],
+
+    "remixicon": ["remixicon@4.9.1", "", {}, "sha512-36gLSoujkabnCFZFDyP17VNh9piuBA/rsXUb4auSJWLGsHVXtmxLj/EM5FjaEAGnk8oIAj1Azob/DZ2N+90lAQ=="],
 
     "require-from-string": ["require-from-string@2.0.2", "", {}, "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw=="],
 

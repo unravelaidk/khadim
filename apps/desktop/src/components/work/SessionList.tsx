@@ -164,9 +164,7 @@ export function SessionDetail({
           onClick={onBack}
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
+          <i className="ri-arrow-left-s-line text-[16px] leading-none" />
         </button>
 
         <div className="min-w-0 flex-1">
@@ -303,9 +301,7 @@ export function SessionDetail({
               disabled={!input.trim()}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors enabled:hover:bg-[var(--glass-bg)] enabled:hover:text-[var(--text-primary)] disabled:opacity-30"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-7-7l7 7-7 7" />
-              </svg>
+              <i className="ri-arrow-right-line text-[16px] leading-none" />
             </button>
           </div>
         </div>
