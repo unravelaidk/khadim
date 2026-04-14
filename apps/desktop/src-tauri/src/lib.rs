@@ -158,6 +158,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(app_state.clone())
         .register_uri_scheme_protocol("khadim-plugin", register_plugin_uri_scheme(app_state.clone()))
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_shadow(true);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::runtime::desktop_runtime_summary,
             commands::workspace::list_workspaces,
