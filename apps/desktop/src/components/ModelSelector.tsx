@@ -192,7 +192,7 @@ export function ModelSelector({
           {selectedModel?.model_name ?? "Select model"}
         </span>
         {/* Chevron */}
-        <i className="ri-arrow-down-s-line text-[12px] leading-none" />
+        <i className={`${isOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[12px] leading-none transition-transform`} />
       </button>
 
       {/* ── Dropdown ───────────────────────────────────────────── */}

@@ -211,7 +211,7 @@ function PluginCard({
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
           <StatusBadge enabled={plugin.enabled} error={plugin.error} />
-          <i className="ri-arrow-down-s-line text-[12px] leading-none" />
+          <i className={`${expanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[12px] leading-none`} />
         </div>
       </div>
 

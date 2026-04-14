@@ -320,7 +320,7 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
               )}
                {canToggle && !running && (
                  <span className="ml-auto text-[var(--text-muted)]">
-                   <i className="ri-arrow-down-s-line text-[14px] leading-none" />
+                   <i className={`${isExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[14px] leading-none`} />
                 </span>
               )}
             </div>
@@ -426,7 +426,7 @@ function ThinkingStepsComponent({ steps, basePath, isStreaming = false }: Thinki
           {!hasRunning && `${completedCount}/${steps.length}`}
         </span>
         {!hasRunning && (
-          <i className="ri-arrow-down-s-line text-[14px] leading-none" />
+          <i className={`${isExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[14px] leading-none`} />
         )}
       </button>
 

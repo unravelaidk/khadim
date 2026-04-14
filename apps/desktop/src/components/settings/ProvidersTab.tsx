@@ -371,7 +371,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
             </span>
           )}
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${effectiveMeta.bgColor} ${effectiveMeta.color}`}>{effectiveMeta.label}</span>
-          <i className="ri-arrow-down-s-line text-[12px] leading-none" />
+          <i className={`${expanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[12px] leading-none`} />
         </div>
       </div>
 

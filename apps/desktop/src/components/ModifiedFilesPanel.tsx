@@ -141,7 +141,7 @@ function ModifiedFilesPanelInner({ repoPath, isStreaming, onOpenFile }: Props) {
         {loading && (
           <i className="ri-loader-4-line text-[12px] leading-none animate-spin text-[var(--text-muted)]" />
         )}
-        <i className="ri-arrow-down-s-line text-[14px] leading-none" />
+        <i className={`${collapsed ? "ri-arrow-down-s-line" : "ri-arrow-up-s-line"} text-[14px] leading-none`} />
       </button>
 
       {!collapsed && (

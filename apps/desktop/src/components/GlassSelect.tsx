@@ -133,7 +133,7 @@ export function GlassSelect({
         <span className={`min-w-0 truncate ${selectedOption ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
           {selectedOption?.label ?? placeholder}
         </span>
-        <i className="ri-arrow-down-s-line text-[14px] leading-none" />
+        <i className={`${isOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[14px] leading-none transition-transform`} />
       </button>
 
       {/* Dropdown */}
