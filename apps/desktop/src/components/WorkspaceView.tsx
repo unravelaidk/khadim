@@ -49,7 +49,7 @@ type WorkspaceTab = "agents" | "repository" | "config" | "github" | "logs";
 
 /* ─── Main Component ───────────────────────────────────────────────── */
 
-export function WorkspaceView({
+export const WorkspaceView = memo(function WorkspaceView({
   workspace,
   conversations,
   connection,
@@ -378,7 +378,7 @@ export function WorkspaceView({
       </div>
     </div>
   );
-}
+});
 
 /* ─── Agent Tile — card layout instead of flat row ─────────────────── */
 

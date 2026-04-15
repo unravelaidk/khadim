@@ -17,7 +17,7 @@ interface Props {
 
 /* ─── Component ────────────────────────────────────────────────────── */
 
-export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDelete }: Props) {
+export const WorkspaceList = memo(function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDelete }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const agentsByWorkspace = useMemo(() => {
@@ -131,7 +131,7 @@ export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDel
       </div>
     </div>
   );
-}
+});
 
 /* ─── Workspace Card ───────────────────────────────────────────────── */
 

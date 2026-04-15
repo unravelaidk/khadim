@@ -54,16 +54,24 @@ function QuestionCard({
   }, [showCustom, item.multiple, item.options, value, onChange]);
 
   // Sync custom text into the value array
+  // Use refs to avoid infinite re-trigger: onChange updates value which would
+  // re-fire this effect. Instead we read current values from refs.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const optionsRef = useRef(item.options);
+  optionsRef.current = item.options;
+
   useEffect(() => {
     if (!showCustom) return;
-    const existing = value.filter((v) => item.options.some((o) => o.label === v));
+    const existing = valueRef.current.filter((v) => optionsRef.current.some((o) => o.label === v));
     if (customText.trim()) {
-      onChange([...existing, customText.trim()]);
+      onChangeRef.current([...existing, customText.trim()]);
     } else {
-      onChange(existing);
+      onChangeRef.current(existing);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customText]);
+  }, [customText, showCustom]);
 
   return (
     <div className="space-y-3">

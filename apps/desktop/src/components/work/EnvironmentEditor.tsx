@@ -214,7 +214,7 @@ export function EnvironmentEditor({
             ) : (
               <div className="mt-2 flex flex-col gap-2">
                 {vars.map(([key, value], i) => (
-                  <div key={i} className="flex items-center gap-2">
+                  <div key={`env-${key}-${i}`} className="flex items-center gap-2">
                     <input
                       value={key}
                       onChange={(e) => updateVar(i, 0, e.target.value)}

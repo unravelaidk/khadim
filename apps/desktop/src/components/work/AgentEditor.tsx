@@ -623,7 +623,7 @@ export function AgentEditor({
             ) : (
               <div className="mt-2 flex flex-col gap-2">
                 {variables.map(([key, value], i) => (
-                  <div key={i} className="flex items-center gap-2">
+                  <div key={`var-${key}-${i}`} className="flex items-center gap-2">
                     <input
                       value={key}
                       onChange={(e) => updateVariable(i, 0, e.target.value)}

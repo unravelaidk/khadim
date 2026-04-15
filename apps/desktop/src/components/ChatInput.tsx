@@ -1,6 +1,6 @@
 import type { OpenCodeModelOption, SkillEntry } from "../lib/bindings";
 import { commands } from "../lib/bindings";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ModelSelector } from "./ModelSelector";
 
 /* ─── Attachment type ──────────────────────────────────────────────── */
@@ -86,7 +86,7 @@ function Popover({
   );
 }
 
-export function ChatInput({
+export const ChatInput = memo(function ChatInput({
   value,
   onChange,
   onSend,
@@ -496,9 +496,9 @@ export function ChatInput({
       </div>
     </div>
   );
-}
+});
 
-/* ─── Popover menu item ────────────────────────────────────────────── */
+/* ─── Popover menu item ─────────────────────────────────────────────────── */
 function PopoverItem({
   icon,
   label,

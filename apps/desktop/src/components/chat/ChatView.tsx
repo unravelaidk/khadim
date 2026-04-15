@@ -1,4 +1,4 @@
-import { useMemo, type RefObject } from "react";
+import { useMemo, memo, type RefObject } from "react";
 import type {
   ChatMessage as StoredMessage,
   OpenCodeModelOption,
@@ -27,6 +27,8 @@ function localToStored(conv: LocalChatConversation): Array<StoredMessage & { thi
     thinkingSteps: m.thinkingSteps,
   }));
 }
+
+const FLEX_FILL_STYLE = { flex: "1 1 0%", minHeight: 0 } as const;
 
 // ────────────────────────────────────────────────────────────────────
 
@@ -84,7 +86,7 @@ interface ChatViewProps {
   onAttachmentsChange?: (files: ChatAttachment[]) => void;
 }
 
-export function ChatView({
+export const ChatView = memo(function ChatView({
   messages: externalMessages,
   localConversation,
   conversationId,
@@ -152,7 +154,7 @@ export function ChatView({
         : "Start a new conversation"));
 
   return (
-    <div className="relative flex flex-col overflow-hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+    <div className="relative flex flex-col overflow-hidden" style={FLEX_FILL_STYLE}>
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="shrink-0 px-6 py-4 border-b border-[var(--glass-border)] flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -269,4 +271,4 @@ export function ChatView({
       </div>
     </div>
   );
-}
+});

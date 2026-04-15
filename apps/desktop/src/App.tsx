@@ -71,6 +71,11 @@ initWebviewZoom();
 
 const STANDALONE_KHADIM_WORKSPACE_ID = "__chat__";
 
+/** Stable style objects to avoid creating new references on each render. */
+const FLEX_FILL_STYLE = { flex: "1 1 0%", minWidth: 0, minHeight: 0 } as const;
+const MIN_HEIGHT_ZERO_STYLE = { minHeight: 0 } as const;
+const GIT_CHANGES_STYLE = { width: 280 } as const;
+
 /* ─── App ──────────────────────────────────────────────────────────── */
 
 export default function App() {
@@ -180,8 +185,18 @@ export default function App() {
   // ── RPA platform data (for sidebar badges) ──────────────────────
   const rpaManagedAgentsQ = useManagedAgentsQuery(interactionMode === "work");
   const rpaRunsQ = useAgentRunsQuery(interactionMode === "work");
-  const rpaActiveAgentCount = (rpaManagedAgentsQ.data ?? []).filter(a => a.status === "active").length;
-  const rpaLiveSessionCount = (rpaRunsQ.data ?? []).filter(s => s.status === "running" || s.status === "pending").length;
+  const rpaActiveAgentCount = useMemo(
+    () => (rpaManagedAgentsQ.data ?? []).filter(a => a.status === "active").length,
+    [rpaManagedAgentsQ.data],
+  );
+  const rpaLiveSessionCount = useMemo(
+    () => (rpaRunsQ.data ?? []).filter(s => s.status === "running" || s.status === "pending").length,
+    [rpaRunsQ.data],
+  );
+  const sidebarActiveAgentCount = useMemo(
+    () => interactionMode === "work" ? rpaActiveAgentCount : agents.filter(a => a.status === "running").length,
+    [interactionMode, rpaActiveAgentCount, agents],
+  );
 
   const { data: runtime = null } = useRuntimeSummaryQuery();
   const { data: githubAuthStatus = null } = useGitHubAuthStatusQuery();
@@ -444,7 +459,7 @@ export default function App() {
 
   // ── Data loaders ────────────────────────────────────────────────
 
-  async function loadWorkspaceState(workspace: Workspace) {
+  const loadWorkspaceState = useCallback(async (workspace: Workspace) => {
     setLoadingWorkspace(true);
     try {
       const nextConversations = await commands.listConversations(workspace.id);
@@ -527,18 +542,7 @@ export default function App() {
     } finally {
       setLoadingWorkspace(false);
     }
-  }
-
-  // ── Init ────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    void (async () => {
-      try {
-      } catch (error) {
-        setError(getErrorMessage(error));
-      }
-    })();
-  }, []);
+  }, [connection, handleStartOpenCode]);
 
   // Load agents for all workspaces on startup (only once)
   const hasLoadedStartupAgentsRef = useRef(false);
@@ -597,8 +601,7 @@ export default function App() {
     void loadWorkspaceState(selectedWorkspace).catch((error) => {
       setError(getErrorMessage(error));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorkspaceId, selectedWorkspace?.id]);
+  }, [selectedWorkspaceId, selectedWorkspace, loadWorkspaceState]);
 
   useEffect(() => {
     if (!selectedWorkspaceId) return;
@@ -704,9 +707,12 @@ export default function App() {
     };
   }, []);
 
-  const activeProcessOutput = connection
-    ? processOutput.filter((line) => line.process_id === connection.process_id)
-    : [];
+  const activeProcessOutput = useMemo(
+    () => connection
+      ? processOutput.filter((line) => line.process_id === connection.process_id)
+      : [],
+    [connection, processOutput],
+  );
 
   // ── Actions ─────────────────────────────────────────────────────
 
@@ -734,6 +740,17 @@ export default function App() {
   }, []);
 
   const handleCloseFinder = useCallback(() => setFinderOpen(false), []);
+
+  const handleToggleTerminal = useCallback(() => setTerminalOpen((o) => !o), []);
+  const handleOpenFinder = useCallback(() => setFinderOpen(true), []);
+  const handleToggleChanges = useCallback(() => setChangesOpen((o) => !o), []);
+  const handleDismissError = useCallback(() => setError(null), []);
+  const handleStartOpenCodeWrapped = useCallback(() => void handleStartOpenCode(), [handleStartOpenCode]);
+  const handleStopOpenCodeWrapped = useCallback(() => void handleStopOpenCode(), [handleStopOpenCode]);
+  const handleChatSendWrapped = useCallback(() => void handleChatSend(), [handleChatSend]);
+  const handleAbortWrapped = useCallback(() => void handleAbort(), [handleAbort]);
+  const handleNewConversationWrapped = useCallback(() => void handleNewConversation(), [handleNewConversation]);
+  const handleStandaloneChatAbortWrapped = useCallback(() => void handleStandaloneChatAbort(), [handleStandaloneChatAbort]);
 
   const handleOpenFileInEditor = useCallback((path: string) => {
     commands.openInEditor(path).catch((err) => {
@@ -767,7 +784,7 @@ export default function App() {
         // Work mode — platform nav
         workView={sidebarWorkView}
         onNavigateWork={handleNavigateWork}
-        activeAgentCount={interactionMode === "work" ? rpaActiveAgentCount : agents.filter(a => a.status === "running").length}
+        activeAgentCount={sidebarActiveAgentCount}
         liveSessionCount={rpaLiveSessionCount}
         themeMode={themeMode}
         onToggleTheme={handleToggleTheme}
@@ -775,7 +792,7 @@ export default function App() {
         showSettings={showSettings}
       />
 
-      <div className="relative z-10 flex flex-col overflow-hidden" style={{ flex: "1 1 0%", minWidth: 0, minHeight: 0 }}>
+      <div className="relative z-10 flex flex-col overflow-hidden" style={FLEX_FILL_STYLE}>
         {/* Error banner */}
         {error && (
           <div className="shrink-0 px-6 pt-4">
@@ -784,7 +801,7 @@ export default function App() {
                 <i className="ri-pause-line text-[16px] leading-none text-[var(--color-danger)]" />
                 <span className="text-[var(--color-danger-text)] truncate">{error}</span>
               </div>
-              <button className="shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-[var(--color-danger-text)] hover:bg-[var(--color-danger-muted)] transition-colors" onClick={() => setError(null)}>Dismiss</button>
+              <button className="shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-[var(--color-danger-text)] hover:bg-[var(--color-danger-muted)] transition-colors" onClick={handleDismissError}>Dismiss</button>
             </div>
           </div>
         )}
@@ -892,7 +909,7 @@ export default function App() {
               input={standaloneChatInput}
               onInputChange={setStandaloneChatInput}
               onSend={handleEnhancedStandaloneSend}
-              onStop={() => void handleStandaloneChatAbort()}
+              onStop={handleStandaloneChatAbortWrapped}
               onNewChat={handleNewStandaloneChat}
               isProcessing={activeStandaloneIsProcessing}
               streamingContent={activeStandaloneStreamingContent}
@@ -921,26 +938,26 @@ export default function App() {
 
         {/* ── WORK MODE — inside a workspace ────────────────────── */}
         {!showSettings && interactionMode === "work" && inWorkspace && selectedWorkspace && (
-          <div className="flex min-h-0 flex-1 flex-col" style={{ minHeight: 0 }}>
+          <div className="flex min-h-0 flex-1 flex-col" style={MIN_HEIGHT_ZERO_STYLE}>
             {/* Context rail — always visible */}
             <WorkspaceContextRail
               context={workspaceContext}
               agentLabel={focusedAgentId ? (focusedAgent?.label ?? null) : null}
               connected={Boolean(connection)}
               terminalOpen={terminalOpen}
-              onToggleTerminal={() => setTerminalOpen((o) => !o)}
-              onOpenFinder={() => setFinderOpen(true)}
+              onToggleTerminal={handleToggleTerminal}
+              onOpenFinder={handleOpenFinder}
               onOpenInEditor={handleOpenProjectInEditor}
               changesOpen={changesOpen}
-              onToggleChanges={() => setChangesOpen((o) => !o)}
+              onToggleChanges={handleToggleChanges}
               hasFocusedAgent={Boolean(focusedAgentId)}
             />
 
             {/* ── Cockpit: center + right dock ────────────────────── */}
-            <div className="flex min-h-0 flex-1" style={{ minHeight: 0 }}>
+            <div className="flex min-h-0 flex-1" style={MIN_HEIGHT_ZERO_STYLE}>
 
               {/* Center panel — workspace home or agent chat */}
-              <div className="flex min-h-0 flex-1 flex-col" style={{ minWidth: 0 }}>
+              <div className="flex min-h-0 flex-1 flex-col" style={MIN_HEIGHT_ZERO_STYLE}>
                 {!focusedAgentId ? (
                   <WorkspaceView
                     workspace={selectedWorkspace}
@@ -951,8 +968,8 @@ export default function App() {
                     gitDiffStat={gitDiffStat}
                     agents={agents}
                     onSelectConversation={handleSelectWorkspaceConversation}
-                    onStartOpenCode={() => void handleStartOpenCode()}
-                    onStopOpenCode={() => void handleStopOpenCode()}
+                    onStartOpenCode={handleStartOpenCodeWrapped}
+                    onStopOpenCode={handleStopOpenCodeWrapped}
                     onNewAgent={handleOpenNewAgent}
                     onFocusAgent={handleFocusAgent}
                     onManageAgent={handleManageAgent}
@@ -977,9 +994,9 @@ export default function App() {
                     onOpenFile={handleOpenFileInEditor}
                     input={agentChatInput}
                     onInputChange={setAgentChatInput}
-                    onSend={() => void handleChatSend()}
-                    onStop={() => void handleAbort()}
-                    onNewChat={() => void handleNewConversation()}
+                    onSend={handleChatSendWrapped}
+                    onStop={handleAbortWrapped}
+                    onNewChat={handleNewConversationWrapped}
                     isProcessing={focusedAgentIsProcessing}
                     streamingContent={focusedAgentStreamingContent}
                     streamingSteps={focusedAgentStreamingSteps}
@@ -1003,7 +1020,7 @@ export default function App() {
 
               {/* Right dock — git changes (visible when agent focused + panel open) */}
               {focusedAgentId && changesOpen && (
-                <div className="shrink-0 animate-in" style={{ width: 280 }}>
+                <div className="shrink-0 animate-in" style={GIT_CHANGES_STYLE}>
                   <GitChangesPanel
                     repoPath={selectedWorkspace ? (selectedWorkspace.worktree_path ?? selectedWorkspace.repo_path) : null}
                     isStreaming={focusedAgentIsProcessing}

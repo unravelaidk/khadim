@@ -146,7 +146,7 @@ interface SidebarProps {
   showSettings: boolean;
 }
 
-export function Sidebar({
+export const Sidebar = memo(function Sidebar({
   mode,
   onSwitchMode,
   chatConversations,
@@ -246,7 +246,7 @@ export function Sidebar({
       </div>
     </aside>
   );
-}
+});
 
 
 /* ═══════════════════════════════════════════════════════════════════════

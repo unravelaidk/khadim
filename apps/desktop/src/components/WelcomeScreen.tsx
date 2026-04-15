@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, memo } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
 import { AsciiBrand, AsciiDivider, AsciiPrompt, AsciiTyping } from "./shared/AsciiArt";
 
@@ -34,7 +34,7 @@ const examples = [
   },
 ];
 
-export function WelcomeScreen({ input, setInput, onSend, hideInput = false, compact = false }: WelcomeScreenProps) {
+export const WelcomeScreen = memo(function WelcomeScreen({ input, setInput, onSend, hideInput = false, compact = false }: WelcomeScreenProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const greeting = useMemo(() => {
@@ -173,4 +173,4 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
       </div>
     </div>
   );
-}
+});
