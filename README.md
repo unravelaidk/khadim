@@ -1,6 +1,12 @@
-# Khadim
+<p align="center">
+  <img src="assets/logo.svg" alt="Khadim Logo" width="128" height="128" />
+</p>
 
-**Open-source, local-first agentic automation platform.**
+<h1 align="center">Khadim</h1>
+
+<p align="center">
+  <strong>Open-source, local-first agentic automation platform.</strong>
+</p>
 
 Khadim uses AI coding agents to write and execute automation scripts on the fly. Instead of pre-built RPA blocks, agents can see what's happening, understand what broke, rewrite the script, and retry — all locally on your machine.
 
