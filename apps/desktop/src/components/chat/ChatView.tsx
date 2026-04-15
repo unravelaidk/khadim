@@ -168,7 +168,7 @@ export function ChatView({
 
         <div className="flex items-center gap-3">
           {modelLabel && (
-            <span className="inline-flex items-center gap-1.5 rounded-full glass-panel px-3 py-1 text-[12px] font-medium text-[var(--text-secondary)]">
+            <span className="inline-flex items-center gap-1.5 rounded-full depth-card-sm px-3 py-1 text-[12px] font-medium text-[var(--text-secondary)]">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
               {modelLabel}
             </span>

@@ -263,3 +263,43 @@ pub mod agent_run_turns {
     pub enum Relation {}
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod integration_connections {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "integration_connections")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub integration_id: String,
+        pub label: String,
+        pub account_label: Option<String>,
+        pub is_active: i32,
+        pub secret_json: Option<String>,
+        pub last_verified_at: Option<String>,
+        pub created_at: String,
+        pub updated_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod integration_logs {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "integration_logs")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub connection_id: String,
+        pub action_id: String,
+        pub success: i32,
+        pub error_message: Option<String>,
+        pub duration_ms: i64,
+        pub created_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}

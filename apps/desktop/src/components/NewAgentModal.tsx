@@ -155,7 +155,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[480px] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[480px] mx-4 depth-card rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="New agent"
@@ -192,7 +192,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               ref={labelInputRef}
               value={agentLabel}
               onChange={(e) => setAgentLabel(e.target.value)}
-              className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
+              className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none"
               placeholder="e.g. Fix auth flow"
             />
           </label>
@@ -232,7 +232,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
                     setIssueUrl(e.target.value);
                     setSelectedIssueNumber(null);
                   }}
-                  className="w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                  className="w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none font-mono"
                   placeholder="https://github.com/owner/repo/issues/123"
                 />
                 {!githubSlug && (
@@ -277,7 +277,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               <input
                 value={baseBranch}
                 onChange={(e) => setBaseBranch(e.target.value)}
-                className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none font-mono"
                 placeholder="main"
               />
             )}
@@ -329,7 +329,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               <input
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
-                className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none font-mono"
                 placeholder="feature/my-feature"
               />
               <p className="text-[10px] text-[var(--text-muted)] mt-1">
@@ -355,7 +355,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
                 <input
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none font-mono"
+                  className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none font-mono"
                   placeholder="main"
                 />
               )}

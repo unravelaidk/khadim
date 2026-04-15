@@ -411,7 +411,7 @@ function ThinkingStepsComponent({ steps, basePath, isStreaming = false }: Thinki
     : "bg-[var(--color-success)]";
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-card)]/50">
+    <div className="overflow-hidden depth-card-sm">
       {/* Header — always visible */}
       <button
         type="button"

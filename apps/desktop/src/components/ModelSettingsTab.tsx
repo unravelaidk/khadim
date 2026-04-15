@@ -23,7 +23,7 @@ type FormState = {
 };
 
 const inputClass =
-  "w-full rounded-xl glass-panel px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--glass-border-strong)] transition-all";
+  "w-full rounded-xl depth-card-sm px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--glass-border-strong)] transition-all";
 
 const EMPTY_FORM: FormState = {
   name: "",
@@ -84,7 +84,7 @@ function ProviderSelector({
   onSelect: (provider: string) => void;
 }) {
   return (
-    <div className="rounded-xl glass-panel p-1.5">
+    <div className="rounded-xl depth-card-sm p-1.5">
       <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4">
         {providers.map((provider) => {
           const isActive = selectedProvider === provider.type;
@@ -131,7 +131,7 @@ function ConfiguredModelCard({
   onDelete: (id: string) => void;
 }) {
   return (
-    <article className="rounded-xl glass-panel p-4 transition-all">
+    <article className="rounded-xl depth-card-sm p-4 transition-all">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -349,7 +349,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
       <div>
         <p className="text-[12px] text-[var(--text-secondary)] mb-4 leading-relaxed">Configure AI providers and models for your desktop agent.</p>
         {defaultModel && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl glass-panel px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl depth-card-sm px-3 py-2 text-xs">
             <span className="text-[var(--text-muted)]">Default model:</span>
             <span className="font-medium text-[var(--text-primary)]">{defaultModel.name}</span>
             <span className="text-[var(--text-muted)]">{defaultModel.provider} / {defaultModel.model}</span>
@@ -357,7 +357,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
         )}
       </div>
 
-      <section className="rounded-2xl glass-card-static p-5">
+      <section className="rounded-2xl depth-card-sm p-5">
         <div className="flex items-center justify-between">
           <div>
              <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
@@ -383,7 +383,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
           </div>
 
           {form.provider === "openai-codex" && (
-            <div className="rounded-xl glass-panel p-4">
+            <div className="rounded-xl depth-card-sm p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-[var(--text-primary)]">ChatGPT Plus or Pro</p>
@@ -462,7 +462,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
           )}
 
           {!providerHasCredentials && !DISCOVERY_WITHOUT_API_KEY.has(form.provider) && (
-            <div className="rounded-xl glass-panel px-3.5 py-3">
+            <div className="rounded-xl depth-card-sm px-3.5 py-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-[var(--text-secondary)]">
                   Add your {providerInfo?.name ?? form.provider} credentials in the Providers tab first.
@@ -554,7 +554,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
 
         <div className="mt-5 flex gap-3">
           {editingId && (
-            <button type="button" onClick={resetForm} className="rounded-xl glass-panel px-5 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:bg-[var(--glass-bg-strong)]">
+            <button type="button" onClick={resetForm} className="rounded-xl depth-card-sm px-5 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:bg-[var(--glass-bg-strong)]">
               Cancel
             </button>
           )}

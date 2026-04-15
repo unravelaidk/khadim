@@ -59,7 +59,7 @@ export function GitHubIssueCreate({ slug, onCreated, onCancel }: GitHubIssueCrea
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Issue title"
-            className="w-full h-8 rounded-xl glass-input px-3 text-[12px] font-sans"
+            className="w-full h-8 rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 text-[12px] font-sans"
             autoFocus
           />
         </div>
@@ -72,7 +72,7 @@ export function GitHubIssueCreate({ slug, onCreated, onCancel }: GitHubIssueCrea
             onChange={(e) => setBody(e.target.value)}
             placeholder="Describe the issue..."
             rows={8}
-            className="w-full rounded-xl glass-input px-3 py-2 text-[12px] resize-none font-sans"
+            className="w-full rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2 text-[12px] resize-none font-sans"
           />
         </div>
         <div className="flex items-center gap-2">

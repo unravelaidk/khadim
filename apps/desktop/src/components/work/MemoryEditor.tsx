@@ -49,7 +49,7 @@ export function MemoryStoreEditor({
           <button
             onClick={() => onSave({ name: name.trim(), description: description.trim() })}
             disabled={!canSave}
-            className="btn-accent inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
           >
             {store ? "Save" : "Create"}
           </button>
@@ -64,7 +64,7 @@ export function MemoryStoreEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Project Knowledge, Customer Preferences"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
               autoFocus
             />
           </div>
@@ -75,7 +75,7 @@ export function MemoryStoreEditor({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What kind of things should be remembered here? (optional)"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
@@ -115,7 +115,7 @@ export function MemoryEntryEditor({ onSave, onCancel }: MemoryEntryEditorProps) 
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Key (e.g. vendor_x_format)"
-            className="glass-input h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[11px]"
+            className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[11px]"
             autoFocus
           />
           <textarea
@@ -123,14 +123,14 @@ export function MemoryEntryEditor({ onSave, onCancel }: MemoryEntryEditorProps) 
             onChange={(e) => setContent(e.target.value)}
             placeholder="What should the agent remember?"
             rows={2}
-            className="glass-input mt-2 w-full resize-y rounded-[var(--radius-sm)] px-3 py-2 text-[12px] leading-relaxed"
+            className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-2 w-full resize-y rounded-[var(--radius-sm)] px-3 py-2 text-[12px] leading-relaxed"
           />
         </div>
         <div className="flex shrink-0 flex-col gap-1 pt-0.5">
           <button
             onClick={() => onSave({ key: key.trim(), content: content.trim() })}
             disabled={!canSave}
-            className="btn-accent inline-flex h-7 items-center rounded-full px-3 text-[10px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-7 items-center rounded-full px-3 text-[10px] font-semibold disabled:opacity-40"
           >
             Save
           </button>

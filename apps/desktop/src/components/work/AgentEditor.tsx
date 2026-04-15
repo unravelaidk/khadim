@@ -234,7 +234,7 @@ export function AgentEditor({
           <button
             onClick={() => onSave(buildData())}
             disabled={!canSave}
-            className="btn-accent inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
           >
             {agent ? "Save" : "Create"}
           </button>
@@ -255,7 +255,7 @@ export function AgentEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Invoice Processor"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
@@ -268,7 +268,7 @@ export function AgentEditor({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What does this agent do? (optional)"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
@@ -286,7 +286,7 @@ export function AgentEditor({
               onChange={(e) => setInstructions(e.target.value)}
               placeholder={"You are an invoice processing agent.\n\nWhen triggered:\n1. Check email for new invoices\n2. Download PDF attachments\n3. Extract amounts using OCR\n4. Append to the spreadsheet at {{output_path}}"}
               rows={8}
-              className="glass-input mt-2 w-full resize-y rounded-[var(--radius-sm)] px-3 py-2 font-mono text-[12px] leading-[1.7]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-2 w-full resize-y rounded-[var(--radius-sm)] px-3 py-2 font-mono text-[12px] leading-[1.7]"
             />
           </div>
 
@@ -308,7 +308,7 @@ export function AgentEditor({
                   placeholder="Select model..."
                 />
               ) : (
-                <div className="flex items-center gap-2 rounded-2xl glass-input px-3 py-2.5 text-[12px] text-[var(--text-muted)]">
+                <div className="flex items-center gap-2 rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-[12px] text-[var(--text-muted)]">
                   <i className="ri-error-warning-line text-[16px] leading-none" />
                   No models configured — add one in Settings → Providers
                 </div>
@@ -447,7 +447,7 @@ export function AgentEditor({
                   value={triggerConfig}
                   onChange={(e) => setTriggerConfig(e.target.value)}
                   placeholder="0 9 * * * (every day at 9 AM)"
-                  className="glass-input h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[12px]"
+                  className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[12px]"
                 />
               </div>
             )}
@@ -458,7 +458,7 @@ export function AgentEditor({
                   value={triggerConfig}
                   onChange={(e) => setTriggerConfig(e.target.value)}
                   placeholder="Webhook URL, email filter, or file path…"
-                  className="glass-input h-8 w-full rounded-[var(--radius-sm)] px-3 text-[12px]"
+                  className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 w-full rounded-[var(--radius-sm)] px-3 text-[12px]"
                 />
               </div>
             )}
@@ -512,7 +512,7 @@ export function AgentEditor({
                   onChange={(e) => setMaxTurns(Number(e.target.value))}
                   min={1}
                   max={200}
-                  className="glass-input mt-1 h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[12px]"
+                  className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[12px]"
                 />
               </div>
               <div className="flex-1">
@@ -523,7 +523,7 @@ export function AgentEditor({
                   onChange={(e) => setMaxTokens(Number(e.target.value))}
                   min={1000}
                   step={1000}
-                  className="glass-input mt-1 h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[12px]"
+                  className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-8 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[12px]"
                 />
               </div>
             </div>
@@ -628,13 +628,13 @@ export function AgentEditor({
                       value={key}
                       onChange={(e) => updateVariable(i, 0, e.target.value)}
                       placeholder="variable_name"
-                      className="glass-input h-8 w-36 shrink-0 rounded-[var(--radius-sm)] px-2 font-mono text-[11px]"
+                      className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 w-36 shrink-0 rounded-[var(--radius-sm)] px-2 font-mono text-[11px]"
                     />
                     <input
                       value={value}
                       onChange={(e) => updateVariable(i, 1, e.target.value)}
                       placeholder="default value"
-                      className="glass-input h-8 flex-1 rounded-[var(--radius-sm)] px-2 text-[12px]"
+                      className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 flex-1 rounded-[var(--radius-sm)] px-2 text-[12px]"
                     />
                     <button
                       onClick={() => removeVariable(i)}

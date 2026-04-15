@@ -41,6 +41,8 @@ wasmtime = { version = "29", features = ["component-model"] }
 wasmtime-wasi = "29"
 toml = "0.8"
 url = "2"
+urlencoding = "2"
+opener = "0.7"
 notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
 portable-pty = "0.8"
 ignore = "0.4"

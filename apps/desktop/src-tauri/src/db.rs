@@ -9,9 +9,11 @@ mod repositories;
 
 use context::DbContext;
 use repositories::{
-    automation::AutomationRepository, chat::ChatRepository, run::RunRepository,
-    settings::SettingsRepository, workspace::WorkspaceRepository,
+    automation::AutomationRepository, chat::ChatRepository, integration::IntegrationRepository,
+    run::RunRepository, settings::SettingsRepository, workspace::WorkspaceRepository,
 };
+
+use crate::integrations::{IntegrationConnection, IntegrationLog};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workspace {
@@ -188,6 +190,7 @@ pub struct Database {
     automation_repo: AutomationRepository,
     run_repo: RunRepository,
     settings_repo: SettingsRepository,
+    integration_repo: IntegrationRepository,
 }
 
 impl Database {
@@ -208,7 +211,8 @@ impl Database {
             chat_repo: ChatRepository::new(ctx.clone()),
             automation_repo: AutomationRepository::new(ctx.clone()),
             run_repo: RunRepository::new(ctx.clone()),
-            settings_repo: SettingsRepository::new(ctx),
+            settings_repo: SettingsRepository::new(ctx.clone()),
+            integration_repo: IntegrationRepository::new(ctx),
         }
     }
 
@@ -266,4 +270,14 @@ impl Database {
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, AppError> { self.settings_repo.get(key) }
     pub fn set_setting(&self, key: &str, value: &str) -> Result<(), AppError> { self.settings_repo.set(key, value) }
+
+    // ── Integrations ─────────────────────────────────────────────────
+    pub fn list_integration_connections(&self) -> Result<Vec<IntegrationConnection>, AppError> { self.integration_repo.list_connections() }
+    pub fn create_integration_connection(&self, conn: &IntegrationConnection, secret_json: Option<&str>) -> Result<(), AppError> { self.integration_repo.create_connection(conn, secret_json) }
+    pub fn delete_integration_connection(&self, id: &str) -> Result<(), AppError> { self.integration_repo.delete_connection(id) }
+    pub fn get_integration_connection_secret(&self, id: &str) -> Result<Option<String>, AppError> { self.integration_repo.get_connection_secret(id) }
+    pub fn update_integration_connection_verified(&self, id: &str, timestamp: &str) -> Result<(), AppError> { self.integration_repo.update_verified(id, timestamp) }
+    pub fn update_integration_connection_account_label(&self, id: &str, label: &str) -> Result<(), AppError> { self.integration_repo.update_account_label(id, label) }
+    pub fn create_integration_log(&self, log: &IntegrationLog) -> Result<(), AppError> { self.integration_repo.create_log(log) }
+    pub fn list_integration_logs(&self, connection_id: Option<&str>, limit: u32) -> Result<Vec<IntegrationLog>, AppError> { self.integration_repo.list_logs(connection_id, limit) }
 }

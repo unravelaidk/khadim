@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import type { ManagedAgent, SessionRecord } from "../../lib/types";
 import { relTime } from "../../lib/ui";
+import { AgentBuilderPanel } from "./AgentBuilderPanel";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Work Dashboard — mission control for Khadim's managed agent surface.
@@ -33,6 +34,14 @@ export function WorkDashboard({
 }: WorkDashboardProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [builderSeed, setBuilderSeed] = useState<string | null>(null);
+
+  const startBuilder = (seed: string) => {
+    const trimmed = seed.trim();
+    if (!trimmed) return;
+    setBuilderSeed(trimmed);
+    setInput("");
+  };
 
   /* ── Derived slices ─────────────────────────────────────────────── */
   const liveSessions = useMemo(
@@ -86,6 +95,20 @@ export function WorkDashboard({
       ? "Everything's ready."
       : "Let's build something.";
 
+  /* ── Builder active: swap the dashboard for the chat panel ───── */
+  if (builderSeed) {
+    return (
+      <AgentBuilderPanel
+        initialMessage={builderSeed}
+        onExit={() => setBuilderSeed(null)}
+        onAgentCreated={() => {
+          setBuilderSeed(null);
+          onNavigateAgents();
+        }}
+      />
+    );
+  }
+
   /* ── First-run: empty state ─────────────────────────────────────── */
   if (agents.length === 0) {
     return (
@@ -104,7 +127,7 @@ export function WorkDashboard({
           </p>
           <button
             onClick={onCreateAgent}
-            className="btn-accent mt-8 h-10 rounded-full px-5 text-[13px] font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
           >
             Create your first agent
           </button>
@@ -141,7 +164,7 @@ export function WorkDashboard({
               {scheduledAgents.length > 0 && (
                 <button
                   onClick={onNavigateAgents}
-                  className="hidden shrink-0 items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-2 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] sm:inline-flex"
+                  className="hidden shrink-0 items-center gap-2 depth-card-sm px-4 py-2 text-[12px] font-medium text-[var(--text-secondary)] transition-all hover:shadow-[var(--shadow-depth-card-hover)] hover:text-[var(--text-primary)] sm:inline-flex"
                 >
                   Full plan
                   <i className="ri-arrow-right-s-line text-[14px] leading-none" />
@@ -186,7 +209,7 @@ export function WorkDashboard({
             className="mt-8 stagger-in"
             style={{ "--stagger-delay": "120ms" } as React.CSSProperties}
           >
-            <div className="group relative overflow-hidden rounded-[20px] border border-[var(--glass-border)] bg-[var(--surface-card)] transition-[border-color,box-shadow] duration-[var(--duration-base)] focus-within:border-[var(--color-accent-muted)] focus-within:shadow-[0_0_0_4px_var(--color-accent-subtle)]">
+            <div className="group relative overflow-hidden depth-card transition-[box-shadow] duration-[var(--duration-base)] focus-within:shadow-[var(--shadow-depth-card-hover)]">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -194,7 +217,7 @@ export function WorkDashboard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && input.trim()) {
                     e.preventDefault();
-                    onCreateAgent();
+                    startBuilder(input);
                   }
                 }}
                 placeholder="Describe what you want automated…"
@@ -209,9 +232,9 @@ export function WorkDashboard({
               <PromptTool label="Tools" icon="ri-tools-line" />
                 </div>
                 <button
-                  onClick={onCreateAgent}
+                  onClick={() => startBuilder(input)}
                   disabled={!input.trim()}
-                  aria-label="Go"
+                  aria-label="Design agent"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full btn-accent disabled:cursor-not-allowed disabled:opacity-20 disabled:shadow-none"
                 >
                   <i className="ri-arrow-up-line text-[14px] leading-none" />
@@ -302,7 +325,7 @@ export function WorkDashboard({
               ))}
 
               {needsAttention.length === 0 && liveSessions.length === 0 && !firstScheduled && completedToday.length === 0 && (
-                <div className="rounded-[16px] border border-dashed border-[var(--glass-border)] px-6 py-10 text-center">
+                <div className="depth-well px-6 py-10 text-center">
                   <p className="text-[13px] text-[var(--text-secondary)]">
                     Nothing yet today.
                   </p>
@@ -374,16 +397,18 @@ export function WorkDashboard({
               className="mt-10 stagger-in"
               style={{ "--stagger-delay": "260ms" } as React.CSSProperties}
             >
-              <div className="flex items-center gap-2.5">
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-success-muted)] text-[var(--color-success-text)]">
-                  <i className="ri-check-line text-[12px] leading-none" />
-                </span>
-                <p className="text-[13px] font-medium text-[var(--text-primary)]">All systems nominal</p>
+              <div className="depth-card-sm p-4 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--tint-lime)" }}>
+                  <i className="ri-check-line text-[16px] leading-none text-[var(--text-primary)]" />
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-[var(--text-primary)]">All systems nominal</p>
+                  <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                    {activeAgents.length} agent{activeAgents.length === 1 ? "" : "s"} ready ·{" "}
+                    {completedToday.length} completed today
+                  </p>
+                </div>
               </div>
-              <p className="mt-1.5 pl-[30px] text-[12px] leading-relaxed text-[var(--text-muted)]">
-                {activeAgents.length} agent{activeAgents.length === 1 ? "" : "s"} ready ·{" "}
-                {completedToday.length} completed today
-              </p>
             </div>
           )}
         </div>
@@ -419,7 +444,7 @@ function PulseCounter({
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] px-3.5 py-1.5 text-[12px] tabular-nums text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)]"
+      className="depth-card-sm inline-flex items-center gap-2 px-3.5 py-1.5 text-[12px] tabular-nums text-[var(--text-secondary)] transition-all hover:shadow-[var(--shadow-depth-card-hover)] hover:text-[var(--text-primary)]"
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
       <span className="font-semibold text-[var(--text-primary)]">{n}</span>
@@ -454,7 +479,7 @@ function QuickAction({ label, onClick }: { label: string; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="rounded-full border border-[var(--glass-border)] px-3 py-1 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)]"
+      className="rounded-full px-3 py-1 text-[11px] font-medium text-[var(--text-muted)] transition-all hover:text-[var(--text-primary)]" style={{ background: "var(--tint-warm)" }}
     >
       {label}
     </button>
@@ -503,18 +528,27 @@ function FeedItem({
 }) {
   const s = TONE_STYLES[tone];
 
+  const tintBg =
+    tone === "alert" ? "var(--tint-rose)"
+    : tone === "live" ? "var(--tint-amber)"
+    : tone === "upcoming" ? "var(--tint-sky)"
+    : "var(--tint-lime)";
+
   return (
-    <div className="group flex gap-3.5 rounded-[14px] px-4 py-4 transition-colors hover:bg-[var(--surface-ink-3)]">
+    <div className="group flex gap-3.5 depth-card-sm p-4 mb-2 transition-all hover:shadow-[var(--shadow-depth-card-hover)]">
       {/* Timeline dot */}
       <div className="flex flex-col items-center pt-1.5">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          {tone === "live" && <span className="absolute inset-0 rounded-full bg-[var(--color-pop)] animate-ping opacity-30" />}
+          <span className={`relative h-2.5 w-2.5 rounded-full ${s.dot}`} />
+        </span>
         <span className="mt-2 w-px flex-1 bg-[var(--glass-border)]" />
       </div>
 
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${s.flag} ${s.flagBg}`}>
+          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${s.flag}`} style={{ background: tintBg }}>
             {flag}
           </span>
           {time && (

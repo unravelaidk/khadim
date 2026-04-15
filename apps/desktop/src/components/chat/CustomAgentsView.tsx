@@ -157,7 +157,7 @@ export function CustomAgentsView({
           </div>
           <button
             onClick={handleCreate}
-            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full btn-accent px-4 text-[12px] font-semibold"
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full btn-ink px-4 text-[12px] font-semibold"
           >
             <i className="ri-add-line text-[14px] leading-none" />
             New agent
@@ -178,7 +178,7 @@ export function CustomAgentsView({
             {agents.map((agent) => (
               <article
                 key={agent.id}
-                className="group flex flex-col gap-3 rounded-[18px] border border-[var(--glass-border)] bg-[var(--surface-card)] px-5 py-4 transition-colors hover:border-[var(--glass-border-strong)]"
+                className="group flex flex-col gap-3 depth-card-interactive px-5 py-4"
               >
                 <div className="flex items-start gap-3">
                   <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--glass-bg)] font-display text-[16px] text-[var(--text-primary)]">
@@ -296,7 +296,7 @@ function AgentEditor({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Sharp editor"
-                className="glass-input mt-2 h-10 w-full rounded-[12px] px-4 text-[14px]"
+                className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-2 h-10 w-full rounded-[12px] px-4 text-[14px]"
               />
             </div>
           </div>
@@ -309,7 +309,7 @@ function AgentEditor({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="One line about what this agent does."
-              className="glass-input mt-2 h-10 w-full rounded-[12px] px-4 text-[14px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-2 h-10 w-full rounded-[12px] px-4 text-[14px]"
             />
           </div>
 
@@ -322,7 +322,7 @@ function AgentEditor({
               onChange={(e) => setSystemPrompt(e.target.value)}
               placeholder="Describe how the agent should respond. This is the whole instruction — keep it concrete."
               rows={8}
-              className="glass-input mt-2 w-full resize-y rounded-[14px] px-4 py-3 font-mono text-[13px] leading-relaxed"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-2 w-full resize-y rounded-[14px] px-4 py-3 font-mono text-[13px] leading-relaxed"
             />
           </div>
 
@@ -334,7 +334,7 @@ function AgentEditor({
               value={modelHint}
               onChange={(e) => setModelHint(e.target.value)}
               placeholder="optional — e.g. claude-sonnet-4-6"
-              className="glass-input mt-2 h-10 w-full rounded-[12px] px-4 text-[14px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-2 h-10 w-full rounded-[12px] px-4 text-[14px]"
             />
             <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">
               Not enforced yet — the chat picker still owns model selection.
@@ -365,7 +365,7 @@ function AgentEditor({
               onClick={() =>
                 onSave({ name: name.trim(), description: description.trim(), systemPrompt: systemPrompt.trim(), modelHint: modelHint.trim(), emoji })
               }
-              className="inline-flex h-9 items-center rounded-full btn-accent px-5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-9 items-center rounded-full btn-ink px-5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             >
               {initial ? "Save" : "Create agent"}
             </button>

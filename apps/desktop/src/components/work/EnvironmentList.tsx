@@ -26,7 +26,7 @@ export function EnvironmentList({
           </p>
           <button
             onClick={onCreateEnvironment}
-            className="btn-accent mt-8 h-10 rounded-full px-6 text-sm font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
           >
             Create environment
           </button>
@@ -45,7 +45,7 @@ export function EnvironmentList({
           </h1>
           <button
             onClick={onCreateEnvironment}
-            className="btn-accent h-8 rounded-full px-4 text-xs font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-xs font-semibold"
           >
             New environment
           </button>
@@ -63,7 +63,7 @@ export function EnvironmentList({
               <button
                 key={env.id}
                 onClick={() => onEditEnvironment(env.id)}
-                className="group flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--glass-border)] bg-[var(--surface-card)] p-4 text-left transition-colors hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)]"
+                className="group flex flex-col gap-3 depth-card-interactive p-4 text-left"
               >
                 <div className="flex items-start justify-between">
                   <div className="min-w-0">
@@ -73,12 +73,12 @@ export function EnvironmentList({
                     )}
                   </div>
                   {env.isDefault && (
-                    <span className="shrink-0 text-[10px] font-medium text-[var(--color-accent)]">Default</span>
+                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-[var(--text-primary)]" style={{ background: "var(--tint-sky)" }}>Default</span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
-                  <span>{runnerLabel}</span>
+                <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]" style={{ background: env.runnerType === "docker" ? "var(--tint-violet)" : env.runnerType === "cloud" ? "var(--tint-sky)" : "var(--tint-warm)" }}>{runnerLabel}</span>
                   <span>{env.credentialIds.length} credential{env.credentialIds.length !== 1 ? "s" : ""}</span>
                   {varCount > 0 && <span>{varCount} var{varCount !== 1 ? "s" : ""}</span>}
                 </div>

@@ -150,7 +150,7 @@ export function ModelSelector({
 
   if (models.length === 0) {
     return (
-      <div className={`inline-flex items-center gap-2 rounded-full glass-panel px-3 py-1.5 text-[11px] text-[var(--text-muted)] ${className}`}>
+      <div className={`inline-flex items-center gap-2 rounded-full depth-card-sm px-3 py-1.5 text-[11px] text-[var(--text-muted)] ${className}`}>
         No models available
       </div>
     );
@@ -177,8 +177,8 @@ export function ModelSelector({
         }}
         className={`group/trigger flex h-8 w-full min-w-0 items-center gap-2 rounded-full px-1.5 pr-2.5 text-[12px] text-[var(--text-primary)] transition-all duration-200 ${
           isOpen
-            ? "glass-panel-strong shadow-[var(--shadow-glass-md)]"
-            : "glass-panel hover:shadow-[var(--shadow-glass-md)] hover:border-[var(--glass-border-strong)]"
+            ? "depth-card shadow-[var(--shadow-depth-card-hover)]"
+            : "depth-card-sm hover:shadow-[var(--shadow-depth-card-hover)]"
         } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       >
         {selectedModel ? (

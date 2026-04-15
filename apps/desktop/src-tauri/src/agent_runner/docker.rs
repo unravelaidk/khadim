@@ -5,7 +5,11 @@
 //! entrypoint that pipes them into the khadim CLI (or a lightweight script
 //! runner) inside the container.
 
-use super::{ResolvedEnvironment, complete_run, emit_run_event, fail_run, record_turn};
+use super::helpers::{substitute_variables, truncate_summary};
+use super::{
+    ResolvedEnvironment, complete_run_and_emit_done, emit_run_event, fail_run_with_events,
+    record_turn,
+};
 use crate::db::{AgentRun, Database, ManagedAgent};
 use bollard::container::{
     Config, CreateContainerOptions, LogOutput, LogsOptions, RemoveContainerOptions,
@@ -64,9 +68,7 @@ pub async fn execute_docker_run(
         Ok(d) => d,
         Err(e) => {
             let msg = format!("Failed to connect to Docker: {e}");
-            let _ = fail_run(&db, &run_id, &msg, &started_at);
-            emit_run_event(&app, &run_id, "error", Some(msg), None);
-            emit_run_event(&app, &run_id, "done", None, None);
+            fail_run_with_events(&app, &db, &run_id, msg, &started_at);
             return;
         }
     };
@@ -74,9 +76,7 @@ pub async fn execute_docker_run(
     // Verify Docker is reachable
     if let Err(e) = docker.ping().await {
         let msg = format!("Docker daemon not reachable: {e}. Is Docker running?");
-        let _ = fail_run(&db, &run_id, &msg, &started_at);
-        emit_run_event(&app, &run_id, "error", Some(msg), None);
-        emit_run_event(&app, &run_id, "done", None, None);
+        fail_run_with_events(&app, &db, &run_id, msg, &started_at);
         return;
     }
 
@@ -87,10 +87,7 @@ pub async fn execute_docker_run(
     })));
 
     // Build prompt with variable substitution
-    let mut prompt = agent.instructions.clone();
-    for (key, value) in &env.variables {
-        prompt = prompt.replace(&format!("{{{{{key}}}}}"), value);
-    }
+    let prompt = substitute_variables(&agent.instructions, &env.variables);
 
     // Record the initial user turn
     let _ = record_turn(&db, &run_id, 1, "user", None, Some(&prompt), None, None, None);
@@ -210,9 +207,7 @@ echo "=== Agent Run Completed ==="
         Ok(response) => response.id,
         Err(e) => {
             let msg = format!("Failed to create container: {e}");
-            let _ = fail_run(&db, &run_id, &msg, &started_at);
-            emit_run_event(&app, &run_id, "error", Some(msg), None);
-            emit_run_event(&app, &run_id, "done", None, None);
+            fail_run_with_events(&app, &db, &run_id, msg, &started_at);
             return;
         }
     };
@@ -223,10 +218,8 @@ echo "=== Agent Run Completed ==="
         .await
     {
         let msg = format!("Failed to start container: {e}");
-        let _ = fail_run(&db, &run_id, &msg, &started_at);
         cleanup_container(&docker, &container_id).await;
-        emit_run_event(&app, &run_id, "error", Some(msg), None);
-        emit_run_event(&app, &run_id, "done", None, None);
+        fail_run_with_events(&app, &db, &run_id, msg, &started_at);
         return;
     }
 
@@ -294,23 +287,16 @@ echo "=== Agent Run Completed ==="
 
     // Finalize run status
     if exit_code == 0 {
-        let summary = if output.len() > 200 {
-            format!("{}...", &output[..200])
-        } else {
-            output.clone()
-        };
+        let summary = truncate_summary(&output, 200);
         let _ = record_turn(
             &db, &run_id, turn_number, "agent", None,
             Some("Run completed successfully"),
             None, None, None,
         );
-        let _ = complete_run(&db, &run_id, Some(&summary), None, None, &started_at);
-        emit_run_event(&app, &run_id, "done", None, None);
+        complete_run_and_emit_done(&app, &db, &run_id, Some(&summary), None, None, &started_at);
     } else {
         let msg = format!("Container exited with code {exit_code}");
-        let _ = fail_run(&db, &run_id, &msg, &started_at);
-        emit_run_event(&app, &run_id, "error", Some(msg), None);
-        emit_run_event(&app, &run_id, "done", None, None);
+        fail_run_with_events(&app, &db, &run_id, msg, &started_at);
     }
 
     // Cleanup

@@ -1,3 +1,4 @@
+use crate::agent_runner::helpers::try_repair_json;
 use crate::error::AppError;
 use crate::db::Database;
 use crate::khadim_agent::modes::{build_mode, chat_mode};
@@ -8,6 +9,7 @@ use crate::khadim_ai::types::{
 };
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
+use crate::integrations::IntegrationRegistry;
 use crate::khadim_code::tools::{MemoryGetTool, MemorySaveTool, MemorySearchTool, QuestionTool, Tool};
 use crate::opencode::AgentStreamEvent;
 use crate::plugins::PluginManager;
@@ -112,64 +114,6 @@ fn memory_scope_prompt(session: &KhadimSession) -> String {
     }
 }
 
-/// Try to repair truncated JSON from models that hit output token limits.
-/// Handles common cases like `{"path":"foo.html","content":"<div>...` (unclosed string/object).
-fn try_repair_json(raw: &str) -> Option<Value> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    // If it already parses, nothing to repair
-    if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
-        return Some(v);
-    }
-    // Try appending closing chars for truncated JSON objects
-    // Count unclosed braces/brackets and unterminated strings
-    let mut in_string = false;
-    let mut escape = false;
-    let mut brace_depth: i32 = 0;
-    let mut bracket_depth: i32 = 0;
-    for ch in trimmed.chars() {
-        if escape {
-            escape = false;
-            continue;
-        }
-        if ch == '\\' && in_string {
-            escape = true;
-            continue;
-        }
-        if ch == '"' {
-            in_string = !in_string;
-            continue;
-        }
-        if !in_string {
-            match ch {
-                '{' => brace_depth += 1,
-                '}' => brace_depth -= 1,
-                '[' => bracket_depth += 1,
-                ']' => bracket_depth -= 1,
-                _ => {}
-            }
-        }
-    }
-    let mut repaired = trimmed.to_string();
-    // Close unterminated string
-    if in_string {
-        repaired.push('"');
-    }
-    // Close brackets then braces
-    for _ in 0..bracket_depth {
-        repaired.push(']');
-    }
-    for _ in 0..brace_depth {
-        repaired.push('}');
-    }
-    serde_json::from_str::<Value>(&repaired).ok().or_else(|| {
-        log::debug!("JSON repair also failed for: {:?}", &repaired[..repaired.len().min(200)]);
-        None
-    })
-}
-
 pub async fn run_prompt(
     session: &mut KhadimSession,
     prompt: &str,
@@ -177,7 +121,7 @@ pub async fn run_prompt(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     manager: Option<&Arc<KhadimManager>>,
 ) -> Result<String, AppError> {
-    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager, None, None).await
+    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager, None, None, None).await
 }
 
 pub async fn run_prompt_with_plugins(
@@ -190,6 +134,7 @@ pub async fn run_prompt_with_plugins(
     khadim_manager: Option<&Arc<KhadimManager>>,
     app: Option<&AppHandle>,
     db: Option<Database>,
+    integration_registry: Option<&Arc<IntegrationRegistry>>,
 ) -> Result<String, AppError> {
     let mut plugin_tools: Vec<Arc<dyn Tool>> = match (plugin_manager, app) {
         (Some(pm), Some(handle)) => crate::plugins::collect_plugin_tools(pm, handle),
@@ -226,6 +171,12 @@ pub async fn run_prompt_with_plugins(
             session.active_conversation_id.clone(),
             session.active_agent_id.clone(),
         )));
+    }
+
+    // Add connected integration tools (Slack, Gmail, Notion, etc.)
+    if let Some(registry) = integration_registry {
+        let integration_tools = crate::integrations::tool_bridge::collect_integration_tools(registry);
+        plugin_tools.extend(integration_tools);
     }
 
     // Collect skill dirs for the read tool whitelist and the prompt section

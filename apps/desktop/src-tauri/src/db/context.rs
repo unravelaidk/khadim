@@ -9,7 +9,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 pub(crate) struct DbContext {
     conn: DatabaseConnection,
@@ -125,6 +125,8 @@ impl DbContext {
             conn.execute(stmt("PRAGMA foreign_keys = OFF")).await?;
 
             for drop in [
+                Table::drop().table(entities::integration_logs::Entity).if_exists().to_owned(),
+                Table::drop().table(entities::integration_connections::Entity).if_exists().to_owned(),
                 Table::drop().table(entities::agent_run_turns::Entity).if_exists().to_owned(),
                 Table::drop().table(entities::agent_runs::Entity).if_exists().to_owned(),
                 Table::drop().table(entities::memory_entries::Entity).if_exists().to_owned(),
@@ -153,6 +155,8 @@ impl DbContext {
                 schema.create_table_from_entity(entities::memory_entries::Entity),
                 schema.create_table_from_entity(entities::agent_runs::Entity),
                 schema.create_table_from_entity(entities::agent_run_turns::Entity),
+                schema.create_table_from_entity(entities::integration_connections::Entity),
+                schema.create_table_from_entity(entities::integration_logs::Entity),
             ] {
                 conn.execute(backend.build(&create)).await?;
             }
@@ -178,6 +182,8 @@ impl DbContext {
                 "CREATE INDEX idx_memory_store_agents_store ON memory_store_agents(store_id)",
                 "CREATE INDEX idx_memory_entries_store ON memory_entries(store_id, updated_at DESC)",
                 "CREATE INDEX idx_memory_entries_store_key ON memory_entries(store_id, key)",
+                "CREATE INDEX idx_integration_connections_integration ON integration_connections(integration_id)",
+                "CREATE INDEX idx_integration_logs_connection ON integration_logs(connection_id, created_at DESC)",
                 &format!("PRAGMA user_version = {SCHEMA_VERSION}"),
                 "PRAGMA foreign_keys = ON",
             ] {

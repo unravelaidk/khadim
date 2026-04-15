@@ -1,5 +1,6 @@
 import React, { memo, useState, useEffect } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
+import { AsciiEmptyState, AsciiDivider } from "./shared/AsciiArt";
 import type { Workspace } from "../lib/bindings";
 import { commands } from "../lib/bindings";
 import { backendLabel, relTime } from "../lib/ui";
@@ -286,10 +287,10 @@ interface ChatSidebarProps {
 /* ─── Nav icons for built-in chat views ────────────────────────────── */
 
 const CHAT_NAV_ICONS: Record<string, string> = {
-  home:   "ri-home-4-line",
-  chats:  "ri-chat-1-line",
-  memory: "ri-book-open-line",
-  agents: "ri-settings-3-line",
+  home:    "ri-home-4-line",
+  chats:   "ri-chat-1-line",
+  memory:  "ri-book-open-line",
+  agents:  "ri-settings-3-line",
 };
 
 const BUILTIN_CHAT_VIEWS: { view: string; label: string }[] = [
@@ -414,11 +415,11 @@ function ChatSidebar({
             </div>
 
             {conversations.length === 0 ? (
-              <div className="px-3 py-6 text-left">
-                <p className="text-[12px] leading-snug text-[var(--text-muted)]">
-                  No conversations yet. Start one to see it here.
-                </p>
-              </div>
+              <AsciiEmptyState
+                type="noChats"
+                message="Start a conversation to see it here."
+                className="px-3"
+              />
             ) : (
               <div className="flex flex-col">
                 {conversations.map((conversation) => (
@@ -547,22 +548,20 @@ function WorkHomeSidebar({
             value={workspaceQuery}
             onChange={(event) => setWorkspaceQuery(event.target.value)}
             placeholder="Filter workspaces"
-            className="glass-input h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+            className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
           />
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
           {workspaces.length === 0 ? (
             <div className="px-2 py-12 text-center">
-              <p className="font-display text-[16px] font-medium text-[var(--text-primary)]">
-                No workspaces
-              </p>
+              <AsciiEmptyState type="noAgents" />
               <p className="mt-1 text-[13px] leading-snug text-[var(--text-muted)]">
                 Open a project to start working<br />with agents in a branch.
               </p>
               <button
                 onClick={onNewWorkspace}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-accent px-5 font-sans text-[13px] font-medium tracking-wide"
+                className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-ink px-5 font-sans text-[13px] font-medium tracking-wide"
               >
                 <i className="ri-add-line text-[14px] leading-none" />
                 New workspace
@@ -570,10 +569,7 @@ function WorkHomeSidebar({
             </div>
           ) : visibleWorkspaces.length === 0 ? (
             <div className="px-2 py-10 text-center">
-              <p className="font-display text-[16px] font-medium text-[var(--text-primary)]">
-                No matches
-              </p>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">Try another workspace keyword.</p>
+              <AsciiEmptyState type="noResults" message="Try another workspace keyword." />
             </div>
           ) : (
             <div className="flex flex-col gap-1">
@@ -800,7 +796,7 @@ function WorkspaceSidebar({
           </div>
           <button
             onClick={onNewAgent}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full btn-accent px-4 text-[12px] font-semibold"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full btn-ink px-4 text-[12px] font-semibold"
             title="New agent"
           >
             <i className="ri-add-line text-[14px] leading-none" />
@@ -813,7 +809,7 @@ function WorkspaceSidebar({
             value={agentQuery}
             onChange={(event) => setAgentQuery(event.target.value)}
             placeholder="Filter agents"
-            className="glass-input h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+            className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
           />
         </div>
 
@@ -831,13 +827,10 @@ function WorkspaceSidebar({
             ))}
             {workspaceAgents.length === 0 && (
               <div className="px-3 py-12 text-center">
-                <p className="font-display text-[17px] font-medium text-[var(--text-primary)]">No agents yet</p>
-                <p className="mt-1 text-[13px] leading-snug text-[var(--text-muted)]">
-                  Start with one agent. It gets its own branch and worktree.
-                </p>
+                <AsciiEmptyState type="noAgents" message="Start with one agent. It gets its own branch and worktree." />
                 <button
                   onClick={onNewAgent}
-                  className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-accent px-5 text-[13px] font-medium"
+                  className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-ink px-5 text-[13px] font-medium"
                 >
                   <i className="ri-add-line text-[14px] leading-none" />
                   Create agent
@@ -846,8 +839,7 @@ function WorkspaceSidebar({
             )}
             {workspaceAgents.length > 0 && visibleAgents.length === 0 && (
               <div className="px-3 py-8 text-center">
-                <p className="font-display text-[16px] font-medium text-[var(--text-primary)]">No matches</p>
-                <p className="mt-1 text-[13px] text-[var(--text-muted)]">Try another agent keyword.</p>
+                <AsciiEmptyState type="noResults" message="Try another agent keyword." />
               </div>
             )}
           </div>

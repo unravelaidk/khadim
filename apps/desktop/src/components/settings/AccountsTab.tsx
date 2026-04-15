@@ -21,7 +21,7 @@ export function AccountsTab({
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Connect your GitHub account to enable repository operations.
         </p>
-        <div className="rounded-2xl glass-card-static p-4">
+        <div className="depth-card p-5">
           <GitHubAuthPanel authStatus={githubAuthStatus} onAuthChange={onGitHubAuthChange} />
         </div>
       </section>

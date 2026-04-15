@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import type { AgentStreamEvent, PendingApproval, PendingQuestion, QuestionItem, QuestionOption, ThinkingStepData } from "../lib/bindings";
 import { desktopQueryKeys } from "../lib/queries";
+import { stripInternalReminderBlocks } from "../lib/streaming";
 import type { AgentInstance, LocalChatConversation, LocalChatMessage } from "../lib/types";
 import { createLocalMessage } from "../lib/types";
 
@@ -69,10 +70,6 @@ function normalizeQuestionPayload(value: unknown): QuestionItem[] {
   return items
     .map((item) => normalizeQuestionItem(item))
     .filter((item): item is QuestionItem => item != null);
-}
-
-function stripInternalReminderBlocks(value: string): string {
-  return value.replace(/\s*<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "").trimEnd();
 }
 
 interface UseAgentStreamHandlerArgs {

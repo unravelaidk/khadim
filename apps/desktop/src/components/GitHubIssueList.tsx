@@ -99,7 +99,7 @@ export function GitHubIssueList({ slug, onSelectIssue, onCreateIssue }: GitHubIs
         <button
           key={issue.number}
           onClick={() => onSelectIssue(issue.number)}
-          className="w-full text-left rounded-2xl glass-card p-3 transition-all"
+          className="w-full text-left rounded-2xl depth-card-sm p-3 transition-all"
         >
           <div className="flex items-start gap-3">
             <IssueStateIcon state={issue.state} />

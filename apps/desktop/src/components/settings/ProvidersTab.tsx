@@ -343,12 +343,12 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
   }
 
   return (
-    <div className="rounded-xl glass-panel transition-all hover:border-[var(--glass-border-strong)]">
+    <div className="depth-card-sm transition-all hover:shadow-[var(--shadow-depth-card-hover)]">
       <div
-        className="flex items-center gap-3 px-3.5 py-3 cursor-pointer hover:bg-[var(--surface-card-hover)] rounded-xl transition-colors"
+        className="flex items-center gap-3 px-3.5 py-3 cursor-pointer hover:bg-[var(--glass-bg)]/30 rounded-[var(--radius-md)] transition-colors"
         onClick={() => { setExpanded(!expanded); setError(null); setDiscoveryResult(null); setConfirmRemoveAll(false); }}
       >
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${provider.status === "active" ? "bg-gradient-to-br from-white/90 to-white/60 shadow-sm" : "bg-[var(--glass-bg-strong)]"}`}>
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg`} style={{ background: provider.status === "active" ? "var(--tint-lime, var(--color-success-muted))" : "var(--depth-inset-bg, var(--surface-bg-subtle))", boxShadow: provider.status === "active" ? undefined : "var(--shadow-depth-inset, inset 0 1px 3px oklch(0% 0 0 / 0.08))" }}>
           {iconUrl ? (
             <img src={iconUrl} alt="" className={`h-4.5 w-4.5 shrink-0 object-contain ${isMono ? "model-icon-mono" : ""}`} />
           ) : (
@@ -405,7 +405,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                         value={manualCode}
                         onChange={(event) => setManualCode(event.target.value)}
                         onKeyDown={(event) => { if (event.key === "Enter") handleCodexManualComplete(); }}
-                        className="flex-1 h-8 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-3 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[var(--color-accent)]/30 transition-colors font-mono"
+                        className="flex-1 h-8 rounded-lg depth-inset px-3 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors font-mono"
                         placeholder="Paste the redirect URL or authorization code"
                       />
                       <button type="button" onClick={handleCodexManualComplete} disabled={!codexSession?.sessionId || !manualCode.trim()} className="h-8 px-3 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
@@ -433,7 +433,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                 )}
 
                 {hasSavedKey && savedKeyDisplay && (
-                  <div className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-3 py-2">
+                  <div className="flex items-center gap-2 rounded-lg depth-inset px-3 py-2">
                     <i className="ri-key-2-line text-[14px] leading-none text-[var(--color-success-text)]" />
                     <span className="flex-1 text-[10px] font-mono text-[var(--text-primary)] truncate">{savedKeyDisplay}</span>
                     <button
@@ -466,7 +466,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                       onChange={(event) => setKeyInput(event.target.value)}
                       onKeyDown={(event) => { if (event.key === "Enter") void handleSave(); }}
                       placeholder={hasSavedKey ? "Enter new API key to update" : "Enter API key"}
-                      className="w-full h-8 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-3 pr-8 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[var(--color-accent)]/30 transition-colors font-mono"
+                      className="w-full h-8 rounded-lg depth-inset px-3 pr-8 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors font-mono"
                     />
                     <button onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors" title={showKey ? "Hide" : "Show"} type="button">
                       {showKey ? (
@@ -579,7 +579,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                 ) : (
                   <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin">
                     {providerModels.map((model) => (
-                      <div key={model.id} className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2.5 py-1.5 group hover:border-[var(--glass-border-strong)] transition-colors">
+                      <div key={model.id} className="flex items-center gap-2 rounded-lg depth-inset px-2.5 py-1.5 group hover:shadow-[var(--shadow-depth-card-sm)] transition-all">
                         <div className="min-w-0 flex-1">
                           <p className="text-[10px] font-medium text-[var(--text-primary)] truncate">{model.name}</p>
                           <p className="text-[9px] text-[var(--text-muted)] font-mono truncate">{model.model}</p>

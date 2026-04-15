@@ -13,7 +13,7 @@ export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
 
       {/* Identity */}
       <section className="flex items-start gap-4">
-        <div className="shrink-0 h-11 w-11 rounded-2xl bg-[var(--surface-card)] border border-[var(--glass-border)] flex items-center justify-center shadow-[var(--shadow-glass-sm)]">
+        <div className="shrink-0 h-11 w-11 rounded-2xl depth-card-sm flex items-center justify-center">
           <span className="font-display text-[18px] font-bold text-[var(--text-primary)]">K</span>
         </div>
         <div>

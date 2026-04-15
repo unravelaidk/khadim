@@ -200,7 +200,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
         </div>
 
         {/* Form */}
-        <div className="rounded-2xl glass-card-static p-4 space-y-3">
+        <div className="rounded-2xl depth-card-sm p-4 space-y-3">
           {error && (
             <div className="rounded-xl bg-[var(--color-danger-bg)] border border-[var(--color-danger-border)] p-3">
               <p className="text-[11px] text-[var(--color-danger-text)]">{error}</p>
@@ -217,7 +217,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="my-repo"
-              className="w-full glass-input h-8 px-3 rounded-xl text-[12px]"
+              className="w-full depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 px-3 rounded-xl text-[12px]"
               disabled={busy}
             />
           </div>
@@ -232,7 +232,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="A short description"
-              className="w-full glass-input h-8 px-3 rounded-xl text-[12px]"
+              className="w-full depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 px-3 rounded-xl text-[12px]"
               disabled={busy}
             />
           </div>
@@ -250,7 +250,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
                 className={`flex-1 h-8 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   isPrivate
                     ? "btn-ink"
-                    : "glass-card-static text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    : "depth-card-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 <i className="ri-lock-line text-[14px] leading-none" />
@@ -263,7 +263,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
                 className={`flex-1 h-8 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   !isPrivate
                     ? "btn-ink"
-                    : "glass-card-static text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    : "depth-card-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 <i className="ri-earth-line text-[14px] leading-none" />
@@ -281,7 +281,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
           <button
             onClick={() => void handleCreate()}
             disabled={busy || !name.trim()}
-            className="w-full h-9 rounded-xl btn-accent text-[12px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full h-9 rounded-xl btn-ink text-[12px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {busy ? (
               <>

@@ -98,7 +98,7 @@ export function CredentialEditor({
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="btn-accent inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
           >
             {credential ? "Save" : "Add"}
           </button>
@@ -115,7 +115,7 @@ export function CredentialEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Gmail IMAP, Stripe API"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
@@ -159,7 +159,7 @@ export function CredentialEditor({
                     value={fields[tf.key] ?? ""}
                     onChange={(e) => updateField(tf.key, e.target.value)}
                     placeholder={tf.placeholder}
-                    className="glass-input mt-1 h-8 w-full rounded-[var(--radius-sm)] px-3 text-[12px]"
+                    className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-8 w-full rounded-[var(--radius-sm)] px-3 text-[12px]"
                   />
                 </div>
               ))}
@@ -182,7 +182,7 @@ export function CredentialEditor({
                 onChange={(e) => setSecretValue(e.target.value)}
                 placeholder="-----BEGIN CERTIFICATE-----"
                 rows={4}
-                className="glass-input mt-1 w-full resize-y rounded-[var(--radius-sm)] px-3 py-2 font-mono text-[11px]"
+                className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 w-full resize-y rounded-[var(--radius-sm)] px-3 py-2 font-mono text-[11px]"
               />
             ) : (
               <input
@@ -190,7 +190,7 @@ export function CredentialEditor({
                 value={secretValue}
                 onChange={(e) => setSecretValue(e.target.value)}
                 placeholder={credential ? "••••••••" : "Enter secret value"}
-                className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[13px]"
+                className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[13px]"
               />
             )}
           </div>

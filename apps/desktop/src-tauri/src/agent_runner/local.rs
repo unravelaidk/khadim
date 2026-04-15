@@ -1,12 +1,14 @@
 //! Local runner — executes a managed agent using one of the available
 //! harnesses (khadim, opencode, claude_code) on the host machine.
 
-use super::{ResolvedEnvironment, complete_run, emit_run_event, fail_run, record_turn};
+use super::helpers::{resolve_agent_model, substitute_variables, truncate_summary};
+use super::{
+    ResolvedEnvironment, complete_run_and_emit_done, emit_run_event, fail_run_with_events,
+    record_turn,
+};
 use crate::db::{AgentRun, Database, ManagedAgent};
-use crate::error::AppError;
+use crate::integrations::IntegrationRegistry;
 use crate::khadim_agent::KhadimManager;
-use crate::khadim_ai::model_settings;
-use crate::khadim_ai::types::ModelSelection;
 use crate::opencode::AgentStreamEvent;
 use serde_json::json;
 use std::sync::Arc;
@@ -27,6 +29,7 @@ pub async fn execute_local_run(
     env: ResolvedEnvironment,
     plugins: Arc<crate::plugins::PluginManager>,
     skills: Arc<crate::skills::SkillManager>,
+    integrations: Arc<IntegrationRegistry>,
 ) {
     let run_id = run.id.clone();
     let started_at = run.started_at.clone().unwrap_or_default();
@@ -36,9 +39,7 @@ pub async fn execute_local_run(
             "Managed agents currently support the Khadim harness only. '{}' is not wired into the managed-agent runner yet.",
             agent.harness
         );
-        let _ = fail_run(&db, &run_id, &msg, &started_at);
-        emit_run_event(&app, &run_id, "error", Some(msg), None);
-        emit_run_event(&app, &run_id, "done", None, None);
+        fail_run_with_events(&app, &db, &run_id, msg, &started_at);
         return;
     }
 
@@ -54,10 +55,7 @@ pub async fn execute_local_run(
     })));
 
     // Build the prompt from agent instructions + variables
-    let mut prompt = agent.instructions.clone();
-    for (key, value) in &env.variables {
-        prompt = prompt.replace(&format!("{{{{{key}}}}}"), value);
-    }
+    let prompt = substitute_variables(&agent.instructions, &env.variables);
 
     // Record the initial user turn
     let _ = record_turn(&db, &run_id, 1, "user", None, Some(&prompt), None, None, None);
@@ -77,9 +75,7 @@ pub async fn execute_local_run(
     let run_dir = std::env::temp_dir().join(format!("khadim-run-{}", &run_id[..8]));
     if let Err(e) = std::fs::create_dir_all(&run_dir) {
         let msg = format!("Failed to create run directory: {e}");
-        let _ = fail_run(&db, &run_id, &msg, &started_at);
-        emit_run_event(&app, &run_id, "error", Some(msg), None);
-        emit_run_event(&app, &run_id, "done", None, None);
+        fail_run_with_events(&app, &db, &run_id, msg, &started_at);
         return;
     }
 
@@ -88,9 +84,7 @@ pub async fn execute_local_run(
         Ok(sel) => sel,
         Err(e) => {
             let msg = format!("Failed to resolve model: {e}");
-            let _ = fail_run(&db, &run_id, &msg, &started_at);
-            emit_run_event(&app, &run_id, "error", Some(msg), None);
-            emit_run_event(&app, &run_id, "done", None, None);
+            fail_run_with_events(&app, &db, &run_id, msg, &started_at);
             return;
         }
     };
@@ -111,9 +105,7 @@ pub async fn execute_local_run(
         Ok(s) => s,
         Err(e) => {
             let msg = format!("Failed to create agent session: {}", e.message);
-            let _ = fail_run(&db, &run_id, &msg, &started_at);
-            emit_run_event(&app, &run_id, "error", Some(msg), None);
-            emit_run_event(&app, &run_id, "done", None, None);
+            fail_run_with_events(&app, &db, &run_id, msg, &started_at);
             return;
         }
     };
@@ -193,6 +185,7 @@ pub async fn execute_local_run(
             Some(&khadim),
             Some(&app),
             Some(db.as_ref().clone()),
+            Some(&integrations),
         )
         .await
     };
@@ -210,25 +203,19 @@ pub async fn execute_local_run(
             );
 
             // Summarize
-            let summary = if response_text.len() > 200 {
-                format!("{}...", &response_text[..200])
-            } else {
-                response_text.clone()
-            };
+            let summary = truncate_summary(&response_text, 200);
 
-            let _ = complete_run(
+            complete_run_and_emit_done(
+                &app,
                 &db, &run_id,
                 Some(&summary),
                 Some(total_input),
                 Some(total_output),
                 &started_at,
             );
-            emit_run_event(&app, &run_id, "done", None, None);
         }
         Err(e) => {
-            let _ = fail_run(&db, &run_id, &e.message, &started_at);
-            emit_run_event(&app, &run_id, "error", Some(e.message), None);
-            emit_run_event(&app, &run_id, "done", None, None);
+            fail_run_with_events(&app, &db, &run_id, e.message, &started_at);
         }
     }
 
@@ -237,65 +224,3 @@ pub async fn execute_local_run(
     khadim.clear_run(&session_id);
 }
 
-fn resolve_agent_model(
-    db: &Database,
-    agent: &ManagedAgent,
-) -> Result<ModelSelection, AppError> {
-    // If agent has a model_id like "provider:model", parse it
-    if let Some(ref model_id) = agent.model_id {
-        if !model_id.is_empty() {
-            let parts: Vec<&str> = model_id.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                let configs = model_settings::list_configs(db)?;
-                if let Some(config) = configs.iter().find(|c| {
-                    c.provider == parts[0] && c.model == parts[1]
-                }) {
-                    return Ok(ModelSelection {
-                        provider: config.provider.clone(),
-                        model_id: config.model.clone(),
-                        display_name: Some(config.name.clone()),
-                        api_key: config.api_key.clone().or_else(|| {
-                            model_settings::saved_provider_api_key(&config.provider)
-                                .ok()
-                                .flatten()
-                        }),
-                        base_url: config.base_url.clone(),
-                    });
-                }
-
-                return Ok(ModelSelection {
-                    provider: parts[0].to_string(),
-                    model_id: parts[1].to_string(),
-                    display_name: None,
-                    api_key: model_settings::saved_provider_api_key(parts[0]).ok().flatten(),
-                    base_url: None,
-                });
-            }
-        }
-    }
-
-    // Fall back to active/default model
-    let active = model_settings::active_model_option(db)?;
-    if let Some(m) = active {
-        let configs = model_settings::list_configs(db)?;
-        if let Some(config) = configs.iter().find(|c| {
-            c.provider == m.provider_id && c.model == m.model_id
-        }) {
-            return Ok(ModelSelection {
-                provider: config.provider.clone(),
-                model_id: config.model.clone(),
-                display_name: Some(config.name.clone()),
-                api_key: config.api_key.clone().or_else(|| {
-                    model_settings::saved_provider_api_key(&config.provider)
-                        .ok()
-                        .flatten()
-                }),
-                base_url: config.base_url.clone(),
-            });
-        }
-    }
-
-    Err(AppError::invalid_input(
-        "No model configured. Add a model in Settings → Providers.".to_string(),
-    ))
-}

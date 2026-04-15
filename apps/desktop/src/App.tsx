@@ -86,6 +86,14 @@ export default function App() {
     handleToggleTheme,
   } = useThemePreferences();
 
+  // ── Sync theme to document root so body/html pick up variant colors ──
+  useEffect(() => {
+    const html = document.documentElement;
+    html.setAttribute("data-theme-family", themeFamily);
+    html.setAttribute("data-theme-variant", themeVariant);
+    html.style.colorScheme = themeVariant === "light" || themeVariant === "latte" ? "light" : "dark";
+  }, [themeFamily, themeVariant]);
+
   // ── Chat view state (sidebar + content area) ────────────────────
   // Values: "home" | "chats" | "memory" | "agents" | "plugin:<id>:<label>"
   const [chatView, setChatView] = useState<string>("home");

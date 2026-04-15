@@ -108,8 +108,6 @@ body {
   font-feature-settings: "ss01", "ss02", "cv01", "cv11";
   background-color: var(--surface-bg);
   color: var(--text-primary);
-  transition: background-color var(--duration-slow) var(--ease-out-quart),
-              color var(--duration-slow) var(--ease-out-quart);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -155,9 +153,72 @@ body {
   animation: drift 24s ease-in-out infinite alternate;
 }
 
+/* Light-variant tint overrides for themes that don't define their own.
+   The default theme has explicit tint overrides in its light block;
+   this catches catppuccin-latte, nord-light, etc. */
+[data-theme-variant="light"],
+[data-theme-variant="latte"] {
+  --tint-rose:   oklch(85% 0.06 15 / 0.30);
+  --tint-amber:  oklch(90% 0.06 75 / 0.30);
+  --tint-lime:   oklch(88% 0.05 140 / 0.25);
+  --tint-sky:    oklch(88% 0.04 230 / 0.25);
+  --tint-violet: oklch(85% 0.05 300 / 0.25);
+  --tint-teal:   oklch(88% 0.04 185 / 0.25);
+  --tint-warm:   oklch(92% 0.03 60 / 0.25);
+}
+
 @keyframes drift {
   0% { transform: translate3d(0, 0, 0) rotate(0deg); }
   100% { transform: translate3d(-5%, 2%, 0) rotate(-1deg); }
+}
+
+/* ─── Depth Surfaces ─ shadow-driven, borderless, tactile ──────────── */
+/* Uses per-theme --depth-* tokens when available, falls back to
+   universal surface tokens so every theme gets depth for free. */
+.depth-card {
+  background: var(--depth-card-bg, var(--surface-elevated));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-depth-card, var(--shadow-glass-md));
+  border: none;
+}
+
+.depth-card-sm {
+  background: var(--depth-card-bg, var(--surface-elevated));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-depth-card-sm, var(--shadow-glass-sm));
+  border: none;
+}
+
+.depth-card-interactive {
+  background: var(--depth-card-bg, var(--surface-elevated));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-depth-card, var(--shadow-glass-md));
+  border: none;
+  transition: box-shadow var(--duration-base) var(--ease-out-quart),
+              transform var(--duration-base) var(--ease-out-quart);
+}
+
+.depth-card-interactive:hover {
+  box-shadow: var(--shadow-depth-card-hover, var(--shadow-glass-lg));
+  transform: translateY(-1px);
+}
+
+.depth-card-interactive:active {
+  transform: translateY(0px) scale(0.995);
+}
+
+.depth-inset {
+  background: var(--depth-inset-bg, var(--surface-bg-subtle));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-depth-inset, inset 0 1px 3px oklch(0% 0 0 / 0.08));
+  border: none;
+}
+
+.depth-well {
+  background: var(--depth-well-bg, var(--surface-bg-subtle));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-depth-well, inset 0 1px 3px oklch(0% 0 0 / 0.06));
+  border: none;
 }
 
 /* ─── Surface Utilities ────────────────────────────────────────────── */
@@ -440,6 +501,83 @@ body {
 .dot-sm { width: 0.5em; height: 0.5em; border-width: 1px; }
 .dot-lg { width: 1.5em; height: 1.5em; border-width: 3px; }
 .dot-xl { width: 2em; height: 2em; border-width: 4px; }
+
+/* ─── ASCII Art Utilities ─────────────────────────────────────────── */
+
+/* Subtle scanline overlay for ASCII art blocks */
+.ascii-scanlines {
+  position: relative;
+}
+
+.ascii-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    var(--surface-ink-4) 2px,
+    var(--surface-ink-4) 3px
+  );
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+}
+
+/* Terminal-style glow for ASCII elements */
+.ascii-glow {
+  text-shadow: 0 0 4px var(--color-accent-muted),
+               0 0 12px color-mix(in oklch, var(--color-accent) 15%, transparent);
+}
+
+/* Flickering cursor for ASCII terminal feel */
+@keyframes ascii-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.ascii-cursor::after {
+  content: "█";
+  animation: ascii-blink 1s step-end infinite;
+  color: var(--color-accent);
+  margin-left: 1px;
+}
+
+/* ASCII box-drawing border utility */
+.ascii-border {
+  border: 1px solid var(--glass-border);
+  position: relative;
+}
+
+.ascii-border::before {
+  content: "┌" attr(data-ascii-title) "┐";
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--surface-bg);
+  padding: 0 4px;
+  opacity: 0.5;
+}
+
+/* Retro matrix rain fade (decorative) */
+@keyframes ascii-rain {
+  0% { opacity: 0; transform: translateY(-4px); }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { opacity: 0; transform: translateY(4px); }
+}
+
+.ascii-rain-char {
+  animation: ascii-rain 2s ease-in-out infinite;
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  opacity: 0.3;
+}
 
 /* ─── Terminal / xterm ──────────────────────────────────────────────── */
 .terminal-host,

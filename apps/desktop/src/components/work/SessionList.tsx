@@ -293,7 +293,7 @@ export function SessionDetail({
               onKeyDown={handleKeyDown}
               placeholder="Message the agent…"
               rows={1}
-              className="glass-input min-h-[36px] max-h-[120px] flex-1 resize-none rounded-[var(--radius-sm)] px-3 py-2 text-sm leading-relaxed"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] min-h-[36px] max-h-[120px] flex-1 resize-none rounded-[var(--radius-sm)] px-3 py-2 text-sm leading-relaxed outline-none"
               style={{ height: input.includes("\n") ? "auto" : "36px" }}
             />
             <button
@@ -373,8 +373,8 @@ export function SessionList({ sessions, onViewSession }: SessionListProps) {
                 key={f.id}
                 onClick={() => setFilter(f.id)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  filter === f.id
-                    ? "bg-[var(--surface-elevated)] text-[var(--text-primary)]"
+                filter === f.id
+                    ? "depth-card-sm text-[var(--text-primary)]"
                     : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 }`}
               >
@@ -420,17 +420,26 @@ function SessionRow({
   onView: () => void;
 }) {
   const dotCls =
-    session.status === "running"   ? "bg-[var(--color-pop)] status-pulse" :
+    session.status === "running"   ? "bg-[var(--color-pop)]" :
     session.status === "completed" ? "bg-[var(--color-success)]" :
     session.status === "failed"    ? "bg-[var(--color-danger)]" :
     "bg-[var(--text-muted)] opacity-30";
 
+  const tint =
+    session.status === "running"   ? "var(--tint-amber)" :
+    session.status === "completed" ? "var(--tint-lime)" :
+    session.status === "failed"    ? "var(--tint-rose)" :
+    "var(--tint-warm)";
+
   return (
     <button
       onClick={onView}
-      className="group flex items-center gap-4 border-b border-[var(--glass-border)] py-3.5 text-left last:border-0 transition-colors hover:bg-[var(--glass-bg)] -mx-3 px-3 rounded-[var(--radius-sm)]"
+      className="group flex items-center gap-4 py-3 text-left transition-all -mx-2 px-2 rounded-[var(--radius-md)] hover:bg-[var(--glass-bg)]/30"
     >
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+      <span className="relative flex h-2 w-2 shrink-0">
+        {session.status === "running" && <span className="absolute inset-0 rounded-full bg-[var(--color-pop)] animate-ping opacity-30" />}
+        <span className={`relative h-2 w-2 rounded-full ${dotCls}`} />
+      </span>
 
       <span className="w-36 shrink-0 truncate text-sm font-medium text-[var(--text-primary)]">
         {session.agentName ?? "Chat"}

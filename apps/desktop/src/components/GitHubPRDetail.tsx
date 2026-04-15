@@ -208,7 +208,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
 
       {/* Body */}
       {pr.body && (
-        <div className="rounded-2xl glass-card-static p-4">
+        <div className="rounded-2xl depth-card-sm p-4">
           <MarkdownRenderer content={pr.body} className="text-[12px]" />
         </div>
       )}
@@ -274,7 +274,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
 
       {/* Checks */}
       {showChecks && checks && (
-        <div className="rounded-2xl glass-card-static p-4 space-y-2">
+        <div className="rounded-2xl depth-card-sm p-4 space-y-2">
           <h3 className="text-[12px] font-bold text-[var(--text-primary)]">
             Checks ({checks.total_count})
           </h3>
@@ -312,7 +312,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
           Comments ({comments.length})
         </h3>
         {comments.map((comment) => (
-          <div key={comment.id} className="rounded-2xl glass-card-static p-3">
+          <div key={comment.id} className="rounded-2xl depth-card-sm p-3">
             <div className="flex items-center gap-2 mb-2">
               <img
                 src={comment.user.avatar_url}
@@ -337,7 +337,7 @@ export function GitHubPRDetail({ slug, prNumber, onBack }: GitHubPRDetailProps) 
             onChange={(e) => setCommentBody(e.target.value)}
             placeholder="Add a comment..."
             rows={3}
-            className="w-full rounded-xl glass-input px-3 py-2 text-[12px] resize-none font-sans"
+            className="w-full rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2 text-[12px] resize-none font-sans"
           />
           <button
             onClick={() => void addComment()}

@@ -3,6 +3,7 @@ pub(crate) mod conversation;
 pub(crate) mod editor;
 pub(crate) mod file_index;
 pub(crate) mod git;
+pub(crate) mod integrations;
 pub(crate) mod khadim;
 pub(crate) mod lsp;
 pub(crate) mod opencode;

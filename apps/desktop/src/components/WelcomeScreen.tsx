@@ -1,5 +1,6 @@
 import { useRef, useMemo } from "react";
 import KhadimLogo from "../assets/Khadim-logo.svg";
+import { AsciiBrand, AsciiDivider, AsciiPrompt, AsciiTyping } from "./shared/AsciiArt";
 
 interface WelcomeScreenProps {
   input: string;
@@ -73,8 +74,11 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
     <div className="mx-auto flex w-full max-w-3xl flex-col px-6 pb-10 pt-12 sm:px-8 lg:pt-16">
       {/* Hero — bare, no container */}
       <div className="flex flex-col items-start gap-8 stagger-in" style={{ ["--stagger-delay" as string]: "0ms" }}>
-        <div className="logo-adaptive h-10 w-10 text-[var(--color-accent)]">
-          <KhadimLogo />
+        <div className="flex items-end gap-6">
+          <div className="logo-adaptive h-10 w-10 text-[var(--color-accent)]">
+            <KhadimLogo />
+          </div>
+          <AsciiBrand variant="compact" className="opacity-40 hidden sm:block" />
         </div>
         <div className="space-y-3">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
@@ -96,7 +100,7 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
           className="mt-10 stagger-in"
           style={{ ["--stagger-delay" as string]: "120ms" }}
         >
-          <div className="relative rounded-[var(--radius-xl)] border border-[var(--glass-border)] bg-[var(--surface-card)] transition-all duration-[var(--duration-base)] focus-within:border-[var(--color-accent-muted)] focus-within:shadow-[0_0_0_4px_var(--color-accent-subtle)]">
+          <div className="relative depth-card transition-all duration-[var(--duration-base)] focus-within:shadow-[var(--shadow-depth-card-hover)]">
             <textarea
               ref={textareaRef}
               value={input}
@@ -119,7 +123,7 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
                 onClick={onSend}
                 disabled={!input.trim()}
                 aria-label="Send prompt"
-                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full btn-accent disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
+                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full btn-ink disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
               >
                 <i className="ri-arrow-right-line text-[20px] leading-none" />
               </button>
@@ -130,12 +134,12 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
 
       {/* Examples — bare rows, no card wrapper */}
       <div className="mt-14">
-        <p
-          className="mb-4 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)] stagger-in"
+        <div
+          className="mb-4 stagger-in"
           style={{ ["--stagger-delay" as string]: "240ms" }}
         >
-          Or try one of these
-        </p>
+          <AsciiDivider label="or try one of these" variant="dots" />
+        </div>
         <ul className="flex flex-col">
           {examples.map((ex, i) => (
             <li
@@ -148,10 +152,10 @@ export function WelcomeScreen({ input, setInput, onSend, hideInput = false, comp
                   setInput(ex.prompt);
                   textareaRef.current?.focus();
                 }}
-                className="group flex w-full items-baseline gap-5 border-t border-[var(--glass-border)] px-1 py-4 text-left transition-colors last:border-b hover:bg-[var(--color-accent-subtle)]"
+                className="group flex w-full items-baseline gap-5 px-1 py-4 text-left transition-all rounded-[var(--radius-md)] hover:bg-[var(--glass-bg)]/30"
               >
                 <span className="w-5 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
-                  {String(i + 1).padStart(2, "0")}
+                  <AsciiPrompt symbol="❯" className="text-[10px]" />
                 </span>
                 <span className="flex-1">
                   <span className="block font-display text-lg font-medium leading-snug text-[var(--text-primary)] transition-colors group-hover:text-[var(--color-accent)]">

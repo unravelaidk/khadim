@@ -35,7 +35,7 @@ export function CredentialList({
           </p>
           <button
             onClick={onAddCredential}
-            className="btn-accent mt-8 h-10 rounded-full px-6 text-sm font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
           >
             Add credential
           </button>
@@ -54,7 +54,7 @@ export function CredentialList({
           </h1>
           <button
             onClick={onAddCredential}
-            className="btn-accent h-8 rounded-full px-4 text-xs font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-xs font-semibold"
           >
             Add credential
           </button>
@@ -69,10 +69,10 @@ export function CredentialList({
             return (
               <div
                 key={cred.id}
-                className="group flex items-start gap-4 border-b border-[var(--glass-border)] py-4 last:border-0"
+                className="group flex items-start gap-4 py-4 last:border-0"
               >
                 {/* Type badge */}
-                <span className="mt-0.5 shrink-0 rounded bg-[var(--surface-ink-4)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                <span className="mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ background: "var(--tint-violet)" }}>
                   {typeLabels[cred.type] ?? cred.type}
                 </span>
 

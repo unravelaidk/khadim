@@ -126,7 +126,7 @@ export function GlassSelect({
             return next;
           });
         }}
-        className={`flex w-full items-center justify-between gap-2 rounded-2xl glass-input px-3 py-2.5 text-sm outline-none transition-all duration-200 ${
+        className={`flex w-full items-center justify-between gap-2 rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none transition-all duration-200 ${
           isOpen ? "border-[var(--color-accent)] shadow-[0_0_0_3px_var(--input-focus-ring)]" : ""
         } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
       >

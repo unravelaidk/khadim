@@ -71,7 +71,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete,
       <div className="absolute inset-0 bg-[var(--surface-ink-25)] backdrop-blur-sm" />
 
       <div
-        className="relative z-10 w-full max-w-[440px] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[440px] mx-4 depth-card rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Agent settings"
@@ -133,7 +133,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete,
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-              className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
+              className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none"
               placeholder="Agent name"
             />
           </label>
@@ -155,7 +155,7 @@ export function AgentSettingsModal({ isOpen, agent, onClose, onRename, onDelete,
                 />
               </div>
             ) : (
-              <div className="mt-1.5 rounded-2xl glass-input px-3 py-2.5 text-sm text-[var(--text-primary)]">
+              <div className="mt-1.5 rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm text-[var(--text-primary)]">
                 {agent.modelLabel ?? "Default"}
               </div>
             )}

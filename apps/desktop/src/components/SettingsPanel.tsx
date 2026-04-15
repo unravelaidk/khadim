@@ -94,8 +94,8 @@ export function SettingsPanel({
                 onClick={() => setActiveTab(item.id)}
                 className={`shrink-0 px-3 py-1.5 rounded-[var(--radius-sm)] text-[11px] font-semibold transition-all duration-150 ${
                   activeTab === item.id
-                    ? "bg-[var(--surface-card)] text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)] border border-[var(--glass-border)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] border border-transparent"
+                    ? "depth-card-sm text-[var(--text-primary)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]/30"
                 }`}
               >
                 {item.label}

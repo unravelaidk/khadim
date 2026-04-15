@@ -186,7 +186,7 @@ export function WorkspaceView({
             <button
               onClick={onNewAgent}
               disabled={loading}
-              className="btn-accent h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
+              className="btn-ink h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
             >
               New agent
             </button>
@@ -480,7 +480,7 @@ function EmptyAgents({ onNewAgent, loading }: { onNewAgent: () => void; loading:
           <button
             onClick={onNewAgent}
             disabled={loading}
-            className="btn-accent h-10 rounded-full px-7 text-[13px] font-semibold disabled:opacity-50"
+            className="btn-ink h-10 rounded-full px-7 text-[13px] font-semibold disabled:opacity-50"
           >
             Create first agent
           </button>

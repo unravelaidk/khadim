@@ -170,17 +170,24 @@ export function Quickstart({ onSelectTemplate, onSkip }: QuickstartProps) {
 
         {CATEGORIES.map((cat) => {
           const items = TEMPLATES.filter((t) => t.category === cat);
+          const catTint =
+            cat === "Finance" ? "var(--tint-lime)" :
+            cat === "Support" ? "var(--tint-violet)" :
+            cat === "Research" ? "var(--tint-sky)" :
+            cat === "Operations" ? "var(--tint-amber)" :
+            cat === "Reporting" ? "var(--tint-teal)" :
+            "var(--tint-warm)";
           return (
             <div key={cat} className="mt-10">
-              <h2 className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+              <h2 className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)]" style={{ background: catTint }}>
                 {cat}
               </h2>
-              <div className="mt-2 flex flex-col">
+              <div className="mt-3 flex flex-col gap-2">
                 {items.map((tpl) => (
                   <button
                     key={tpl.id}
                     onClick={() => onSelectTemplate(tpl.data)}
-                    className="group flex items-center gap-4 rounded-[var(--radius-sm)] -mx-3 px-3 py-3 text-left transition-colors hover:bg-[var(--glass-bg)]"
+                    className="group flex items-center gap-4 depth-card-interactive -mx-1 px-4 py-3 text-left"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-[var(--text-primary)]">

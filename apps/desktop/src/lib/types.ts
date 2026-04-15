@@ -4,7 +4,7 @@ import type { ThinkingStepData } from "./bindings";
 export type InteractionMode = "chat" | "work";
 
 /** Sub-view within work mode — the platform nav */
-export type WorkView = "dashboard" | "agents" | "sessions" | "environments" | "credentials" | "memory" | "analytics";
+export type WorkView = "dashboard" | "agents" | "sessions" | "environments" | "credentials" | "memory" | "integrations" | "analytics";
 
 /** @deprecated — kept for compatibility during migration */
 export type WorkHomeView = "workspaces";

@@ -34,8 +34,8 @@ export function AgentList({
     return (
       <div className="flex h-full items-center">
         <div className="px-12 py-16 max-w-lg">
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-[14px] bg-[var(--surface-ink-4)]">
-            <i className="ri-robot-2-line text-[20px] leading-none text-[var(--text-muted)]" />
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "var(--tint-sky)" }}>
+            <i className="ri-robot-2-line text-[22px] leading-none text-[var(--text-primary)]" />
           </div>
           <h1 className="font-display text-xl font-medium tracking-[-0.01em] text-[var(--text-primary)]">
             Agents
@@ -46,7 +46,7 @@ export function AgentList({
           </p>
           <button
             onClick={onCreateAgent}
-            className="btn-accent mt-7 h-10 rounded-full px-6 text-[13px] font-semibold"
+            className="btn-ink mt-7 h-11 rounded-full px-6 text-[14px] font-semibold"
           >
             Create agent
           </button>
@@ -75,7 +75,7 @@ export function AgentList({
           </div>
           <button
             onClick={onCreateAgent}
-            className="btn-accent h-8 rounded-full px-4 text-[11px] font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-[11px] font-semibold"
           >
             New agent
           </button>
@@ -86,7 +86,7 @@ export function AgentList({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter agents…"
-            className="glass-input mt-4 h-9 w-full max-w-xs rounded-[var(--radius-sm)] px-3 text-[13px]"
+            className="depth-inset mt-4 h-9 w-full max-w-xs px-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
           />
         )}
       </div>
@@ -146,37 +146,38 @@ function AgentCard({
   }, [agent.name]);
 
   return (
-    <div className="group relative flex flex-col rounded-[14px] border border-[var(--glass-border)] bg-[var(--surface-card)] p-4 transition-[border-color,background] duration-[var(--duration-base)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)]">
+    <div className="group relative flex flex-col depth-card-interactive p-4">
       {/* Top row: badge + name + status */}
       <div className="flex items-center gap-3">
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] font-display text-[13px] font-semibold"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-[14px] font-semibold"
           style={{
-            background: `oklch(50% 0.04 ${hue} / 0.12)`,
+            background: `oklch(50% 0.04 ${hue} / 0.15)`,
             color: `oklch(75% 0.06 ${hue})`,
           }}
         >
           {agent.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[14px] font-medium text-[var(--text-primary)]">
+          <p className="truncate text-[14px] font-semibold text-[var(--text-primary)]">
             {agent.name}
           </p>
         </div>
         <span
-          className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-            isActive
-              ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"
-              : isPaused
-                ? "bg-[var(--glass-bg-strong)] text-[var(--color-pop)]"
-                : "bg-[var(--surface-ink-4)] text-[var(--text-muted)]"
-          }`}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+          style={{
+            background: isActive ? "var(--tint-lime)" : isPaused ? "var(--tint-amber)" : "var(--tint-warm)",
+            color: "var(--text-primary)",
+          }}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${
-            isActive ? "bg-[var(--color-success)]" :
-            isPaused ? "bg-[var(--color-pop)]" :
-            "bg-[var(--text-muted)] opacity-30"
-          }`} />
+          <span className="relative flex h-1.5 w-1.5">
+            {isActive && <span className="absolute inset-0 rounded-full bg-[var(--color-success)] animate-ping opacity-30" />}
+            <span className={`relative h-1.5 w-1.5 rounded-full ${
+              isActive ? "bg-[var(--color-success)]" :
+              isPaused ? "bg-[var(--color-pop)]" :
+              "bg-[var(--text-muted)] opacity-30"
+            }`} />
+          </span>
           {statusLabel}
         </span>
       </div>
@@ -213,7 +214,7 @@ function AgentCard({
       <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           onClick={onRun}
-          className="h-7 rounded-full bg-[var(--glass-bg)] px-3 text-[11px] font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+          className="h-7 rounded-full px-3 text-[11px] font-semibold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]" style={{ background: "var(--tint-lime)" }}
         >
           Run
         </button>

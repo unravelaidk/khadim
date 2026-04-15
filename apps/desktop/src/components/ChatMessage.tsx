@@ -5,6 +5,7 @@ import type { ChatMessage as Message, ThinkingStepData } from "../lib/bindings";
 import { formatMessageTime } from "../lib/ui";
 import { ThinkingSteps } from "./ThinkingSteps";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { AsciiPrompt, AsciiBotFace } from "./shared/AsciiArt";
 
 type BackendType = "khadim" | "opencode" | "claude_code" | string;
 
@@ -305,8 +306,11 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
           )}
         </div>
         <div className="pl-8 md:pl-9">
-          <div className="whitespace-pre-wrap font-sans text-[15px] leading-[1.65] text-[var(--text-primary)] md:text-[16px] md:leading-[1.7]">
-            {message.content}
+          <div className="flex items-start gap-2">
+            <AsciiPrompt symbol="❯" className="text-[14px] mt-[3px] opacity-50" />
+            <div className="whitespace-pre-wrap font-sans text-[15px] leading-[1.65] text-[var(--text-primary)] md:text-[16px] md:leading-[1.7]">
+              {message.content}
+            </div>
           </div>
         </div>
       </div>

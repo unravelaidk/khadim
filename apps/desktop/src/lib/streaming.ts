@@ -31,6 +31,10 @@ export function formatStreamingError(message: string | null | undefined) {
   return getErrorMessage({ message: message ?? "Streaming error" } as AppError);
 }
 
+export function stripInternalReminderBlocks(value: string): string {
+  return value.replace(/\s*<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "").trimEnd();
+}
+
 export function finalizeSteps(steps: ThinkingStepData[]): ThinkingStepData[] {
   let changed = false;
   const next = steps.map((step) => {

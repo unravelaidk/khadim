@@ -91,10 +91,10 @@ function QuestionCard({
               key={opt.label}
               type="button"
               onClick={() => toggleOption(opt.label)}
-              className={`group relative rounded-2xl border px-3.5 py-2 text-left transition-all duration-150 ${
+              className={`group relative rounded-2xl px-3.5 py-2 text-left transition-all duration-150 ${
                 selected
-                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 shadow-[0_0_0_1px_var(--color-accent)]"
-                  : "border-[var(--glass-border)] bg-[var(--glass-bg)] hover:border-[var(--glass-border-strong)] hover:bg-[var(--glass-bg-strong)]"
+                  ? "shadow-[var(--shadow-depth-card-hover)] bg-[var(--color-accent)]/10"
+                  : "bg-[var(--depth-inset-bg,var(--surface-bg-subtle))] shadow-[var(--shadow-depth-inset,inset_0_1px_3px_oklch(0%_0_0_/_0.08))] hover:shadow-[var(--shadow-depth-card-sm,var(--shadow-glass-sm))]"
               }`}
             >
               <span
@@ -124,10 +124,10 @@ function QuestionCard({
           <button
             type="button"
             onClick={handleCustomToggle}
-            className={`rounded-2xl border px-3.5 py-2 text-left transition-all duration-150 ${
+            className={`rounded-2xl px-3.5 py-2 text-left transition-all duration-150 ${
               showCustom
-                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
-                : "border-dashed border-[var(--glass-border)] bg-transparent hover:border-[var(--glass-border-strong)] hover:bg-[var(--glass-bg)]"
+                ? "bg-[var(--color-accent)]/10 shadow-[var(--shadow-depth-card-sm,var(--shadow-glass-sm))]"
+                : "bg-[var(--depth-inset-bg,var(--surface-bg-subtle))] shadow-[var(--shadow-depth-inset,inset_0_1px_3px_oklch(0%_0_0_/_0.08))] hover:shadow-[var(--shadow-depth-card-sm,var(--shadow-glass-sm))]"
             }`}
           >
             <span className={`block text-[12px] font-semibold leading-tight ${showCustom ? "text-[var(--color-accent)]" : "text-[var(--text-muted)]"}`}>
@@ -143,7 +143,7 @@ function QuestionCard({
           ref={customInputRef}
           value={customText}
           onChange={(e) => setCustomText(e.target.value)}
-          className="w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
+          className="w-full rounded-2xl depth-inset px-3 py-2.5 text-sm outline-none"
           placeholder="Type your answer..."
         />
       )}
@@ -189,7 +189,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[520px] max-h-[80vh] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300 flex flex-col"
+        className="relative z-10 w-full max-w-[520px] max-h-[80vh] mx-4 depth-card rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300 flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-label="Agent question"
@@ -197,7 +197,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15 text-[var(--color-accent)]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-2xl text-[var(--text-primary)]" style={{ background: "var(--tint-amber)" }}>
               <i className="ri-stop-circle-line text-[16px] leading-none" />
             </span>
             <div>
@@ -250,7 +250,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
           <button
             onClick={handleSubmit}
             disabled={!hasAnswer}
-            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-40"
           >
             Submit
           </button>

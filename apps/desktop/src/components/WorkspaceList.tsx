@@ -54,7 +54,7 @@ export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDel
           </p>
           <button
             onClick={onCreateNew}
-            className="btn-accent mt-6 h-9 rounded-full px-5 text-[12px] font-semibold"
+            className="btn-ink mt-6 h-9 rounded-full px-5 text-[12px] font-semibold"
           >
             Create workspace
           </button>
@@ -98,7 +98,7 @@ export function WorkspaceList({ workspaces, agents, onSelect, onCreateNew, onDel
               </div>
               <button
                 onClick={onCreateNew}
-                className="btn-accent h-8 shrink-0 rounded-full px-4 text-[11px] font-semibold"
+                className="btn-ink h-8 shrink-0 rounded-full px-4 text-[11px] font-semibold"
               >
                 New workspace
               </button>

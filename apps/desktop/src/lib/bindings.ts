@@ -193,6 +193,93 @@ export interface UpsertCredentialInput {
   secret_value?: string | null;
 }
 
+// ── Integration types ────────────────────────────────────────────
+
+export type IntegrationCategory =
+  | "cloud_storage" | "email" | "messaging" | "spreadsheet"
+  | "project_management" | "calendar" | "crm" | "ecommerce"
+  | "database" | "dev_ops" | "documents" | "finance"
+  | "notifications" | "generic";
+
+export interface IntegrationMeta {
+  id: string;
+  name: string;
+  description: string;
+  category: IntegrationCategory;
+  icon: string;
+  auth_type: IntegrationAuthKind;
+  docs_url: string | null;
+}
+
+export type IntegrationAuthKind =
+  | { type: "none" }
+  | { type: "api_key"; label: string; placeholder?: string }
+  | { type: "oauth2"; auth_url: string; token_url: string; scopes: string[] }
+  | { type: "credentials"; fields: IntegrationCredentialField[] };
+
+export interface IntegrationCredentialField {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+}
+
+export interface IntegrationActionDef {
+  id: string;
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  is_mutation: boolean;
+  risk_level: "low" | "medium" | "high";
+}
+
+export interface IntegrationConnectionRecord {
+  id: string;
+  integration_id: string;
+  label: string;
+  account_label: string | null;
+  is_active: boolean;
+  last_verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrationConnectionStatus {
+  connected: boolean;
+  account_label: string | null;
+  error: string | null;
+}
+
+export interface IntegrationActionResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  output_text?: string;
+}
+
+export interface ConnectIntegrationInput {
+  integration_id: string;
+  label: string;
+  credentials: Record<string, string>;
+}
+
+export interface ExecuteActionInput {
+  connection_id: string;
+  action_id: string;
+  params: Record<string, unknown>;
+}
+
+export interface IntegrationLogRecord {
+  id: string;
+  connection_id: string;
+  action_id: string;
+  success: boolean;
+  error_message: string | null;
+  duration_ms: number;
+  created_at: string;
+}
+
 export interface MemoryStoreRecord {
   id: string;
   workspace_id: string | null;
@@ -1685,6 +1772,38 @@ export const commands = {
       description,
       private: isPrivate,
     }),
+
+  // ── Integrations ────────────────────────────────────────────────
+
+  listIntegrations: () =>
+    invoke<IntegrationMeta[]>("list_integrations"),
+
+  getIntegrationActions: (integrationId: string) =>
+    invoke<IntegrationActionDef[]>("get_integration_actions", { integrationId }),
+
+  getIntegrationAuthType: (integrationId: string) =>
+    invoke<IntegrationAuthKind>("get_integration_auth_type", { integrationId }),
+
+  listIntegrationConnections: () =>
+    invoke<IntegrationConnectionRecord[]>("list_integration_connections"),
+
+  connectIntegration: (input: ConnectIntegrationInput) =>
+    invoke<IntegrationConnectionRecord>("connect_integration", { input }),
+
+  connectIntegrationOauth: (integrationId: string, label: string) =>
+    invoke<IntegrationConnectionRecord>("connect_integration_oauth", { integrationId, label }),
+
+  disconnectIntegration: (connectionId: string) =>
+    invoke<void>("disconnect_integration", { connectionId }),
+
+  testIntegrationConnection: (connectionId: string) =>
+    invoke<IntegrationConnectionStatus>("test_integration_connection", { connectionId }),
+
+  executeIntegrationAction: (input: ExecuteActionInput) =>
+    invoke<IntegrationActionResult>("execute_integration_action", { input }),
+
+  listIntegrationLogs: (connectionId?: string, limit?: number) =>
+    invoke<IntegrationLogRecord[]>("list_integration_logs", { connectionId: connectionId ?? null, limit: limit ?? 50 }),
 };
 
 // ── Events ───────────────────────────────────────────────────────────

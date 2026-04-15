@@ -23,6 +23,7 @@ import {
   MemoryStoreEditor,
   MemoryEntryEditor,
   AnalyticsDashboard,
+  IntegrationsList,
   Quickstart,
 } from "./work";
 import type {
@@ -554,6 +555,8 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
           onDeleteCredential={(id) => deleteCred.mutate(id)}
         />
       );
+    case "integrations":
+      return <IntegrationsList />;
     case "memory":
       return (
         <MemoryStoreList

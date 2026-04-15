@@ -94,6 +94,27 @@
   --shadow-glow-sm:  0 0 0 1px oklch(100% 0.003 260 / 0.07);
   --shadow-glow-accent: 0 6px 24px -8px oklch(88% 0.006 260 / 0.20);
 
+  /* Depth surfaces — derived from surface tokens so they adapt to
+     any theme/variant automatically. The default theme overrides
+     these with tuned values in its dark/light variant blocks. */
+  --depth-card-bg:          var(--surface-elevated);
+  --depth-inset-bg:         var(--surface-bg-subtle);
+  --depth-well-bg:          var(--surface-bg-subtle);
+  --shadow-depth-card:      var(--shadow-glass-md);
+  --shadow-depth-card-sm:   var(--shadow-glass-sm);
+  --shadow-depth-card-hover: var(--shadow-glass-lg);
+  --shadow-depth-inset:     inset 0 2px 4px -1px oklch(0% 0 0 / 0.12);
+  --shadow-depth-well:      inset 0 1px 3px oklch(0% 0 0 / 0.10);
+
+  /* Tinted category fills — theme-neutral defaults */
+  --tint-rose:        oklch(68% 0.08 15 / 0.12);
+  --tint-amber:       oklch(75% 0.08 75 / 0.12);
+  --tint-lime:        oklch(72% 0.07 140 / 0.12);
+  --tint-sky:         oklch(70% 0.06 230 / 0.12);
+  --tint-violet:      oklch(65% 0.07 300 / 0.12);
+  --tint-teal:        oklch(70% 0.06 185 / 0.12);
+  --tint-warm:        oklch(72% 0.04 60 / 0.10);
+
   /* Terminal — neutral */
   --terminal-bg:            oklch(11% 0.004 260);
   --terminal-fg:            oklch(92% 0.004 260);
@@ -182,6 +203,22 @@
   --shadow-glow:     0 0 0 1px oklch(100% 0.003 260 / 0.10);
   --shadow-glow-sm:  0 0 0 1px oklch(100% 0.003 260 / 0.07);
   --shadow-glow-accent: 0 6px 24px -8px oklch(88% 0.006 260 / 0.20);
+
+  --depth-card-bg:          oklch(22% 0.006 260);
+  --depth-inset-bg:         oklch(12% 0.005 260);
+  --depth-well-bg:          oklch(10% 0.004 260);
+  --shadow-depth-card:      0 2px 8px -2px oklch(4% 0.003 260 / 0.50), 0 8px 24px -6px oklch(4% 0.003 260 / 0.35);
+  --shadow-depth-card-sm:   0 1px 4px -1px oklch(4% 0.003 260 / 0.40), 0 4px 12px -4px oklch(4% 0.003 260 / 0.25);
+  --shadow-depth-card-hover: 0 4px 16px -4px oklch(4% 0.003 260 / 0.55), 0 12px 32px -8px oklch(4% 0.003 260 / 0.40);
+  --shadow-depth-inset:     inset 0 2px 6px -2px oklch(4% 0.003 260 / 0.50);
+  --shadow-depth-well:      inset 0 1px 4px oklch(4% 0.003 260 / 0.40), inset 0 0 0 1px oklch(100% 0.003 260 / 0.03);
+  --tint-rose:        oklch(68% 0.08 15 / 0.12);
+  --tint-amber:       oklch(75% 0.08 75 / 0.12);
+  --tint-lime:        oklch(72% 0.07 140 / 0.12);
+  --tint-sky:         oklch(70% 0.06 230 / 0.12);
+  --tint-violet:      oklch(65% 0.07 300 / 0.12);
+  --tint-teal:        oklch(70% 0.06 185 / 0.12);
+  --tint-warm:        oklch(72% 0.04 60 / 0.10);
 
   --color-success:        oklch(62% 0.10 150);
   --color-success-strong: oklch(54% 0.11 150);
@@ -314,6 +351,23 @@
   --shadow-glow:     0 0 0 1px oklch(18% 0.005 260 / 0.12);
   --shadow-glow-sm:  0 0 0 1px oklch(18% 0.005 260 / 0.07);
   --shadow-glow-accent: 0 6px 24px -8px oklch(28% 0.006 260 / 0.18);
+
+  /* Depth surfaces — light mode: white objects on warm gray */
+  --depth-card-bg:          oklch(100% 0.002 260);
+  --depth-inset-bg:         oklch(94% 0.004 260);
+  --depth-well-bg:          oklch(92% 0.005 260);
+  --shadow-depth-card:      0 1px 3px oklch(18% 0.005 260 / 0.06), 0 6px 20px -4px oklch(18% 0.005 260 / 0.10);
+  --shadow-depth-card-sm:   0 1px 2px oklch(18% 0.005 260 / 0.05), 0 3px 10px -3px oklch(18% 0.005 260 / 0.08);
+  --shadow-depth-card-hover: 0 2px 8px oklch(18% 0.005 260 / 0.08), 0 12px 32px -6px oklch(18% 0.005 260 / 0.14);
+  --shadow-depth-inset:     inset 0 2px 4px -1px oklch(18% 0.005 260 / 0.08);
+  --shadow-depth-well:      inset 0 1px 3px oklch(18% 0.005 260 / 0.06), inset 0 0 0 1px oklch(18% 0.005 260 / 0.04);
+  --tint-rose:        oklch(85% 0.06 15 / 0.35);
+  --tint-amber:       oklch(90% 0.06 75 / 0.35);
+  --tint-lime:        oklch(88% 0.05 140 / 0.30);
+  --tint-sky:         oklch(88% 0.04 230 / 0.28);
+  --tint-violet:      oklch(85% 0.05 300 / 0.28);
+  --tint-teal:        oklch(88% 0.04 185 / 0.28);
+  --tint-warm:        oklch(92% 0.03 60 / 0.30);
 
   --color-success:        oklch(48% 0.10 150);
   --color-success-strong: oklch(42% 0.11 150);

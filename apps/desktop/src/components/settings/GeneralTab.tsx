@@ -87,10 +87,10 @@ export function GeneralTab({
             <div className="flex gap-3">
               <button
                 onClick={() => onSetThemeMode("dark")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-semibold transition-all duration-200 border ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-semibold transition-all duration-200 ${
                   themeMode === "dark"
-                    ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] border-[var(--glass-border-strong)]"
-                    : "bg-[var(--glass-bg)] text-[var(--text-primary)] border-[var(--glass-border)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+                    ? "depth-card-sm text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/30"
                 }`}
               >
                 <i className="ri-moon-line text-[16px] leading-none" />
@@ -99,12 +99,12 @@ export function GeneralTab({
               <button
                 onClick={() => onSetThemeMode("light")}
                 disabled={!selectedFamily.hasLightVariant}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-semibold transition-all duration-200 border ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-semibold transition-all duration-200 ${
                   !selectedFamily.hasLightVariant
-                    ? "bg-[var(--glass-bg)] text-[var(--text-muted)] border-[var(--glass-border)] opacity-50 cursor-not-allowed"
+                    ? "text-[var(--text-muted)] opacity-50 cursor-not-allowed"
                     : themeMode === "light"
-                    ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] border-[var(--glass-border-strong)]"
-                    : "bg-[var(--glass-bg)] text-[var(--text-primary)] border-[var(--glass-border)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+                    ? "depth-card-sm text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/30"
                 }`}
               >
                 <i className="ri-sun-line text-[16px] leading-none" />
@@ -140,7 +140,7 @@ export function GeneralTab({
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             {chatDirectory ? (
-              <div className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2">
+              <div className="flex items-center gap-2 depth-inset rounded-xl px-3 py-2">
                 <i className="ri-folder-3-line text-[14px] leading-none text-[var(--color-accent)]" />
                 <span className="text-[11px] font-mono text-[var(--text-primary)] truncate">{chatDirectory}</span>
               </div>
@@ -191,10 +191,10 @@ export function GeneralTab({
         <button
           type="button"
           onClick={() => onSetChatAutoAccessSharedMemory(!chatAutoAccessSharedMemory)}
-          className={`w-full rounded-xl border px-4 py-3 text-left transition-all duration-150 ${
+          className={`w-full rounded-xl px-4 py-3 text-left transition-all duration-150 ${
             chatAutoAccessSharedMemory
-              ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
-              : "border-[var(--glass-border)] bg-[var(--glass-bg)] hover:bg-[var(--glass-bg-strong)]"
+              ? "depth-card-sm"
+              : "hover:bg-[var(--glass-bg)]/30"
           }`}
         >
           <div className="flex items-center justify-between gap-4">
@@ -235,7 +235,7 @@ export function GeneralTab({
             Detecting installed editors…
           </div>
         ) : detectedEditors.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--glass-border)] px-3 py-4 text-center">
+          <div className="depth-well rounded-xl px-3 py-4 text-center">
             <p className="text-[11px] text-[var(--text-muted)]">No editors detected on your system.</p>
             <p className="text-[10px] text-[var(--text-muted)] mt-1">Install an editor and ensure it's on your $PATH.</p>
           </div>
@@ -286,10 +286,10 @@ function EditorOption({
   return (
     <button
       onClick={onSelect}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 border ${
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 ${
         isSelected
-          ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
-          : "border-[var(--glass-border)] bg-[var(--glass-bg)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+          ? "depth-card-sm text-[var(--text-primary)]"
+          : "hover:bg-[var(--glass-bg)]/30"
       }`}
     >
       <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
@@ -345,10 +345,10 @@ function CatppuccinVariantSelector({
           <button
             key={variant.id}
             onClick={() => handleVariantChange(variant.id)}
-            className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-semibold transition-all duration-200 border ${
+            className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-semibold transition-all duration-200 ${
               catppuccinVariant === variant.id
-                ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] border-[var(--glass-border-strong)]"
-                : "bg-[var(--glass-bg)] text-[var(--text-primary)] border-[var(--glass-border)] hover:bg-[var(--glass-bg-strong)] hover:border-[var(--glass-border-strong)]"
+                ? "depth-card-sm text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/30"
             }`}
           >
             {variant.label}
@@ -379,10 +379,10 @@ function ThemeFamilyCard({
   return (
     <button
       onClick={onSelect}
-      className={`group relative flex flex-col rounded-2xl border-2 transition-all duration-200 overflow-hidden ${
+      className={`group relative flex flex-col rounded-2xl transition-all duration-200 overflow-hidden ${
         isSelected
-          ? "border-[var(--color-accent)] shadow-[var(--shadow-glow)]"
-          : "border-[var(--glass-border-strong)] hover:border-[var(--glass-border-strong)]"
+          ? "shadow-[var(--shadow-depth-card-hover)] ring-2 ring-[var(--color-accent)]"
+          : "shadow-[var(--shadow-depth-card-sm)] hover:shadow-[var(--shadow-depth-card-hover)]"
       }`}
     >
       <div className="aspect-[4/3] relative overflow-hidden" style={{ background: previewBg }}>

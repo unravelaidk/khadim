@@ -170,7 +170,7 @@ function PluginCard({
   }
 
   return (
-    <div className="rounded-xl glass-panel transition-all hover:border-[var(--glass-border-strong)]">
+    <div className="depth-card-sm transition-all hover:shadow-[var(--shadow-depth-card-hover)]">
       {/* Header row */}
       <div
         className="flex items-center gap-3 px-3.5 py-3 cursor-pointer hover:bg-[var(--surface-card-hover)] rounded-xl transition-colors"
@@ -462,7 +462,7 @@ export function PluginsTab() {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Header card */}
-      <div className="rounded-2xl glass-card-static p-5">
+      <div className="depth-card p-5">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-[13px] font-bold text-[var(--text-primary)]">Plugins</h2>
           <button
@@ -501,7 +501,7 @@ export function PluginsTab() {
           ))}
         </div>
       ) : plugins.length === 0 ? (
-        <div className="rounded-2xl glass-card-static p-8 text-center">
+        <div className="depth-well p-8 text-center">
           <div className="flex justify-center mb-3">
             <div className="h-12 w-12 rounded-2xl bg-[var(--glass-bg-strong)] flex items-center justify-center">
               <i className="ri-puzzle-line text-[20px] leading-none text-[var(--text-muted)]" />

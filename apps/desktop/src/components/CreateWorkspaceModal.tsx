@@ -110,7 +110,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-[520px] mx-4 glass-panel-strong rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
+        className="relative z-10 w-full max-w-[520px] mx-4 depth-card rounded-[var(--radius-xl)] animate-in zoom-in slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Create workspace"
@@ -148,7 +148,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
               ref={nameInputRef}
               value={form.name ?? ""}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-              className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
+              className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none"
               placeholder="my-project"
             />
           </label>
@@ -162,7 +162,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
               <input
                 value={form.repo_path ?? ""}
                 onChange={(e) => setForm((prev) => ({ ...prev, repo_path: e.target.value }))}
-                className="flex-1 rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
+                className="flex-1 rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none"
                 placeholder="/path/to/repo"
               />
               <button
@@ -232,7 +232,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
               <input
                 value={form.branch ?? ""}
                 onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-                className="mt-1.5 w-full rounded-2xl glass-input px-3 py-2.5 text-sm outline-none"
+                className="mt-1.5 w-full rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-sm outline-none"
                 placeholder="main"
               />
             )}

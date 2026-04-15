@@ -94,7 +94,7 @@ export function MemoryView() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search memory"
-            className="glass-input h-9 w-full rounded-full px-4 text-[13px]"
+            className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-9 w-full rounded-full px-4 text-[13px]"
           />
         </div>
 
@@ -159,19 +159,19 @@ export function MemoryView() {
                     value={draftKey}
                     onChange={(event) => setDraftKey(event.target.value)}
                     placeholder="Short memory key"
-                    className="glass-input h-10 rounded-xl px-4 text-[13px]"
+                    className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-10 rounded-xl px-4 text-[13px]"
                   />
                   <textarea
                     value={draftContent}
                     onChange={(event) => setDraftContent(event.target.value)}
                     placeholder="Save a durable fact or preference from chat"
-                    className="glass-input min-h-[110px] rounded-xl px-4 py-3 text-[13px]"
+                    className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] min-h-[110px] rounded-xl px-4 py-3 text-[13px]"
                   />
                   <div className="flex justify-end">
                     <button
                       onClick={() => void handleCreateEntry()}
                       disabled={!draftKey.trim() || !draftContent.trim() || createEntry.isPending}
-                      className="btn-accent h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
+                      className="btn-ink h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
                     >
                       {createEntry.isPending ? "Saving..." : "Save memory"}
                     </button>
@@ -193,7 +193,7 @@ export function MemoryView() {
               ) : (
                 <div className="space-y-3">
                   {filteredEntries.map((entry) => (
-                    <div key={entry.id} className="rounded-[var(--radius-md)] border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4">
+                    <div key={entry.id} className="depth-card-sm p-4">
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">

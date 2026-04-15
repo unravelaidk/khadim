@@ -80,7 +80,7 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
     const user = authStatus.user;
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl glass-card-static p-4">
+        <div className="rounded-2xl depth-card-sm p-4">
           <div className="flex items-center gap-3">
             <img
               src={user.avatar_url}
@@ -108,7 +108,7 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
 
         {/* gh CLI info */}
         {ghCli && (
-          <div className="rounded-2xl glass-card-static p-4">
+          <div className="rounded-2xl depth-card-sm p-4">
             <h3 className="text-[12px] font-bold text-[var(--text-primary)] mb-2">gh CLI</h3>
             {ghCli.installed ? (
               <div className="space-y-2">
@@ -146,7 +146,7 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
   // ── Login flow ─────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl glass-card-static p-4">
+      <div className="rounded-2xl depth-card-sm p-4">
         <h3 className="text-[13px] font-bold text-[var(--text-primary)] mb-1">Connect GitHub</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Sign in with your GitHub account to manage issues and pull requests.

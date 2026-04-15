@@ -8,6 +8,7 @@ const ICONS: Record<WorkView, string> = {
   dashboard:    "ri-dashboard-3-line",
   agents:       "ri-robot-2-line",
   sessions:     "ri-chat-3-line",
+  integrations: "ri-plug-line",
   environments: "ri-server-line",
   credentials:  "ri-key-2-line",
   memory:       "ri-brain-line",
@@ -18,6 +19,7 @@ const LABELS: Record<WorkView, string> = {
   dashboard: "Overview",
   agents: "Agents",
   sessions: "Sessions",
+  integrations: "Integrations",
   environments: "Environments",
   credentials: "Credentials",
   memory: "Memory",
@@ -25,7 +27,7 @@ const LABELS: Record<WorkView, string> = {
 };
 
 const PRIMARY_NAV: WorkView[] = ["dashboard", "agents", "sessions"];
-const SECONDARY_NAV: WorkView[] = ["environments", "credentials", "memory", "analytics"];
+const SECONDARY_NAV: WorkView[] = ["integrations", "environments", "credentials", "memory", "analytics"];
 
 /* ─── Work Sidebar ─────────────────────────────────────────────────── */
 
@@ -140,10 +142,10 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left transition-colors duration-[var(--duration-fast)] ${
+      className={`group flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left transition-all duration-[var(--duration-fast)] ${
         active
-          ? "bg-[var(--surface-elevated)] text-[var(--text-primary)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
+          ? "depth-card-sm text-[var(--text-primary)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/40 hover:text-[var(--text-primary)]"
       }`}
     >
       <i
@@ -155,11 +157,10 @@ function NavItem({
 
       {badge != null && badge > 0 && (
         <span
-          className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums leading-none ${
-            isAttention
-              ? "bg-[var(--color-danger-muted)] text-[var(--color-danger-text)]"
-              : "bg-[var(--glass-bg-strong)] text-[var(--text-secondary)]"
-          }`}
+          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums leading-none text-[var(--text-primary)]"
+          style={{
+            background: isAttention ? "var(--tint-rose)" : "var(--tint-warm)",
+          }}
         >
           {badge}
         </span>

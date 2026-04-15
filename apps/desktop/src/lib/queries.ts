@@ -187,6 +187,11 @@ export const desktopQueryKeys = {
   memoryEntries: (storeId: string | null) => ["memory-entries", storeId] as const,
   agentRuns: ["agent-runs"] as const,
   agentRunTurns: (runId: string | null) => ["agent-run-turns", runId] as const,
+  // Integrations
+  integrations: ["integrations"] as const,
+  integrationActions: (integrationId: string) => ["integration-actions", integrationId] as const,
+  integrationConnections: ["integration-connections"] as const,
+  integrationLogs: (connectionId?: string) => ["integration-logs", connectionId ?? "all"] as const,
 };
 
 export function useRuntimeSummaryQuery() {
@@ -866,5 +871,65 @@ export function useDockerAvailableQuery(enabled = true) {
     queryFn: () => commands.checkDockerAvailable(),
     enabled,
     staleTime: 30_000,
+  });
+}
+
+// ── Integration hooks ───────────────────────────────────────────
+
+import type {
+  IntegrationMeta,
+  IntegrationConnectionRecord,
+  IntegrationActionDef,
+  IntegrationLogRecord,
+  ConnectIntegrationInput,
+} from "./bindings";
+
+export function useIntegrationsQuery(enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.integrations,
+    queryFn: () => commands.listIntegrations(),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useIntegrationActionsQuery(integrationId: string, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.integrationActions(integrationId),
+    queryFn: () => commands.getIntegrationActions(integrationId),
+    enabled: enabled && Boolean(integrationId),
+    staleTime: 60_000,
+  });
+}
+
+export function useIntegrationConnectionsQuery(enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.integrationConnections,
+    queryFn: () => commands.listIntegrationConnections(),
+    enabled,
+  });
+}
+
+export function useIntegrationLogsQuery(connectionId?: string, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.integrationLogs(connectionId),
+    queryFn: () => commands.listIntegrationLogs(connectionId, 50),
+    enabled,
+  });
+}
+
+export function useConnectIntegrationMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ConnectIntegrationInput) => commands.connectIntegration(input),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: desktopQueryKeys.integrationConnections }); },
+  });
+}
+
+export function useDisconnectIntegrationMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionId: string) => commands.disconnectIntegration(connectionId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: desktopQueryKeys.integrationConnections }); },
   });
 }

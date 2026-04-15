@@ -77,7 +77,7 @@ export function GitHubPRCreate({ slug, repoPath, onCreated, onCancel }: GitHubPR
             <select
               value={head}
               onChange={(e) => setHead(e.target.value)}
-              className="w-full h-8 rounded-xl glass-input px-3 text-[12px] font-mono"
+              className="w-full h-8 rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 text-[12px] font-mono"
             >
               <option value="">Select branch</option>
               {branches.map((b) => (
@@ -92,7 +92,7 @@ export function GitHubPRCreate({ slug, repoPath, onCreated, onCancel }: GitHubPR
             <select
               value={base}
               onChange={(e) => setBase(e.target.value)}
-              className="w-full h-8 rounded-xl glass-input px-3 text-[12px] font-mono"
+              className="w-full h-8 rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 text-[12px] font-mono"
             >
               <option value="">Select branch</option>
               {branches.map((b) => (
@@ -111,7 +111,7 @@ export function GitHubPRCreate({ slug, repoPath, onCreated, onCancel }: GitHubPR
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="PR title"
-            className="w-full h-8 rounded-xl glass-input px-3 text-[12px] font-sans"
+            className="w-full h-8 rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 text-[12px] font-sans"
             autoFocus
           />
         </div>
@@ -125,7 +125,7 @@ export function GitHubPRCreate({ slug, repoPath, onCreated, onCancel }: GitHubPR
             onChange={(e) => setBody(e.target.value)}
             placeholder="Describe the changes..."
             rows={6}
-            className="w-full rounded-xl glass-input px-3 py-2 text-[12px] resize-none font-sans"
+            className="w-full rounded-xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2 text-[12px] resize-none font-sans"
           />
         </div>
 

@@ -3,32 +3,16 @@
 //! Dispatches a managed agent to the appropriate runner (local or docker)
 //! and tracks run lifecycle (pending → running → completed/failed).
 
-pub mod local;
 pub mod docker;
+pub mod helpers;
+pub mod local;
 
 use crate::db::{AgentRun, AgentRunTurn, Database, ManagedAgent};
 use crate::error::AppError;
 use crate::opencode::AgentStreamEvent;
+use helpers::credential_env_key;
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
-
-fn credential_env_key(name: &str) -> String {
-    let mut normalized = String::with_capacity(name.len());
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch.to_ascii_uppercase());
-        } else {
-            normalized.push('_');
-        }
-    }
-
-    let trimmed = normalized.trim_matches('_');
-    if trimmed.is_empty() {
-        "KHADIM_CREDENTIAL".to_string()
-    } else {
-        format!("KHADIM_CREDENTIAL_{}", trimmed)
-    }
-}
 
 /// Merged environment that a runner receives.
 #[derive(Debug, Clone)]
@@ -202,6 +186,41 @@ pub fn fail_run(
         None,
         None,
     )
+}
+
+/// Mark a run as completed and emit the terminal `done` event.
+pub fn complete_run_and_emit_done(
+    app: &AppHandle,
+    db: &Database,
+    run_id: &str,
+    result_summary: Option<&str>,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    started_at: &str,
+) {
+    let _ = complete_run(
+        db,
+        run_id,
+        result_summary,
+        input_tokens,
+        output_tokens,
+        started_at,
+    );
+    emit_run_event(app, run_id, "done", None, None);
+}
+
+/// Mark a run as failed and emit `error` then `done` events.
+pub fn fail_run_with_events(
+    app: &AppHandle,
+    db: &Database,
+    run_id: &str,
+    error_message: impl Into<String>,
+    started_at: &str,
+) {
+    let error_message = error_message.into();
+    let _ = fail_run(db, run_id, &error_message, started_at);
+    emit_run_event(app, run_id, "error", Some(error_message), None);
+    emit_run_event(app, run_id, "done", None, None);
 }
 
 /// Emit a stream event for a managed agent run.

@@ -116,7 +116,7 @@ export function MemoryStoreList({
           </p>
           <button
             onClick={onCreateStore}
-            className="btn-accent mt-8 h-10 rounded-full px-6 text-sm font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
           >
             Create store
           </button>
@@ -135,7 +135,7 @@ export function MemoryStoreList({
           </h1>
           <button
             onClick={onCreateStore}
-            className="btn-accent h-8 rounded-full px-4 text-xs font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-xs font-semibold"
           >
             New store
           </button>
@@ -148,7 +148,7 @@ export function MemoryStoreList({
             <button
               key={store.id}
               onClick={() => onViewStore(store.id)}
-              className="group flex items-center gap-4 border-b border-[var(--glass-border)] py-4 text-left last:border-0 -mx-3 px-3 rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--glass-bg)]"
+              className="group flex items-center gap-4 py-4 text-left last:border-0 -mx-3 px-3 rounded-[var(--radius-md)] transition-colors hover:bg-[var(--glass-bg)]/40"
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-[var(--text-primary)]">{store.name}</p>

@@ -1,5 +1,6 @@
 export { WorkPlatformSidebar } from "./WorkPlatformSidebar";
 export { WorkDashboard } from "./WorkDashboard";
+export { AgentBuilderPanel } from "./AgentBuilderPanel";
 export { AgentList } from "./AgentList";
 export { AgentEditor } from "./AgentEditor";
 export type { AgentEditorData } from "./AgentEditor";
@@ -14,4 +15,5 @@ export { MemoryStoreList, MemoryStoreDetail } from "./MemoryStoreList";
 export { MemoryStoreEditor, MemoryEntryEditor } from "./MemoryEditor";
 export type { MemoryStoreEditorData, MemoryEntryEditorData } from "./MemoryEditor";
 export { AnalyticsDashboard } from "./AnalyticsDashboard";
+export { IntegrationsList } from "./IntegrationsList";
 export { Quickstart } from "./Quickstart";

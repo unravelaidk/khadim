@@ -112,9 +112,9 @@ export function ChatHomeView({
             <button
               key={s.title}
               onClick={() => onStartWith(s.prompt)}
-              className="group flex items-start gap-3 rounded-[16px] border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-3.5 text-left transition-colors hover:border-[var(--glass-border-strong)] hover:bg-[var(--surface-card-hover)]"
+              className="group flex items-start gap-3 depth-card-interactive px-4 py-3.5 text-left"
             >
-              <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--glass-bg)] text-[var(--text-secondary)]">
+              <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[var(--text-primary)]" style={{ background: "var(--tint-sky)" }}>
                 <i className={`${s.icon} text-[16px] leading-none`} />
               </span>
               <div className="min-w-0 flex-1">
@@ -130,8 +130,8 @@ export function ChatHomeView({
 
         {/* Quick actions */}
         <div
-          className="mt-6 flex flex-wrap items-center gap-2 stagger-in"
-          style={{ ["--stagger-delay" as string]: "160ms" }}
+          className="mt-8 flex flex-wrap items-center gap-2 stagger-in"
+          style={{ ["--stagger-delay" as string]: "200ms" }}
         >
           <ChipLink label="New chat" onClick={onNewChat} />
           <ChipLink label="Open memory" onClick={onOpenMemory} />
@@ -155,7 +155,7 @@ export function ChatHomeView({
               <p className="text-[13px] text-[var(--text-secondary)]">No conversations yet.</p>
               <button
                 onClick={onNewChat}
-                className="mt-4 inline-flex h-9 items-center rounded-full btn-accent px-5 text-[12px] font-semibold"
+                className="mt-4 inline-flex h-9 items-center rounded-full btn-ink px-5 text-[12px] font-semibold"
               >
                 Start a conversation
               </button>
@@ -199,7 +199,7 @@ function ChipLink({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-4 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)]"
+      className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-all hover:text-[var(--text-primary)]" style={{ background: 'var(--tint-warm)' }}
     >
       {label}
     </button>

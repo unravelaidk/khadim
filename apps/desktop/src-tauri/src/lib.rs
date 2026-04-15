@@ -9,6 +9,7 @@ mod file_index;
 mod git;
 mod github;
 mod health;
+mod integrations;
 mod khadim_agent;
 mod khadim_ai;
 mod khadim_code;
@@ -25,6 +26,7 @@ mod workspace_context;
 use claude_code::ClaudeCodeManager;
 use db::Database;
 use file_index::FileIndexManager;
+use integrations::IntegrationRegistry;
 use khadim_agent::KhadimManager;
 use lsp::LspManager;
 use opencode::OpenCodeManager;
@@ -47,6 +49,7 @@ pub struct AppState {
     terminals: Arc<TerminalManager>,
     file_index: Arc<FileIndexManager>,
     lsp: Arc<LspManager>,
+    integrations: Arc<IntegrationRegistry>,
 }
 
 fn build_app_state() -> Arc<AppState> {
@@ -77,6 +80,20 @@ fn build_app_state() -> Arc<AppState> {
         );
     }
 
+    // Initialize integrations registry + register all built-in providers
+    let integration_registry = Arc::new(IntegrationRegistry::new(Arc::clone(&db)));
+    {
+        let registry_ref = Arc::clone(&integration_registry);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to build tokio runtime for integrations");
+        rt.block_on(async {
+            integrations::providers::register_all(&registry_ref).await;
+        });
+        log::info!("Integrations registry initialized");
+    }
+
     Arc::new(AppState {
         db,
         process_runner: ProcessRunner::new(),
@@ -89,6 +106,7 @@ fn build_app_state() -> Arc<AppState> {
         terminals: Arc::new(TerminalManager::new()),
         file_index: Arc::new(FileIndexManager::new()),
         lsp: Arc::new(LspManager::new()),
+        integrations: integration_registry,
     })
 }
 
@@ -303,6 +321,16 @@ pub fn run() {
             commands::editor::detect_editors,
             commands::editor::open_in_editor,
             commands::editor::open_project_in_editor,
+            commands::integrations::list_integrations,
+            commands::integrations::get_integration_actions,
+            commands::integrations::get_integration_auth_type,
+            commands::integrations::list_integration_connections,
+            commands::integrations::connect_integration,
+            commands::integrations::connect_integration_oauth,
+            commands::integrations::disconnect_integration,
+            commands::integrations::test_integration_connection,
+            commands::integrations::execute_integration_action,
+            commands::integrations::list_integration_logs,
             github::github_auth_status,
             github::github_auth_login,
             github::github_auth_logout,

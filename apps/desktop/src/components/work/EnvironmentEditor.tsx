@@ -123,7 +123,7 @@ export function EnvironmentEditor({
             type="button"
             onClick={handleSave}
             disabled={!canSave || isSaving}
-            className="btn-accent inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
           >
             {isSaving ? "Saving…" : environment ? "Save" : "Create"}
           </button>
@@ -145,7 +145,7 @@ export function EnvironmentEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Production"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
@@ -155,7 +155,7 @@ export function EnvironmentEditor({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What is this environment for? (optional)"
-              className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
+              className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 text-[13px]"
             />
           </div>
 
@@ -187,7 +187,7 @@ export function EnvironmentEditor({
                 value={dockerImage}
                 onChange={(e) => setDockerImage(e.target.value)}
                 placeholder="debian:bookworm-slim"
-                className="glass-input mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[13px]"
+                className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[13px]"
               />
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                 Image used for Docker runs in this environment.
@@ -219,13 +219,13 @@ export function EnvironmentEditor({
                       value={key}
                       onChange={(e) => updateVar(i, 0, e.target.value)}
                       placeholder="KEY"
-                      className="glass-input h-8 w-36 shrink-0 rounded-[var(--radius-sm)] px-2 font-mono text-[11px]"
+                      className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 w-36 shrink-0 rounded-[var(--radius-sm)] px-2 font-mono text-[11px]"
                     />
                     <input
                       value={value}
                       onChange={(e) => updateVar(i, 1, e.target.value)}
                       placeholder="value"
-                      className="glass-input h-8 flex-1 rounded-[var(--radius-sm)] px-2 text-[12px]"
+                      className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-8 flex-1 rounded-[var(--radius-sm)] px-2 text-[12px]"
                     />
                     <button
                       type="button"

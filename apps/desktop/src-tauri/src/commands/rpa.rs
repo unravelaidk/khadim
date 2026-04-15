@@ -1,3 +1,4 @@
+use crate::agent_runner::helpers::now;
 use crate::db::{
     AgentRun, AgentRunTurn, CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry,
     MemoryStore,
@@ -8,10 +9,6 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::State;
-
-fn now() -> String {
-    chrono::Utc::now().to_rfc3339()
-}
 
 fn validate_runner_type(value: &str) -> Result<(), AppError> {
     match value {
@@ -633,6 +630,7 @@ pub(crate) async fn run_managed_agent(
             let khadim = state.khadim.clone();
             let plugins = state.plugins.clone();
             let skills = state.skills.clone();
+            let integrations = state.integrations.clone();
             let agent_clone = agent.clone();
             tokio::spawn(async move {
                 crate::agent_runner::local::execute_local_run(
@@ -644,6 +642,7 @@ pub(crate) async fn run_managed_agent(
                     env,
                     plugins,
                     skills,
+                    integrations,
                 )
                 .await;
             });

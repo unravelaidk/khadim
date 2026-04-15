@@ -478,7 +478,7 @@ export function ChatInput({
                   aria-label="Send message"
                   className={`flex h-9 w-9 items-center justify-center rounded-full transition-all duration-[var(--duration-fast)] ${
                     value.trim()
-                      ? "btn-accent"
+                      ? "btn-ink"
                       : "bg-[var(--glass-bg)] text-[var(--text-muted)] cursor-not-allowed"
                   }`}
                 >

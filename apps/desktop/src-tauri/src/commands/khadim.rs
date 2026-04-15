@@ -661,6 +661,7 @@ pub(crate) async fn khadim_send_streaming(
                         Some(&khadim_mgr),
                         Some(&app_handle),
                         Some(db),
+                        Some(&state_arc.integrations),
                     )
                     .await
                 }
@@ -760,6 +761,7 @@ pub(crate) async fn khadim_send_message(
             Some(&khadim_mgr),
             Some(&app),
             Some(db),
+            Some(&state.integrations),
         )
         .await?
     });
