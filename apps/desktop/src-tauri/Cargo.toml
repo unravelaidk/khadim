@@ -28,7 +28,7 @@ thiserror = "1"
 log = "0.4"
 env_logger = "0.11"
 dirs = "6"
-rand = "0.8"
+rand = "0.10"
 base64 = "0.22"
 futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
@@ -37,8 +37,8 @@ http = "1"
 sha2 = "0.10"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
-wasmtime = { version = "29", features = ["component-model"] }
-wasmtime-wasi = "29"
+wasmtime = { version = "43", features = ["component-model"] }
+wasmtime-wasi = "43"
 toml = "0.8"
 url = "2"
 urlencoding = "2"

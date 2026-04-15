@@ -9,7 +9,7 @@
 //! 6. Store tokens and close the server
 
 use crate::error::AppError;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -35,10 +35,10 @@ pub struct OAuthConfig {
 
 /// Generate a random PKCE code verifier (43-128 chars, unreserved URL chars).
 fn generate_code_verifier() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let chars: Vec<u8> = (0..64)
         .map(|_| {
-            let idx = rng.gen_range(0..66);
+            let idx = rng.random_range(0..66);
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"[idx]
         })
         .collect();
@@ -56,8 +56,8 @@ fn generate_code_challenge(verifier: &str) -> String {
 
 /// Generate a random state parameter.
 fn generate_state() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
+    let mut rng = rand::rng();
+    let bytes: Vec<u8> = (0..32).map(|_| rng.random()).collect();
     base64::Engine::encode(
         &base64::engine::general_purpose::URL_SAFE_NO_PAD,
         &bytes,

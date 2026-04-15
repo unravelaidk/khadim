@@ -1,7 +1,7 @@
 {
   "name": "khadim",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "build": "bun -r --if-present build",
     "dev": "bun --filter @khadim/web dev",

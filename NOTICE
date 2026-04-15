@@ -1,0 +1,28 @@
+Khadim
+Copyright (c) 2026 Unravel AI and Khadim contributors.
+
+This product is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0). See the LICENSE file in the root of this repository for the full
+license text, or visit https://www.gnu.org/licenses/agpl-3.0.txt.
+
+Source availability
+--------------------
+If you run a modified version of Khadim and make it available to users over a
+network, AGPL-3.0 section 13 requires you to offer those users the complete
+corresponding source code of your modified version.
+
+Third-party components
+----------------------
+Khadim includes and depends on open-source software distributed under their
+own licenses. Notable components:
+
+- Example plugins under `examples/plugins/` are licensed under the MIT License.
+  See `examples/plugins/LICENSE`.
+- Dependencies declared in `package.json`, `Cargo.toml`, and workspace manifests
+  retain their upstream licenses.
+
+Trademarks
+----------
+"Khadim" and "Unravel AI" are trademarks of Unravel AI. The AGPL-3.0 license
+does not grant trademark rights. Forks must not use these names in a way that
+suggests endorsement by or affiliation with Unravel AI.

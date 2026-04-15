@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use base64::Engine;
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -86,7 +86,7 @@ fn write_auth_file(auth: &HashMap<String, OAuthCredentials>) -> Result<(), AppEr
 
 fn random_url_safe(len: usize) -> String {
     let mut bytes = vec![0u8; len];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 

@@ -118,7 +118,7 @@ This should stay a narrow integration:
   - git status summary
   - diff stat
   - changed file listing
-- Improved worktree behavior in a t3code-like direction:
+- Improved worktree behavior:
   - stable default worktree paths under `.khadim-worktrees/<repo>/<branch>`
   - reuse of existing non-main worktrees for an existing branch
   - shared-worktree-safe deletion logic when removing an agent
@@ -317,8 +317,6 @@ The next step should be a **full Khadim-native Docker runner**, since Khadim is 
 
 ### Native Workspace Build Plan
 
-This plan is informed by how `pingdotgg/t3code` treats worktree-aware terminal state, indexed workspace search, and branch/worktree context — but is adapted to take stronger advantage of Rust in Tauri.
-
 #### Product Direction
 
 Turn workspace mode into a native coding cockpit with four coordinated surfaces:
@@ -494,7 +492,7 @@ Planned improvements:
 - show shared-worktree warnings in deletion UI
 - add branch/worktree badges in workspace lists and agent cards
 - allow focusing the workspace tools on a selected agent/worktree explicitly
-- add orphaned worktree cleanup checks similar in spirit to t3code's thread cleanup flow
+- add orphaned worktree cleanup checks
 
 ### Streaming Direction
 

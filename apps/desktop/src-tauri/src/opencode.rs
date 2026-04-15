@@ -2,7 +2,7 @@ use crate::error::AppError;
 use crate::health;
 use crate::process::ProcessRunner;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use rand::Rng;
+use rand::RngExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -135,8 +135,8 @@ impl OpenCodeManager {
         let process_id = format!("opencode-{workspace_id}");
 
         // Generate a random password for this instance
-        let password: String = rand::thread_rng()
-            .sample_iter(&rand::distributions::Alphanumeric)
+        let password: String = rand::rng()
+            .sample_iter(rand::distr::Alphanumeric)
             .take(32)
             .map(char::from)
             .collect();
