@@ -89,6 +89,66 @@ bun run desktop:dev
 | `bun run db:generate` | Generate database migrations |
 | `bun run db:migrate` | Run database migrations |
 
+## Supported Providers
+
+Khadim supports **19 LLM providers** out of the box. Bring your own API key, or run models locally with Ollama.
+
+### Cloud Providers
+
+| Provider | API Key Env Var | Notes |
+|----------|----------------|-------|
+| [OpenAI](https://platform.openai.com/) | `OPENAI_API_KEY` | GPT-4o, GPT-4o Mini, o1, and more |
+| [Anthropic](https://www.anthropic.com/) | `ANTHROPIC_API_KEY` | Claude Sonnet 4, Claude 3.5 Haiku |
+| [OpenAI Codex](https://openai.com/codex) | `OPENAI_CODEX_API_KEY` | GPT-5.3 Codex, GPT-5.2 Codex (requires ChatGPT Plus/Pro) |
+| [xAI (Grok)](https://x.ai/) | `XAI_API_KEY` | Grok 4, Grok 3 |
+| [Groq](https://groq.com/) | `GROQ_API_KEY` | Llama 3.3 70B — ultra-fast inference |
+| [Mistral](https://mistral.ai/) | `MISTRAL_API_KEY` | Mistral Large, Codestral |
+| [Cerebras](https://cerebras.ai/) | `CEREBRAS_API_KEY` | Fast inference on custom silicon |
+| [MiniMax](https://www.minimax.io/) | `MINIMAX_API_KEY` | MiniMax models |
+| [Z.ai](https://z.ai/) | `ZAI_API_KEY` | Z.ai models |
+| [Kimi Coding](https://www.moonshot.cn/) | `KIMI_API_KEY` | Moonshot / Kimi coding models |
+| [HuggingFace](https://huggingface.co/) | `HUGGINGFACE_API_KEY` | Inference API — thousands of open models |
+| [OpenCode Zen](https://opencode.ai/) | `OPENCODE_API_KEY` | OpenCode Zen models |
+| [OpenCode Go](https://opencode.ai/) | `OPENCODE_API_KEY` | OpenCode Go models |
+
+### Aggregators & Gateways
+
+| Provider | API Key Env Var | Notes |
+|----------|----------------|-------|
+| [OpenRouter](https://openrouter.ai/) | `OPENROUTER_API_KEY` | Access 200+ models including free tiers (DevStral Free, Qwen 3 32B Free, DeepSeek Chat Free) |
+| [Vercel AI Gateway](https://vercel.com/) | — | Requires custom base URL |
+
+### Enterprise / Cloud Platform
+
+| Provider | API Key Env Var | Notes |
+|----------|----------------|-------|
+| [Amazon Bedrock](https://aws.amazon.com/bedrock/) | — | AWS credentials, requires custom base URL |
+| [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) | `AZURE_OPENAI_API_KEY` | Requires custom base URL |
+| [GitHub Copilot](https://github.com/features/copilot) | — | Uses Copilot authentication |
+
+### Local / Self-Hosted
+
+| Provider | API Key Env Var | Notes |
+|----------|----------------|-------|
+| [Ollama](https://ollama.ai/) | — | Run models locally — Llama 3.1, CodeGemma, DeepSeek Coder, and any GGUF model |
+
+### Recommended Models
+
+| Model | Provider | Tier |
+|-------|----------|------|
+| DevStral Free | OpenRouter | 🆓 Free |
+| Qwen 3 32B Free | OpenRouter | 🆓 Free |
+| DeepSeek Chat Free | OpenRouter | 🆓 Free |
+| Claude Sonnet 4 | Anthropic | 💎 Premium |
+| GPT-5.3 Codex | OpenAI Codex | 💎 Premium |
+| Grok 4 | xAI | 💎 Premium |
+| GPT-4o | OpenAI | ⭐ Standard |
+| Llama 3.3 70B | Groq | ⚡ Fast |
+| Codestral | Mistral | ⭐ Standard |
+| Llama 3.1 | Ollama | 🏠 Local |
+
+> **Any OpenAI-compatible API** works as a provider. Set a custom base URL in settings to connect to any compatible endpoint.
+
 ## Architecture
 
 ### Agent Engine
