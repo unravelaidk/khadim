@@ -17,7 +17,7 @@ export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
           <span className="font-display text-[18px] font-bold text-[var(--text-primary)]">K</span>
         </div>
         <div>
-          <h3 className="text-[14px] font-semibold text-[var(--text-primary)] tracking-tight">Khadim Desktop</h3>
+          <h3 className="text-[14px] font-medium text-[var(--text-primary)] tracking-tight">Khadim Desktop</h3>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent)] bg-[var(--color-accent-subtle)] px-2 py-0.5 rounded-md">
               {APP_VERSION}
@@ -31,7 +31,7 @@ export function AboutTab({ runtime }: { runtime: RuntimeSummary | null }) {
         <>
           <div className="h-px bg-[var(--glass-border)]" />
           <section>
-            <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Runtime</h3>
+            <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">Runtime</h3>
             <div className="grid grid-cols-2 gap-x-8 gap-y-2">
               <RuntimeRow label="Platform" value={runtime.platform ?? "unknown"} />
               <RuntimeRow label="Runtime" value={runtime.runtime ?? "unknown"} />

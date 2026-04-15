@@ -257,9 +257,9 @@ function CopyButton({ text }: { text: string }) {
       title={copied ? "Copied!" : "Copy message"}
     >
       {copied ? (
-        <i className="ri-check-line text-[16px] leading-none text-[var(--color-success)]" />
+        <i className="ri-check-line text-base leading-none text-[var(--color-success)]" />
       ) : (
-        <i className="ri-file-copy-line text-[16px] leading-none" />
+        <i className="ri-file-copy-line text-base leading-none" />
       )}
     </button>
   );
@@ -294,7 +294,7 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
       <div className="animate-in group/msg">
         <div className="mb-1.5 flex items-center gap-2 md:mb-2">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--color-accent)] md:h-7 md:w-7">
-            <span className="font-display text-[11px] font-semibold text-[var(--color-accent-ink)] md:text-xs">Y</span>
+            <span className="font-display text-[11px] font-medium text-[var(--color-accent-ink)] md:text-xs">Y</span>
           </div>
           <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] md:text-[11px]">
             You
@@ -308,7 +308,7 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
         <div className="pl-8 md:pl-9">
           <div className="flex items-start gap-2">
             <AsciiPrompt symbol="❯" className="text-[14px] mt-[3px] opacity-50" />
-            <div className="whitespace-pre-wrap font-sans text-[15px] leading-[1.65] text-[var(--text-primary)] md:text-[16px] md:leading-[1.7]">
+            <div className="whitespace-pre-wrap font-sans text-[14px] leading-[1.65] text-[var(--text-primary)] md:text-[16px] md:leading-[1.7]">
               {message.content}
             </div>
           </div>
@@ -348,7 +348,7 @@ function ChatMessageComponent({ message, isStreaming = false, basePath, backend 
           </div>
         )}
 
-        <div className={`font-sans text-[15px] leading-[1.7] md:text-[16px] md:leading-[1.75] ${isStreaming ? "streaming-cursor" : ""}`}>
+        <div className={`font-sans text-[14px] leading-[1.7] md:text-[16px] md:leading-[1.75] ${isStreaming ? "streaming-cursor" : ""}`}>
           <MarkdownRenderer content={message.content} />
         </div>
 

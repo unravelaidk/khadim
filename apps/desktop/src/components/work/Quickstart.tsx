@@ -160,7 +160,7 @@ export function Quickstart({ onSelectTemplate, onSkip }: QuickstartProps) {
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-thin">
       <div className="mx-auto w-full max-w-xl px-10 py-12">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+        <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
           Start with a template
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)] max-w-md">
@@ -179,7 +179,7 @@ export function Quickstart({ onSelectTemplate, onSkip }: QuickstartProps) {
             "var(--tint-warm)";
           return (
             <div key={cat} className="mt-10">
-              <h2 className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)]" style={{ background: catTint }}>
+              <h2 className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-primary)]" style={{ background: catTint }}>
                 {cat}
               </h2>
               <div className="mt-3 flex flex-col gap-2">

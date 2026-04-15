@@ -32,9 +32,9 @@ export function MemoryStoreEditor({
           onClick={onCancel}
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
         >
-          <i className="ri-arrow-left-s-line text-[16px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
         </button>
-        <h1 className="flex-1 font-display text-[18px] font-semibold tracking-tight text-[var(--text-primary)]">
+        <h1 className="flex-1 font-display text-[18px] font-medium tracking-tight text-[var(--text-primary)]">
           {store ? "Edit memory" : "New memory"}
         </h1>
         <div className="flex items-center gap-2">
@@ -49,7 +49,7 @@ export function MemoryStoreEditor({
           <button
             onClick={() => onSave({ name: name.trim(), description: description.trim() })}
             disabled={!canSave}
-            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-medium disabled:opacity-40"
           >
             {store ? "Save" : "Create"}
           </button>
@@ -130,7 +130,7 @@ export function MemoryEntryEditor({ onSave, onCancel }: MemoryEntryEditorProps) 
           <button
             onClick={() => onSave({ key: key.trim(), content: content.trim() })}
             disabled={!canSave}
-            className="btn-ink inline-flex h-7 items-center rounded-full px-3 text-[10px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-7 items-center rounded-full px-3 text-[10px] font-medium disabled:opacity-40"
           >
             Save
           </button>

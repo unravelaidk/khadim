@@ -42,9 +42,9 @@ function CodeBlock({ inline, className, children, ...props }: CodeBlockProps) {
               title="Copy code"
             >
               {copied ? (
-                <i className="ri-check-line text-[14px] leading-none" />
+                <i className="ri-check-line text-base leading-none" />
               ) : (
-                <i className="ri-file-copy-line text-[14px] leading-none" />
+                <i className="ri-file-copy-line text-base leading-none" />
               )}
             </button>
           </div>
@@ -98,17 +98,17 @@ const markdownComponents = {
     </h1>
   ),
   h2: ({ children }: { children?: ReactNode }) => (
-    <h2 className="text-lg font-semibold mt-5 mb-2 text-[var(--text-primary)]">
+    <h2 className="text-lg font-medium mt-5 mb-2 text-[var(--text-primary)]">
       {children}
     </h2>
   ),
   h3: ({ children }: { children?: ReactNode }) => (
-    <h3 className="text-base font-semibold mt-4 mb-2 text-[var(--text-primary)]">
+    <h3 className="text-base font-medium mt-4 mb-2 text-[var(--text-primary)]">
       {children}
     </h3>
   ),
   h4: ({ children }: { children?: ReactNode }) => (
-    <h4 className="text-sm font-semibold mt-3 mb-1.5 text-[var(--text-primary)]">
+    <h4 className="text-sm font-medium mt-3 mb-1.5 text-[var(--text-primary)]">
       {children}
     </h4>
   ),
@@ -150,7 +150,7 @@ const markdownComponents = {
     <thead className="bg-[var(--surface-card)]">{children}</thead>
   ),
   th: ({ children }: { children?: ReactNode }) => (
-    <th className="border-b border-[var(--glass-border)] px-3 py-2 text-left font-semibold text-xs uppercase tracking-wide text-[var(--text-secondary)]">
+    <th className="border-b border-[var(--glass-border)] px-3 py-2 text-left font-medium text-xs uppercase tracking-wide text-[var(--text-secondary)]">
       {children}
     </th>
   ),
@@ -163,7 +163,7 @@ const markdownComponents = {
     <hr className="my-6 border-none h-px bg-[var(--glass-border)]" />
   ),
   strong: ({ children }: { children?: ReactNode }) => (
-    <strong className="font-semibold text-[var(--text-primary)]">{children}</strong>
+    <strong className="font-medium text-[var(--text-primary)]">{children}</strong>
   ),
   em: ({ children }: { children?: ReactNode }) => <em className="italic">{children}</em>,
   del: ({ children }: { children?: ReactNode }) => (

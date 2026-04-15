@@ -115,7 +115,7 @@ function ConnectSheet({
               <i className={`${integration.icon} text-[22px] text-[var(--text-primary)]`} />
             </div>
             <div className="min-w-0 flex-1 pt-0.5">
-              <h2 className="font-display text-[18px] font-semibold text-[var(--text-primary)] leading-tight">
+              <h2 className="font-display text-[18px] font-medium text-[var(--text-primary)] leading-tight">
                 {integration.name}
               </h2>
               <p className="text-[12px] text-[var(--text-secondary)] mt-1 leading-relaxed max-w-[36ch]">
@@ -127,7 +127,7 @@ function ConnectSheet({
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               style={{ background: "var(--depth-card-bg, var(--surface-elevated))" }}
             >
-              <i className="ri-close-line text-[15px]" />
+              <i className="ri-close-line text-[14px]" />
             </button>
           </div>
         </div>
@@ -159,7 +159,7 @@ function ConnectSheet({
           {/* Name (skip for OAuth) */}
           {auth.type !== "oauth2" && (
             <div className="mb-5">
-              <label className="block text-[12px] font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+              <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
                 Connection name
               </label>
               <input
@@ -175,7 +175,7 @@ function ConnectSheet({
           {/* API key */}
           {auth.type === "api_key" && (
             <div className="mb-5">
-              <label className="block text-[12px] font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+              <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
                 {auth.label}
               </label>
               <input
@@ -204,7 +204,7 @@ function ConnectSheet({
           {auth.type === "credentials" &&
             fields.map((field) => (
               <div key={field.key} className="mb-5">
-                <label className="block text-[12px] font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+                <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
                   {field.label}
                   {field.required && (
                     <span className="text-[var(--color-pop)] ml-0.5">*</span>
@@ -240,7 +240,7 @@ function ConnectSheet({
             <button
               onClick={handleSubmit}
               disabled={!canSubmit || connecting}
-              className="btn-ink h-11 rounded-full px-7 text-[14px] font-semibold disabled:opacity-40 transition-all"
+              className="btn-ink h-11 rounded-full px-7 text-[14px] font-medium disabled:opacity-40 transition-all"
             >
               {connecting ? (
                 <span className="flex items-center gap-2">
@@ -309,7 +309,7 @@ function ConnectedCard({
       {/* Info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2.5">
-          <span className="text-[14px] font-semibold text-[var(--text-primary)] truncate">
+          <span className="text-[14px] font-medium text-[var(--text-primary)] truncate">
             {connection.label}
           </span>
           {/* Live dot */}
@@ -318,12 +318,12 @@ function ConnectedCard({
             <span className="relative h-2 w-2 rounded-full bg-[var(--color-success-text)]" />
           </span>
           {testResult === "ok" && (
-            <span className="text-[10px] font-semibold text-[var(--color-success-text)] uppercase tracking-wide">
+            <span className="text-[10px] font-medium text-[var(--color-success-text)] uppercase tracking-wide">
               Verified
             </span>
           )}
           {testResult === "fail" && (
-            <span className="text-[10px] font-semibold text-[var(--color-danger-text)] uppercase tracking-wide">
+            <span className="text-[10px] font-medium text-[var(--color-danger-text)] uppercase tracking-wide">
               Unreachable
             </span>
           )}
@@ -341,14 +341,14 @@ function ConnectedCard({
           className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
           title="Test connection"
         >
-          <i className={`ri-pulse-line text-[15px] ${testing ? "animate-spin" : ""}`} />
+          <i className={`ri-pulse-line text-[14px] ${testing ? "animate-spin" : ""}`} />
         </button>
         <button
           onClick={onDisconnect}
           className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
           title="Disconnect"
         >
-          <i className="ri-link-unlink-m text-[15px]" />
+          <i className="ri-link-unlink-m text-[14px]" />
         </button>
       </div>
     </div>
@@ -392,7 +392,7 @@ function CatalogCard({
 
       {/* Name + description */}
       <div className="min-w-0 flex-1">
-        <span className="text-[14px] font-semibold text-[var(--text-primary)] truncate block">
+        <span className="text-[14px] font-medium text-[var(--text-primary)] truncate block">
           {integration.name}
         </span>
         <span className="text-[12px] text-[var(--text-muted)] truncate block leading-snug mt-0.5">
@@ -402,7 +402,7 @@ function CatalogCard({
 
       {/* Right — auth badge or connected */}
       {isConnected ? (
-        <span className="text-[11px] font-semibold text-[var(--color-success-text)] shrink-0 flex items-center gap-1.5">
+        <span className="text-[11px] font-medium text-[var(--color-success-text)] shrink-0 flex items-center gap-1.5">
           <i className="ri-check-line text-[13px]" />
           Connected
         </span>
@@ -529,7 +529,7 @@ export function IntegrationsList() {
     <div className="flex h-full flex-col overflow-hidden">
       {/* ─── Header ─────────────────────────────────────────────── */}
       <div className="shrink-0 px-10 pt-9 pb-2">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+        <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
           Integrations
         </h1>
         <p className="text-[13px] text-[var(--text-muted)] mt-2 leading-relaxed max-w-[48ch]">
@@ -544,7 +544,7 @@ export function IntegrationsList() {
           {connections.length > 0 && (
             <section className="mb-10">
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-[0.12em]">
+                <h2 className="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-[0.12em]">
                   Active connections
                 </h2>
                 <span
@@ -571,7 +571,7 @@ export function IntegrationsList() {
           {/* ─── Search — recessed well ───────────────────────────── */}
           <div className="mb-8">
             <div className="depth-well flex items-center gap-3 px-4 py-2.5">
-              <i className="ri-search-line text-[15px] text-[var(--text-muted)]" />
+              <i className="ri-search-line text-[14px] text-[var(--text-muted)]" />
               <input
                 type="text"
                 value={search}
@@ -602,7 +602,7 @@ export function IntegrationsList() {
                     style={{ background: meta.tint }}
                   >
                     <i className={`${meta.icon} text-[13px] text-[var(--text-primary)]`} />
-                    <span className="text-[12px] font-semibold text-[var(--text-primary)]">
+                    <span className="text-[12px] font-medium text-[var(--text-primary)]">
                       {meta.label}
                     </span>
                   </span>
@@ -647,7 +647,7 @@ export function IntegrationsList() {
               >
                 <i className="ri-plug-line text-[24px] text-[var(--text-secondary)]" />
               </div>
-              <p className="text-[15px] font-semibold text-[var(--text-primary)] mb-1">
+              <p className="text-[14px] font-medium text-[var(--text-primary)] mb-1">
                 No integrations yet
               </p>
               <p className="text-[13px] text-[var(--text-muted)] max-w-[32ch] mx-auto">

@@ -54,7 +54,7 @@ export const WorkspaceList = memo(function WorkspaceList({ workspaces, agents, o
           </p>
           <button
             onClick={onCreateNew}
-            className="btn-ink mt-6 h-9 rounded-full px-5 text-[12px] font-semibold"
+            className="btn-ink mt-6 h-9 rounded-full px-5 text-[12px] font-medium"
           >
             Create workspace
           </button>
@@ -98,7 +98,7 @@ export const WorkspaceList = memo(function WorkspaceList({ workspaces, agents, o
               </div>
               <button
                 onClick={onCreateNew}
-                className="btn-ink h-8 shrink-0 rounded-full px-4 text-[11px] font-semibold"
+                className="btn-ink h-8 shrink-0 rounded-full px-4 text-[11px] font-medium"
               >
                 New workspace
               </button>
@@ -175,7 +175,7 @@ const WorkspaceCard = memo(function WorkspaceCard({
       {/* Top row: initial + name + status */}
       <div className="flex items-center gap-3">
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] font-display text-[14px] font-semibold"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] font-display text-[14px] font-medium"
           style={{
             background: `oklch(50% 0.04 ${hue} / 0.12)`,
             color: `oklch(75% 0.06 ${hue})`,
@@ -237,13 +237,13 @@ const WorkspaceCard = memo(function WorkspaceCard({
         onBlur={() => { if (confirmDelete) onConfirmDeleteChange(null); }}
         className={`absolute top-3 right-3 transition-all duration-150 ${
           confirmDelete
-            ? "rounded-[var(--radius-xs)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] text-[var(--color-danger)] px-2 py-1 text-[10px] font-semibold opacity-100"
+            ? "rounded-[var(--radius-xs)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] text-[var(--color-danger)] px-2 py-1 text-[10px] font-medium opacity-100"
             : "opacity-0 group-hover:opacity-100 h-7 w-7 flex items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)]"
         }`}
         title={confirmDelete ? "Click again to confirm" : "Delete workspace"}
       >
         {confirmDelete ? "Delete?" : (
-          <i className="ri-delete-bin-line text-[14px] leading-none" />
+          <i className="ri-delete-bin-line text-base leading-none" />
         )}
       </button>
     </div>

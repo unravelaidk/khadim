@@ -33,13 +33,13 @@ function SkillCard({
               : "bg-[var(--glass-bg-strong)]"
           }`}
         >
-          <i className="ri-book-open-line text-[16px] leading-none" />
+          <i className="ri-book-open-line text-base leading-none" />
         </span>
 
         {/* Info */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-[12px] font-semibold text-[var(--text-primary)] truncate">
+            <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">
               {skill.name}
             </p>
             {skill.version && (
@@ -114,13 +114,13 @@ function DirectoryManager({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <p className="text-[9px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
           Scan directories
         </p>
         <button
           onClick={() => void handleAdd()}
           disabled={adding}
-          className="h-6 px-2.5 rounded-lg btn-glass text-[10px] font-semibold flex items-center gap-1.5 disabled:opacity-40"
+          className="h-6 px-2.5 rounded-lg btn-glass text-[10px] font-medium flex items-center gap-1.5 disabled:opacity-40"
         >
           <i className="ri-add-line text-[12px] leading-none" />
           Add
@@ -133,7 +133,7 @@ function DirectoryManager({
             key={dir}
             className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2.5 py-1.5 group"
           >
-            <i className="ri-archive-line text-[14px] leading-none text-[var(--text-muted)]" />
+            <i className="ri-archive-line text-base leading-none text-[var(--text-muted)]" />
             <span className="flex-1 text-[10px] font-mono text-[var(--text-secondary)] truncate select-all" title={dir}>
               {dir}
             </span>
@@ -231,13 +231,13 @@ export function SkillsTab() {
             className="shrink-0 h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50 ml-3"
             title="Refresh"
           >
-            <i className="ri-loader-4-line text-[14px] leading-none" />
+            <i className="ri-loader-4-line text-base leading-none" />
           </button>
         </div>
 
         {/* Stats bar */}
         <div className="flex items-center gap-3 mt-4">
-          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
             {enabledCount} active
           </span>
           <span className="h-px flex-1 bg-[var(--glass-border)]" />
@@ -264,7 +264,7 @@ export function SkillsTab() {
               <i className="ri-book-open-line text-[20px] leading-none text-[var(--text-muted)]" />
             </div>
           </div>
-          <p className="text-[12px] font-semibold text-[var(--text-primary)] mb-1">No skills found</p>
+          <p className="text-[12px] font-medium text-[var(--text-primary)] mb-1">No skills found</p>
           <p className="text-[10px] text-[var(--text-muted)] mb-1">
             Add a directory containing skill folders, or create a skill:
           </p>

@@ -164,7 +164,7 @@ export function SessionDetail({
           onClick={onBack}
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
         >
-          <i className="ri-arrow-left-s-line text-[16px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
         </button>
 
         <div className="min-w-0 flex-1">
@@ -301,7 +301,7 @@ export function SessionDetail({
               disabled={!input.trim()}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors enabled:hover:bg-[var(--glass-bg)] enabled:hover:text-[var(--text-primary)] disabled:opacity-30"
             >
-              <i className="ri-arrow-right-line text-[16px] leading-none" />
+              <i className="ri-arrow-right-line text-base leading-none" />
             </button>
           </div>
         </div>
@@ -346,7 +346,7 @@ export function SessionList({ sessions, onViewSession }: SessionListProps) {
     return (
       <div className="flex h-full items-center">
         <div className="px-12 py-16 max-w-lg">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
             Sessions
           </h1>
           <p className="mt-4 text-base leading-relaxed text-[var(--text-secondary)]">
@@ -364,7 +364,7 @@ export function SessionList({ sessions, onViewSession }: SessionListProps) {
       {/* Header + filters */}
       <div className="shrink-0 px-10 pt-8 pb-6">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-xl font-medium tracking-tight text-[var(--text-primary)]">
             Sessions
           </h1>
           <div className="flex items-center gap-1">

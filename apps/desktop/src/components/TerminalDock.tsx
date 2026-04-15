@@ -367,7 +367,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
           <i className="ri-arrow-up-s-line text-[12px] leading-none" />
         </button>
 
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
+        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
           <PromptIcon />
           Terminal
         </span>
@@ -415,7 +415,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
           <button
             onClick={() => void createTerminal()}
             disabled={!context}
-            className="h-6 px-2 rounded-md text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] disabled:opacity-40 inline-flex items-center gap-1 transition-colors"
+            className="h-6 px-2 rounded-md text-[10px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] disabled:opacity-40 inline-flex items-center gap-1 transition-colors"
             title={context ? `New terminal in ${shortName(context.cwd)}` : "No workspace"}
           >
             <i className="ri-add-line text-[12px] leading-none" />
@@ -434,7 +434,7 @@ export function TerminalDock({ context, collapsed, onToggleCollapsed }: Props) {
         {error && (
           <div className="absolute top-0 inset-x-0 z-10 px-4 py-1.5 text-[10px] text-[var(--color-danger-text)] bg-[var(--color-danger-bg-strong)] border-b border-[var(--color-danger-border)]">
             {error}
-            <button onClick={() => setError(null)} className="ml-2 font-semibold hover:underline">dismiss</button>
+            <button onClick={() => setError(null)} className="ml-2 font-medium hover:underline">dismiss</button>
           </div>
         )}
 
@@ -477,7 +477,7 @@ function EmptyState({ context, onCreate }: { context: DesktopWorkspaceContext | 
       <button
         onClick={onCreate}
         disabled={!context}
-        className="h-7 px-3 rounded-md btn-glass text-[10px] font-semibold disabled:opacity-40 inline-flex items-center gap-1.5"
+        className="h-7 px-3 rounded-md btn-glass text-[10px] font-medium disabled:opacity-40 inline-flex items-center gap-1.5"
       >
         <PromptIcon />
         Open

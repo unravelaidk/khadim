@@ -55,7 +55,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       />
 
       {/* Workspace + agent */}
-      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[140px]">
+      <span className="font-medium text-[var(--text-primary)] truncate max-w-[140px]">
         {context.workspace_name}
       </span>
       {agentLabel && (
@@ -101,7 +101,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       {onOpenInEditor && (
         <button
           onClick={onOpenInEditor}
-          className="ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
+          className="ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
           title="Open in editor"
         >
           <EditorIcon />
@@ -113,7 +113,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       {onOpenFinder && (
         <button
           onClick={onOpenFinder}
-          className="ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
+          className="ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
           title="Find file (⌘P)"
         >
           <FinderIcon />
@@ -126,7 +126,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       {onToggleTerminal && (
         <button
           onClick={onToggleTerminal}
-          className={`ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-semibold transition-colors ${
+          className={`ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-medium transition-colors ${
             terminalOpen
               ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
               : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"
@@ -145,7 +145,7 @@ export const WorkspaceContextRail = memo(function WorkspaceContextRail({
       {hasFocusedAgent && onToggleChanges && (
         <button
           onClick={onToggleChanges}
-          className={`ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-semibold transition-colors ${
+          className={`ml-1 h-8 px-3 rounded-lg inline-flex items-center gap-2 text-[12px] font-medium transition-colors ${
             changesOpen
               ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
               : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)]"

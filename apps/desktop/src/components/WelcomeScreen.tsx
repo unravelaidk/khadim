@@ -58,7 +58,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({ input, setInput, onSe
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
             {dateLabel}
           </p>
-          <p className="mt-5 text-[15px] text-[var(--text-secondary)]">{greeting}.</p>
+          <p className="mt-5 text-[14px] text-[var(--text-secondary)]">{greeting}.</p>
           <h1 className="mt-1 font-display text-[34px] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--text-primary)]">
             What can I do for you?
           </h1>
@@ -165,7 +165,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({ input, setInput, onSe
                     {ex.desc}
                   </span>
                 </span>
-                <i className="ri-arrow-right-up-line text-[16px] leading-none mt-2 text-[var(--text-muted)] transition-all duration-[var(--duration-base)] group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]" />
+                <i className="ri-arrow-right-up-line text-base leading-none mt-2 text-[var(--text-muted)] transition-all duration-[var(--duration-base)] group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]" />
               </button>
             </li>
           ))}

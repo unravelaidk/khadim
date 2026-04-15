@@ -28,7 +28,7 @@ export function MemoryStoreDetail({
           onClick={onBack}
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
         >
-          <i className="ri-arrow-left-s-line text-[16px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
         </button>
         <div className="min-w-0 flex-1">
           <span className="text-sm font-medium text-[var(--text-primary)]">{store.name}</span>
@@ -106,7 +106,7 @@ export function MemoryStoreList({
     return (
       <div className="flex h-full items-center">
         <div className="px-12 py-16 max-w-lg">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
             Memory
           </h1>
           <p className="mt-4 text-base leading-relaxed text-[var(--text-secondary)]">
@@ -116,7 +116,7 @@ export function MemoryStoreList({
           </p>
           <button
             onClick={onCreateStore}
-            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-medium"
           >
             Create store
           </button>
@@ -130,12 +130,12 @@ export function MemoryStoreList({
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 px-10 pt-8 pb-6">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-xl font-medium tracking-tight text-[var(--text-primary)]">
             Memory
           </h1>
           <button
             onClick={onCreateStore}
-            className="btn-ink h-8 rounded-full px-4 text-xs font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-xs font-medium"
           >
             New store
           </button>
@@ -164,7 +164,7 @@ export function MemoryStoreList({
               <span className="shrink-0 text-xs tabular-nums text-[var(--text-muted)]">
                 {store.entryCount} {store.entryCount === 1 ? "entry" : "entries"}
               </span>
-              <i className="ri-arrow-right-s-line text-[14px] leading-none text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+              <i className="ri-arrow-right-s-line text-base leading-none text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
           ))}
         </div>

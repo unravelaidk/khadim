@@ -52,43 +52,43 @@ function resolveFilePath(filePath: string | undefined, basePath: string | undefi
 function ToolGlyph({ tool, running, complete, errored }: { tool?: string; running: boolean; complete: boolean; errored: boolean }) {
   if (running) {
     return (
-      <i className="ri-loader-4-line text-[14px] leading-none dot-spinner" />
+      <i className="ri-loader-4-line text-base leading-none dot-spinner" />
     );
   }
 
   if (errored) {
     return (
-      <i className="ri-error-warning-line text-[14px] leading-none" />
+      <i className="ri-error-warning-line text-base leading-none" />
     );
   }
 
   if (complete) {
     return (
-      <i className="ri-check-line text-[14px] leading-none" />
+      <i className="ri-check-line text-base leading-none" />
     );
   }
 
   switch (tool) {
     case "read":
       return (
-        <i className="ri-eye-line text-[14px] leading-none" />
+        <i className="ri-eye-line text-base leading-none" />
       );
     case "write":
       return (
-        <i className="ri-code-line text-[14px] leading-none" />
+        <i className="ri-code-line text-base leading-none" />
       );
     case "bash":
     case "exec":
       return (
-        <i className="ri-arrow-left-s-line text-[14px] leading-none" />
+        <i className="ri-arrow-left-s-line text-base leading-none" />
       );
     case "task":
       return (
-        <i className="ri-menu-line text-[14px] leading-none" />
+        <i className="ri-menu-line text-base leading-none" />
       );
     default:
       return (
-        <i className="ri-add-circle-line text-[14px] leading-none" />
+        <i className="ri-add-circle-line text-base leading-none" />
       );
   }
 }
@@ -175,7 +175,7 @@ function FileContentBlock({
       {/* File header */}
       <div className="flex items-center justify-between gap-2 rounded-t-lg bg-[var(--surface-ink-4)] px-3 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <i className="ri-file-line text-[14px] leading-none text-[var(--text-muted)]" />
+          <i className="ri-file-line text-base leading-none text-[var(--text-muted)]" />
           {displayPath && (
             <span className="truncate font-mono text-[11px] text-[var(--text-secondary)]" title={displayPath}>
               {displayPath}
@@ -198,9 +198,9 @@ function FileContentBlock({
           title={copied ? "Copied!" : "Copy file content"}
         >
           {copied ? (
-            <i className="ri-check-line text-[14px] leading-none text-[var(--color-success)]" />
+            <i className="ri-check-line text-base leading-none text-[var(--color-success)]" />
           ) : (
-            <i className="ri-file-copy-line text-[14px] leading-none" />
+            <i className="ri-file-copy-line text-base leading-none" />
           )}
         </button>
       </div>
@@ -320,7 +320,7 @@ function ThinkingStep({ step, basePath }: ThinkingStepProps) {
               )}
                {canToggle && !running && (
                  <span className="ml-auto text-[var(--text-muted)]">
-                   <i className={`${isExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[14px] leading-none`} />
+                   <i className={`${isExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-base leading-none`} />
                 </span>
               )}
             </div>
@@ -419,14 +419,14 @@ function ThinkingStepsComponent({ steps, basePath, isStreaming = false }: Thinki
         onClick={() => !hasRunning && setIsExpanded((v) => !v)}
       >
         <span className={`h-2 w-2 shrink-0 rounded-full ${headerDot}`} />
-        <span className="flex-1 font-display text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+        <span className="flex-1 font-display text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
           {hasRunning ? "Running" : `${completedCount} tool call${completedCount !== 1 ? "s" : ""}${hasErrors ? `, ${errorCount} error${errorCount !== 1 ? "s" : ""}` : ""}`}
         </span>
         <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
           {!hasRunning && `${completedCount}/${steps.length}`}
         </span>
         {!hasRunning && (
-          <i className={`${isExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[14px] leading-none`} />
+          <i className={`${isExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-base leading-none`} />
         )}
       </button>
 

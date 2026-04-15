@@ -149,7 +149,7 @@ function NavItem({
       }`}
     >
       <i
-        className={`${ICONS[view]} text-[16px] leading-none shrink-0 transition-colors ${
+        className={`${ICONS[view]} text-base leading-none shrink-0 transition-colors ${
           active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]"
         }`}
       />
@@ -157,7 +157,7 @@ function NavItem({
 
       {badge != null && badge > 0 && (
         <span
-          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums leading-none text-[var(--text-primary)]"
+          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums leading-none text-[var(--text-primary)]"
           style={{
             background: isAttention ? "var(--tint-rose)" : "var(--tint-warm)",
           }}

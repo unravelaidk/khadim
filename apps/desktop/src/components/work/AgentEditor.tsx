@@ -73,7 +73,7 @@ export interface AgentEditorData {
 /* ── Section icon — remixicon inline icon for form labels ──────────── */
 function SectionIcon({ icon }: { icon: string }) {
   return (
-    <i className={`${icon} text-[14px] leading-none text-[var(--text-muted)]`} />
+    <i className={`${icon} text-base leading-none text-[var(--text-muted)]`} />
   );
 }
 
@@ -216,9 +216,9 @@ export function AgentEditor({
           onClick={onCancel}
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
         >
-          <i className="ri-arrow-left-s-line text-[16px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
         </button>
-        <h1 className="flex-1 font-display text-[18px] font-semibold tracking-tight text-[var(--text-primary)]">
+        <h1 className="flex-1 font-display text-[18px] font-medium tracking-tight text-[var(--text-primary)]">
           {agent ? "Edit agent" : "New agent"}
         </h1>
         <div className="flex items-center gap-2">
@@ -234,7 +234,7 @@ export function AgentEditor({
           <button
             onClick={() => onSave(buildData())}
             disabled={!canSave}
-            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-semibold disabled:opacity-40"
+            className="btn-ink inline-flex h-8 items-center rounded-full px-5 text-[11px] font-medium disabled:opacity-40"
           >
             {agent ? "Save" : "Create"}
           </button>
@@ -309,7 +309,7 @@ export function AgentEditor({
                 />
               ) : (
                 <div className="flex items-center gap-2 rounded-2xl depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] px-3 py-2.5 text-[12px] text-[var(--text-muted)]">
-                  <i className="ri-error-warning-line text-[16px] leading-none" />
+                  <i className="ri-error-warning-line text-base leading-none" />
                   No models configured — add one in Settings → Providers
                 </div>
               )}

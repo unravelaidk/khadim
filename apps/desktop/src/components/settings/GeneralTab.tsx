@@ -68,7 +68,7 @@ export function GeneralTab({
 
         <div className="space-y-6">
           <section>
-            <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Theme</h3>
+            <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">Theme</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {THEME_FAMILIES.map((family) => (
                 <ThemeFamilyCard
@@ -83,23 +83,23 @@ export function GeneralTab({
           </section>
 
           <section>
-            <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Mode</h3>
+            <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">Mode</h3>
             <div className="flex gap-3">
               <button
                 onClick={() => onSetThemeMode("dark")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-semibold transition-all duration-200 ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-medium transition-all duration-200 ${
                   themeMode === "dark"
                     ? "depth-card-sm text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/30"
                 }`}
               >
-                <i className="ri-moon-line text-[16px] leading-none" />
+                <i className="ri-moon-line text-base leading-none" />
                 Dark
               </button>
               <button
                 onClick={() => onSetThemeMode("light")}
                 disabled={!selectedFamily.hasLightVariant}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-semibold transition-all duration-200 ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-[11px] font-medium transition-all duration-200 ${
                   !selectedFamily.hasLightVariant
                     ? "text-[var(--text-muted)] opacity-50 cursor-not-allowed"
                     : themeMode === "light"
@@ -107,7 +107,7 @@ export function GeneralTab({
                     : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/30"
                 }`}
               >
-                <i className="ri-sun-line text-[16px] leading-none" />
+                <i className="ri-sun-line text-base leading-none" />
                 Light
               </button>
             </div>
@@ -132,7 +132,7 @@ export function GeneralTab({
       <div className="h-px bg-[var(--glass-border)]" />
 
       <section>
-        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">Chat Directory</h3>
+        <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-1">Chat Directory</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Set a working directory for standalone chat mode. The agent can read, write, and list files inside this folder. When not set, the agent uses an empty temporary directory.
         </p>
@@ -141,12 +141,12 @@ export function GeneralTab({
           <div className="min-w-0 flex-1">
             {chatDirectory ? (
               <div className="flex items-center gap-2 depth-inset rounded-xl px-3 py-2">
-                <i className="ri-folder-3-line text-[14px] leading-none text-[var(--color-accent)]" />
+                <i className="ri-folder-3-line text-base leading-none text-[var(--color-accent)]" />
                 <span className="text-[11px] font-mono text-[var(--text-primary)] truncate">{chatDirectory}</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--glass-border)] px-3 py-2">
-                <i className="ri-folder-3-line text-[14px] leading-none text-[var(--text-muted)]" />
+                <i className="ri-folder-3-line text-base leading-none text-[var(--text-muted)]" />
                 <span className="text-[11px] text-[var(--text-muted)] italic">Not set — using temporary directory</span>
               </div>
             )}
@@ -156,9 +156,9 @@ export function GeneralTab({
             <button
               onClick={() => void pickChatDir()}
               disabled={picking}
-              className="h-8 px-3.5 rounded-xl btn-glass text-[11px] font-semibold flex items-center gap-2"
+              className="h-8 px-3.5 rounded-xl btn-glass text-[11px] font-medium flex items-center gap-2"
             >
-              <i className="ri-folder-3-line text-[14px] leading-none" />
+              <i className="ri-folder-3-line text-base leading-none" />
               {picking ? "Picking..." : chatDirectory ? "Change" : "Choose folder"}
             </button>
             {chatDirectory && (
@@ -167,7 +167,7 @@ export function GeneralTab({
                 className="h-8 w-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg-strong)] transition-colors"
                 title="Clear chat directory"
               >
-                <i className="ri-close-line text-[14px] leading-none" />
+                <i className="ri-close-line text-base leading-none" />
               </button>
             )}
           </div>
@@ -183,7 +183,7 @@ export function GeneralTab({
       <div className="h-px bg-[var(--glass-border)]" />
 
       <section>
-        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">Chat Memory</h3>
+        <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-1">Chat Memory</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Let standalone chat recall shared memory that has been explicitly marked as chat-readable. Private agent memory stays private.
         </p>
@@ -199,7 +199,7 @@ export function GeneralTab({
         >
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-[12px] font-semibold text-[var(--text-primary)]">Allow chat to use shared memory</p>
+              <p className="text-[12px] font-medium text-[var(--text-primary)]">Allow chat to use shared memory</p>
               <p className="mt-1 text-[10px] text-[var(--text-muted)]">
                 When enabled, chat can automatically recall shared stores with chat access turned on.
               </p>
@@ -224,7 +224,7 @@ export function GeneralTab({
       <div className="h-px bg-[var(--glass-border)]" />
 
       <section>
-        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">Default Editor</h3>
+        <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-1">Default Editor</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Choose which code editor opens files and projects from Khadim.
         </p>
@@ -302,7 +302,7 @@ function EditorOption({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className={`text-[11px] font-semibold ${
+        <p className={`text-[11px] font-medium ${
           isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
         }`}>{name}</p>
         <p className="text-[10px] text-[var(--text-muted)] font-mono truncate">{description}</p>
@@ -339,13 +339,13 @@ function CatppuccinVariantSelector({
 
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">Catppuccin Variant</p>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-3">Catppuccin Variant</p>
       <div className="flex gap-2">
         {CATPPUCCIN_VARIANTS.map((variant) => (
           <button
             key={variant.id}
             onClick={() => handleVariantChange(variant.id)}
-            className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-semibold transition-all duration-200 ${
+            className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-medium transition-all duration-200 ${
               catppuccinVariant === variant.id
                 ? "depth-card-sm text-[var(--text-primary)]"
                 : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg)]/30"
@@ -406,13 +406,13 @@ function ThemeFamilyCard({
           </div>
         )}
         {!family.hasLightVariant && (
-          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-semibold" style={{ background: "rgba(0,0,0,0.5)", color: previewText }}>
+          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-medium" style={{ background: "rgba(0,0,0,0.5)", color: previewText }}>
             DARK ONLY
           </div>
         )}
       </div>
       <div className="p-2.5" style={{ background: "var(--surface-card)" }}>
-        <p className="text-[11px] font-semibold text-[var(--text-primary)] text-left">{family.label}</p>
+        <p className="text-[11px] font-medium text-[var(--text-primary)] text-left">{family.label}</p>
         <p className="text-[9px] text-[var(--text-muted)] text-left mt-0.5">{family.description}</p>
       </div>
     </button>

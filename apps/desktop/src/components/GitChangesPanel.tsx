@@ -106,7 +106,7 @@ function GitChangesPanelInner({ repoPath, isStreaming, onOpenFile, onClose }: Pr
           <i className="ri-close-line text-[12px] leading-none" />
         </button>
 
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
           <DiffIcon />
           Changes
         </div>

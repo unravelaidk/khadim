@@ -157,9 +157,9 @@ export function CustomAgentsView({
           </div>
           <button
             onClick={handleCreate}
-            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full btn-ink px-4 text-[12px] font-semibold"
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full btn-ink px-4 text-[12px] font-medium"
           >
-            <i className="ri-add-line text-[14px] leading-none" />
+            <i className="ri-add-line text-base leading-none" />
             New agent
           </button>
         </header>
@@ -185,7 +185,7 @@ export function CustomAgentsView({
                     {agent.emoji}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-display text-[15px] font-semibold text-[var(--text-primary)]">
+                    <p className="truncate font-display text-[14px] font-medium text-[var(--text-primary)]">
                       {agent.name}
                     </p>
                     <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-[var(--text-secondary)]">
@@ -256,7 +256,7 @@ function AgentEditor({
           onClick={onCancel}
           className="inline-flex items-center gap-1.5 text-[12px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
         >
-          <i className="ri-arrow-left-s-line text-[14px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
           Back to agents
         </button>
 
@@ -276,7 +276,7 @@ function AgentEditor({
                   <button
                     key={e}
                     onClick={() => setEmoji(e)}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-display text-[15px] transition-colors ${
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-display text-[14px] transition-colors ${
                       emoji === e
                         ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
                         : "bg-[var(--glass-bg)] text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
@@ -365,7 +365,7 @@ function AgentEditor({
               onClick={() =>
                 onSave({ name: name.trim(), description: description.trim(), systemPrompt: systemPrompt.trim(), modelHint: modelHint.trim(), emoji })
               }
-              className="inline-flex h-9 items-center rounded-full btn-ink px-5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-9 items-center rounded-full btn-ink px-5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
             >
               {initial ? "Save" : "Create agent"}
             </button>

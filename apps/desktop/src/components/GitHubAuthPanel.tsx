@@ -93,14 +93,14 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
               </p>
               <p className="text-[11px] text-[var(--text-muted)] truncate">@{user.login}</p>
             </div>
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-success-text)] bg-[var(--color-success-muted)] rounded-full px-2 py-0.5">
+            <span className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-success-text)] bg-[var(--color-success-muted)] rounded-full px-2 py-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
               Connected
             </span>
           </div>
           <button
             onClick={() => void logout()}
-            className="mt-3 h-7 px-3 rounded-xl text-[11px] font-semibold text-[var(--color-danger-text)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg-strong)] transition-colors"
+            className="mt-3 h-7 px-3 rounded-xl text-[11px] font-medium text-[var(--color-danger-text)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg-strong)] transition-colors"
           >
             Sign out
           </button>
@@ -122,7 +122,7 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
                 <button
                   onClick={() => void handleSetupGit()}
                   disabled={setupGitBusy || setupGitDone}
-                  className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold disabled:opacity-50"
+                  className="h-7 px-3 rounded-xl btn-glass text-[11px] font-medium disabled:opacity-50"
                 >
                   {setupGitDone
                     ? "Configured"
@@ -188,9 +188,9 @@ export function GitHubAuthPanel({ authStatus, onAuthChange }: GitHubAuthPanelPro
           <button
             onClick={() => void startLogin()}
             disabled={!ghCli?.installed}
-            className="h-8 px-4 rounded-xl btn-ink text-[12px] font-semibold flex items-center gap-2 disabled:opacity-50"
+            className="h-8 px-4 rounded-xl btn-ink text-[12px] font-medium flex items-center gap-2 disabled:opacity-50"
           >
-            <i className="ri-github-fill text-[16px] leading-none" />
+            <i className="ri-github-fill text-base leading-none" />
             Sign in with GitHub
           </button>
         )}

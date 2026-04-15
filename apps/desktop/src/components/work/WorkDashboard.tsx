@@ -121,13 +121,13 @@ export function WorkDashboard({
             {greeting}.<br />
             <span className="text-[var(--text-secondary)]">Build your first agent.</span>
           </h1>
-          <p className="mt-6 max-w-md text-[15px] leading-relaxed text-[var(--text-secondary)]">
+          <p className="mt-6 max-w-md text-[14px] leading-relaxed text-[var(--text-secondary)]">
             An agent is a persistent automation — give it instructions, pick its tools,
             and let it work on a schedule or whenever you trigger it.
           </p>
           <button
             onClick={onCreateAgent}
-            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-medium"
           >
             Create your first agent
           </button>
@@ -167,7 +167,7 @@ export function WorkDashboard({
                   className="hidden shrink-0 items-center gap-2 depth-card-sm px-4 py-2 text-[12px] font-medium text-[var(--text-secondary)] transition-all hover:shadow-[var(--shadow-depth-card-hover)] hover:text-[var(--text-primary)] sm:inline-flex"
                 >
                   Full plan
-                  <i className="ri-arrow-right-s-line text-[14px] leading-none" />
+                  <i className="ri-arrow-right-s-line text-base leading-none" />
                 </button>
               )}
             </div>
@@ -222,7 +222,7 @@ export function WorkDashboard({
                 }}
                 placeholder="Describe what you want automated…"
                 rows={1}
-                className="block w-full resize-none bg-transparent px-6 pt-5 pb-3 text-[15px] leading-[1.55] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                className="block w-full resize-none bg-transparent px-6 pt-5 pb-3 text-[14px] leading-[1.55] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
                 style={{ minHeight: "3.25rem", maxHeight: "40vh" }}
               />
               <div className="flex items-center justify-between px-4 pb-3 pt-0.5">
@@ -237,7 +237,7 @@ export function WorkDashboard({
                   aria-label="Design agent"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full btn-accent disabled:cursor-not-allowed disabled:opacity-20 disabled:shadow-none"
                 >
-                  <i className="ri-arrow-up-line text-[14px] leading-none" />
+                  <i className="ri-arrow-up-line text-base leading-none" />
                 </button>
               </div>
             </div>
@@ -258,7 +258,7 @@ export function WorkDashboard({
             style={{ "--stagger-delay": "200ms" } as React.CSSProperties}
           >
             <div className="flex items-baseline justify-between gap-4">
-              <h2 className="font-display text-[15px] font-medium text-[var(--text-primary)]">
+              <h2 className="font-display text-[14px] font-medium text-[var(--text-primary)]">
                 Feed
               </h2>
               <button
@@ -399,7 +399,7 @@ export function WorkDashboard({
             >
               <div className="depth-card-sm p-4 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--tint-lime)" }}>
-                  <i className="ri-check-line text-[16px] leading-none text-[var(--text-primary)]" />
+                  <i className="ri-check-line text-base leading-none text-[var(--text-primary)]" />
                 </div>
                 <div>
                   <p className="text-[13px] font-medium text-[var(--text-primary)]">All systems nominal</p>
@@ -447,7 +447,7 @@ function PulseCounter({
       className="depth-card-sm inline-flex items-center gap-2 px-3.5 py-1.5 text-[12px] tabular-nums text-[var(--text-secondary)] transition-all hover:shadow-[var(--shadow-depth-card-hover)] hover:text-[var(--text-primary)]"
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
-      <span className="font-semibold text-[var(--text-primary)]">{n}</span>
+      <span className="font-medium text-[var(--text-primary)]">{n}</span>
       <span>{label}</span>
     </button>
   );
@@ -467,7 +467,7 @@ function PromptTool({
       type="button"
       className="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
     >
-      <i className={`${icon} text-[14px] leading-none`} />
+      <i className={`${icon} text-base leading-none`} />
       <span className="text-[11px] font-medium">{label}</span>
     </button>
   );
@@ -548,7 +548,7 @@ function FeedItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${s.flag}`} style={{ background: tintBg }}>
+          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] ${s.flag}`} style={{ background: tintBg }}>
             {flag}
           </span>
           {time && (
@@ -566,7 +566,7 @@ function FeedItem({
         {action && (
           <button
             onClick={action.onClick}
-            className="mt-2.5 text-[12px] font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+            className="mt-2.5 text-[12px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
           >
             {action.label} →
           </button>
@@ -618,7 +618,7 @@ function ScheduleRow({
       </div>
       <button
         onClick={onRun}
-        className="shrink-0 rounded-full border border-[var(--glass-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text-muted)] opacity-0 transition-all hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] group-hover:opacity-100"
+        className="shrink-0 rounded-full border border-[var(--glass-border)] px-2.5 py-1 text-[10px] font-medium text-[var(--text-muted)] opacity-0 transition-all hover:border-[var(--glass-border-strong)] hover:text-[var(--text-primary)] group-hover:opacity-100"
       >
         Run
       </button>

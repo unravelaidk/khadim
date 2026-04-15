@@ -27,13 +27,13 @@ export function GitHubTab({ authStatus, slug, repoPath, onNavigateToSettings, on
         <div className="w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
           <i className="ri-github-fill text-[20px] leading-none text-[var(--text-muted)]" />
         </div>
-        <p className="text-[13px] font-semibold text-[var(--text-primary)]">GitHub not connected</p>
+        <p className="text-[13px] font-medium text-[var(--text-primary)]">GitHub not connected</p>
         <p className="text-[11px] text-[var(--text-muted)] mt-1 max-w-xs mx-auto">
           Sign in to GitHub from Settings to use issues and pull requests.
         </p>
         <button
           onClick={onNavigateToSettings}
-          className="mt-4 h-8 px-4 rounded-2xl btn-ink text-[12px] font-semibold"
+          className="mt-4 h-8 px-4 rounded-2xl btn-ink text-[12px] font-medium"
         >
           Go to Settings
         </button>
@@ -59,27 +59,27 @@ export function GitHubTab({ authStatus, slug, repoPath, onNavigateToSettings, on
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSubView({ kind: "issues" })}
-            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all ${
               subView.kind === "issues"
                 ? "btn-ink"
                 : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
             }`}
           >
             <span className="flex items-center gap-1.5">
-              <i className="ri-error-warning-line text-[14px] leading-none" />
+              <i className="ri-error-warning-line text-base leading-none" />
               Issues
             </span>
           </button>
           <button
             onClick={() => setSubView({ kind: "prs" })}
-            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all ${
               subView.kind === "prs"
                 ? "btn-ink"
                 : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
             }`}
           >
             <span className="flex items-center gap-1.5">
-              <i className="ri-git-merge-line text-[14px] leading-none" />
+              <i className="ri-git-merge-line text-base leading-none" />
               Pull Requests
             </span>
           </button>
@@ -191,7 +191,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
           <div className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border-strong)]">
             <i className="ri-file-list-line text-[20px] leading-none text-[var(--text-muted)]" />
           </div>
-          <p className="text-[13px] font-semibold text-[var(--text-primary)]">
+          <p className="text-[13px] font-medium text-[var(--text-primary)]">
             Publish to GitHub
           </p>
           <p className="text-[11px] text-[var(--text-muted)] mt-1">
@@ -209,7 +209,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
 
           {/* Repo name */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+            <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
               Repository name
             </label>
             <input
@@ -224,7 +224,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
 
           {/* Description */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+            <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
               Description <span className="text-[var(--text-muted)] font-normal">(optional)</span>
             </label>
             <input
@@ -239,7 +239,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
 
           {/* Visibility toggle */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-2">
+            <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-2">
               Visibility
             </label>
             <div className="flex gap-2">
@@ -247,26 +247,26 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
                 type="button"
                 onClick={() => setIsPrivate(true)}
                 disabled={busy}
-                className={`flex-1 h-8 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 h-8 rounded-xl text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                   isPrivate
                     ? "btn-ink"
                     : "depth-card-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
-                <i className="ri-lock-line text-[14px] leading-none" />
+                <i className="ri-lock-line text-base leading-none" />
                 Private
               </button>
               <button
                 type="button"
                 onClick={() => setIsPrivate(false)}
                 disabled={busy}
-                className={`flex-1 h-8 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 h-8 rounded-xl text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                   !isPrivate
                     ? "btn-ink"
                     : "depth-card-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
-                <i className="ri-earth-line text-[14px] leading-none" />
+                <i className="ri-earth-line text-base leading-none" />
                 Public
               </button>
             </div>
@@ -281,7 +281,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
           <button
             onClick={() => void handleCreate()}
             disabled={busy || !name.trim()}
-            className="w-full h-9 rounded-xl btn-ink text-[12px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full h-9 rounded-xl btn-ink text-[12px] font-medium flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {busy ? (
               <>
@@ -290,7 +290,7 @@ function CreateRepoPanel({ repoPath, onCreated }: CreateRepoPanelProps) {
               </>
             ) : (
               <>
-                <i className="ri-upload-line text-[16px] leading-none" />
+                <i className="ri-upload-line text-base leading-none" />
                 Create repository & push
               </>
             )}

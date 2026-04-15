@@ -17,7 +17,7 @@ export function EnvironmentList({
     return (
       <div className="flex h-full items-center">
         <div className="px-12 py-16 max-w-lg">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
             Environments
           </h1>
           <p className="mt-4 text-base leading-relaxed text-[var(--text-secondary)]">
@@ -26,7 +26,7 @@ export function EnvironmentList({
           </p>
           <button
             onClick={onCreateEnvironment}
-            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-medium"
           >
             Create environment
           </button>
@@ -40,12 +40,12 @@ export function EnvironmentList({
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 px-10 pt-8 pb-6">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-xl font-medium tracking-tight text-[var(--text-primary)]">
             Environments
           </h1>
           <button
             onClick={onCreateEnvironment}
-            className="btn-ink h-8 rounded-full px-4 text-xs font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-xs font-medium"
           >
             New environment
           </button>
@@ -73,7 +73,7 @@ export function EnvironmentList({
                     )}
                   </div>
                   {env.isDefault && (
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-[var(--text-primary)]" style={{ background: "var(--tint-sky)" }}>Default</span>
+                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium text-[var(--text-primary)]" style={{ background: "var(--tint-sky)" }}>Default</span>
                   )}
                 </div>
 

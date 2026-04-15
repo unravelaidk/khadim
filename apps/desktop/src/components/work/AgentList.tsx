@@ -46,7 +46,7 @@ export function AgentList({
           </p>
           <button
             onClick={onCreateAgent}
-            className="btn-ink mt-7 h-11 rounded-full px-6 text-[14px] font-semibold"
+            className="btn-ink mt-7 h-11 rounded-full px-6 text-[14px] font-medium"
           >
             Create agent
           </button>
@@ -75,7 +75,7 @@ export function AgentList({
           </div>
           <button
             onClick={onCreateAgent}
-            className="btn-ink h-8 rounded-full px-4 text-[11px] font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-[11px] font-medium"
           >
             New agent
           </button>
@@ -150,7 +150,7 @@ function AgentCard({
       {/* Top row: badge + name + status */}
       <div className="flex items-center gap-3">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-[14px] font-semibold"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-[14px] font-medium"
           style={{
             background: `oklch(50% 0.04 ${hue} / 0.15)`,
             color: `oklch(75% 0.06 ${hue})`,
@@ -159,12 +159,12 @@ function AgentCard({
           {agent.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[14px] font-semibold text-[var(--text-primary)]">
+          <p className="truncate text-[14px] font-medium text-[var(--text-primary)]">
             {agent.name}
           </p>
         </div>
         <span
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium"
           style={{
             background: isActive ? "var(--tint-lime)" : isPaused ? "var(--tint-amber)" : "var(--tint-warm)",
             color: "var(--text-primary)",
@@ -214,7 +214,7 @@ function AgentCard({
       <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           onClick={onRun}
-          className="h-7 rounded-full px-3 text-[11px] font-semibold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]" style={{ background: "var(--tint-lime)" }}
+          className="h-7 rounded-full px-3 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]" style={{ background: "var(--tint-lime)" }}
         >
           Run
         </button>

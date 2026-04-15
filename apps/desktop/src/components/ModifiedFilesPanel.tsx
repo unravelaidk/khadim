@@ -45,11 +45,11 @@ function dirname(p: string): string {
 function FileIcon({ status }: { status: string }) {
   if (status === "D") {
     return (
-      <i className="ri-delete-bin-line text-[14px] leading-none" />
+      <i className="ri-delete-bin-line text-base leading-none" />
     );
   }
   return (
-    <i className="ri-file-line text-[14px] leading-none" />
+    <i className="ri-file-line text-base leading-none" />
   );
 }
 
@@ -106,7 +106,7 @@ function ModifiedFilesPanelInner({ repoPath, isStreaming, onOpenFile }: Props) {
       <div className="flex flex-col overflow-hidden depth-card-sm">
         <div className="flex items-center gap-2.5 px-3.5 py-2.5">
           <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--color-success)]" />
-          <span className="flex-1 font-display text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+          <span className="flex-1 font-display text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
             No changes
           </span>
         </div>
@@ -132,7 +132,7 @@ function ModifiedFilesPanelInner({ repoPath, isStreaming, onOpenFile }: Props) {
         className="flex items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--glass-bg)]/40"
       >
         <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--color-pop)]" />
-        <span className="flex-1 font-display text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+        <span className="flex-1 font-display text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
           Modified files
         </span>
         <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
@@ -141,7 +141,7 @@ function ModifiedFilesPanelInner({ repoPath, isStreaming, onOpenFile }: Props) {
         {loading && (
           <i className="ri-loader-4-line text-[12px] leading-none animate-spin text-[var(--text-muted)]" />
         )}
-        <i className={`${collapsed ? "ri-arrow-down-s-line" : "ri-arrow-up-s-line"} text-[14px] leading-none`} />
+        <i className={`${collapsed ? "ri-arrow-down-s-line" : "ri-arrow-up-s-line"} text-base leading-none`} />
       </button>
 
       {!collapsed && (

@@ -138,7 +138,7 @@ export const WorkspaceView = memo(function WorkspaceView({
           <div className="flex items-center gap-4 min-w-0">
             {/* Workspace badge */}
             <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] font-display text-[15px] font-semibold"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] font-display text-[14px] font-medium"
               style={{
                 background: `oklch(50% 0.04 ${hue} / 0.12)`,
                 color: `oklch(75% 0.06 ${hue})`,
@@ -186,7 +186,7 @@ export const WorkspaceView = memo(function WorkspaceView({
             <button
               onClick={onNewAgent}
               disabled={loading}
-              className="btn-ink h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
+              className="btn-ink h-9 rounded-full px-5 text-[12px] font-medium disabled:opacity-50"
             >
               New agent
             </button>
@@ -194,7 +194,7 @@ export const WorkspaceView = memo(function WorkspaceView({
               <button
                 onClick={onStopOpenCode}
                 disabled={loading}
-                className="btn-glass h-9 rounded-full px-4 text-[12px] font-semibold disabled:opacity-50"
+                className="btn-glass h-9 rounded-full px-4 text-[12px] font-medium disabled:opacity-50"
               >
                 Stop
               </button>
@@ -202,7 +202,7 @@ export const WorkspaceView = memo(function WorkspaceView({
               <button
                 onClick={onStartOpenCode}
                 disabled={loading}
-                className="btn-glass h-9 rounded-full px-4 text-[12px] font-semibold disabled:opacity-50"
+                className="btn-glass h-9 rounded-full px-4 text-[12px] font-medium disabled:opacity-50"
               >
                 Start
               </button>
@@ -218,7 +218,7 @@ export const WorkspaceView = memo(function WorkspaceView({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative px-4 py-3 text-[12px] font-semibold transition-colors ${
+              className={`relative px-4 py-3 text-[12px] font-medium transition-colors ${
                 activeTab === tab.id
                   ? "text-[var(--text-primary)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -444,7 +444,7 @@ const AgentTile = memo(function AgentTile({
       <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onFocus(); }}
-          className="h-7 rounded-[var(--radius-xs)] px-2.5 text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+          className="h-7 rounded-[var(--radius-xs)] px-2.5 text-[11px] font-medium text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
         >
           Chat
         </button>
@@ -453,7 +453,7 @@ const AgentTile = memo(function AgentTile({
           className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
           title="Settings"
         >
-          <i className="ri-more-line text-[14px] leading-none" />
+          <i className="ri-more-line text-base leading-none" />
         </button>
       </div>
     </div>
@@ -480,7 +480,7 @@ function EmptyAgents({ onNewAgent, loading }: { onNewAgent: () => void; loading:
           <button
             onClick={onNewAgent}
             disabled={loading}
-            className="btn-ink h-10 rounded-full px-7 text-[13px] font-semibold disabled:opacity-50"
+            className="btn-ink h-10 rounded-full px-7 text-[13px] font-medium disabled:opacity-50"
           >
             Create first agent
           </button>

@@ -309,7 +309,7 @@ export const FileFinder = memo(function FileFinder({
               <CloseIcon />
             </button>
           )}
-          <kbd className="hidden sm:inline-flex h-5 items-center rounded px-1.5 text-[9px] font-mono font-semibold text-[var(--text-muted)] bg-[var(--surface-ink-5)] border border-[var(--glass-border)]">
+          <kbd className="hidden sm:inline-flex h-5 items-center rounded px-1.5 text-[9px] font-mono font-medium text-[var(--text-muted)] bg-[var(--surface-ink-5)] border border-[var(--glass-border)]">
             ESC
           </kbd>
         </div>
@@ -579,7 +579,7 @@ const PreviewHeader = memo(function PreviewHeader({
     <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-[var(--glass-border)] bg-[var(--surface-ink-3)]">
       <FileIcon ext={extension(entry.name)} />
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold text-[var(--text-primary)] truncate">{entry.name}</p>
+        <p className="text-[11px] font-medium text-[var(--text-primary)] truncate">{entry.name}</p>
         {dir && <p className="text-[9px] text-[var(--text-muted)] font-mono truncate">{dir}</p>}
       </div>
       <div className="flex items-center gap-2 shrink-0 text-[9px] text-[var(--text-muted)]">
@@ -666,7 +666,7 @@ const SymbolOutline = memo(function SymbolOutline({ symbols }: { symbols: LspSym
   return (
     <div className="w-[200px] shrink-0 border-r border-[var(--glass-border)] overflow-y-auto scrollbar-thin bg-[var(--surface-ink-3)]">
       <div className="px-3 py-2 border-b border-[var(--glass-border)]">
-        <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Symbols</p>
+        <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)]">Symbols</p>
       </div>
       <div className="py-1">
         {symbols.map((sym, i) => (
@@ -758,13 +758,13 @@ const HighlightedText = memo(function HighlightedText({
 
 function SearchIcon() {
   return (
-    <i className="ri-search-line text-[16px] leading-none text-[var(--text-muted)]" />
+    <i className="ri-search-line text-base leading-none text-[var(--text-muted)]" />
   );
 }
 
 function CloseIcon() {
   return (
-    <i className="ri-close-line text-[14px] leading-none" />
+    <i className="ri-close-line text-base leading-none" />
   );
 }
 
@@ -777,7 +777,7 @@ function ChevronIcon() {
 function FileIcon({ ext }: { ext: string }) {
   const color = extColor(ext);
   return (
-    <i className="ri-file-line text-[16px] leading-none" />
+    <i className="ri-file-line text-base leading-none" />
   );
 }
 

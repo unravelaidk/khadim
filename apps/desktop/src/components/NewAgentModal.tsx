@@ -175,7 +175,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
             className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
-            <i className="ri-close-line text-[16px] leading-none" />
+            <i className="ri-close-line text-base leading-none" />
           </button>
         </div>
 
@@ -185,7 +185,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
         <div className="px-6 py-5 space-y-4">
           {/* Agent label */}
           <label className="block">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               Agent name
             </span>
             <input
@@ -199,7 +199,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
           {/* Issue URL */}
           <div className="block">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               GitHub issue <span className="text-[var(--text-muted)] font-normal">(optional)</span>
             </span>
             {hasGitHubIssues ? (
@@ -263,7 +263,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
           </div>
 
           <div className="block">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               Base branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
             </span>
             {baseBranchOptions.length > 0 ? (
@@ -293,13 +293,13 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
           {/* Branch mode toggle */}
           <div>
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-2">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)] block mb-2">
               Agent branch
             </span>
             <div className="flex gap-1 p-0.5 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
               <button
                 onClick={() => setBranchMode("new")}
-                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all ${
+                className={`flex-1 text-[11px] font-medium py-1.5 rounded-xl transition-all ${
                   branchMode === "new"
                     ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
                     : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -309,7 +309,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
               </button>
               <button
                 onClick={() => setBranchMode("existing")}
-                className={`flex-1 text-[11px] font-semibold py-1.5 rounded-xl transition-all ${
+                className={`flex-1 text-[11px] font-medium py-1.5 rounded-xl transition-all ${
                   branchMode === "existing"
                     ? "bg-[var(--surface-ink-solid)] text-[var(--text-inverse)] shadow-sm"
                     : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -323,7 +323,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
           {/* Branch input */}
           {branchMode === "new" ? (
             <label className="block">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 New branch name
               </span>
               <input
@@ -333,12 +333,12 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
                 placeholder="feature/my-feature"
               />
               <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                Will be created from <span className="font-mono font-semibold">{baseBranch || "HEAD"}</span>
+                Will be created from <span className="font-mono font-medium">{baseBranch || "HEAD"}</span>
               </p>
             </label>
           ) : (
             <div className="block">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 Existing branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
               </span>
               {localBranches.length > 0 ? (
@@ -364,7 +364,7 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
 
           {/* Info note */}
           <div className="flex items-start gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--glass-bg)] rounded-2xl px-3 py-2.5 border border-[var(--glass-border)]">
-            <i className="ri-stop-circle-line text-[14px] leading-none mt-0.5" />
+            <i className="ri-stop-circle-line text-base leading-none mt-0.5" />
             <span>
               Each agent gets its own worktree. Existing branches can be reused, and the worktree directory will be unique under <span className="font-mono text-[10px]">.khadim-worktrees/</span>
             </span>
@@ -380,14 +380,14 @@ export function NewAgentModal({ isOpen, workspace, onClose, onCreateAgent, isCre
         <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"
+            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-medium"
           >
             Cancel
           </button>
           <button
             onClick={() => void submit()}
             disabled={creating || isCreating}
-            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-medium disabled:opacity-50"
           >
             {creating || isCreating ? "Creating..." : "Create agent"}
           </button>

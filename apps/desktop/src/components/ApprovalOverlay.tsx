@@ -32,7 +32,7 @@ export function ApprovalOverlay({ approval, onApprove, onDeny }: Props) {
       >
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0">
           <span className="flex h-9 w-9 items-center justify-center rounded-2xl text-[var(--color-pop)]" style={{ background: "var(--tint-amber)" }}>
-            <i className="ri-error-warning-line text-[16px] leading-none" />
+            <i className="ri-error-warning-line text-base leading-none" />
           </span>
           <div>
             <h2 className="font-display text-base font-medium text-[var(--text-primary)]">Approval required</h2>
@@ -46,7 +46,7 @@ export function ApprovalOverlay({ approval, onApprove, onDeny }: Props) {
 
         <div className="space-y-4 overflow-y-auto px-6 py-5">
           <div className="space-y-1.5">
-            <p className="text-sm font-semibold text-[var(--text-primary)] leading-snug">{approval.title}</p>
+            <p className="text-sm font-medium text-[var(--text-primary)] leading-snug">{approval.title}</p>
             {approval.description && (
               <p className="text-[12px] leading-5 text-[var(--text-secondary)]">{approval.description}</p>
             )}
@@ -86,13 +86,13 @@ export function ApprovalOverlay({ approval, onApprove, onDeny }: Props) {
         <div className="flex items-center justify-end gap-2 px-6 py-4 shrink-0">
           <button
             onClick={onDeny}
-            className="h-9 rounded-2xl px-4 text-[12px] font-semibold btn-glass"
+            className="h-9 rounded-2xl px-4 text-[12px] font-medium btn-glass"
           >
             Deny
           </button>
           <button
             onClick={() => onApprove(remember)}
-            className="h-9 rounded-2xl px-4 text-[12px] font-semibold btn-ink"
+            className="h-9 rounded-2xl px-4 text-[12px] font-medium btn-ink"
           >
             Approve
           </button>

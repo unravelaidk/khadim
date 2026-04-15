@@ -69,7 +69,7 @@ export const AgentCard = React.memo(function AgentCard({ agent, isSelected, onCl
             onBlur={() => setConfirmRemove(false)}
             className={`transition-all duration-150 ${
               confirmRemove
-                ? "rounded-lg bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] text-[var(--color-danger)] px-2.5 py-1 text-[11px] font-semibold"
+                ? "rounded-lg bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] text-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium"
                 : "w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-muted)]"
             }`}
             title={confirmRemove ? "Click again to confirm" : "Remove"}

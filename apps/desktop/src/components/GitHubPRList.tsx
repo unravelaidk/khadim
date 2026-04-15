@@ -50,7 +50,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
         </div>
         <button
           onClick={onCreatePR}
-          className="h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold"
+          className="h-7 px-3 rounded-xl btn-ink text-[11px] font-medium"
         >
           New PR
         </button>
@@ -62,7 +62,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold capitalize transition-all ${
+            className={`px-3 py-1 rounded-xl text-[11px] font-medium capitalize transition-all ${
               filter === f
                 ? "btn-ink"
                 : "text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
@@ -106,14 +106,14 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-[var(--text-muted)]">#{pr.number}</span>
                 {pr.draft && (
-                  <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--surface-ink-5)] text-[var(--text-muted)]">
+                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--surface-ink-5)] text-[var(--text-muted)]">
                     Draft
                   </span>
                 )}
                 {pr.labels.slice(0, 3).map((label) => (
                   <span
                     key={label.id}
-                    className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border"
+                    className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border"
                     style={{
                       color: `#${label.color}`,
                       borderColor: `#${label.color}33`,
@@ -124,7 +124,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
                   </span>
                 ))}
               </div>
-              <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-0.5 truncate">
+              <p className="text-[12px] font-medium text-[var(--text-primary)] mt-0.5 truncate">
                 {pr.title}
               </p>
               <div className="flex items-center gap-2 mt-1">
@@ -151,7 +151,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold disabled:opacity-30"
+            className="h-7 px-3 rounded-xl btn-glass text-[11px] font-medium disabled:opacity-30"
           >
             Previous
           </button>
@@ -159,7 +159,7 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={prs.length < 30}
-            className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold disabled:opacity-30"
+            className="h-7 px-3 rounded-xl btn-glass text-[11px] font-medium disabled:opacity-30"
           >
             Next
           </button>
@@ -172,20 +172,20 @@ export function GitHubPRList({ slug, onSelectPR, onCreatePR }: GitHubPRListProps
 function PRStateIcon({ pr }: { pr: GitHubPR }) {
   if (pr.merged_at) {
     return (
-      <i className="ri-git-pull-request-line text-[16px] leading-none mt-0.5 text-[var(--color-accent)]" />
+      <i className="ri-git-pull-request-line text-base leading-none mt-0.5 text-[var(--color-accent)]" />
     );
   }
   if (pr.state === "closed") {
     return (
-      <i className="ri-git-pull-request-line text-[16px] leading-none mt-0.5 text-[var(--color-danger-text)]" />
+      <i className="ri-git-pull-request-line text-base leading-none mt-0.5 text-[var(--color-danger-text)]" />
     );
   }
   if (pr.draft) {
     return (
-      <i className="ri-git-branch-line text-[16px] leading-none mt-0.5 text-[var(--text-muted)]" />
+      <i className="ri-git-branch-line text-base leading-none mt-0.5 text-[var(--text-muted)]" />
     );
   }
   return (
-    <i className="ri-git-merge-line text-[16px] leading-none mt-0.5 text-[var(--color-success-text)]" />
+    <i className="ri-git-merge-line text-base leading-none mt-0.5 text-[var(--color-success-text)]" />
   );
 }

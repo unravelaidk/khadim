@@ -36,7 +36,7 @@ export function ProvidersTab() {
             className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <i className="ri-loader-4-line text-[14px] leading-none" />
+            <i className="ri-loader-4-line text-base leading-none" />
           </button>
         </div>
       </div>
@@ -50,7 +50,7 @@ export function ProvidersTab() {
         ) : (
           <div className="space-y-2">
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+              <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
                 {activeProviders.length} active
               </span>
               <span className="h-px flex-1 bg-[var(--glass-border)]" />
@@ -78,7 +78,7 @@ export function ProvidersTab() {
 function ProviderGroup({ label, providers, onRefresh }: { label: string; providers: KhadimProviderStatus[]; onRefresh: () => Promise<void> }) {
   return (
     <div className="mb-3 last:mb-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">{label}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">{label}</p>
       <div className="grid grid-cols-1 gap-1.5">
         {providers.map((provider) => (
           <ProviderStatusCard key={provider.id} provider={provider} onRefresh={onRefresh} />
@@ -357,7 +357,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-semibold text-[var(--text-primary)] truncate">{provider.name}</p>
+          <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">{provider.name}</p>
           <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
             {provider.configured_models > 0 ? `${provider.configured_models} model${provider.configured_models > 1 ? "s" : ""} configured` : "No models configured"}
           </p>
@@ -370,7 +370,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
               {provider.has_env_key && <span className="text-[9px] font-medium text-[var(--text-muted)]">ENV</span>}
             </span>
           )}
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${effectiveMeta.bgColor} ${effectiveMeta.color}`}>{effectiveMeta.label}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${effectiveMeta.bgColor} ${effectiveMeta.color}`}>{effectiveMeta.label}</span>
           <i className={`${expanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[12px] leading-none`} />
         </div>
       </div>
@@ -386,10 +386,10 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                     <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Connect your OpenAI Codex subscription via OAuth.</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${codexConnected ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]" : codexConnecting ? "bg-[var(--color-pop)]/15 text-[var(--color-pop)]" : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${codexConnected ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]" : codexConnecting ? "bg-[var(--color-pop)]/15 text-[var(--color-pop)]" : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"}`}>
                       {codexConnected ? "Connected" : codexConnecting ? "Waiting..." : "Not connected"}
                     </span>
-                    <button type="button" onClick={handleCodexConnect} disabled={codexConnecting} className="h-7 px-3 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-50">
+                    <button type="button" onClick={handleCodexConnect} disabled={codexConnecting} className="h-7 px-3 rounded-lg btn-glass text-[10px] font-medium disabled:opacity-50">
                       {codexConnected ? "Reconnect" : codexConnecting ? "Connecting..." : "Connect"}
                     </button>
                   </div>
@@ -408,7 +408,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                         className="flex-1 h-8 rounded-lg depth-inset px-3 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors font-mono"
                         placeholder="Paste the redirect URL or authorization code"
                       />
-                      <button type="button" onClick={handleCodexManualComplete} disabled={!codexSession?.sessionId || !manualCode.trim()} className="h-8 px-3 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+                      <button type="button" onClick={handleCodexManualComplete} disabled={!codexSession?.sessionId || !manualCode.trim()} className="h-8 px-3 rounded-lg btn-glass text-[10px] font-medium disabled:opacity-40 disabled:cursor-not-allowed">
                         Submit code
                       </button>
                     </div>
@@ -418,7 +418,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
 
                 {discovering && (
                   <div className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] px-3 py-2">
-                    <i className="ri-loader-4-line text-[14px] leading-none dot-spinner text-[var(--text-muted)]" />
+                    <i className="ri-loader-4-line text-base leading-none dot-spinner text-[var(--text-muted)]" />
                     <span className="text-[10px] text-[var(--text-secondary)]">Discovering models...</span>
                   </div>
                 )}
@@ -427,14 +427,14 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
               <>
                 {hasEnvKeyOnly && (
                   <div className="flex items-center gap-2 rounded-lg bg-[var(--glass-bg)] px-3 py-2">
-                    <i className="ri-stop-circle-line text-[14px] leading-none text-[var(--color-accent)]" />
+                    <i className="ri-stop-circle-line text-base leading-none text-[var(--color-accent)]" />
                     <span className="text-[10px] text-[var(--text-secondary)]">This key is provided by an environment variable and cannot be edited here. You can still add a saved key to override it.</span>
                   </div>
                 )}
 
                 {hasSavedKey && savedKeyDisplay && (
                   <div className="flex items-center gap-2 rounded-lg depth-inset px-3 py-2">
-                    <i className="ri-key-2-line text-[14px] leading-none text-[var(--color-success-text)]" />
+                    <i className="ri-key-2-line text-base leading-none text-[var(--color-success-text)]" />
                     <span className="flex-1 text-[10px] font-mono text-[var(--text-primary)] truncate">{savedKeyDisplay}</span>
                     <button
                       type="button"
@@ -470,14 +470,14 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                     />
                     <button onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors" title={showKey ? "Hide" : "Show"} type="button">
                       {showKey ? (
-                        <i className="ri-eye-off-line text-[14px] leading-none" />
+                        <i className="ri-eye-off-line text-base leading-none" />
                       ) : (
-                        <i className="ri-settings-3-line text-[14px] leading-none" />
+                        <i className="ri-settings-3-line text-base leading-none" />
                       )}
                     </button>
                   </div>
 
-                  <button onClick={() => void handleSave()} disabled={saving || discovering || !keyInput.trim()} className="h-8 px-3.5 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+                  <button onClick={() => void handleSave()} disabled={saving || discovering || !keyInput.trim()} className="h-8 px-3.5 rounded-lg btn-glass text-[10px] font-medium disabled:opacity-40 disabled:cursor-not-allowed">
                     {saving || discovering ? (
                       <span className="flex items-center gap-1.5">
                         <i className="ri-loader-4-line text-[12px] leading-none dot-spinner" />
@@ -500,9 +500,9 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
                       title="Delete saved API key"
                     >
                       {deleting ? (
-                        <i className="ri-loader-4-line text-[14px] leading-none dot-spinner" />
+                        <i className="ri-loader-4-line text-base leading-none dot-spinner" />
                       ) : (
-                        <i className="ri-delete-bin-line text-[14px] leading-none" />
+                        <i className="ri-delete-bin-line text-base leading-none" />
                       )}
                     </button>
                   )}
@@ -527,17 +527,17 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
 
             {confirmRemoveAll && (
               <div className="rounded-lg bg-[var(--color-danger-bg-strong)] border border-[var(--color-danger)]/20 px-3 py-2.5 space-y-2">
-                <p className="text-[10px] text-[var(--text-primary)] font-semibold">
+                <p className="text-[10px] text-[var(--text-primary)] font-medium">
                   This provider has {provider.configured_models} model{provider.configured_models > 1 ? "s" : ""} configured.
                 </p>
                 <p className="text-[10px] text-[var(--text-secondary)]">
                   Do you want to also remove all model configurations for this provider?
                 </p>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => void handleDeleteKeyAndModels()} disabled={deleting} className="h-7 px-3 rounded-lg text-[10px] font-semibold bg-[var(--color-danger)] text-white hover:brightness-110 transition-all disabled:opacity-50">
+                  <button onClick={() => void handleDeleteKeyAndModels()} disabled={deleting} className="h-7 px-3 rounded-lg text-[10px] font-medium bg-[var(--color-danger)] text-white hover:brightness-110 transition-all disabled:opacity-50">
                     {deleting ? "Removing..." : "Remove key & models"}
                   </button>
-                  <button onClick={() => void handleDelete()} disabled={deleting} className="h-7 px-3 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-50">
+                  <button onClick={() => void handleDelete()} disabled={deleting} className="h-7 px-3 rounded-lg btn-glass text-[10px] font-medium disabled:opacity-50">
                     Key only
                   </button>
                   <button onClick={() => setConfirmRemoveAll(false)} className="h-7 px-3 rounded-lg text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
@@ -549,7 +549,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
 
             {discoveryResult && (
               <div className="flex items-center gap-2 rounded-lg bg-[var(--color-success-muted)] border border-[var(--color-success)]/20 px-3 py-2">
-                <i className="ri-check-line text-[14px] leading-none text-[var(--color-success-text)]" />
+                <i className="ri-check-line text-base leading-none text-[var(--color-success-text)]" />
                 <span className="text-[10px] text-[var(--color-success-text)]">
                   {discoveryResult.created > 0
                     ? `Activated ${discoveryResult.created} model${discoveryResult.created > 1 ? "s" : ""} (${discoveryResult.total} discovered, ${discoveryResult.total - discoveryResult.created} already configured)`
@@ -565,7 +565,7 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
             {providerModels.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Configured Models</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Configured Models</p>
                   <span className="text-[9px] text-[var(--text-muted)]">
                     {providerModels.length} model{providerModels.length > 1 ? "s" : ""}
                   </span>

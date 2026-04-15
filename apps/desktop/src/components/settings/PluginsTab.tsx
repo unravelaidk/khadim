@@ -7,14 +7,14 @@ import { commands } from "../../lib/bindings";
 function StatusBadge({ enabled, error }: { enabled: boolean; error: string | null }) {
   if (error) {
     return (
-      <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[var(--color-danger)]/15 text-[var(--color-danger)]">
+      <span className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-[var(--color-danger)]/15 text-[var(--color-danger)]">
         Error
       </span>
     );
   }
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
         enabled
           ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"
           : "bg-[var(--glass-bg-strong)] text-[var(--text-muted)]"
@@ -46,7 +46,7 @@ function PermissionPills({ permissions }: { permissions: PluginEntry["permission
       {activePills.map((pill) => (
         <span
           key={pill.label}
-          className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold bg-[var(--color-pop)]/10 text-[var(--color-pop)] border border-[var(--color-pop)]/20"
+          className="rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-[var(--color-pop)]/10 text-[var(--color-pop)] border border-[var(--color-pop)]/20"
         >
           {pill.label}
         </span>
@@ -82,7 +82,7 @@ function PluginToolList({ pluginId, tools }: { pluginId: string; tools: PluginTo
             <i className="ri-tools-line text-[12px] leading-none text-[var(--text-muted)]" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold text-[var(--text-primary)] font-mono">
+            <p className="text-[10px] font-medium text-[var(--text-primary)] font-mono">
               {info.tool.name}
             </p>
             <p className="text-[9px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
@@ -187,13 +187,13 @@ function PluginCard({
               : "bg-[var(--glass-bg-strong)]"
           }`}
         >
-          <i className="ri-puzzle-line text-[16px] leading-none" />
+          <i className="ri-puzzle-line text-base leading-none" />
         </span>
 
         {/* Info */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-[12px] font-semibold text-[var(--text-primary)] truncate">
+            <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">
               {plugin.name}
             </p>
             <span className="text-[9px] font-mono text-[var(--text-muted)]">v{plugin.version}</span>
@@ -222,9 +222,9 @@ function PluginCard({
             {/* Error banner */}
             {plugin.error && (
               <div className="flex items-start gap-2 rounded-lg bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/20 px-3 py-2">
-                <i className="ri-error-warning-line text-[14px] leading-none mt-0.5 text-[var(--color-danger)]" />
+                <i className="ri-error-warning-line text-base leading-none mt-0.5 text-[var(--color-danger)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold text-[var(--color-danger)]">Failed to load</p>
+                  <p className="text-[10px] font-medium text-[var(--color-danger)]">Failed to load</p>
                   <p className="text-[9px] text-[var(--text-secondary)] mt-0.5 break-all">{plugin.error}</p>
                 </div>
               </div>
@@ -234,13 +234,13 @@ function PluginCard({
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
               {plugin.author && (
                 <div>
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Author</p>
+                  <p className="text-[9px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Author</p>
                   <p className="text-[10px] text-[var(--text-primary)] mt-0.5">{plugin.author}</p>
                 </div>
               )}
               {plugin.license && (
                 <div>
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">License</p>
+                  <p className="text-[9px] font-medium uppercase tracking-wider text-[var(--text-muted)]">License</p>
                   <p className="text-[10px] text-[var(--text-primary)] mt-0.5">{plugin.license}</p>
                 </div>
               )}
@@ -248,7 +248,7 @@ function PluginCard({
 
             {/* Permissions */}
             <div>
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
                 Permissions
               </p>
               <PermissionPills permissions={plugin.permissions} />
@@ -257,7 +257,7 @@ function PluginCard({
             {/* Tools list */}
             {plugin.enabled && plugin.tool_count > 0 && (
               <div>
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                <p className="text-[9px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
                   Tools
                 </p>
                 <PluginToolList pluginId={plugin.id} tools={tools} />
@@ -282,7 +282,7 @@ function PluginCard({
               <button
                 onClick={() => void handleToggle()}
                 disabled={toggling}
-                className="h-7 px-3.5 rounded-lg btn-glass text-[10px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-7 px-3.5 rounded-lg btn-glass text-[10px] font-medium disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {toggling ? (
                   <span className="flex items-center gap-1.5">
@@ -305,7 +305,7 @@ function PluginCard({
                   className="h-7 w-7 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-colors"
                   title="Uninstall plugin"
                 >
-                  <i className="ri-delete-bin-line text-[14px] leading-none" />
+                  <i className="ri-delete-bin-line text-base leading-none" />
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 ml-1">
@@ -313,7 +313,7 @@ function PluginCard({
                   <button
                     onClick={() => void handleUninstall()}
                     disabled={uninstalling}
-                    className="h-7 px-2.5 rounded-lg text-[10px] font-semibold bg-[var(--color-danger)] text-white hover:brightness-110 transition-all disabled:opacity-50"
+                    className="h-7 px-2.5 rounded-lg text-[10px] font-medium bg-[var(--color-danger)] text-white hover:brightness-110 transition-all disabled:opacity-50"
                   >
                     {uninstalling ? "Removing..." : "Yes"}
                   </button>
@@ -372,16 +372,16 @@ function InstallSection({ onInstalled }: { onInstalled: () => void }) {
         <button
           onClick={() => void handleInstall()}
           disabled={installing}
-          className="h-8 px-4 rounded-xl btn-glass text-[11px] font-semibold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="h-8 px-4 rounded-xl btn-glass text-[11px] font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {installing ? (
             <>
-              <i className="ri-loader-4-line text-[14px] leading-none animate-spin" />
+              <i className="ri-loader-4-line text-base leading-none animate-spin" />
               Installing...
             </>
           ) : (
             <>
-              <i className="ri-add-line text-[14px] leading-none" />
+              <i className="ri-add-line text-base leading-none" />
               Install from folder
             </>
           )}
@@ -390,7 +390,7 @@ function InstallSection({ onInstalled }: { onInstalled: () => void }) {
 
       {success && (
         <div className="flex items-center gap-2 rounded-lg bg-[var(--color-success-muted)] border border-[var(--color-success)]/20 px-3 py-2">
-          <i className="ri-check-line text-[14px] leading-none text-[var(--color-success-text)]" />
+          <i className="ri-check-line text-base leading-none text-[var(--color-success-text)]" />
           <span className="text-[10px] text-[var(--color-success-text)]">{success}</span>
         </div>
       )}
@@ -471,7 +471,7 @@ export function PluginsTab() {
             className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <i className="ri-loader-4-line text-[14px] leading-none" />
+            <i className="ri-loader-4-line text-base leading-none" />
           </button>
         </div>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
@@ -480,7 +480,7 @@ export function PluginsTab() {
 
         {/* Stats bar */}
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
             {enabledCount} enabled
           </span>
           <span className="h-px flex-1 bg-[var(--glass-border)]" />
@@ -507,7 +507,7 @@ export function PluginsTab() {
               <i className="ri-puzzle-line text-[20px] leading-none text-[var(--text-muted)]" />
             </div>
           </div>
-          <p className="text-[12px] font-semibold text-[var(--text-primary)] mb-1">No plugins installed</p>
+          <p className="text-[12px] font-medium text-[var(--text-primary)] mb-1">No plugins installed</p>
           <p className="text-[10px] text-[var(--text-muted)] mb-1">
             Install a plugin from a folder or drop one into:
           </p>

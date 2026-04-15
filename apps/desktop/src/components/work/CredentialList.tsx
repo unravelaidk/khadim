@@ -26,7 +26,7 @@ export function CredentialList({
     return (
       <div className="flex h-full items-center">
         <div className="px-12 py-16 max-w-lg">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
             Credentials
           </h1>
           <p className="mt-4 text-base leading-relaxed text-[var(--text-secondary)]">
@@ -35,7 +35,7 @@ export function CredentialList({
           </p>
           <button
             onClick={onAddCredential}
-            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-semibold"
+            className="btn-ink mt-8 h-11 rounded-full px-6 text-[14px] font-medium"
           >
             Add credential
           </button>
@@ -49,12 +49,12 @@ export function CredentialList({
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 px-10 pt-8 pb-6">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-xl font-medium tracking-tight text-[var(--text-primary)]">
             Credentials
           </h1>
           <button
             onClick={onAddCredential}
-            className="btn-ink h-8 rounded-full px-4 text-xs font-semibold"
+            className="btn-ink h-8 rounded-full px-4 text-xs font-medium"
           >
             Add credential
           </button>

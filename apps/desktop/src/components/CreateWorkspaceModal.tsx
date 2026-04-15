@@ -130,7 +130,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
             className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Close"
           >
-            <i className="ri-close-line text-[16px] leading-none" />
+            <i className="ri-close-line text-base leading-none" />
           </button>
         </div>
 
@@ -141,7 +141,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
         <div className="px-6 py-5 space-y-4">
           {/* Name */}
           <label className="block">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               Workspace name
             </span>
             <input
@@ -155,7 +155,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
 
           {/* Repo path */}
           <label className="block">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               Repository path
             </span>
             <div className="mt-1.5 flex gap-2">
@@ -171,7 +171,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
                 className="shrink-0 h-[42px] w-[42px] flex items-center justify-center rounded-2xl btn-glass"
                 title="Browse..."
               >
-                <i className="ri-folder-3-line text-[16px] leading-none" />
+                <i className="ri-folder-3-line text-base leading-none" />
               </button>
             </div>
           </label>
@@ -179,7 +179,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
           {/* Backend + target row */}
           <div className="grid grid-cols-2 gap-3">
             <div className="block">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 Backend
               </span>
               <GlassSelect
@@ -195,7 +195,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
             </div>
 
             <div className="block">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 Execution target
               </span>
               <GlassSelect
@@ -212,7 +212,7 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
 
           {/* Default branch */}
           <div className="block">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               Default branch {loading && <span className="text-[var(--text-muted)]">(loading...)</span>}
             </span>
             {localBranches.length > 0 ? (
@@ -251,14 +251,14 @@ export function CreateWorkspaceModal({ isOpen, onClose, onCreate, isCreating }: 
         <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"
+            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-medium"
           >
             Cancel
           </button>
           <button
             onClick={() => void submit()}
             disabled={isCreating}
-            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-medium disabled:opacity-50"
           >
             {isCreating ? "Creating..." : "Create workspace"}
           </button>

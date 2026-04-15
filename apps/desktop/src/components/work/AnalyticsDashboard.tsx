@@ -31,7 +31,7 @@ export function AnalyticsDashboard({
     return (
       <div className="flex h-full items-center">
         <div className="px-12 py-16 max-w-lg">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+          <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">
             Analytics
           </h1>
           <p className="mt-4 text-base leading-relaxed text-[var(--text-secondary)]">
@@ -47,14 +47,14 @@ export function AnalyticsDashboard({
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-thin">
       <div className="w-full max-w-3xl px-10 pt-8 pb-16">
-        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+        <h1 className="font-display text-xl font-medium tracking-tight text-[var(--text-primary)]">
           Analytics
         </h1>
 
         {/* ── Key numbers — inline text, not metric cards ──────── */}
         <p className="mt-6 text-sm leading-relaxed text-[var(--text-secondary)]">
-          <span className="font-semibold text-[var(--text-primary)]">{totalSessions.toLocaleString()}</span> sessions total,{" "}
-          <span className={`font-semibold ${
+          <span className="font-medium text-[var(--text-primary)]">{totalSessions.toLocaleString()}</span> sessions total,{" "}
+          <span className={`font-medium ${
             successRate >= 90 ? "text-[var(--color-success-text)]" :
             successRate >= 70 ? "text-[var(--text-primary)]" :
             "text-[var(--color-danger-text)]"
@@ -62,13 +62,13 @@ export function AnalyticsDashboard({
             {successRate}%
           </span> success rate.{" "}
           {failedSessions > 0 && (
-            <><span className="font-semibold text-[var(--color-danger-text)]">{failedSessions}</span> failed. </>
+            <><span className="font-medium text-[var(--color-danger-text)]">{failedSessions}</span> failed. </>
           )}
           {totalTokens > 0 && (
-            <><span className="font-semibold text-[var(--text-primary)]">{Math.round(totalTokens / 1000)}k</span> tokens used</>
+            <><span className="font-medium text-[var(--text-primary)]">{Math.round(totalTokens / 1000)}k</span> tokens used</>
           )}
           {estimatedCost > 0 && (
-            <> at an estimated <span className="font-semibold text-[var(--text-primary)]">${estimatedCost.toFixed(2)}</span></>
+            <> at an estimated <span className="font-medium text-[var(--text-primary)]">${estimatedCost.toFixed(2)}</span></>
           )}
           .
         </p>

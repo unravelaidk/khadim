@@ -17,7 +17,7 @@ export function AccountsTab({
       </div>
 
       <section>
-        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-1">GitHub</h3>
+        <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-1">GitHub</h3>
         <p className="text-[11px] text-[var(--text-muted)] mb-4">
           Connect your GitHub account to enable repository operations.
         </p>

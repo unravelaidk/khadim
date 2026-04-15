@@ -235,7 +235,7 @@ export const ChatInput = memo(function ChatInput({
         {showInstructions && onSystemPromptChange && (
           <div className="mb-2 animate-in fade-in duration-150">
             <div className="flex items-center justify-between px-1 mb-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+              <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-muted)]">
                 Instructions
               </span>
               <button
@@ -300,7 +300,7 @@ export const ChatInput = memo(function ChatInput({
             }}
             placeholder={isProcessing ? "Keep typing…" : "Message Khadim"}
             rows={1}
-            className="block w-full resize-none bg-transparent px-5 py-4 pr-14 font-sans text-[15px] leading-[1.55] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none md:px-6 md:py-[18px] md:pr-16 md:text-[16px]"
+            className="block w-full resize-none bg-transparent px-5 py-4 pr-14 font-sans text-[14px] leading-[1.55] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none md:px-6 md:py-[18px] md:pr-16 md:text-[16px]"
             style={{ minHeight: "56px", maxHeight: "168px" }}
           />
 
@@ -366,7 +366,7 @@ export const ChatInput = memo(function ChatInput({
                       {onTemperatureChange && (
                         <div className="px-3 py-2">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">Temperature</span>
+                            <span className="text-[11px] font-medium text-[var(--text-secondary)]">Temperature</span>
                             <span className="text-[10px] font-mono text-[var(--text-muted)] tabular-nums">{activePreset.value.toFixed(1)}</span>
                           </div>
                           <div className="flex rounded-xl bg-[var(--glass-bg)] p-0.5 gap-0.5">
@@ -375,7 +375,7 @@ export const ChatInput = memo(function ChatInput({
                                 key={preset.id}
                                 type="button"
                                 onClick={() => onTemperatureChange(preset.id)}
-                                className={`flex-1 py-1.5 rounded-[var(--radius-sm)] text-[11px] font-semibold transition-all duration-150 ${
+                                className={`flex-1 py-1.5 rounded-[var(--radius-sm)] text-[11px] font-medium transition-all duration-150 ${
                                   temperature === preset.id
                                     ? "bg-[var(--surface-card)] text-[var(--text-primary)] shadow-[var(--shadow-glass-sm)]"
                                     : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -433,7 +433,7 @@ export const ChatInput = memo(function ChatInput({
                 <Popover open={skillsOpen} onClose={() => setSkillsOpen(false)} anchor="left">
                   <div className="min-w-[280px] max-w-[320px]">
                     <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--glass-border)]">
-                      <span className="text-[12px] font-semibold text-[var(--text-primary)]">Skills</span>
+                      <span className="text-[12px] font-medium text-[var(--text-primary)]">Skills</span>
                       <span className="text-[10px] text-[var(--text-muted)]">
                         {skills.filter((s) => s.enabled).length}/{skills.length} active
                       </span>
@@ -516,7 +516,7 @@ function PopoverItem({
       onClick={onClick}
       className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-[14px] text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors"
     >
-      <i className={`${icon} w-[18px] h-[18px] text-[18px] leading-none shrink-0 text-[var(--text-muted)]`} />
+      <i className={`${icon} w-[18px] h-[18px] text-base leading-none shrink-0 text-[var(--text-muted)]`} />
       <span className="flex-1 font-medium">{label}</span>
       {trailing}
     </button>

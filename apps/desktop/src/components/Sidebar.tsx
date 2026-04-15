@@ -29,7 +29,7 @@ function BrandHeader({
         <div className="logo-adaptive h-7 w-7 text-[var(--text-primary)] [&>svg]:h-full [&>svg]:w-full">
           <KhadimLogo />
         </div>
-        <span className="font-display text-[18px] font-semibold tracking-tight text-[var(--text-primary)]">
+        <span className="font-display text-[17px] font-medium tracking-tight text-[var(--text-primary)]">
           Khadim
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
@@ -44,7 +44,7 @@ function BrandHeader({
           title="New chat"
           aria-label="New chat"
         >
-          <i className="ri-edit-line text-[16px] leading-none" />
+          <i className="ri-edit-line text-base leading-none" />
         </button>
       )}
     </div>
@@ -88,7 +88,7 @@ function ModeSwitcher({
                   : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               }`}
             >
-              <i className={`${icon} text-[14px] leading-none shrink-0`} />
+              <i className={`${icon} text-base leading-none shrink-0`} />
               <span>{label}</span>
             </button>
           );
@@ -194,10 +194,10 @@ export const Sidebar = memo(function Sidebar({
       <div className="mt-auto shrink-0 px-3 pt-2">
         <div className="flex items-start gap-3 rounded-[14px] bg-[var(--glass-bg)] px-3 py-2.5">
           <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-subtle)] text-[var(--color-accent)]">
-            <i className="ri-flashlight-line text-[14px] leading-none" />
+            <i className="ri-flashlight-line text-base leading-none" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold leading-tight text-[var(--text-primary)]">Proactive mode</p>
+            <p className="text-[12px] font-medium leading-tight text-[var(--text-primary)]">Proactive mode</p>
             <p className="mt-0.5 truncate text-[11px] leading-snug text-[var(--text-muted)]">
               On · Khadim will update and act
             </p>
@@ -213,11 +213,11 @@ export const Sidebar = memo(function Sidebar({
 
       {/* User footer */}
       <div className="mt-2 flex shrink-0 items-center gap-3 px-3 pb-4 pt-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-ink)] font-display text-[13px] font-semibold">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-ink)] font-display text-[13px] font-medium">
           K
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">Khadim user</p>
+          <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">Khadim user</p>
           <p className="truncate text-[11px] text-[var(--text-muted)]">Local workspace</p>
         </div>
         <button
@@ -226,9 +226,9 @@ export const Sidebar = memo(function Sidebar({
           title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
         >
           {themeMode === "dark" ? (
-            <i className="ri-sun-line text-[14px] leading-none" />
+            <i className="ri-sun-line text-base leading-none" />
           ) : (
-            <i className="ri-moon-line text-[15px] leading-none" />
+            <i className="ri-moon-line text-base leading-none" />
           )}
         </button>
         <button
@@ -241,7 +241,7 @@ export const Sidebar = memo(function Sidebar({
           title="Settings"
           aria-label="Settings"
         >
-          <i className="ri-more-2-line text-[14px] leading-none" />
+          <i className="ri-more-2-line text-base leading-none" />
         </button>
       </div>
     </aside>
@@ -271,7 +271,7 @@ function PluginTabIcon({ icon }: { icon: string | null }) {
     puzzle: "ri-puzzle-line",
   };
   const cls = icon && iconMap[icon] ? iconMap[icon] : "ri-menu-line";
-  return <i className={`${cls} text-[16px] leading-none shrink-0`} />;
+  return <i className={`${cls} text-base leading-none shrink-0`} />;
 }
 
 interface ChatSidebarProps {
@@ -324,16 +324,16 @@ function ChatNavItem({
     >
       {typeof icon === "string" ? (
         <i
-          className={`${icon} text-[17px] leading-none shrink-0 ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}
+          className={`${icon} text-base leading-none shrink-0 ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}
         />
       ) : (
-        <span className={`flex h-[17px] w-[17px] shrink-0 items-center justify-center ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+        <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
           {icon}
         </span>
       )}
-      <span className="flex-1 text-[13.5px] font-medium">{label}</span>
+      <span className="flex-1 text-[14px] font-medium">{label}</span>
       {badge != null && badge > 0 && (
-        <span className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full bg-[var(--glass-bg-strong)] px-1.5 text-[11px] font-semibold tabular-nums leading-none text-[var(--text-secondary)]">
+        <span className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full bg-[var(--glass-bg-strong)] px-1.5 text-[11px] font-medium tabular-nums leading-none text-[var(--text-secondary)]">
           {badge}
         </span>
       )}
@@ -410,7 +410,7 @@ function ChatSidebar({
                 className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--color-accent)]"
                 title="New chat"
               >
-                <i className="ri-add-line text-[14px] leading-none" />
+                <i className="ri-add-line text-base leading-none" />
               </button>
             </div>
 
@@ -484,7 +484,7 @@ const ChatSidebarItem = memo(function ChatSidebarItem({
         className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] opacity-0 transition-all duration-[var(--duration-fast)] hover:bg-[var(--color-danger-muted)] hover:text-[var(--color-danger-text)] focus:opacity-100 group-hover:opacity-100"
         title="Delete chat"
       >
-        <i className="ri-delete-bin-line text-[14px] leading-none" />
+        <i className="ri-delete-bin-line text-base leading-none" />
       </button>
     </div>
   );
@@ -538,7 +538,7 @@ function WorkHomeSidebar({
           className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--color-accent)]"
           title="New workspace"
         >
-          <i className="ri-add-line text-[16px] leading-none" />
+          <i className="ri-add-line text-base leading-none" />
         </button>
       </div>
 
@@ -563,7 +563,7 @@ function WorkHomeSidebar({
                 onClick={onNewWorkspace}
                 className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-ink px-5 font-sans text-[13px] font-medium tracking-wide"
               >
-                <i className="ri-add-line text-[14px] leading-none" />
+                <i className="ri-add-line text-base leading-none" />
                 New workspace
               </button>
             </div>
@@ -624,7 +624,7 @@ const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] font-display text-[14px] font-semibold ${
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] font-display text-[14px] font-medium ${
               isSelected
                 ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
                 : "bg-[var(--glass-bg)] text-[var(--text-primary)]"
@@ -655,7 +655,7 @@ const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
             className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--color-accent-subtle)] hover:text-[var(--color-accent)]"
             title="New agent in workspace"
           >
-            <i className="ri-add-line text-[14px] leading-none" />
+            <i className="ri-add-line text-base leading-none" />
           </button>
         </div>
       </div>
@@ -740,7 +740,7 @@ function WorkspaceSidebar({
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
             title="Back to workspaces"
           >
-            <i className="ri-arrow-left-s-line text-[16px] leading-none" />
+            <i className="ri-arrow-left-s-line text-base leading-none" />
           </button>
           <span className="font-mono text-[12px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Workspace</span>
         </div>
@@ -748,7 +748,7 @@ function WorkspaceSidebar({
         {workspace && (
           <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--glass-border)] bg-[var(--surface-card)]/70 px-3 py-3">
             <div className="flex items-start gap-2">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-accent)] font-display text-[14px] font-semibold text-[var(--color-accent-ink)]">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-accent)] font-display text-[14px] font-medium text-[var(--color-accent-ink)]">
                 {workspace.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
@@ -760,7 +760,7 @@ function WorkspaceSidebar({
                 className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
                 title="Workspace settings"
               >
-                <i className="ri-settings-3-line text-[16px] leading-none" />
+                <i className="ri-settings-3-line text-base leading-none" />
               </button>
             </div>
 
@@ -796,10 +796,10 @@ function WorkspaceSidebar({
           </div>
           <button
             onClick={onNewAgent}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full btn-ink px-4 text-[12px] font-semibold"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full btn-ink px-4 text-[12px] font-medium"
             title="New agent"
           >
-            <i className="ri-add-line text-[14px] leading-none" />
+            <i className="ri-add-line text-base leading-none" />
             Agent
           </button>
         </div>
@@ -832,7 +832,7 @@ function WorkspaceSidebar({
                   onClick={onNewAgent}
                   className="mt-4 inline-flex h-10 items-center gap-2 rounded-full btn-ink px-5 text-[13px] font-medium"
                 >
-                  <i className="ri-add-line text-[14px] leading-none" />
+                  <i className="ri-add-line text-base leading-none" />
                   Create agent
                 </button>
               </div>

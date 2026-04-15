@@ -135,7 +135,7 @@ export function MemoryView() {
             <div className="flex items-start justify-between gap-4 border-b border-[var(--glass-border)] px-8 py-5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[20px] font-semibold text-[var(--text-primary)]">{selectedStore.name}</h2>
+                  <h2 className="text-[20px] font-medium text-[var(--text-primary)]">{selectedStore.name}</h2>
                   <span className="rounded-full border border-[var(--glass-border)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">
                     {selectedStore.id === chatStore?.id ? "Writeable" : "Read only"}
                   </span>
@@ -171,7 +171,7 @@ export function MemoryView() {
                     <button
                       onClick={() => void handleCreateEntry()}
                       disabled={!draftKey.trim() || !draftContent.trim() || createEntry.isPending}
-                      className="btn-ink h-9 rounded-full px-5 text-[12px] font-semibold disabled:opacity-50"
+                      className="btn-ink h-9 rounded-full px-5 text-[12px] font-medium disabled:opacity-50"
                     >
                       {createEntry.isPending ? "Saving..." : "Save memory"}
                     </button>
@@ -197,7 +197,7 @@ export function MemoryView() {
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{entry.key}</p>
+                            <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{entry.key}</p>
                             <span className="rounded-full bg-[var(--surface-ink-5)] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)]">
                               {entry.kind}
                             </span>

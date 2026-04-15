@@ -185,7 +185,7 @@ export function ModelSelector({
           <ModelIcon model={selectedModel} />
         ) : (
           <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-card)] ring-1 ring-[var(--glass-border)]">
-            <i className="ri-sparkling-2-line text-[14px] leading-none text-[var(--text-muted)]" />
+            <i className="ri-sparkling-2-line text-base leading-none text-[var(--text-muted)]" />
           </span>
         )}
         <span className="min-w-0 truncate font-medium">
@@ -205,7 +205,7 @@ export function ModelSelector({
         >
           {/* Search */}
           <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
-            <i className="ri-search-line text-[14px] leading-none text-[var(--text-muted)]" />
+            <i className="ri-search-line text-base leading-none text-[var(--text-muted)]" />
             <input
               ref={searchRef}
               type="text"
@@ -237,7 +237,7 @@ export function ModelSelector({
                 <div key={label} className="mb-1 last:mb-0">
                   <div className="flex items-center gap-2 px-2 pb-0.5 pt-2">
                     <ProviderGroupIcon providerId={providerModels[0].provider_id} />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
                       {label}
                     </span>
                     <span className="h-px flex-1 bg-[var(--glass-border)]" />
@@ -326,7 +326,7 @@ function ModelItem({
         </span>
       </span>
       {model.is_default && !isSelected && (
-        <span className="shrink-0 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <span className="shrink-0 rounded-full border border-[var(--glass-border)] bg-[var(--surface-card)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
           Default
         </span>
       )}

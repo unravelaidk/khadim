@@ -106,7 +106,7 @@ function QuestionCard({
               }`}
             >
               <span
-                className={`block text-[12px] font-semibold leading-tight ${
+                className={`block text-[12px] font-medium leading-tight ${
                   selected ? "text-[var(--color-accent)]" : "text-[var(--text-primary)]"
                 }`}
               >
@@ -138,7 +138,7 @@ function QuestionCard({
                 : "bg-[var(--depth-inset-bg,var(--surface-bg-subtle))] shadow-[var(--shadow-depth-inset,inset_0_1px_3px_oklch(0%_0_0_/_0.08))] hover:shadow-[var(--shadow-depth-card-sm,var(--shadow-glass-sm))]"
             }`}
           >
-            <span className={`block text-[12px] font-semibold leading-tight ${showCustom ? "text-[var(--color-accent)]" : "text-[var(--text-muted)]"}`}>
+            <span className={`block text-[12px] font-medium leading-tight ${showCustom ? "text-[var(--color-accent)]" : "text-[var(--text-muted)]"}`}>
               Type your own
             </span>
           </button>
@@ -206,7 +206,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-2xl text-[var(--text-primary)]" style={{ background: "var(--tint-amber)" }}>
-              <i className="ri-stop-circle-line text-[16px] leading-none" />
+              <i className="ri-stop-circle-line text-base leading-none" />
             </span>
             <div>
               <h2 className="font-display text-base font-medium text-[var(--text-primary)]">
@@ -222,7 +222,7 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
             className="h-8 w-8 flex items-center justify-center rounded-2xl text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Dismiss"
           >
-            <i className="ri-close-line text-[16px] leading-none" />
+            <i className="ri-close-line text-base leading-none" />
           </button>
         </div>
 
@@ -251,14 +251,14 @@ export function QuestionOverlay({ question, onAnswer, onDismiss }: Props) {
         <div className="flex items-center justify-end gap-2 px-6 py-4 shrink-0">
           <button
             onClick={onDismiss}
-            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-semibold"
+            className="h-9 px-4 rounded-2xl btn-glass text-[12px] font-medium"
           >
             Skip
           </button>
           <button
             onClick={handleSubmit}
             disabled={!hasAnswer}
-            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-semibold disabled:opacity-40"
+            className="h-9 px-5 rounded-2xl btn-ink text-[12px] font-medium disabled:opacity-40"
           >
             Submit
           </button>

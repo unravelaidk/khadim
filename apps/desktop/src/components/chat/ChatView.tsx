@@ -163,7 +163,7 @@ export const ChatView = memo(function ChatView({
             <i className="ri-chat-1-line text-[20px] leading-none text-[var(--text-muted)]" />
           )}
           <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">{headerTitle}</h2>
+            <h2 className="text-[14px] font-medium text-[var(--text-primary)]">{headerTitle}</h2>
             <p className="text-[12px] text-[var(--text-muted)] mt-0.5 truncate">{headerSubtitle}</p>
           </div>
         </div>
@@ -177,7 +177,7 @@ export const ChatView = memo(function ChatView({
           )}
           <button
             onClick={onNewChat}
-            className="h-9 px-4 rounded-xl text-[13px] font-semibold text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+            className="h-9 px-4 rounded-xl text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
           >
             New
           </button>
@@ -233,7 +233,7 @@ export const ChatView = memo(function ChatView({
                         onClick={onSaveAsAgent}
                         className="inline-flex items-center gap-2 rounded-full bg-[var(--glass-bg)] px-4 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
                       >
-                        <i className="ri-add-line text-[14px] leading-none" />
+                        <i className="ri-add-line text-base leading-none" />
                         Save as Agent
                       </button>
                       <span className="text-[12px] text-[var(--text-muted)]">

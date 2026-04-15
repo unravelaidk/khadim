@@ -133,7 +133,7 @@ export function GlassSelect({
         <span className={`min-w-0 truncate ${selectedOption ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
           {selectedOption?.label ?? placeholder}
         </span>
-        <i className={`${isOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-[14px] leading-none transition-transform`} />
+        <i className={`${isOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-base leading-none transition-transform`} />
       </button>
 
       {/* Dropdown */}
@@ -145,7 +145,7 @@ export function GlassSelect({
           {/* Search input */}
           {showSearch && (
             <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
-              <i className="ri-search-line text-[14px] leading-none text-[var(--text-muted)]" />
+              <i className="ri-search-line text-base leading-none text-[var(--text-muted)]" />
               <input
                 ref={searchRef}
                 type="text"

@@ -96,7 +96,7 @@ export function ChatHomeView({
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
             {dateLabel}
           </p>
-          <p className="mt-5 text-[15px] text-[var(--text-secondary)]">{greeting}</p>
+          <p className="mt-5 text-[14px] text-[var(--text-secondary)]">{greeting}</p>
           <h1 className="mt-1 font-display text-[40px] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--text-primary)]">
             {headline}
           </h1>
@@ -115,15 +115,15 @@ export function ChatHomeView({
               className="group flex items-start gap-3 depth-card-interactive px-4 py-3.5 text-left"
             >
               <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[var(--text-primary)]" style={{ background: "var(--tint-sky)" }}>
-                <i className={`${s.icon} text-[16px] leading-none`} />
+                <i className={`${s.icon} text-base leading-none`} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[13.5px] font-semibold text-[var(--text-primary)]">{s.title}</p>
+                <p className="text-[13.5px] font-medium text-[var(--text-primary)]">{s.title}</p>
                 <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-[var(--text-secondary)]">
                   {s.prompt}
                 </p>
               </div>
-              <i className="ri-arrow-right-s-line text-[14px] leading-none mt-1 text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
+              <i className="ri-arrow-right-s-line text-base leading-none mt-1 text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
             </button>
           ))}
         </div>
@@ -144,7 +144,7 @@ export function ChatHomeView({
           style={{ ["--stagger-delay" as string]: "240ms" }}
         >
           <div className="flex items-baseline justify-between">
-            <h2 className="font-display text-[15px] font-medium text-[var(--text-primary)]">Recent</h2>
+            <h2 className="font-display text-[14px] font-medium text-[var(--text-primary)]">Recent</h2>
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
               {total} total
             </span>
@@ -155,7 +155,7 @@ export function ChatHomeView({
               <p className="text-[13px] text-[var(--text-secondary)]">No conversations yet.</p>
               <button
                 onClick={onNewChat}
-                className="mt-4 inline-flex h-9 items-center rounded-full btn-ink px-5 text-[12px] font-semibold"
+                className="mt-4 inline-flex h-9 items-center rounded-full btn-ink px-5 text-[12px] font-medium"
               >
                 Start a conversation
               </button>
@@ -182,7 +182,7 @@ export function ChatHomeView({
                           {preview}
                         </span>
                       </span>
-                      <i className="ri-arrow-right-s-line text-[14px] leading-none text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
+                      <i className="ri-arrow-right-s-line text-base leading-none text-[var(--text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
                     </button>
                   </li>
                 );

@@ -35,7 +35,7 @@ export function GitHubIssueCreate({ slug, onCreated, onCancel }: GitHubIssueCrea
           onClick={onCancel}
           className="h-7 w-7 shrink-0 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
         >
-          <i className="ri-arrow-left-s-line text-[14px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
         </button>
         <h2 className="text-sm font-bold text-[var(--text-primary)]">New Issue</h2>
         <span className="text-[10px] font-mono text-[var(--text-muted)]">
@@ -51,7 +51,7 @@ export function GitHubIssueCreate({ slug, onCreated, onCancel }: GitHubIssueCrea
 
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
         <div>
-          <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+          <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
             Title
           </label>
           <input
@@ -64,7 +64,7 @@ export function GitHubIssueCreate({ slug, onCreated, onCancel }: GitHubIssueCrea
           />
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+          <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
             Description
           </label>
           <textarea
@@ -79,14 +79,14 @@ export function GitHubIssueCreate({ slug, onCreated, onCancel }: GitHubIssueCrea
           <button
             type="submit"
             disabled={submitting || !title.trim()}
-            className="h-8 px-4 rounded-xl btn-ink text-[12px] font-semibold disabled:opacity-50"
+            className="h-8 px-4 rounded-xl btn-ink text-[12px] font-medium disabled:opacity-50"
           >
             {submitting ? "Creating..." : "Create issue"}
           </button>
           <button
             type="button"
             onClick={onCancel}
-            className="h-8 px-4 rounded-xl btn-glass text-[12px] font-semibold"
+            className="h-8 px-4 rounded-xl btn-glass text-[12px] font-medium"
           >
             Cancel
           </button>

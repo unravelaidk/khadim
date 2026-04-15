@@ -107,7 +107,7 @@ function ProviderSelector({
                 {getProviderIconUrl(provider.type) ? (
                   <img src={getProviderIconUrl(provider.type)!} alt="" className={`h-4 w-4 shrink-0 object-contain ${isMonochromeProvider(provider.type) ? "model-icon-mono" : ""}`} />
                 ) : (
-                  <span className="text-[10px] font-semibold uppercase text-black">{provider.name.slice(0, 2)}</span>
+                  <span className="text-[10px] font-medium uppercase text-black">{provider.name.slice(0, 2)}</span>
                 )}
               </span>
               <span className="truncate">{provider.name}</span>
@@ -148,7 +148,7 @@ function ConfiguredModelCard({
           </p>
           <div className="mt-1.5 flex gap-1.5">
             {model.is_default && (
-              <span className="rounded-full bg-[var(--surface-ink-solid)]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-inverse)]">
+              <span className="rounded-full bg-[var(--surface-ink-solid)]/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-inverse)]">
                 Default
               </span>
             )}
@@ -360,7 +360,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
       <section className="rounded-2xl depth-card-sm p-5">
         <div className="flex items-center justify-between">
           <div>
-             <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
+             <h3 className="text-[13px] font-medium text-[var(--text-primary)]">{editingId ? "Edit Model" : "Add Model"}</h3>
             <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
               Pick a provider and select a model. Provider credentials are managed in the
               <button type="button" onClick={onOpenProviders} className="text-[var(--color-accent)] hover:underline underline-offset-2 ml-1 font-medium">Providers</button> tab.
@@ -554,7 +554,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
 
         <div className="mt-5 flex gap-3">
           {editingId && (
-            <button type="button" onClick={resetForm} className="rounded-xl depth-card-sm px-5 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:bg-[var(--glass-bg-strong)]">
+            <button type="button" onClick={resetForm} className="rounded-xl depth-card-sm px-5 py-2.5 text-sm font-medium text-[var(--text-primary)] transition-all hover:bg-[var(--glass-bg-strong)]">
               Cancel
             </button>
           )}
@@ -562,7 +562,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
             type="button"
             onClick={() => void submit()}
             disabled={saving || !form.model.trim() || !form.name.trim()}
-            className="rounded-xl bg-[var(--surface-ink-solid)] px-5 py-2.5 text-sm font-semibold text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-xl bg-[var(--surface-ink-solid)] px-5 py-2.5 text-sm font-medium text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? "Saving..." : editingId ? "Update Model" : "Add Model"}
           </button>
@@ -572,7 +572,7 @@ export function ModelSettingsTab({ onOpenProviders }: { onOpenProviders: () => v
       <div className="h-px bg-[var(--glass-border)]" />
 
       <section>
-        <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-3">Configured Models</h3>
+        <h3 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">Configured Models</h3>
         {loading ? (
           <p className="mt-3 text-sm text-[var(--text-muted)]">Loading...</p>
         ) : models.length === 0 ? (

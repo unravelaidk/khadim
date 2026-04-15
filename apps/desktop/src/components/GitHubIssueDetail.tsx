@@ -81,7 +81,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
     return (
       <div className="py-12 text-center">
         <p className="text-[12px] text-[var(--color-danger-text)]">{error ?? "Issue not found"}</p>
-        <button onClick={onBack} className="mt-3 h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold">
+        <button onClick={onBack} className="mt-3 h-7 px-3 rounded-xl btn-glass text-[11px] font-medium">
           Back
         </button>
       </div>
@@ -96,12 +96,12 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
           onClick={onBack}
           className="mt-0.5 h-7 w-7 shrink-0 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
         >
-          <i className="ri-arrow-left-s-line text-[14px] leading-none" />
+          <i className="ri-arrow-left-s-line text-base leading-none" />
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[10px] font-mono text-[var(--text-muted)]">#{issue.number}</span>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
               issue.state === "open"
                 ? "bg-[var(--color-success-muted)] text-[var(--color-success-text)]"
                 : "bg-[var(--color-accent-subtle)] text-[var(--color-accent)]"
@@ -122,7 +122,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
           {issue.labels.map((label) => (
             <span
               key={label.id}
-              className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
+              className="text-[10px] font-medium px-2 py-0.5 rounded-full border"
               style={{
                 color: `#${label.color}`,
                 borderColor: `#${label.color}33`,
@@ -140,7 +140,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-[var(--text-muted)]">Assigned to:</span>
           {issue.assignees.map((u) => (
-            <span key={u.id} className="text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span key={u.id} className="text-[11px] font-medium text-[var(--text-secondary)]">
               @{u.login}
             </span>
           ))}
@@ -159,7 +159,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
         <button
           onClick={() => void toggleState()}
           disabled={actionBusy}
-          className={`h-7 px-3 rounded-xl text-[11px] font-semibold disabled:opacity-50 ${
+          className={`h-7 px-3 rounded-xl text-[11px] font-medium disabled:opacity-50 ${
             issue.state === "open"
               ? "text-[var(--color-danger-text)] bg-[var(--color-danger-muted)] border border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg-strong)]"
               : "btn-ink"
@@ -171,7 +171,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
           href={issue.html_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="h-7 px-3 rounded-xl btn-glass text-[11px] font-semibold inline-flex items-center"
+          className="h-7 px-3 rounded-xl btn-glass text-[11px] font-medium inline-flex items-center"
         >
           Open on GitHub
         </a>
@@ -196,7 +196,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
                 alt={comment.user.login}
                 className="w-5 h-5 rounded-full"
               />
-              <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+              <span className="text-[11px] font-medium text-[var(--text-primary)]">
                 {comment.user.login}
               </span>
               <span className="text-[10px] text-[var(--text-muted)]">
@@ -219,7 +219,7 @@ export function GitHubIssueDetail({ slug, issueNumber, onBack }: GitHubIssueDeta
           <button
             onClick={() => void addComment()}
             disabled={commenting || !commentBody.trim()}
-            className="h-7 px-3 rounded-xl btn-ink text-[11px] font-semibold disabled:opacity-50"
+            className="h-7 px-3 rounded-xl btn-ink text-[11px] font-medium disabled:opacity-50"
           >
             {commenting ? "Posting..." : "Comment"}
           </button>

@@ -67,7 +67,7 @@ export function SettingsPanel({
     <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-200" style={{ minHeight: 0 }}>
       {/* ── Header: title + close ────────────────────────────────── */}
       <div className="shrink-0 px-8 pt-6 pb-0 flex items-center justify-between">
-        <h1 className="font-display text-xl font-semibold text-[var(--text-primary)] tracking-tight">
+        <h1 className="font-display text-xl font-medium text-[var(--text-primary)] tracking-tight">
           Settings
         </h1>
         <button
@@ -75,7 +75,7 @@ export function SettingsPanel({
           className="h-7 w-7 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors"
           title="Close settings"
         >
-          <i className="ri-close-line text-[16px] leading-none" />
+          <i className="ri-close-line text-base leading-none" />
         </button>
       </div>
 
@@ -92,7 +92,7 @@ export function SettingsPanel({
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-[var(--radius-sm)] text-[11px] font-semibold transition-all duration-150 ${
+                className={`shrink-0 px-3 py-1.5 rounded-[var(--radius-sm)] text-[11px] font-medium transition-all duration-150 ${
                   activeTab === item.id
                     ? "depth-card-sm text-[var(--text-primary)]"
                     : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]/30"
