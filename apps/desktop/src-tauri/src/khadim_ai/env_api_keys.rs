@@ -97,7 +97,7 @@ pub fn get_env_base_url(provider: &str) -> Option<String> {
         "anthropic" => std::env::var("ANTHROPIC_BASE_URL")
             .ok()
             .or_else(|| Some("https://api.anthropic.com/v1".to_string())),
-        "openai-codex" => Some("https://chatgpt.com/backend-api".to_string()),
+        "openai-codex" => Some("https://chatgpt.com/backend-api/codex".to_string()),
         "github-copilot" => Some("https://api.individual.githubcopilot.com".to_string()),
         "groq" => Some("https://api.groq.com/openai/v1".to_string()),
         "xai" => Some("https://api.x.ai/v1".to_string()),
@@ -126,7 +126,7 @@ pub fn get_default_provider() -> String {
 pub fn get_default_model(provider: &str) -> String {
     std::env::var("KHADIM_MODEL").unwrap_or_else(|_| match provider {
         "anthropic" => "claude-3-7-sonnet-latest".to_string(),
-        "openai-codex" => "gpt-5.1-codex-mini".to_string(),
+        "openai-codex" => "gpt-5.4".to_string(),
         "github-copilot" => "claude-sonnet-4.5".to_string(),
         "groq" => "llama-3.3-70b-versatile".to_string(),
         "xai" => "grok-3-mini".to_string(),

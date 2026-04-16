@@ -200,7 +200,9 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
       const discovered = await commands.khadimDiscoverModels(provider.id);
       if (discovered.length > 0) {
         const models = discovered.map((model) => ({ model_id: model.id, model_name: model.name }));
-        const created = await commands.khadimBulkCreateProviderModels(provider.id, models);
+        const created = isCodexProvider
+          ? (await commands.khadimSyncProviderModels(provider.id, models)).created
+          : await commands.khadimBulkCreateProviderModels(provider.id, models);
         setDiscoveryResult({ created, total: discovered.length });
       } else {
         setDiscoveryResult({ created: 0, total: 0 });
@@ -229,7 +231,9 @@ function ProviderStatusCard({ provider, onRefresh }: { provider: KhadimProviderS
           const discovered = await commands.khadimDiscoverModels(provider.id, keyInput.trim());
           if (discovered.length > 0) {
             const models = discovered.map((model) => ({ model_id: model.id, model_name: model.name }));
-            const created = await commands.khadimBulkCreateProviderModels(provider.id, models);
+            const created = isCodexProvider
+              ? (await commands.khadimSyncProviderModels(provider.id, models)).created
+              : await commands.khadimBulkCreateProviderModels(provider.id, models);
             setDiscoveryResult({ created, total: discovered.length });
           } else {
             setDiscoveryResult({ created: 0, total: 0 });

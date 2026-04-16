@@ -99,6 +99,30 @@ export default function App() {
     html.style.colorScheme = themeVariant === "light" || themeVariant === "latte" ? "light" : "dark";
   }, [themeFamily, themeVariant]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void commands.khadimSyncSavedProviderModels()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.checked_providers === 0 && result.synced_providers === 0) return;
+
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: desktopQueryKeys.providerStatuses }),
+          queryClient.invalidateQueries({ queryKey: desktopQueryKeys.khadimActiveModel }),
+          queryClient.invalidateQueries({ queryKey: ["agent-editor-models"] }),
+          queryClient.invalidateQueries({ queryKey: ["workspace-models"] }),
+        ]);
+      })
+      .catch(() => {
+        // Keep startup resilient if a provider refresh fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClient]);
+
   // ── Chat view state (sidebar + content area) ────────────────────
   // Values: "home" | "chats" | "memory" | "agents" | "plugin:<id>:<label>"
   const [chatView, setChatView] = useState<string>("home");

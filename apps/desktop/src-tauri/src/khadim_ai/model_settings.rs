@@ -539,20 +539,43 @@ fn extract_codex_model_pairs(value: &serde_json::Value) -> Vec<(String, String)>
     items
         .iter()
         .filter_map(|item| {
+            let visibility = item
+                .get("visibility")
+                .and_then(|value| value.as_str())
+                .unwrap_or("list");
+            if visibility != "list" {
+                return None;
+            }
+
             let id = item
                 .get("slug")
                 .or_else(|| item.get("id"))
                 .or_else(|| item.get("model_slug"))
                 .and_then(|value| value.as_str())?;
             let name = item
-                .get("title")
+                .get("display_name")
+                .or_else(|| item.get("title"))
                 .or_else(|| item.get("name"))
-                .or_else(|| item.get("display_name"))
+                .or_else(|| item.get("slug"))
                 .and_then(|value| value.as_str())
                 .unwrap_or(id);
             Some((id.to_string(), name.to_string()))
         })
         .collect()
+}
+
+fn codex_models_endpoint() -> String {
+    let base_url = crate::khadim_ai::env_api_keys::get_env_base_url("openai-codex")
+        .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex".to_string());
+    let normalized = base_url.trim_end_matches('/');
+
+    if normalized.ends_with("/models") {
+        normalized.to_string()
+    } else if normalized.ends_with("/codex") {
+        format!("{normalized}/models")
+    } else {
+        format!("{normalized}/codex/models")
+    }
 }
 
 async fn discover_codex_models() -> Result<Vec<DiscoveredProviderModel>, AppError> {
@@ -582,25 +605,15 @@ async fn discover_codex_models() -> Result<Vec<DiscoveredProviderModel>, AppErro
         }
     }
 
-    let payload = fetch_json("https://chatgpt.com/backend-api/models", headers).await?;
-    let model_pairs = extract_codex_model_pairs(&payload)
+    let payload = fetch_json(&codex_models_endpoint(), headers).await?;
+    let model_pairs = payload
+        .get("models")
         .into_iter()
-        .chain(
-            payload
-                .get("data")
-                .into_iter()
-                .flat_map(extract_codex_model_pairs),
-        )
-        .chain(
-            payload
-                .get("models")
-                .into_iter()
-                .flat_map(extract_codex_model_pairs),
-        );
+        .flat_map(extract_codex_model_pairs);
     let models = normalize_model_pairs(model_pairs);
     if models.is_empty() {
         return Err(AppError::health(
-            "Failed to parse OpenAI Codex model list from ChatGPT backend",
+            "Failed to parse OpenAI Codex model list from Codex backend",
         ));
     }
     Ok(models)
@@ -735,6 +748,31 @@ pub struct ProviderStatus {
     pub configured_models: u32,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderModelSyncResult {
+    pub checked_providers: u32,
+    pub synced_providers: u32,
+    pub failed_providers: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderModelApplyResult {
+    pub created: u32,
+    pub removed: u32,
+}
+
+fn provider_has_credentials(provider: &str) -> bool {
+    let has_saved_key = get_saved_provider_api_key(provider)
+        .ok()
+        .flatten()
+        .is_some();
+    let has_env_key = get_env_api_key(provider).is_some();
+    let has_oauth_key = provider == "openai-codex"
+        && has_openai_codex_auth_sync().unwrap_or(false);
+
+    has_saved_key || has_env_key || has_oauth_key
+}
+
 pub fn provider_statuses(db: &Database) -> Result<Vec<ProviderStatus>, AppError> {
     let configs = load_configs(db)?;
     let providers = supported_providers();
@@ -743,14 +781,8 @@ pub fn provider_statuses(db: &Database) -> Result<Vec<ProviderStatus>, AppError>
     for provider in &providers {
         let model_count = configs.iter().filter(|c| c.provider == provider.r#type).count() as u32;
 
-        let has_saved_key = get_saved_provider_api_key(&provider.r#type)
-            .ok()
-            .flatten()
-            .is_some();
         let has_env_key = get_env_api_key(&provider.r#type).is_some();
-        let has_oauth_key = provider.r#type == "openai-codex"
-            && has_openai_codex_auth_sync().unwrap_or(false);
-        let has_key = has_saved_key || has_env_key || has_oauth_key;
+        let has_key = provider_has_credentials(&provider.r#type);
 
         let status = if model_count > 0 && has_key {
             "active"
@@ -773,6 +805,60 @@ pub fn provider_statuses(db: &Database) -> Result<Vec<ProviderStatus>, AppError>
     }
 
     Ok(statuses)
+}
+
+pub async fn sync_saved_provider_models(db: &Database) -> Result<ProviderModelSyncResult, AppError> {
+    let providers = supported_providers();
+    let mut checked_providers = 0u32;
+    let mut synced_providers = 0u32;
+    let mut failed_providers = 0u32;
+
+    for provider in providers {
+        if !provider_has_credentials(&provider.r#type) {
+            continue;
+        }
+
+        let should_reconcile = provider.r#type == "openai-codex";
+        let has_existing_configs = load_configs(db)?
+            .into_iter()
+            .any(|config| config.provider == provider.r#type);
+        if has_existing_configs && !should_reconcile {
+            continue;
+        }
+
+        checked_providers += 1;
+
+        match discover_models(&provider.r#type, None, None).await {
+            Ok(discovered) if !discovered.is_empty() => {
+                let models = discovered
+                    .into_iter()
+                    .map(|model| BulkModelEntry {
+                        model_id: model.id,
+                        model_name: model.name,
+                    })
+                    .collect::<Vec<_>>();
+
+                let result = apply_provider_models(db, &provider.r#type, &models, should_reconcile)?;
+                if result.created > 0 || result.removed > 0 {
+                    synced_providers += 1;
+                }
+            }
+            Ok(_) => {}
+            Err(err) => {
+                failed_providers += 1;
+                eprintln!(
+                    "failed to sync models for provider '{}' on startup: {}",
+                    provider.r#type, err.message
+                );
+            }
+        }
+    }
+
+    Ok(ProviderModelSyncResult {
+        checked_providers,
+        synced_providers,
+        failed_providers,
+    })
 }
 
 pub fn save_provider_api_key(provider: &str, api_key: &str) -> Result<(), AppError> {
@@ -801,56 +887,118 @@ pub fn bulk_create_provider_models(
     provider: &str,
     models: &[BulkModelEntry],
 ) -> Result<u32, AppError> {
+    Ok(apply_provider_models(db, provider, models, false)?.created)
+}
+
+pub fn sync_provider_models(
+    db: &Database,
+    provider: &str,
+    models: &[BulkModelEntry],
+) -> Result<ProviderModelApplyResult, AppError> {
+    apply_provider_models(db, provider, models, true)
+}
+
+fn apply_provider_models(
+    db: &Database,
+    provider: &str,
+    models: &[BulkModelEntry],
+    remove_missing: bool,
+) -> Result<ProviderModelApplyResult, AppError> {
     if models.is_empty() {
-        return Ok(0);
+        return Ok(ProviderModelApplyResult {
+            created: 0,
+            removed: 0,
+        });
     }
+
     let mut configs = load_configs(db)?;
-    let has_provider_key = get_saved_provider_api_key(provider)?.is_some()
-        || get_env_api_key(provider).is_some();
-    let was_empty = configs.is_empty();
+    let has_provider_key = provider_has_credentials(provider);
     let mut created = 0u32;
+    let mut removed = 0u32;
+    let mut changed = false;
+    let discovered_ids = models
+        .iter()
+        .filter_map(|entry| {
+            let id = entry.model_id.trim();
+            (!id.is_empty()).then(|| id.to_string())
+        })
+        .collect::<BTreeSet<_>>();
+
+    if remove_missing {
+        let before = configs.len();
+        let removed_ids = configs
+            .iter()
+            .filter(|config| config.provider == provider && !discovered_ids.contains(&config.model))
+            .map(|config| config.id.clone())
+            .collect::<Vec<_>>();
+        if !removed_ids.is_empty() {
+            configs.retain(|config| !(config.provider == provider && !discovered_ids.contains(&config.model)));
+            for id in &removed_ids {
+                let _ = delete_secret(&model_key_name(id));
+            }
+            removed = (before - configs.len()) as u32;
+            changed = true;
+        }
+    }
 
     for entry in models.iter() {
-        if entry.model_id.trim().is_empty() {
-            continue;
-        }
-        // Skip duplicates.
-        let already_exists = configs
-            .iter()
-            .any(|c| c.provider == provider && c.model == entry.model_id);
-        if already_exists {
+        let model_id = entry.model_id.trim();
+        if model_id.is_empty() {
             continue;
         }
 
-        let is_first = was_empty && created == 0;
+        if let Some(existing) = configs
+            .iter_mut()
+            .find(|config| config.provider == provider && config.model == model_id)
+        {
+            let next_name = entry.model_name.trim();
+            if !next_name.is_empty() && existing.name != next_name {
+                existing.name = next_name.to_string();
+                changed = true;
+            }
+            if existing.has_api_key != has_provider_key {
+                existing.has_api_key = has_provider_key;
+                changed = true;
+            }
+            continue;
+        }
+
         let config = ModelConfig {
             id: uuid::Uuid::new_v4().to_string(),
             name: entry.model_name.trim().to_string(),
             provider: provider.to_string(),
-            model: entry.model_id.trim().to_string(),
+            model: model_id.to_string(),
             api_key: None,
             base_url: None,
             temperature: None,
             has_api_key: has_provider_key,
-            is_default: is_first,
-            is_active: is_first,
+            is_default: !configs.iter().any(|config| config.is_default),
+            is_active: !configs.iter().any(|config| config.is_active),
         };
-
-        if is_first {
-            for existing in &mut configs {
-                existing.is_default = false;
-                existing.is_active = false;
-            }
-        }
 
         configs.push(config);
         created += 1;
+        changed = true;
     }
 
-    if created > 0 {
+    if !configs.is_empty() && !configs.iter().any(|config| config.is_default) {
+        if let Some(first) = configs.first_mut() {
+            first.is_default = true;
+            changed = true;
+        }
+    }
+    if !configs.is_empty() && !configs.iter().any(|config| config.is_active) {
+        if let Some(first) = configs.first_mut() {
+            first.is_active = true;
+            changed = true;
+        }
+    }
+
+    if changed {
         save_configs(db, &configs)?;
     }
-    Ok(created)
+
+    Ok(ProviderModelApplyResult { created, removed })
 }
 
 /// Remove all ModelConfig entries for a given provider.

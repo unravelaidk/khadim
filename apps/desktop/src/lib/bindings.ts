@@ -548,6 +548,17 @@ export interface KhadimBulkModelEntry {
   model_name: string;
 }
 
+export interface KhadimProviderModelSyncResult {
+  checked_providers: number;
+  synced_providers: number;
+  failed_providers: number;
+}
+
+export interface KhadimProviderModelApplyResult {
+  created: number;
+  removed: number;
+}
+
 export interface KhadimCodexSession {
   sessionId: string;
   authUrl: string;
@@ -1364,8 +1375,14 @@ export const commands = {
   khadimBulkCreateProviderModels: (provider: string, models: KhadimBulkModelEntry[]) =>
     invoke<number>("khadim_bulk_create_provider_models", { provider, models }),
 
+  khadimSyncProviderModels: (provider: string, models: KhadimBulkModelEntry[]) =>
+    invoke<KhadimProviderModelApplyResult>("khadim_sync_provider_models", { provider, models }),
+
   khadimRemoveProviderModels: (provider: string) =>
     invoke<number>("khadim_remove_provider_models", { provider }),
+
+  khadimSyncSavedProviderModels: () =>
+    invoke<KhadimProviderModelSyncResult>("khadim_sync_saved_provider_models"),
 
   khadimDiscoverModels: (provider: string, apiKey?: string | null, baseUrl?: string | null) =>
     invoke<KhadimDiscoveredModel[]>("khadim_discover_models", { provider, apiKey, baseUrl }),

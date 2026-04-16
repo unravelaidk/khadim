@@ -487,11 +487,27 @@ pub(crate) fn khadim_bulk_create_provider_models(
 }
 
 #[tauri::command]
+pub(crate) fn khadim_sync_provider_models(
+    state: State<'_, Arc<AppState>>,
+    provider: String,
+    models: Vec<BulkModelEntry>,
+) -> Result<crate::khadim_ai::model_settings::ProviderModelApplyResult, AppError> {
+    crate::khadim_ai::model_settings::sync_provider_models(&state.db, &provider, &models)
+}
+
+#[tauri::command]
 pub(crate) fn khadim_remove_provider_models(
     state: State<'_, Arc<AppState>>,
     provider: String,
 ) -> Result<u32, AppError> {
     crate::khadim_ai::model_settings::remove_provider_models(&state.db, &provider)
+}
+
+#[tauri::command]
+pub(crate) async fn khadim_sync_saved_provider_models(
+    state: State<'_, Arc<AppState>>,
+) -> Result<crate::khadim_ai::model_settings::ProviderModelSyncResult, AppError> {
+    crate::khadim_ai::model_settings::sync_saved_provider_models(&state.db).await
 }
 
 #[tauri::command]
