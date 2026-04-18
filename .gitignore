@@ -17,6 +17,7 @@ apps/*/build
 apps/*/.react-router
 target
 apps/*/src-tauri/target
+apps/*/target-debian
 *.tsbuildinfo
 
 # Environment variables
