@@ -130,6 +130,7 @@ export interface StandaloneChatController {
   chatSessionIdRef: React.MutableRefObject<string | null>;
   chatActiveConvIdRef: React.MutableRefObject<string | null>;
   chatConversationsRef: React.MutableRefObject<LocalChatConversation[]>;
+  chatSessionToConvRef: React.MutableRefObject<Map<string, string>>;
   chatStreamingContentRef: React.MutableRefObject<string>;
   chatStreamingStepsRef: React.MutableRefObject<ThinkingStepData[]>;
   chatErroredSessionsRef: React.MutableRefObject<Set<string>>;
@@ -157,6 +158,10 @@ export function useStandaloneChat({
   const chatSessionIdRef = useRef<string | null>(null);
   const chatActiveConvIdRef = useRef<string | null>(null);
   const chatConversationsRef = useRef<LocalChatConversation[]>([]);
+  // Synchronous sessionId → conversationId map. Written before
+  // khadimSendStreaming is called so the global stream listener can route
+  // events that arrive before the chatConversations setState commits.
+  const chatSessionToConvRef = useRef<Map<string, string>>(new Map());
   const chatStreamingContentRef = useRef("");
   const chatStreamingStepsRef = useRef<ThinkingStepData[]>([]);
   const chatErroredSessionsRef = useRef<Set<string>>(new Set());
@@ -183,6 +188,11 @@ export function useStandaloneChat({
 
   useEffect(() => {
     chatConversationsRef.current = chatConversations;
+    const next = new Map<string, string>();
+    for (const conversation of chatConversations) {
+      if (conversation.sessionId) next.set(conversation.sessionId, conversation.id);
+    }
+    chatSessionToConvRef.current = next;
   }, [chatConversations]);
 
   useEffect(() => {
@@ -309,6 +319,9 @@ export function useStandaloneChat({
           setChatConversations((prev) => prev.map((conversation) => conversation.id === conversationId ? { ...conversation, sessionId } : conversation));
         }
         chatSessionIdRef.current = sessionId;
+        if (conversationId) {
+          chatSessionToConvRef.current.set(sessionId, conversationId);
+        }
 
         let modelForSend = chatSelectedModel;
         if (!modelForSend) {
@@ -434,6 +447,7 @@ export function useStandaloneChat({
     chatSessionIdRef,
     chatActiveConvIdRef,
     chatConversationsRef,
+    chatSessionToConvRef,
     chatStreamingContentRef,
     chatStreamingStepsRef,
     chatErroredSessionsRef,

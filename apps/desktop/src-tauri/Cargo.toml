@@ -48,6 +48,8 @@ portable-pty = "0.8"
 ignore = "0.4"
 which = "7"
 bollard = "0.18"
+khadim-ai-core = { version = "0.1.0", path = "../../../crates/khadim-ai-core", features = ["desktop"] }
+khadim-coding-agent = { version = "0.1.0", path = "../../../crates/khadim-coding-agent" }
 
 # Tree-sitter syntax highlighting (native speed, same approach as Zed)
 tree-sitter = "0.25"

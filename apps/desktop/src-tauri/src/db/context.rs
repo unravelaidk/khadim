@@ -9,7 +9,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 pub(crate) struct DbContext {
     conn: DatabaseConnection,

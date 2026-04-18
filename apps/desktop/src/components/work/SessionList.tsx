@@ -89,6 +89,8 @@ interface SessionDetailProps {
   liveStreamingContent?: string;
   liveStreamingSteps?: ThinkingStepData[];
   liveError?: string | null;
+  /** Working directory of the session's environment. Enables the Files button when present. */
+  envWorkingDir?: string | null;
   onBack: () => void;
   onAbort: () => void;
   onRetry: () => void;
@@ -96,6 +98,8 @@ interface SessionDetailProps {
   onRetryFromTurn?: (turnNumber: number) => void;
   onApprove?: () => void;
   onDeny?: () => void;
+  /** Invoked when the user clicks the Files button. */
+  onOpenFiles?: () => void;
 }
 
 export function SessionDetail({
@@ -105,6 +109,7 @@ export function SessionDetail({
   liveStreamingContent = "",
   liveStreamingSteps = [],
   liveError = null,
+  envWorkingDir = null,
   onBack,
   onAbort,
   onRetry,
@@ -112,6 +117,7 @@ export function SessionDetail({
   onRetryFromTurn,
   onApprove,
   onDeny,
+  onOpenFiles,
 }: SessionDetailProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -188,6 +194,18 @@ export function SessionDetail({
             </span>
           )}
         </div>
+
+        {onOpenFiles && (
+          <button
+            onClick={onOpenFiles}
+            disabled={!envWorkingDir}
+            title={envWorkingDir ?? "Set a working directory on this session's environment to browse files"}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors enabled:hover:bg-[var(--glass-bg)] enabled:hover:text-[var(--text-primary)] disabled:opacity-40"
+          >
+            <i className="ri-folder-open-line text-sm leading-none" />
+            Files
+          </button>
+        )}
 
         {isLive && (
           <button

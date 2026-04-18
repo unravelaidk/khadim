@@ -117,6 +117,7 @@ fn environment_to_domain(model: environments::Model) -> EnvironmentProfile {
         credential_ids: serde_json::from_str(&model.credential_ids_json).unwrap_or_default(),
         runner_type: model.runner_type,
         docker_image: model.docker_image,
+        working_dir: model.working_dir,
         is_default: model.is_default != 0,
         created_at: model.created_at,
         updated_at: model.updated_at,
@@ -252,6 +253,7 @@ impl AutomationRepository {
                 credential_ids_json: Set(encode_json(&environment.credential_ids)?),
                 runner_type: Set(environment.runner_type.clone()),
                 docker_image: Set(environment.docker_image.clone()),
+                working_dir: Set(environment.working_dir.clone()),
                 is_default: Set(environment.is_default as i32),
                 created_at: Set(environment.created_at.clone()),
                 updated_at: Set(environment.updated_at.clone()),
@@ -289,6 +291,7 @@ impl AutomationRepository {
             active.credential_ids_json = Set(encode_json(&environment.credential_ids)?);
             active.runner_type = Set(environment.runner_type.clone());
             active.docker_image = Set(environment.docker_image.clone());
+            active.working_dir = Set(environment.working_dir.clone());
             active.is_default = Set(environment.is_default as i32);
             active.updated_at = Set(environment.updated_at.clone());
             active.update(&conn).await?;

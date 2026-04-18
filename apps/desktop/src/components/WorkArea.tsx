@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type {
   WorkView,
   ManagedAgent,
@@ -10,6 +11,8 @@ import type {
 } from "../lib/types";
 import {
   WorkDashboard,
+  AgentBuilderPanel,
+  DraftsView,
   AgentList,
   AgentEditor,
   SessionList,
@@ -26,6 +29,7 @@ import {
   IntegrationsList,
   Quickstart,
 } from "./work";
+import { QuestionOverlay } from "./QuestionOverlay";
 import type {
   AgentEditorData,
   EnvironmentEditorData,
@@ -62,8 +66,10 @@ import {
   desktopQueryKeys,
 } from "../lib/queries";
 import { events, commands } from "../lib/bindings";
-import type { AgentStreamEvent, ThinkingStepData, UpsertManagedAgentInput, UpsertEnvironmentInput, UpsertCredentialInput } from "../lib/bindings";
+import type { AgentStreamEvent, DesktopWorkspaceContext, ThinkingStepData, UpsertManagedAgentInput, UpsertEnvironmentInput, UpsertCredentialInput } from "../lib/bindings";
+import { FileFinder } from "./FileFinder";
 import { applyStreamingStepEvent, finalizeSteps, formatStreamingError } from "../lib/streaming";
+import { useBuilderChats } from "../hooks/useBuilderChats";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Work Area — wired to Tauri backend via React Query
@@ -72,9 +78,22 @@ import { applyStreamingStepEvent, finalizeSteps, formatStreamingError } from "..
 interface WorkAreaProps {
   view: WorkView;
   onNavigate: (view: WorkView) => void;
+  /** Work-mode session selection, lifted so the sidebar can show a Files section. */
+  selectedSessionId?: string | null;
+  onSelectSession?: (id: string | null) => void;
+  /** Whether the session file explorer is open (controlled externally so the sidebar can trigger it). */
+  sessionFilesOpen?: boolean;
+  onSetSessionFilesOpen?: (open: boolean) => void;
 }
 
-export function WorkArea({ view, onNavigate }: WorkAreaProps) {
+export function WorkArea({
+  view,
+  onNavigate,
+  selectedSessionId: controlledSessionId,
+  onSelectSession,
+  sessionFilesOpen: controlledFilesOpen,
+  onSetSessionFilesOpen,
+}: WorkAreaProps) {
   // ── Data queries ──────────────────────────────────────────────────
   const queryClient = useQueryClient();
   const agentsQ = useManagedAgentsQuery();
@@ -115,7 +134,12 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
   const envSaveError = createEnv.error ?? updateEnv.error;
 
   // ── Local navigation state ────────────────────────────────────────
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [localSessionId, setLocalSessionId] = useState<string | null>(null);
+  const selectedSessionId = controlledSessionId !== undefined ? controlledSessionId : localSessionId;
+  const setSelectedSessionId = useCallback((id: string | null) => {
+    if (onSelectSession) onSelectSession(id);
+    else setLocalSessionId(id);
+  }, [onSelectSession]);
   const [selectedMemoryStoreId, setSelectedMemoryStoreId] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<"closed" | "quickstart" | "editor">("closed");
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
@@ -126,6 +150,43 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
   const [credEditorTarget, setCredEditorTarget] = useState<string | null>(null);
   const [memStoreEditorOpen, setMemStoreEditorOpen] = useState(false);
   const [memEntryEditorOpen, setMemEntryEditorOpen] = useState(false);
+  const [localSessionFilesOpen, setLocalSessionFilesOpen] = useState(false);
+  const sessionFilesOpen = controlledFilesOpen ?? localSessionFilesOpen;
+  const setSessionFilesOpen = useCallback((open: boolean) => {
+    if (onSetSessionFilesOpen) onSetSessionFilesOpen(open);
+    else setLocalSessionFilesOpen(open);
+  }, [onSetSessionFilesOpen]);
+
+  // ── Agent Builder drafts (persisted) ──────────────────────────────
+  const builderChats = useBuilderChats();
+  const activeBuilderQuestion = builderChats.activeId
+    ? builderChats.getPendingQuestion(builderChats.activeId)
+    : null;
+
+  // Stale-id set for DraftsView
+  const staleIds = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const c of builderChats.chats) {
+      if (builderChats.isStale(c.id)) set.add(c.id);
+    }
+    return set;
+  }, [builderChats]);
+
+  // ⌘N / Ctrl+N — new draft while on the Drafts view
+  useEffect(() => {
+    if (view !== "drafts") return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        // Skip if the user is typing somewhere.
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        builderChats.newChat(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [view, builderChats]);
 
   // Clear detail selections when switching tabs
   const prevView = React.useRef(view);
@@ -138,7 +199,17 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
     if (credEditorOpen) { setCredEditorOpen(false); setCredEditorTarget(null); }
     if (memStoreEditorOpen) setMemStoreEditorOpen(false);
     if (memEntryEditorOpen) setMemEntryEditorOpen(false);
+    if (sessionFilesOpen) setSessionFilesOpen(false);
   }
+
+  // ── Resolve the active session's env working directory ───────────
+  const activeSessionEnv = useMemo(() => {
+    if (!selectedSessionId) return null;
+    const session = sessions.find((s) => s.id === selectedSessionId);
+    if (!session?.environmentId) return null;
+    return environments.find((e) => e.id === session.environmentId) ?? null;
+  }, [selectedSessionId, sessions, environments]);
+  const activeSessionWorkingDir = activeSessionEnv?.workingDir ?? null;
 
   // ── Model list for agent editor ───────────────────────────────────
   const availableModels = (modelsQ.data ?? []).map((m) => ({
@@ -224,6 +295,7 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
         description: data.description,
         runner_type: data.runnerType,
         docker_image: data.runnerType === "docker" ? data.dockerImage || null : null,
+        working_dir: data.workingDir || null,
         variables: data.variables,
         credential_ids: data.credentialIds,
         is_default: data.isDefault,
@@ -390,10 +462,27 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
     const session = sessions.find((s) => s.id === selectedSessionId);
     if (session) {
       return (
-        <SessionDetailWired
-          session={session}
-          onBack={() => setSelectedSessionId(null)}
-        />
+        <>
+          <SessionDetailWired
+            session={session}
+            envWorkingDir={activeSessionWorkingDir}
+            onOpenFiles={() => setSessionFilesOpen(true)}
+            onBack={() => setSelectedSessionId(null)}
+          />
+          {sessionFilesOpen && activeSessionWorkingDir && createPortal(
+            <FileFinder
+              context={sessionFileFinderContext(activeSessionWorkingDir, session)}
+              isOpen={sessionFilesOpen}
+              onClose={() => setSessionFilesOpen(false)}
+              onOpenFile={(path) => {
+                commands.openInEditor(path).catch((err) => {
+                  console.warn("Failed to open file:", err);
+                });
+              }}
+            />,
+            document.body,
+          )}
+        </>
       );
     }
   }
@@ -484,11 +573,78 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
               },
             });
           }}
+          onStartBuilder={(seed) => {
+            builderChats.newChat(seed);
+            onNavigate("drafts");
+          }}
           totalTokens={totalTokens}
           estimatedCost={estimatedCost}
           dailySessions={dailySessions}
         />
       );
+    case "drafts": {
+      const active = builderChats.activeChat;
+      if (active) {
+        return (
+          <>
+            <AgentBuilderPanel
+              key={active.id}
+              chat={active}
+              stream={builderChats.getStream(active.id)}
+              stale={builderChats.isStale(active.id)}
+              onDismissStale={() => builderChats.dismissStale(active.id)}
+              onUpdate={(partial) => builderChats.updateChat(active.id, partial)}
+              onMarkSending={(sessionId) => builderChats.markSending(active.id, sessionId)}
+              onExit={() => builderChats.setActiveId(null)}
+              onAgentCreated={() => {
+                // Keep the draft around (now "saved"); return to the list.
+                builderChats.setActiveId(null);
+                onNavigate("agents");
+              }}
+            />
+
+            {activeBuilderQuestion && createPortal(
+              <QuestionOverlay
+                question={activeBuilderQuestion}
+                onAnswer={(answers) => {
+                  void builderChats.answerQuestion(active.id, answers);
+                }}
+                onDismiss={() => {
+                  void builderChats.dismissQuestion(active.id);
+                }}
+              />,
+              document.body,
+            )}
+          </>
+        );
+      }
+      return (
+        <>
+          <DraftsView
+            drafts={builderChats.chats}
+            staleIds={staleIds}
+            onOpen={(id) => builderChats.setActiveId(id)}
+            onNew={() => builderChats.newChat(null)}
+            onDelete={(id) => builderChats.deleteChat(id)}
+          />
+
+          {activeBuilderQuestion && createPortal(
+            <QuestionOverlay
+              question={activeBuilderQuestion}
+              onAnswer={(answers) => {
+                if (!builderChats.activeId) return;
+                void builderChats.answerQuestion(builderChats.activeId, answers);
+              }}
+              onDismiss={() => {
+                if (!builderChats.activeId) return;
+                void builderChats.dismissQuestion(builderChats.activeId);
+              }}
+            />,
+            document.body,
+          )}
+        </>
+      );
+    }
     case "agents":
       return (
         <AgentList
@@ -582,15 +738,34 @@ export function WorkArea({ view, onNavigate }: WorkAreaProps) {
   }
 }
 
+/** Synthesize a workspace context so FileFinder can be rooted at an env's working dir. */
+function sessionFileFinderContext(workingDir: string, session: SessionRecord): DesktopWorkspaceContext {
+  return {
+    workspace_id: session.environmentId ?? session.id,
+    workspace_name: session.agentName ?? "Session",
+    backend: "khadim",
+    conversation_id: null,
+    repo_path: workingDir,
+    branch: null,
+    cwd: workingDir,
+    worktree_path: null,
+    in_worktree: false,
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Session Detail — wired subcomponent with its own turns query
    ═══════════════════════════════════════════════════════════════════════ */
 
 function SessionDetailWired({
   session,
+  envWorkingDir,
+  onOpenFiles,
   onBack,
 }: {
   session: SessionRecord;
+  envWorkingDir: string | null;
+  onOpenFiles: () => void;
   onBack: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -689,7 +864,9 @@ function SessionDetailWired({
       liveStreamingContent={showLiveState ? liveStreamingContent : ""}
       liveStreamingSteps={showLiveState ? liveStreamingSteps : []}
       liveError={liveError}
+      envWorkingDir={envWorkingDir}
       onBack={onBack}
+      onOpenFiles={onOpenFiles}
       onAbort={() => {
         stopRun.mutate(session.id);
       }}

@@ -79,6 +79,10 @@
     "apps/firecracker-sandbox": {
       "name": "@khadim/firecracker-sandbox",
     },
+    "apps/khadim-cli": {
+      "name": "@khadim/cli",
+      "version": "0.1.0",
+    },
     "apps/web": {
       "name": "@khadim/web",
       "dependencies": {
@@ -519,6 +523,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@khadim/cli": ["@khadim/cli@workspace:apps/khadim-cli"],
 
     "@khadim/codeexecution-client": ["@khadim/codeexecution-client@workspace:packages/codeexecution-client"],
 

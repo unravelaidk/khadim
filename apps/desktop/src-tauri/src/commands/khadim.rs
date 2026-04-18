@@ -163,7 +163,14 @@ fn extract_memory_candidates(user_text: &str) -> Vec<(String, String, String, f6
 }
 
 fn maybe_workspace_scope(workspace_id: &str) -> Option<&str> {
-    (workspace_id != "__chat__").then_some(workspace_id)
+    (!matches!(workspace_id, "__chat__" | "__agent_builder__")).then_some(workspace_id)
+}
+
+fn create_ephemeral_chat_dir(prefix: &str) -> Result<std::path::PathBuf, AppError> {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let dir = std::env::temp_dir().join(format!("{prefix}-{session_id}"));
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 fn resolve_memory_stores(
@@ -377,8 +384,22 @@ pub(crate) async fn khadim_create_session(
     state: State<'_, Arc<AppState>>,
     workspace_id: Option<String>,
     cwd_override: Option<String>,
+    system_prompt_override: Option<String>,
 ) -> Result<KhadimSessionCreated, AppError> {
     let (resolved_workspace_id, cwd) = if let Some(workspace_id) = workspace_id {
+        if workspace_id == "__agent_builder__" {
+            let dir = if let Some(path) = cwd_override {
+                let p = std::path::PathBuf::from(&path);
+                if p.is_dir() {
+                    p
+                } else {
+                    create_ephemeral_chat_dir("khadim-agent-builder")?
+                }
+            } else {
+                create_ephemeral_chat_dir("khadim-agent-builder")?
+            };
+            (workspace_id, dir)
+        } else {
         let workspace = state.db.get_workspace(&workspace_id)?;
         let base_cwd = if let Some(ref override_path) = cwd_override {
             let p = std::path::PathBuf::from(override_path);
@@ -391,6 +412,7 @@ pub(crate) async fn khadim_create_session(
             std::path::PathBuf::from(workspace.worktree_path.unwrap_or(workspace.repo_path))
         };
         (workspace_id, base_cwd)
+        }
     } else {
         let configured_dir = state
             .db
@@ -404,22 +426,18 @@ pub(crate) async fn khadim_create_session(
             if p.is_dir() {
                 p
             } else {
-                let session_id = uuid::Uuid::new_v4().to_string();
-                let tmp = std::env::temp_dir().join(format!("khadim-chat-{session_id}"));
-                std::fs::create_dir_all(&tmp)?;
-                tmp
+                create_ephemeral_chat_dir("khadim-chat")?
             }
         } else {
-            let session_id = uuid::Uuid::new_v4().to_string();
-            let tmp = std::env::temp_dir().join(format!("khadim-chat-{session_id}"));
-            std::fs::create_dir_all(&tmp)?;
-            tmp
+            create_ephemeral_chat_dir("khadim-chat")?
         };
 
         ("__chat__".to_string(), dir)
     };
 
-    let id = state.khadim.create_session(resolved_workspace_id, cwd);
+    let id = state
+        .khadim
+        .create_session_with_prompt(resolved_workspace_id, cwd, system_prompt_override);
     Ok(KhadimSessionCreated { id })
 }
 
@@ -569,19 +587,19 @@ pub(crate) fn khadim_active_model(
 
 #[tauri::command]
 pub(crate) async fn khadim_codex_auth_connected() -> Result<bool, AppError> {
-    crate::khadim_ai::oauth::has_openai_codex_auth().await
+    crate::khadim_ai::oauth::has_openai_codex_auth().await.map_err(Into::into)
 }
 
 #[tauri::command]
 pub(crate) async fn khadim_codex_auth_start() -> Result<CodexSessionInfo, AppError> {
-    crate::khadim_ai::oauth::start_openai_codex_login().await
+    crate::khadim_ai::oauth::start_openai_codex_login().await.map_err(Into::into)
 }
 
 #[tauri::command]
 pub(crate) async fn khadim_codex_auth_status(
     session_id: String,
 ) -> Result<CodexLoginStatusResponse, AppError> {
-    crate::khadim_ai::oauth::get_openai_codex_login_status(&session_id).await
+    crate::khadim_ai::oauth::get_openai_codex_login_status(&session_id).await.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -589,7 +607,7 @@ pub(crate) async fn khadim_codex_auth_complete(
     session_id: String,
     code: String,
 ) -> Result<(), AppError> {
-    crate::khadim_ai::oauth::submit_openai_codex_manual_code(&session_id, &code).await
+    crate::khadim_ai::oauth::submit_openai_codex_manual_code(&session_id, &code).await.map_err(Into::into)
 }
 
 #[tauri::command]

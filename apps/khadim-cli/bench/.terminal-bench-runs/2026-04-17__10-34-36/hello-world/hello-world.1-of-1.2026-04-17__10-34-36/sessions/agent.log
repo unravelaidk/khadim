@@ -1,0 +1,12 @@
+[?2004hroot@3bb217762fc1:/app# asciinema rec --stdin /logs/agent.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@3bb217762fc1:/app# clear
+[?2004l[H[J[3J[?2004hroot@3bb217762fc1:/app# source /installed-agent/setup-env.sh; tmux wait -S done
+[?2004l[?2004hroot@3bb217762fc1:/app# /installed-agent/khadim-cli --cwd . --build --provider opencode-go --model glm-5 --prompt 'Create a file called hello.txt in the current directory. Write "Hello, world!" to it. Make sure it ends in a newline. Don'"'"'t make any other files or folders.'; tmux wait -S done
+[?2004l/installed-agent/khadim-cli: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found (required by /installed-agent/khadim-cli)
+[?2004hroot@3bb217762fc1:/app# [?2004l
+exit
+[0;32masciinema: recording finished[0m
+[0;32masciinema: asciicast saved to /logs/agent.cast[0m
+[?2004hroot@3bb217762fc1:/app# 

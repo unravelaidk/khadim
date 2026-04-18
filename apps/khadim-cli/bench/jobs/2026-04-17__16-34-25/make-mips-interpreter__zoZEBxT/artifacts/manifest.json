@@ -1,0 +1,8 @@
+[
+  {
+    "source": "/installed-agent/khadim-run.log",
+    "destination": "artifacts/khadim-run.log",
+    "type": "file",
+    "status": "ok"
+  }
+]

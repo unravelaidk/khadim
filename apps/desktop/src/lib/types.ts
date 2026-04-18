@@ -4,7 +4,7 @@ import type { ThinkingStepData } from "./bindings";
 export type InteractionMode = "chat" | "work";
 
 /** Sub-view within work mode — the platform nav */
-export type WorkView = "dashboard" | "agents" | "sessions" | "environments" | "credentials" | "memory" | "integrations" | "analytics";
+export type WorkView = "dashboard" | "drafts" | "agents" | "sessions" | "environments" | "credentials" | "memory" | "integrations" | "analytics";
 
 /** @deprecated — kept for compatibility during migration */
 export type WorkHomeView = "workspaces";
@@ -30,6 +30,41 @@ export interface LocalChatMessage {
   createdAt: string;
   /** Tool-call / thinking steps captured during streaming (assistant only). */
   thinkingSteps?: ThinkingStepData[];
+}
+
+/** A persisted Agent Builder chat ("draft"). Kept separate from standalone
+ *  Chat mode conversations — these are drafts that produce managed agents. */
+export interface BuilderChat {
+  id: string;
+  title: string;
+  /** The original message that seeded this draft. Fired once on first open
+   *  if messages is still empty. */
+  seedMessage: string | null;
+  messages: LocalChatMessage[];
+  /** Khadim session id — reused across turns within a single draft. */
+  sessionId: string | null;
+  /** Set once the user saves the draft as a managed agent. */
+  savedAgentId: string | null;
+  savedAgentName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Creates a new blank builder chat (draft). */
+export function createBuilderChat(seedMessage: string | null = null): BuilderChat {
+  const now = new Date().toISOString();
+  const seed = seedMessage?.trim() ?? null;
+  return {
+    id: crypto.randomUUID(),
+    title: seed ? seed.slice(0, 60) : "New draft",
+    seedMessage: seed && seed.length > 0 ? seed : null,
+    messages: [],
+    sessionId: null,
+    savedAgentId: null,
+    savedAgentName: null,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 /** GitHub sub-navigation within the workspace GitHub tab */
@@ -124,6 +159,8 @@ export interface Environment {
   credentialIds: string[];
   runnerType: "local" | "docker" | "cloud";
   dockerImage: string | null;
+  /** Absolute path on disk where local/docker runs execute — used to resolve session file paths. */
+  workingDir: string | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;

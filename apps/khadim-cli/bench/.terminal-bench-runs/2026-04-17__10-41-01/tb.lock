@@ -1,0 +1,61 @@
+{
+    "lockfile_version": "1.0",
+    "created_at": "2026-04-17T10:41:01.646336+02:00",
+    "invocation": {
+        "command": "terminal-bench",
+        "args": [
+            "run",
+            "--dataset",
+            "terminal-bench-core==0.1.1",
+            "--task-id",
+            "hello-world",
+            "--agent-import-path",
+            "khadim_terminal_bench_agent:KhadimCliTerminalBenchAgent",
+            "--output-path",
+            ".terminal-bench-runs",
+            "--n-concurrent",
+            "1",
+            "--log-level",
+            "info"
+        ]
+    },
+    "harness": {
+        "package": "terminal-bench",
+        "version": "0.2.18",
+        "is_editable_installation": false
+    },
+    "agent": {
+        "name": "khadim-cli",
+        "import_path": "khadim_terminal_bench_agent:KhadimCliTerminalBenchAgent",
+        "model_name": null,
+        "extra_kwargs": {
+            "no_rebuild": false
+        }
+    },
+    "run_config": {
+        "log_level": "info",
+        "livestream": false,
+        "n_concurrent_trials": 1,
+        "n_attempts": 1,
+        "no_rebuild": false,
+        "cleanup": true,
+        "global_timeout_multiplier": 1.0,
+        "global_agent_timeout_sec": null,
+        "global_test_timeout_sec": null
+    },
+    "dataset": {
+        "name": "terminal-bench-core",
+        "version": "0.1.1",
+        "local_path": null,
+        "task_ids": [
+            "hello-world"
+        ],
+        "registry_url": null,
+        "local_registry_path": null
+    },
+    "local_config": {
+        "output_path": ".terminal-bench-runs",
+        "run_id": "2026-04-17__10-41-01",
+        "upload_results": false
+    }
+}

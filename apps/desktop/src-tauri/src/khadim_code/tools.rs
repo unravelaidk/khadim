@@ -9,25 +9,8 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-#[derive(Debug, Clone)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameters: Value,
-    pub prompt_snippet: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ToolResult {
-    pub content: String,
-    pub metadata: Option<Value>,
-}
-
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn definition(&self) -> ToolDefinition;
-    async fn execute(&self, input: Value) -> Result<ToolResult, AppError>;
-}
+// Re-export the shared trait and types so existing code keeps working.
+pub use khadim_ai_core::tools::{Tool, ToolDefinition, ToolResult};
 
 fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
     let candidate = Path::new(raw);
@@ -60,7 +43,7 @@ fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
 }
 
 fn maybe_workspace_scope(workspace_id: &str) -> Option<&str> {
-    (workspace_id != "__chat__").then_some(workspace_id)
+    (!matches!(workspace_id, "__chat__" | "__agent_builder__")).then_some(workspace_id)
 }
 
 fn split_terms(text: &str) -> Vec<String> {
@@ -326,7 +309,7 @@ impl Tool for MemorySearchTool {
             ));
         }
 
-        let mode_label = if self.workspace_id == "__chat__" {
+        let mode_label = if matches!(self.workspace_id.as_str(), "__chat__" | "__agent_builder__") {
             "standalone chat"
         } else if self.agent_id.is_some() || self.conversation_id.is_some() {
             "agent/workspace"

@@ -67,6 +67,7 @@ export function environmentRecordToUI(r: EnvironmentProfile): Environment {
     credentialIds: r.credential_ids,
     runnerType: r.runner_type,
     dockerImage: r.docker_image,
+    workingDir: r.working_dir,
     isDefault: r.is_default,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

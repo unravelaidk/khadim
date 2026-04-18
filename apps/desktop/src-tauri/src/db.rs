@@ -97,6 +97,7 @@ pub struct EnvironmentProfile {
     pub credential_ids: Vec<String>,
     pub runner_type: String,
     pub docker_image: Option<String>,
+    pub working_dir: Option<String>,
     pub is_default: bool,
     pub created_at: String,
     pub updated_at: String,

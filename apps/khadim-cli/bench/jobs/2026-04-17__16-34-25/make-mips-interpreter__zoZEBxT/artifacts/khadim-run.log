@@ -1,0 +1,4751 @@
+
+[Thinking]
+Let me start by understanding the environment and the MIPS binary we need to interpret.
+[Preparing ls]
+[done] Let me start by understanding the environment and the MIPS binary we need to interpret.
+
+[Running ls]
+[done] doom.wad
+doomgeneric/
+doomgeneric_mips
+
+[Thinking]
+Let me explore the source code and the binary to understand what we're dealing with.
+[Preparing ls]
+
+[Preparing bash]
+[done] Let me explore the source code and the binary to understand what we're dealing with.
+
+[Running ls]
+[done] .git/
+.gitignore
+LICENSE
+README.TXT
+README.md
+doomgeneric.sln
+doomgeneric/
+screenshots/
+
+[Running bash]
+[done] bash: line 1: file: command not found
+
+Command exited with status exit status: 127
+
+[Thinking]
+Let me install `file` and explore more.
+[Preparing bash]
+
+[Preparing ls]
+[done] Let me install `file` and explore more.
+
+[Running bash]
+[done] Unpacking file (1:5.44-3) ...
+Setting up libmagic-mgc (1:5.44-3) ...
+Setting up libmagic1:amd64 (1:5.44-3) ...
+Setting up file (1:5.44-3) ...
+Processing triggers for libc-bin (2.36-9+deb12u13) ...
+
+[Running ls]
+[done] Makefile
+Makefile.djgpp
+Makefile.emscripten
+Makefile.freebsd
+Makefile.sdl
+Makefile.soso
+Makefile.sosox
+am_map.c
+am_map.h
+build/
+config.h
+d_englsh.h
+d_event.c
+d_event.h
+d_items.c
+d_items.h
+d_iwad.c
+d_iwad.h
+d_loop.c
+d_loop.h
+d_main.c
+d_main.h
+d_mode.c
+d_mode.h
+d_net.c
+d_player.h
+d_textur.h
+d_think.h
+d_ticcmd.h
+deh_main.h
+deh_misc.h
+deh_str.h
+doom.h
+doomdata.h
+doomdef.c
+doomdef.h
+doomfeatures.h
+doomgeneric.c
+doomgeneric.h
+doomgeneric.vcxproj
+doomgeneric.vcxproj.filters
+doomgeneric_allegro.c
+doomgeneric_emscripten.c
+doomgeneric_img.c
+doomgeneric_mips
+doomgeneric_mips.map
+doomgeneric_sdl.c
+doomgeneric_soso.c
+doomgeneric_sosox.c
+doomgeneric_win.c
+doomgeneric_xlib.c
+doomkeys.h
+doomstat.c
+doomstat.h
+doomtype.h
+dstrings.c
+dstrings.h
+dummy.c
+f_finale.c
+f_finale.h
+f_wipe.c
+f_wipe.h
+fake_fs.c
+fake_fs.h
+g_game.c
+g_game.h
+gusconf.c
+gusconf.h
+hu_lib.c
+hu_lib.h
+hu_stuff.c
+hu_stuff.h
+i_allegromusic.c
+i_allegrosound.c
+i_cdmus.c
+i_cdmus.h
+i_endoom.c
+i_endoom.h
+i_input.c
+i_joystick.c
+i_joystick.h
+i_scale.c
+i_scale.h
+i_sdlmusic.c
+i_sdlsound.c
+i_sound.c
+i_sound.h
+i_swap.h
+i_system.c
+i_system.h
+i_timer.c
+i_timer.h
+i_video.c
+i_video.h
+icon.c
+info.c
+info.h
+m_argv.c
+m_argv.h
+m_bbox.c
+m_bbox.h
+m_cheat.c
+m_cheat.h
+m_config.c
+m_config.h
+m_controls.c
+m_controls.h
+m_fixed.c
+m_fixed.h
+m_menu.c
+m_menu.h
+m_misc.c
+m_misc.h
+m_random.c
+m_random.h
+memio.c
+memio.h
+mus2mid.c
+mus2mid.h
+my_stdlib.c
+my_stdlib.h
+net_client.h
+net_dedicated.h
+net_defs.h
+net_gui.h
+net_io.h
+net_loop.h
+net_packet.h
+net_query.h
+net_sdl.h
+net_server.h
+p_ceilng.c
+p_doors.c
+p_enemy.c
+p_floor.c
+p_inter.c
+p_inter.h
+p_lights.c
+p_local.h
+p_map.c
+p_maputl.c
+p_mobj.c
+p_mobj.h
+p_plats.c
+p_pspr.c
+p_pspr.h
+p_saveg.c
+p_saveg.h
+p_setup.c
+p_setup.h
+p_sight.c
+p_spec.c
+p_spec.h
+p_switch.c
+p_telept.c
+p_tick.c
+p_tick.h
+p_user.c
+r_bsp.c
+r_bsp.h
+r_data.c
+r_data.h
+r_defs.h
+r_draw.c
+r_draw.h
+r_local.h
+r_main.c
+r_main.h
+r_plane.c
+r_plane.h
+r_segs.c
+r_segs.h
+r_sky.c
+r_sky.h
+r_state.h
+r_things.c
+r_things.h
+s_sound.c
+s_sound.h
+sha1.c
+sha1.h
+sounds.c
+sounds.h
+st_lib.c
+st_lib.h
+st_stuff.c
+st_stuff.h
+start.c
+statdump.c
+statdump.h
+tables.c
+tables.h
+v_patch.h
+v_video.c
+v_video.h
+w_checksum.c
+w_checksum.h
+w_file.c
+w_file.h
+w_file_stdc.c
+w_main.c
+w_main.h
+w_merge.h
+w_wad.c
+w_wad.h
+wi_stuff.c
+wi_stuff.h
+z_zone.c
+z_zone.h
+
+[Preparing bash]
+
+[Preparing bash]
+
+[Running bash]
+[done] doomgeneric_mips: ELF 32-bit LSB executable, MIPS, MIPS32 rel2 version 1 (SYSV), statically linked, with debug_info, not stripped
+
+[Running bash]
+[done] doomgeneric/doomgeneric/doomgeneric_mips: ELF 32-bit LSB executable, MIPS, MIPS32 rel2 version 1 (SYSV), statically linked, with debug_info, not stripped
+
+[Thinking]
+It's a 32-bit MIPS little-endian ELF, statically linked. Let me examine the binary more closely and understand the source code, particularly the doomgeneric.c which contains the main loop and the system calls we need to handle.
+[Preparing bash]
+
+[Preparing bash]
+[done] It's a 32-bit MIPS little-endian ELF, statically linked. Let me examine the binary more closely and understand the source code, particularly the doomgeneric.c which contains the main loop and the system calls we need to handle.
+
+[Running bash]
+[done] ELF Header:
+  Magic:   7f 45 4c 46 01 01 01 00 01 00 00 00 00 00 00 00 
+  Class:                             ELF32
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       1
+  Type:                              EXEC (Executable file)
+  Machine:                           MIPS R3000
+  Version:                           0x1
+  Entry point address:               0x400110
+  Start of program headers:          52 (bytes into file)
+  Start of section headers:          1542648 (bytes into file)
+  Flags:                             0x70001005, noreorder, cpic, o32, mips32r2
+  Size of this header:               52 (bytes)
+  Size of program headers:           32 (bytes)
+  Number of program headers:         5
+  Size of section headers:           40 (bytes)
+  Number of section headers:         24
+  Section header string table index: 23
+
+[Running bash]
+[done] 
+Elf file type is EXEC (Executable file)
+Entry point 0x400110
+There are 5 program headers, starting at offset 52
+
+Program Headers:
+  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align
+  ABIFLAGS       0x0000d8 0x004000d8 0x004000d8 0x00018 0x00018 R   0x8
+  REGINFO        0x0000f0 0x004000f0 0x004000f0 0x00018 0x00018 R   0x4
+  LOAD           0x000000 0x00400000 0x00400000 0x56514 0x56514 R E 0x10000
+  LOAD           0x056520 0x00466520 0x00466520 0x0eb80 0x4004b270 RW  0x10000
+  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x10
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     .MIPS.abiflags 
+   01     .reginfo 
+   02     .MIPS.abiflags .reginfo .text .rodata 
+   03     .data .bss 
+   04     
+
+[Preparing bash]
+
+[Running bash]
+[done]    466: 004118f4    84 FUNC    GLOBAL DEFAULT    3 M_DrawSelCell
+   469: 00415258   672 FUNC    GLOBAL DEFAULT    3 A_Chase
+   470: 0043ac80    92 FUNC    GLOBAL DEFAULT    3 putchar
+   471: 00427630   184 FUNC    GLOBAL DEFAULT    3 R_DrawColumnInCache
+   473: 0042a444   244 FUNC    GLOBAL DEFAULT    3 R_InitLightTables
+   474: 0040e0a0    56 FUNC    GLOBAL DEFAULT    3 I_InitSound
+   477: 0040e118     8 FUNC    GLOBAL DEFAULT    3 I_InitMusic
+   480: 0042d31c   976 FUNC    GLOBAL DEFAULT    3 R_ProjectSprite
+   483: 00416830   272 FUNC    GLOBAL DEFAULT    3 A_SkullAttack
+   485: 00435a18   300 FUNC    GLOBAL DEFAULT    3 WI_initNetgameStats
+   486: 00404570   292 FUNC    GLOBAL DEFAULT    3 D_SetGameDescription
+   487: 0043a394    36 FUNC    GLOBAL DEFAULT    3 strcpy
+   488: 00411214    12 FUNC    GLOBAL DEFAULT    3 M_ClearMenus
+   490: 00423cc0   304 FUNC    GLOBAL DEFAULT    3 P_InitPicAnims
+   491: 00418050   416 FUNC    GLOBAL DEFAULT    3 P_GiveAmmo
+   493: 00429ec0   472 FUNC    GLOBAL DEFAULT    3 R_PointToAngle
+   497: 00439c70   156 FUNC    GLOBAL DEFAULT    3 basic_free
+   500: 00422244   588 FUNC    GLOBAL DEFAULT    3 P_LoadSegs
+   503: 0043322c   352 FUNC    GLOBAL DEFAULT    3 V_DrawXlaPatch
+   505: 0043dba8    28 FUNC    GLOBAL DEFAULT    3 fabs
+   509: 0040e158     8 FUNC    GLOBAL DEFAULT    3 I_StopSong
+   511: 0042a558   936 FUNC    GLOBAL DEFAULT    3 R_ExecuteSetViewSize
+   514: 0041c524   280 FUNC    GLOBAL DEFAULT    3 P_TraverseIntercepts
+   515: 00405b50   328 FUNC    GLOBAL DEFAULT    3 F_StartFinale
+   516: 00437f1c   176 FUNC    GLOBAL DEFAULT    3 W_ReadLump
+   518: 00435234    36 FUNC    GLOBAL DEFAULT    3 WI_drawNoState
+   519: 0041fc64    40 FUNC    GLOBAL DEFAULT    3 P_SetupPsprites
+   521: 0040e100     8 FUNC    GLOBAL DEFAULT    3 I_StopSound
+   525: 00419a10   120 FUNC    GLOBAL DEFAULT    3 P_SpawnGlowingLight
+   527: 0043370c   224 FUNC    GLOBAL DEFAULT    3 V_DrawBlock
+   528: 0040e108     8 FUNC    GLOBAL DEFAULT    3 I_SoundIsPlaying
+   530: 0042a538    32 FUNC    GLOBAL DEFAULT    3 R_SetViewSize
+   531: 0040f034     8 FUNC    GLOBAL DEFAULT    3 M_SaveDefaults
+   533: 0043856c   408 FUNC    GLOBAL DEFAULT    3 Z_Malloc
+   535: 0040fb40   300 FUNC    GLOBAL DEFAULT    3 M_BindWeaponControls
+   537: 0041bddc   256 FUNC    GLOBAL DEFAULT    3 P_UnsetThingPosition
+   540: 0041a544   496 FUNC    GLOBAL DEFAULT    3 P_TryMove
+   541: 00426450    20 FUNC    GLOBAL DEFAULT    3 P_InitThinkers
+   542: 004136fc    44 FUNC    GLOBAL DEFAULT    3 M_Random
+   543: 00432ab0   148 FUNC    GLOBAL DEFAULT    3 V_MarkRect
+   544: 0043233c   708 FUNC    GLOBAL DEFAULT    3 S_StartSound
+   548: 004014f4    80 FUNC    GLOBAL DEFAULT    3 AM_clearFB
+   549: 00439938    56 FUNC    GLOBAL DEFAULT    3 printf
+   550: 00436e30  1600 FUNC    GLOBAL DEFAULT    3 WI_loadData
+   551: 004338c0   208 FUNC    GLOBAL DEFAULT    3 V_DrawBox
+   555: 0042f8bc    44 FUNC    GLOBAL DEFAULT    3 STlib_initNum
+   556: 0042f7b8    68 FUNC    GLOBAL DEFAULT    3 SHA1_UpdateString
+   562: 00417df8   600 FUNC    GLOBAL DEFAULT    3 EV_BuildStairs
+   566: 00422894   348 FUNC    GLOBAL DEFAULT    3 P_LoadThings
+   570: 0041cab8   244 FUNC    GLOBAL DEFAULT    3 P_RemoveMobj
+   571: 00414730   344 FUNC    GLOBAL DEFAULT    3 P_RecursiveSound
+   572: 0040ecb0    12 FUNC    GLOBAL DEFAULT    3 mem_ftell
+   575: 0041da9c   928 FUNC    GLOBAL DEFAULT    3 P_SpawnMapThing
+   576: 00403074   240 FUNC    GLOBAL DEFAULT    3 D_ReceiveTic
+   579: 0041ba90   288 FUNC    GLOBAL DEFAULT    3 P_BoxOnLineSide
+   580: 00437980   108 FUNC    GLOBAL DEFAULT    3 W_LumpNameHash
+   583: 004220f0   216 FUNC    GLOBAL DEFAULT    3 P_LoadVertexes
+   584: 00433098   404 FUNC    GLOBAL DEFAULT    3 V_DrawTLPatch
+   585: 004290c0   320 FUNC    GLOBAL DEFAULT    3 R_DrawTranslated[...]
+   586: 0040e140     8 FUNC    GLOBAL DEFAULT    3 I_RegisterSong
+
+[Preparing bash]
+
+[Running bash]
+[done]    595: 004395b0    52 FUNC    GLOBAL DEFAULT    3 DG_Init
+   785: 00439848    20 FUNC    GLOBAL DEFAULT    3 DG_GetTicksMs
+   812: 0043dabc     8 FUNC    GLOBAL DEFAULT    3 system
+   835: 004397bc   140 FUNC    GLOBAL DEFAULT    3 DG_SleepMs
+   861: 0043985c     8 FUNC    GLOBAL DEFAULT    3 DG_GetKey
+   887: 0040eb50   268 FUNC    GLOBAL DEFAULT    3 mem_fwrite
+  1107: 00439864    36 FUNC    GLOBAL DEFAULT    3 DG_SetWindowTitle
+  1314: 004395e4   472 FUNC    GLOBAL DEFAULT    3 DG_DrawFrame
+  1320: 0040ec70    64 FUNC    GLOBAL DEFAULT    3 mem_fclose
+  1321: 00406db4     8 FUNC    GLOBAL DEFAULT    3 wipe_exitColorXForm
+  1344: 00407080    64 FUNC    GLOBAL DEFAULT    3 wipe_exitMelt
+  1393: 0040eae8   104 FUNC    GLOBAL DEFAULT    3 mem_fopen_write
+  1421: 0043a898   184 FUNC    GLOBAL DEFAULT    3 fread
+  1451: 0043a624   484 FUNC    GLOBAL DEFAULT    3 fopen
+  1460: 00439888    32 FUNC    GLOBAL DEFAULT    3 main
+  1487: 0043a808   144 FUNC    GLOBAL DEFAULT    3 fclose
+  1538: 0043a9d0    28 FUNC    GLOBAL DEFAULT    3 fread_unlocked
+  1727: 0040ea00    76 FUNC    GLOBAL DEFAULT    3 mem_fopen_read
+  1729: 0043a9ec    28 FUNC    GLOBAL DEFAULT    3 fwrite_unlocked
+  1746: 0043a950   128 FUNC    GLOBAL DEFAULT    3 fwrite
+  1748: 0040ea4c   156 FUNC    GLOBAL DEFAULT    3 mem_fread
+  1819: 0043da70    76 FUNC    GLOBAL DEFAULT    3 exit
+
+[Preparing read]
+
+[Running read]
+[done] 1: #include "my_stdlib.h"
+2: // remove #include <stdio.h>
+3: 
+4: #include "m_argv.h"
+5: 
+6: #include "doomgeneric.h"
+7: 
+8: pixel_t* DG_ScreenBuffer = NULL;
+9: 
+10: void M_FindResponseFile(void);
+11: void D_DoomMain (void);
+12: 
+13: 
+14: void doomgeneric_Create(int argc, char **argv)
+15: {
+16: 	// save arguments
+17:     myargc = argc;
+18:     myargv = argv;
+19: 
+20: 	M_FindResponseFile();
+21: 
+22: 	DG_ScreenBuffer = malloc(DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
+23: 
+24: 	DG_Init();
+25: 
+26: 	D_DoomMain ();
+27: }
+28: 
+
+[Preparing read]
+
+[Running read]
+[done] 1: #include "my_stdlib.h"
+2: #ifndef DOOM_GENERIC
+3: #define DOOM_GENERIC
+4: 
+5: // remove #include <stdlib.h>
+6: // remove #include <stdint.h>
+7: 
+8: #ifndef DOOMGENERIC_RESX
+9: #define DOOMGENERIC_RESX 640
+10: #endif  // DOOMGENERIC_RESX
+11: 
+12: #ifndef DOOMGENERIC_RESY
+13: #define DOOMGENERIC_RESY 400
+14: #endif  // DOOMGENERIC_RESY
+15: 
+16: 
+17: #ifdef CMAP256
+18: 
+19: typedef uint8_t pixel_t;
+20: 
+21: #else  // CMAP256
+22: 
+23: typedef uint32_t pixel_t;
+24: 
+25: #endif  // CMAP256
+26: 
+27: 
+28: extern pixel_t* DG_ScreenBuffer;
+29: 
+30: void doomgeneric_Create(int argc, char **argv);
+31: void doomgeneric_Tick();
+32: 
+33: 
+34: //Implement below functions for your platform
+35: void DG_Init();
+36: void DG_DrawFrame();
+37: void DG_SleepMs(uint32_t ms);
+38: uint32_t DG_GetTicksMs();
+39: int DG_GetKey(int* pressed, unsigned char* key);
+40: void DG_SetWindowTitle(const char * title);
+41: 
+42: #endif //DOOM_GENERIC
+
+[Preparing read]
+
+[Running read]
+[done] 1: #include "my_stdlib.h"
+2: #include "doomkeys.h"
+3: #include "doomgeneric.h"
+4: 
+5: // remove #include <ctype.h>
+6: // remove #include <stdio.h>
+7: // remove #include <string.h>
+8: // remove #include <unistd.h>
+9: // remove #include <sys/time.h>
+10: // remove #include <stdint.h>
+11: // remove #include <stdlib.h>
+12: 
+13: // BMP file header structure
+14: typedef struct {
+15:     uint16_t type;              // Magic identifier: 0x4d42
+16:     uint32_t size;              // File size in bytes
+17:     uint16_t reserved1;         // Not used
+18:     uint16_t reserved2;         // Not used
+19:     uint32_t offset;            // Offset to image data in bytes
+20:     uint32_t dib_header_size;   // DIB Header size in bytes
+21:     int32_t  width_px;          // Width of the image
+22:     int32_t  height_px;         // Height of image
+23:     uint16_t num_planes;        // Number of color planes
+24:     uint16_t bits_per_pixel;    // Bits per pixel
+25:     uint32_t compression;       // Compression type
+26:     uint32_t image_size_bytes;  // Image size in bytes
+27:     int32_t  x_resolution_ppm;  // Pixels per meter
+28:     int32_t  y_resolution_ppm;  // Pixels per meter
+29:     uint32_t num_colors;        // Number of colors
+30:     uint32_t important_colors;  // Important colors
+31: } BMPHeader;
+32: 
+33: #define KEYQUEUE_SIZE 16
+34: 
+35: static unsigned short s_KeyQueue[KEYQUEUE_SIZE];
+36: static unsigned int s_KeyQueueWriteIndex = 0;
+37: static unsigned int s_KeyQueueReadIndex = 0;
+38: 
+39: static unsigned char convertToDoomKey(unsigned int key)
+40: {
+41:     switch (key)
+42:     {
+43:     case '\r':  // Return key
+44:         key = KEY_ENTER;
+45:         break;
+46:     case 27:    // Escape key
+47:         key = KEY_ESCAPE;
+48:         break;
+49:     case 0x4B:  // Left arrow
+50:         key = KEY_LEFTARROW;
+51:         break;
+52:     case 0x4D:  // Right arrow
+53:         key = KEY_RIGHTARROW;
+54:         break;
+55:     case 0x48:  // Up arrow
+56:         key = KEY_UPARROW;
+57:         break;
+58:     case 0x50:  // Down arrow
+59:         key = KEY_DOWNARROW;
+60:         break;
+61:     case 0x1D:  // Ctrl
+62:         key = KEY_FIRE;
+63:         break;
+64:     case ' ':   // Space
+65:         key = KEY_USE;
+66:         break;
+67:     case 0x2A:  // Left Shift
+68:     case 0x36:  // Right Shift
+69:         key = KEY_RSHIFT;
+70:         break;
+71:     default:
+72:         key = (key);
+73:         break;
+74:     }
+75: 
+76:     return key;
+77: }
+78: 
+79: static void addKeyToQueue(int pressed, unsigned int keyCode)
+80: {
+81:     unsigned char key = convertToDoomKey(keyCode);
+82: 
+83:     unsigned short keyData = (pressed << 8) | key;
+84: 
+85:     s_KeyQueue[s_KeyQueueWriteIndex] = keyData;
+86:     s_KeyQueueWriteIndex++;
+87:     s_KeyQueueWriteIndex %= KEYQUEUE_SIZE;
+88: }
+89: 
+90: 
+91: // Function to write BMP file
+92: static void writeBMPFile(const char* filename, uint32_t* buffer, int width, int height)
+93: {
+94:     uint32_t image_size = width * height * 4;  // 4 bytes per pixel (BGRA)
+95:     uint32_t file_size = 54 + image_size;      // Headers + image data
+96:     
+97:     // Allocate and initialize the buffer to 0
+98:     uint8_t* bmp = (uint8_t*)malloc(file_size+2);
+99:     for (int i = 0; i < 1024; i++) {
+100:       bmp[i] = 0;
+101:     }
+102:     if (!bmp) {
+103:         fprintf(stderr, "Memory allocation failed\n");
+104:         return;
+105:     }
+106: 
+107:     bmp = bmp+2;
+108:     
+109:     // Use uint32_t array for headers (with proper byte offsets)
+110:     uint16_t* signature = (uint16_t*)bmp;
+111:     uint32_t* header = (uint32_t*)(bmp + 2);
+112:     
+113:     // File header (14 bytes)
+114:     *signature = 0x4D42;                      // 'BM' in little-endian
+115:     header[0] = file_size;                    // File size
+116:     header[1] = 0;                            // Reserved
+117:     header[2] = 54;                           // Offset to pixel data
+118:     
+119:     // DIB header (40 bytes)
+120:     header[3] = 40;                           // DIB header size
+121:     header[4] = width;                        // Width
+122:     header[5] = -height;                      // Height (negative for top-down)
+123:     
+124:     // Color planes (16-bit) and bits per pixel (16-bit)
+125:     uint16_t* color_data = (uint16_t*)(bmp + 26);
+126:     color_data[0] = 1;                        // Color planes
+127:     color_data[1] = 32;                       // Bits per pixel (32-bit BGRA)
+128:     
+129:     header[7] = 0;                            // No compression
+130:     header[8] = image_size;                   // Image size
+131:     header[9] = 0;                            // X pixels per meter
+132:     header[10] = 0;                           // Y pixels per meter
+133:     header[11] = 0;                           // Total colors
+134:     header[12] = 0;                           // Important colors
+135:     
+136:     // Write pixel data directly (convert RGBA to BGRA)
+137:     uint32_t* pixel_data = (uint32_t*)(bmp + 54);
+138:     for (int y = 0; y < height; y++) {
+139:         for (int x = 0; x < width; x++) {
+140:             uint32_t pixel = buffer[y * width + x];
+141:             // Swap R and B (RGBA to BGRA)
+142:             *pixel_data++ = pixel;
+143:         }
+144:     }
+145:     
+146:     // Write to file
+147:     FILE* file = fopen(filename, "wb");
+148:     if (!file) {
+149:         fprintf(stderr, "Cannot open file %s\n", filename);
+150:         free(bmp);
+151:         return;
+152:     }
+153:     
+154:     size_t written = fwrite(bmp, 1, file_size, file);
+155:     if (written != file_size) {
+156:         fprintf(stderr, "Error writing file: %zu of %u bytes written\n", written, file_size);
+157:     }
+158:     
+159:     fclose(file);
+160:     free(bmp-2);
+161: }
+162: 
+163: void DG_Init()
+164: {
+165:     memset(s_KeyQueue, 0, KEYQUEUE_SIZE * sizeof(unsigned short));
+166:     // No X11 initialization needed
+167:     printf("DoomGeneric initialized. Frames will be saved to /tmp/frame.bmp\n");
+168: }
+169: 
+170: int drawk = 0;
+171: void DG_DrawFrame()
+172: {
+173:     // Save the current frame to a BMP file
+174:   if (drawk++%10 == 0) {
+175:     writeBMPFile("/tmp/frame.bmp", (uint32_t*)DG_ScreenBuffer, DOOMGENERIC_RESX, DOOMGENERIC_RESY);
+176:   }
+177:     
+178:     // Handle keyboard input if needed
+179:     // This would need to be replaced with a different input method
+180:     // since we're not using X11 anymore
+181: }
+182: 
+183: void DG_SleepMs(uint32_t ms)
+184: {
+185:     // Spinloop implementation for sleep using inline assembly
+186:     // Assuming 3GHz processor (3 billion cycles per second)
+187:     // 1ms = 3 million cycles
+188:     uint64_t cycles_per_ms = 3;
+189:     uint64_t total_cycles = cycles_per_ms * ms;
+190:     
+191:     volatile uint64_t i;
+192:     for (i = 0; i < total_cycles; i++)
+193:     {
+194:         // Use volatile inline assembly to ensure the loop isn't optimized away
+195:         __asm__ volatile("" ::: "memory");
+196:     }
+197: }
+198: 
+199: int ms_ctr = 0;;
+200: uint32_t DG_GetTicksMs()
+
+[47 more lines in file. Use offset=201 to continue.]
+
+[Preparing read]
+
+[Running read]
+[done] 201: {
+202:     return ms_ctr++;
+203: }
+204: 
+205: int DG_GetKey(int* pressed, unsigned char* doomKey)
+206: {
+207:     if (s_KeyQueueReadIndex == s_KeyQueueWriteIndex)
+208:     {
+209:         //key queue is empty
+210:         return 0;
+211:     }
+212:     else
+213:     {
+214:         unsigned short keyData = s_KeyQueue[s_KeyQueueReadIndex];
+215:         s_KeyQueueReadIndex++;
+216:         s_KeyQueueReadIndex %= KEYQUEUE_SIZE;
+217: 
+218:         *pressed = keyData >> 8;
+219:         *doomKey = keyData & 0xFF;
+220: 
+221:         return 1;
+222:     }
+223: }
+224: 
+225: void DG_SetWindowTitle(const char * title)
+226: {
+227:     // No window to set title for, but we could print it
+228:     printf("DoomGeneric title: %s\n", title);
+229: }
+230: 
+231: int main(int argc, char **argv)
+232: {
+233:     doomgeneric_Create(argc, argv);
+234: 
+235:     for (int i = 0; ; i++)
+236:     {
+237:         doomgeneric_Tick();
+238:     }
+239:     
+240:     return 0;
+241: }
+242: 
+243: void __start(void) __attribute__((section(".text.startup")));
+244: void __start(void) {
+245:   main(0, 0);
+246:   while (1);
+247: }
+
+[Thinking]
+Now I need to understand the MIPS binary better. Let me look at the system calls and the entry point.
+[Preparing bash]
+[done] Now I need to understand the MIPS binary better. Let me look at the system calls and the entry point.
+
+[Running bash]
+[done] 
+doomgeneric_mips:     file format elf32-tradlittlemips
+
+
+Disassembly of section .text:
+
+00400110 <__start>:
+  400110:	27bdffe8 	addiu	sp,sp,-24
+  400114:	afbf0014 	sw	ra,20(sp)
+  400118:	24040000 	li	a0,0
+  40011c:	0c10e558 	jal	439560 <doomgeneric_Create>
+  400120:	24050000 	li	a1,0
+  400124:	0c100fbc 	jal	403ef0 <doomgeneric_Tick>
+  400128:	00000000 	nop
+  40012c:	08100049 	j	400124 <__start+0x14>
+  400130:	00000000 	nop
+	...
+
+00400140 <I_InitTimidityConfig>:
+  400140:	03e00008 	jr	ra
+  400144:	00000000 	nop
+	...
+
+00400150 <AM_getIslope>:
+  400150:	27bdffe0 	addiu	sp,sp,-32
+  400154:	afbf001c 	sw	ra,28(sp)
+  400158:	afb20018 	sw	s2,24(sp)
+  40015c:	afb10014 	sw	s1,20(sp)
+  400160:	afb00010 	sw	s0,16(sp)
+  400164:	8c810000 	lw	at,0(a0)
+  400168:	8c820008 	lw	v0,8(a0)
+  40016c:	00418823 	subu	s1,v0,at
+  400170:	8c81000c 	lw	at,12(a0)
+  400174:	8c820004 	lw	v0,4(a0)
+  400178:	00419023 	subu	s2,v0,at
+  40017c:	12400006 	beqz	s2,400198 <AM_getIslope+0x48>
+  400180:	00a08025 	move	s0,a1
+  400184:	02202025 	move	a0,s1
+  400188:	0c10400f 	jal	41003c <FixedDiv>
+  40018c:	02402825 	move	a1,s2
+  400190:	0810006c 	j	4001b0 <AM_getIslope+0x60>
+  400194:	00000000 	nop
+  400198:	3c038000 	lui	v1,0x8000
+  40019c:	3c017fff 	lui	at,0x7fff
+  4001a0:	3422ffff 	ori	v0,at,0xffff
+  4001a4:	2a210000 	slti	at,s1,0
+  4001a8:	34630001 	ori	v1,v1,0x1
+  4001ac:	0061100b 	movn	v0,v1,at
+  4001b0:	12200006 	beqz	s1,4001cc <AM_getIslope+0x7c>
+  4001b4:	ae020004 	sw	v0,4(s0)
+  4001b8:	02402025 	move	a0,s2
+  4001bc:	0c10400f 	jal	41003c <FixedDiv>
+  4001c0:	02202825 	move	a1,s1
+  4001c4:	08100079 	j	4001e4 <AM_getIslope+0x94>
+  4001c8:	00000000 	nop
+  4001cc:	3c038000 	lui	v1,0x8000
+  4001d0:	3c017fff 	lui	at,0x7fff
+  4001d4:	3422ffff 	ori	v0,at,0xffff
+  4001d8:	2a410000 	slti	at,s2,0
+  4001dc:	34630001 	ori	v1,v1,0x1
+  4001e0:	0061100b 	movn	v0,v1,at
+  4001e4:	ae020000 	sw	v0,0(s0)
+  4001e8:	8fb00010 	lw	s0,16(sp)
+  4001ec:	8fb10014 	lw	s1,20(sp)
+  4001f0:	8fb20018 	lw	s2,24(sp)
+  4001f4:	8fbf001c 	lw	ra,28(sp)
+  4001f8:	03e00008 	jr	ra
+  4001fc:	27bd0020 	addiu	sp,sp,32
+
+00400200 <AM_activateNewScale>:
+  400200:	27bdffd0 	addiu	sp,sp,-48
+  400204:	afbf002c 	sw	ra,44(sp)
+  400208:	afb50028 	sw	s5,40(sp)
+  40020c:	afb40024 	sw	s4,36(sp)
+  400210:	afb30020 	sw	s3,32(sp)
+  400214:	afb2001c 	sw	s2,28(sp)
+  400218:	afb10018 	sw	s1,24(sp)
+  40021c:	afb00014 	sw	s0,20(sp)
+  400220:	3c110047 	lui	s1,0x47
+  400224:	3c130047 	lui	s3,0x47
+  400228:	3c120047 	lui	s2,0x47
+  40022c:	3c140047 	lui	s4,0x47
+  400230:	3c150047 	lui	s5,0x47
+  400234:	24040000 	li	a0,0
+  400238:	24100000 	li	s0,0
+  40023c:	8e2150dc 	lw	at,20700(s1)
+  400240:	8e6350e0 	lw	v1,20704(s3)
+  400244:	8ea550e8 	lw	a1,20712(s5)
+  400248:	000117c2 	srl	v0,at,0x1f
+  40024c:	00220821 	addu	at,at,v0
+  400250:	8e4250d4 	lw	v0,20692(s2)
+  400254:	00010843 	sra	at,at,0x1
+  400258:	00610821 	addu	at,v1,at
+  40025c:	00021fc2 	srl	v1,v0,0x1f
+  400260:	00431021 	addu	v0,v0,v1
+  400264:	8e8350d8 	lw	v1,20696(s4)
+  400268:	ae6150e0 	sw	at,20704(s3)
+  40026c:	3c010047 	lui	at,0x47
+  400270:	00021043 	sra	v0,v0,0x1
+  400274:	902150e4 	lbu	at,20708(at)
+
+[Preparing bash]
+
+[Running bash]
+[done] (no output)
+
+[Preparing bash]
+
+[Running bash]
+[done]   43a774:	0000000c 	syscall
+  43a7e0:	0000000c 	syscall
+  43a848:	0000000c 	syscall
+  43a8d8:	0000000c 	syscall
+  43a984:	0c10f65d 	jal	43d974 <syscall6>
+  43aa44:	0000000c 	syscall
+  43aae4:	0000000c 	syscall
+  43ab3c:	0000000c 	syscall
+  43ab90:	0000000c 	syscall
+  43acb4:	0000000c 	syscall
+  43adb0:	0c10f65d 	jal	43d974 <syscall6>
+  43adf0:	0000000c 	syscall
+  43b318:	0c10f65d 	jal	43d974 <syscall6>
+  43b360:	0000000c 	syscall
+  43b638:	0c10f65d 	jal	43d974 <syscall6>
+  43b66c:	0c10f65d 	jal	43d974 <syscall6>
+  43b6d0:	0c10f65d 	jal	43d974 <syscall6>
+  43b718:	0000000c 	syscall
+  43b794:	0c10f65d 	jal	43d974 <syscall6>
+  43b7d4:	0000000c 	syscall
+
+[Preparing bash]
+
+[Running bash]
+[done]   43a760:	01602825 	move	a1,t3
+  43a764:	01a03025 	move	a2,t5
+  43a768:	01403825 	move	a3,t2
+  43a76c:	01404025 	move	t0,t2
+  43a770:	01404825 	move	t1,t2
+  43a774:	0000000c 	syscall
+--
+  43a7cc:	01402825 	move	a1,t2
+  43a7d0:	01403025 	move	a2,t2
+  43a7d4:	01403825 	move	a3,t2
+  43a7d8:	01404025 	move	t0,t2
+  43a7dc:	01404825 	move	t1,t2
+  43a7e0:	0000000c 	syscall
+--
+  43a834:	01802825 	move	a1,t4
+  43a838:	01803025 	move	a2,t4
+  43a83c:	01803825 	move	a3,t4
+  43a840:	01804025 	move	t0,t4
+  43a844:	01804825 	move	t1,t4
+  43a848:	0000000c 	syscall
+--
+  43a8c4:	01802825 	move	a1,t4
+  43a8c8:	01a03025 	move	a2,t5
+  43a8cc:	01603825 	move	a3,t3
+  43a8d0:	01604025 	move	t0,t3
+  43a8d4:	01604825 	move	t1,t3
+  43a8d8:	0000000c 	syscall
+--
+  43a970:	70c53802 	mul	a3,a2,a1
+  43a974:	00801025 	move	v0,a0
+  43a978:	00a08825 	move	s1,a1
+  43a97c:	8e050000 	lw	a1,0(s0)
+  43a980:	24040001 	li	a0,1
+  43a984:	0c10f65d 	jal	43d974 <syscall6>
+--
+  43aa30:	01802825 	move	a1,t4
+  43aa34:	01603025 	move	a2,t3
+  43aa38:	00603825 	move	a3,v1
+  43aa3c:	00604025 	move	t0,v1
+  43aa40:	00604825 	move	t1,v1
+  43aa44:	0000000c 	syscall
+--
+  43aad0:	01602825 	move	a1,t3
+  43aad4:	01603025 	move	a2,t3
+  43aad8:	01603825 	move	a3,t3
+  43aadc:	01604025 	move	t0,t3
+  43aae0:	01604825 	move	t1,t3
+  43aae4:	0000000c 	syscall
+--
+  43ab28:	01602825 	move	a1,t3
+  43ab2c:	01603025 	move	a2,t3
+  43ab30:	01603825 	move	a3,t3
+  43ab34:	01604025 	move	t0,t3
+  43ab38:	01604825 	move	t1,t3
+  43ab3c:	0000000c 	syscall
+--
+  43ab7c:	00602825 	move	a1,v1
+  43ab80:	01803025 	move	a2,t4
+  43ab84:	01803825 	move	a3,t4
+  43ab88:	01804025 	move	t0,t4
+  43ab8c:	01804825 	move	t1,t4
+  43ab90:	0000000c 	syscall
+--
+  43aca0:	01402825 	move	a1,t2
+  43aca4:	01603025 	move	a2,t3
+  43aca8:	01803825 	move	a3,t4
+  43acac:	01804025 	move	t0,t4
+  43acb0:	01804825 	move	t1,t4
+  43acb4:	0000000c 	syscall
+--
+  43ad9c:	00000000 	nop
+  43ada0:	a3a20044 	sb	v0,68(sp)
+  43ada4:	27a60044 	addiu	a2,sp,68
+  43ada8:	24040001 	li	a0,1
+  43adac:	8e250000 	lw	a1,0(s1)
+  43adb0:	0c10f65d 	jal	43d974 <syscall6>
+--
+  43addc:	00602825 	move	a1,v1
+  43ade0:	01403025 	move	a2,t2
+  43ade4:	02603825 	move	a3,s3
+  43ade8:	02604025 	move	t0,s3
+  43adec:	02604825 	move	t1,s3
+  43adf0:	0000000c 	syscall
+--
+  43b304:	24010020 	li	at,32
+  43b308:	27a6005c 	addiu	a2,sp,92
+  43b30c:	24040001 	li	a0,1
+  43b310:	a3a1005c 	sb	at,92(sp)
+  43b314:	8e250000 	lw	a1,0(s1)
+  43b318:	0c10f65d 	jal	43d974 <syscall6>
+--
+  43b34c:	00602825 	move	a1,v1
+  43b350:	01603025 	move	a2,t3
+  43b354:	01403825 	move	a3,t2
+  43b358:	01404025 	move	t0,t2
+  43b35c:	01404825 	move	t1,t2
+  43b360:	0000000c 	syscall
+--
+  43b624:	24170025 	li	s7,37
+  43b628:	a3b70044 	sb	s7,68(sp)
+
+[Preparing bash]
+
+[Running bash]
+[done] (no output)
+
+[Preparing bash]
+
+[Running bash]
+[done]   43a724:	2404002b 	li	a0,43
+  43a728:	304100ff 	andi	at,v0,0xff
+  43a72c:	10240005 	beq	at,a0,43a744 <fopen+0x120>
+  43a730:	00000000 	nop
+  43a734:	90a20001 	lbu	v0,1(a1)
+  43a738:	1440fffb 	bnez	v0,43a728 <fopen+0x104>
+  43a73c:	24a50001 	addiu	a1,a1,1
+  43a740:	24050000 	li	a1,0
+  43a744:	0005082b 	sltu	at,zero,a1
+  43a748:	242b0441 	addiu	t3,at,1089
+  43a74c:	240c0002 	li	t4,2
+  43a750:	240d01a4 	li	t5,420
+  43a754:	240a0000 	li	t2,0
+  43a758:	01801025 	move	v0,t4
+  43a75c:	00602025 	move	a0,v1
+  43a760:	01602825 	move	a1,t3
+  43a764:	01a03025 	move	a2,t5
+  43a768:	01403825 	move	a3,t2
+  43a76c:	01404025 	move	t0,t2
+  43a770:	01404825 	move	t1,t2
+  43a774:	0000000c 	syscall
+  43a778:	00408025 	move	s0,v0
+  43a77c:	0600000b 	bltz	s0,43a7ac <fopen+0x188>
+
+[Thinking]
+Now I can see the syscall convention. For MIPS Linux o32 ABI, the syscall number goes in $v0, and arguments go in $a0-$a3, and additional arguments go on the stack. The syscall instruction triggers a system call. Let me look at more syscalls to understand the pattern.
+
+The first syscall I see:
+- $v0 = 2 (t4 = 2), which is `open` syscall on MIPS
+- $a0 = v1 (filename pointer)
+- $a1 = t3 = 0x441 or 0x442 (flags: O_WRONLY|O_CREAT|O_TRUNC = 0x441, or O_RDWR|O_CREAT = 0x442)
+- $a2 = t5 = 420 = 0644 (mode)
+- $a3 = 0, $t0 = 0, $t1 = 0
+
+Wait, let me look more carefully. The `li t4, 2` sets t4 to 2, then `move v0, t4` sets v0 = 2. On MIPS Linux, syscall 2 is `open`. But wait, looking at the code more carefully:
+
+```
+li a0, 43       # 43 = '+'
+andi at, v0, 0xff
+beq at, a0, ...  # check if char is '+'
+...
+li a1, 0
+sltu at, zero, a1  # at = (0 < 0) ? 1 : 0 = 0
+addiu t3, at, 1089  # t3 = 0 + 1089 = 1089 = 0x441
+li t4, 2           # t4 = 2
+li t5, 420         # t5 = 420 = 0644
+li t2, 0           # t2 = 0
+move v0, t4        # v0 = 2 (syscall number for open)
+move a0, v1        # a0 = filename
+move a1, t3        # a1 = 0x441 = O_WRONLY|O_CREAT|O_TRUNC
+move a2, t5        # a2 = 0644
+move a3, t2        # a3 = 0
+move t0, t2        # t0 = 0
+move t1, t2        # t1 = 0
+syscall
+move s0, v0        # s0 = return value (fd)
+```
+
+Wait, but for the '+' mode, it should be O_RDWR|O_CREAT. Let me check: 1089 = 0x441. O_WRONLY = 1, O_CREAT = 0x40, O_TRUNC = 0x200. So 0x441 = O_WRONLY|O_CREAT|O_TRUNC? No, 0x441 = 0x400 + 0x40 + 1 = O_APPEND|O_CREAT|O_WRONLY? Hmm, let me think about this differently.
+
+Actually on MIPS Linux, the open flags might be different. Let me check:
+- O_RDONLY = 0x0000
+- O_WRONLY = 0x0001
+- O_RDWR = 0x0002
+- O_CREAT = 0x0100
+- O_TRUNC = 0x0200
+- O_APPEND = 0x0008
+
+Wait, that's for x86. For MIPS:
+- O_RDONLY = 0x0000
+- O_WRONLY = 0x0001
+- O_RDWR = 0x0002
+- O_APPEND = 0x0008
+- O_CREAT = 0x0100
+- O_TRUNC = 0x0200
+
+So 0x441 = 0x0400 + 0x0040 + 0x0001. Hmm, 0x0400 might be something else. Let me check MIPS open flags.
+
+Actually for MIPS Linux:
+#define O_RDONLY    0x0000
+#define O_WRONLY    0x0001
+#define O_RDWR      0x0002
+#define O_APPEND    0x0008
+#define O_NONBLOCK  0x0080
+#define O_CREAT     0x0100
+#define O_TRUNC     0x0200
+#define O_EXCL      0x0400
+#define O_NOCTTY    0x0800
+
+So 0x441 = O_EXCL | O_CREAT | O_WRONLY = 0x0400 | 0x0100 | 0x0001
+
+And for the other branch (when '+' is found), the flags would be different. Let me look at the code more carefully.
+
+Actually, looking at the code again:
+```
+li a1, 0
+sltu at, zero, a1   # at = (0 < 0) ? 1 : 0 = 0
+addiu t3, at, 1089  # t3 = 0 + 1089 = 0x441
+```
+
+This is for "w" mode (write). 0x441 = O_WRONLY | O_CREAT | O_TRUNC on MIPS? Let me check: on MIPS, O_TRUNC = 0x0200, O_CREAT = 0x0100, O_WRONLY = 0x0001. 0x0200 + 0x0100 + 0x0001 = 0x0301. That's not 0x441.
+
+Hmm, maybe the flags are different. Let me look at the musl libc source or the actual binary more carefully.
+
+Actually wait, maybe this is using a different ABI or the binary was compiled with different flag values. Let me look at the fopen code more carefully.
+
+Let me look at the full fopen function.
+[Preparing bash]
+[done] Now I can see the syscall convention. For MIPS Linux o32 ABI, the syscall number goes in $v0, and arguments go in $a0-$a3, and additional arguments go on the stack. The syscall instruction triggers a system call. Let me look at more syscalls to understand the pattern.
+
+The first syscall I see:
+- $v0 = 2 (t4 = 2), which is `open` syscall on MIPS
+- $a0 = v1 (filename pointer)
+- $a1 = t3 = 0x441 or 0x442 (flags: O_WRONLY|O_CREAT|O_TRUNC = 0x441, or O_RDWR|O_CREAT = 0x442)
+- $a2 = t5 = 420 = 0644 (mode)
+- $a3 = 0, $t0 = 0, $t1 = 0
+
+Wait, let me look more carefully. The `li t4, 2` sets t4 to 2, then `move v0, t4` sets v0 = 2. On MIPS Linux, syscall 2 is `open`. But wait, looking at the code more carefully:
+
+```
+li a0, 43       # 43 = '+'
+andi at, v0, 0xff
+beq at, a0, ...  # check if char is '+'
+...
+li a1, 0
+sltu at, zero, a1  # at = (0 < 0) ? 1 : 0 = 0
+addiu t3, at, 1089  # t3 = 0 + 1089 = 1089 = 0x441
+li t4, 2           # t4 = 2
+li t5, 420         # t5 = 420 = 0644
+li t2, 0           # t2 = 0
+move v0, t4        # v0 = 2 (syscall number for open)
+move a0, v1        # a0 = filename
+move a1, t3        # a1 = 0x441 = O_WRONLY|O_CREAT|O_TRUNC
+move a2, t5        # a2 = 0644
+move a3, t2        # a3 = 0
+move t0, t2        # t0 = 0
+move t1, t2        # t1 = 0
+syscall
+move s0, v0        # s0 = return value (fd)
+```
+
+Wait, but for the '+' mode, it should be O_RDWR|O_CREAT. Let me check: 1089 = 0x441. O_WRONLY = 1, O_CREAT = 0x40, O_TRUNC = 0x200. So 0x441 = O_WRONLY|O_CREAT|O_TRUNC? No, 0x441 = 0x400 + 0x40 + 1 = O_APPEND|O_CREAT|O_WRONLY? Hmm, let me think about this differently.
+
+Actually on MIPS Linux, the open flags might be different. Let me check:
+- O_RDONLY = 0x0000
+- O_WRONLY = 0x0001
+- O_RDWR = 0x0002
+- O_CREAT = 0x0100
+- O_TRUNC = 0x0200
+- O_APPEND = 0x0008
+
+Wait, that's for x86. For MIPS:
+- O_RDONLY = 0x0000
+- O_WRONLY = 0x0001
+- O_RDWR = 0x0002
+- O_APPEND = 0x0008
+- O_CREAT = 0x0100
+- O_TRUNC = 0x0200
+
+So 0x441 = 0x0400 + 0x0040 + 0x0001. Hmm, 0x0400 might be something else. Let me check MIPS open flags.
+
+Actually for MIPS Linux:
+#define O_RDONLY    0x0000
+#define O_WRONLY    0x0001
+#define O_RDWR      0x0002
+#define O_APPEND    0x0008
+#define O_NONBLOCK  0x0080
+#define O_CREAT     0x0100
+#define O_TRUNC     0x0200
+#define O_EXCL      0x0400
+#define O_NOCTTY    0x0800
+
+So 0x441 = O_EXCL | O_CREAT | O_WRONLY = 0x0400 | 0x0100 | 0x0001
+
+And for the other branch (when '+' is found), the flags would be different. Let me look at the code more carefully.
+
+Actually, looking at the code again:
+```
+li a1, 0
+sltu at, zero, a1   # at = (0 < 0) ? 1 : 0 = 0
+addiu t3, at, 1089  # t3 = 0 + 1089 = 0x441
+```
+
+This is for "w" mode (write). 0x441 = O_WRONLY | O_CREAT | O_TRUNC on MIPS? Let me check: on MIPS, O_TRUNC = 0x0200, O_CREAT = 0x0100, O_WRONLY = 0x0001. 0x0200 + 0x0100 + 0x0001 = 0x0301. That's not 0x441.
+
+Hmm, maybe the flags are different. Let me look at the musl libc source or the actual binary more carefully.
+
+Actually wait, maybe this is using a different ABI or the binary was compiled with different flag values. Let me look at the fopen code more carefully.
+
+Let me look at the full fopen function.
+
+[Running bash]
+[done] 0043a624 <fopen>:
+  43a624:	27bdffe8 	addiu	sp,sp,-24
+  43a628:	afbf0014 	sw	ra,20(sp)
+  43a62c:	afb00010 	sw	s0,16(sp)
+  43a630:	90a20000 	lbu	v0,0(a1)
+  43a634:	10400020 	beqz	v0,43a6b8 <fopen+0x94>
+  43a638:	00000000 	nop
+  43a63c:	00801825 	move	v1,a0
+  43a640:	24a60001 	addiu	a2,a1,1
+  43a644:	24040072 	li	a0,114
+  43a648:	00403825 	move	a3,v0
+  43a64c:	30e100ff 	andi	at,a3,0xff
+  43a650:	1024001e 	beq	at,a0,43a6cc <fopen+0xa8>
+  43a654:	00000000 	nop
+  43a658:	24c10001 	addiu	at,a2,1
+  43a65c:	90c70000 	lbu	a3,0(a2)
+  43a660:	14e0fffa 	bnez	a3,43a64c <fopen+0x28>
+  43a664:	00203025 	move	a2,at
+  43a668:	24a60001 	addiu	a2,a1,1
+  43a66c:	24040077 	li	a0,119
+  43a670:	00403825 	move	a3,v0
+  43a674:	30e100ff 	andi	at,a3,0xff
+  43a678:	1024001f 	beq	at,a0,43a6f8 <fopen+0xd4>
+  43a67c:	00000000 	nop
+  43a680:	24c10001 	addiu	at,a2,1
+  43a684:	90c70000 	lbu	a3,0(a2)
+  43a688:	14e0fffa 	bnez	a3,43a674 <fopen+0x50>
+  43a68c:	00203025 	move	a2,at
+  43a690:	24a60001 	addiu	a2,a1,1
+  43a694:	24040061 	li	a0,97
+  43a698:	00403825 	move	a3,v0
+  43a69c:	30e100ff 	andi	at,a3,0xff
+  43a6a0:	10240020 	beq	at,a0,43a724 <fopen+0x100>
+  43a6a4:	00000000 	nop
+  43a6a8:	24c10001 	addiu	at,a2,1
+  43a6ac:	90c70000 	lbu	a3,0(a2)
+  43a6b0:	14e0fffa 	bnez	a3,43a69c <fopen+0x78>
+  43a6b4:	00203025 	move	a2,at
+  43a6b8:	3c01004b 	lui	at,0x4b
+  43a6bc:	24020016 	li	v0,22
+  43a6c0:	240a0000 	li	t2,0
+  43a6c4:	0810e9fd 	j	43a7f4 <fopen+0x1d0>
+  43a6c8:	ac220a80 	sw	v0,2688(at)
+  43a6cc:	2404002b 	li	a0,43
+  43a6d0:	304100ff 	andi	at,v0,0xff
+  43a6d4:	10240005 	beq	at,a0,43a6ec <fopen+0xc8>
+  43a6d8:	00000000 	nop
+  43a6dc:	90a20001 	lbu	v0,1(a1)
+  43a6e0:	1440fffb 	bnez	v0,43a6d0 <fopen+0xac>
+  43a6e4:	24a50001 	addiu	a1,a1,1
+  43a6e8:	24050000 	li	a1,0
+  43a6ec:	0005082b 	sltu	at,zero,a1
+  43a6f0:	0810e9d3 	j	43a74c <fopen+0x128>
+  43a6f4:	00015840 	sll	t3,at,0x1
+  43a6f8:	2404002b 	li	a0,43
+  43a6fc:	304100ff 	andi	at,v0,0xff
+  43a700:	10240005 	beq	at,a0,43a718 <fopen+0xf4>
+  43a704:	00000000 	nop
+  43a708:	90a20001 	lbu	v0,1(a1)
+  43a70c:	1440fffb 	bnez	v0,43a6fc <fopen+0xd8>
+  43a710:	24a50001 	addiu	a1,a1,1
+  43a714:	24050000 	li	a1,0
+  43a718:	0005082b 	sltu	at,zero,a1
+  43a71c:	0810e9d3 	j	43a74c <fopen+0x128>
+  43a720:	242b0241 	addiu	t3,at,577
+  43a724:	2404002b 	li	a0,43
+  43a728:	304100ff 	andi	at,v0,0xff
+  43a72c:	10240005 	beq	at,a0,43a744 <fopen+0x120>
+  43a730:	00000000 	nop
+  43a734:	90a20001 	lbu	v0,1(a1)
+  43a738:	1440fffb 	bnez	v0,43a728 <fopen+0x104>
+  43a73c:	24a50001 	addiu	a1,a1,1
+  43a740:	24050000 	li	a1,0
+  43a744:	0005082b 	sltu	at,zero,a1
+  43a748:	242b0441 	addiu	t3,at,1089
+  43a74c:	240c0002 	li	t4,2
+  43a750:	240d01a4 	li	t5,420
+  43a754:	240a0000 	li	t2,0
+  43a758:	01801025 	move	v0,t4
+  43a75c:	00602025 	move	a0,v1
+  43a760:	01602825 	move	a1,t3
+  43a764:	01a03025 	move	a2,t5
+  43a768:	01403825 	move	a3,t2
+  43a76c:	01404025 	move	t0,t2
+  43a770:	01404825 	move	t1,t2
+  43a774:	0000000c 	syscall
+  43a778:	00408025 	move	s0,v0
+  43a77c:	0600000b 	bltz	s0,43a7ac <fopen+0x188>
+  43a780:	00000000 	nop
+  43a784:	0c10e65c 	jal	439970 <malloc>
+  43a788:	24040010 	li	a0,16
+  43a78c:	1040000b 	beqz	v0,43a7bc <fopen+0x198>
+  43a790:	00000000 	nop
+  43a794:	00405025 	move	t2,v0
+  43a798:	ac500000 	sw	s0,0(v0)
+  43a79c:	ac40000c 	sw	zero,12(v0)
+  43a7a0:	ac400008 	sw	zero,8(v0)
+  43a7a4:	0810e9fd 	j	43a7f4 <fopen+0x1d0>
+  43a7a8:	ac400004 	sw	zero,4(v0)
+  43a7ac:	00100823 	negu	at,s0
+  43a7b0:	3c02004b 	lui	v0,0x4b
+  43a7b4:	0810e9fd 	j	43a7f4 <fopen+0x1d0>
+  43a7b8:	ac410a80 	sw	at,2688(v0)
+  43a7bc:	24030003 	li	v1,3
+  43a7c0:	240a0000 	li	t2,0
+  43a7c4:	00601025 	move	v0,v1
+  43a7c8:	02002025 	move	a0,s0
+  43a7cc:	01402825 	move	a1,t2
+  43a7d0:	01403025 	move	a2,t2
+  43a7d4:	01403825 	move	a3,t2
+  43a7d8:	01404025 	move	t0,t2
+  43a7dc:	01404825 	move	t1,t2
+  43a7e0:	0000000c 	syscall
+  43a7e4:	00401825 	move	v1,v0
+  43a7e8:	3c01004b 	lui	at,0x4b
+  43a7ec:	2402000c 	li	v0,12
+  43a7f0:	ac220a80 	sw	v0,2688(at)
+  43a7f4:	8fb00010 	lw	s0,16(sp)
+  43a7f8:	8fbf0014 	lw	ra,20(sp)
+  43a7fc:	01401025 	move	v0,t2
+  43a800:	03e00008 	jr	ra
+  43a804:	27bd0018 	addiu	sp,sp,24
+
+0043a808 <fclose>:
+
+[Thinking]
+Now I can see the pattern. The syscalls use MIPS Linux o32 ABI:
+- $v0 = syscall number
+- $a0 = arg1
+- $a1 = arg2
+- $a2 = arg3
+- $a3 = arg4
+- Additional args on stack (for o32 ABI, args 5+ are at sp+16, sp+20, etc.)
+- Return value in $v0
+- Error indicated by $a3 being set (or $v0 being negative for some conventions)
+
+MIPS Linux syscall numbers (o32):
+- 1 = exit
+- 2 = open (but actually on MIPS, open is 4002... wait, no)
+
+Actually, wait. Let me check the MIPS syscall numbers. For MIPS o32 Linux:
+- The syscall base is 4000
+- So SYS_exit = 4001
+- SYS_open = 4005 (or 4002?)
+
+Hmm, but the code uses `li v0, 2` for the open syscall. That doesn't match the standard MIPS Linux syscall numbers which start at 4000.
+
+Wait, maybe this is using the "new" MIPS syscall convention where the numbers don't have the 4000 offset? Or maybe it's using a different convention?
+
+Let me look at the actual syscall numbers used in the binary more carefully.
+[Preparing bash]
+[done] Now I can see the pattern. The syscalls use MIPS Linux o32 ABI:
+- $v0 = syscall number
+- $a0 = arg1
+- $a1 = arg2
+- $a2 = arg3
+- $a3 = arg4
+- Additional args on stack (for o32 ABI, args 5+ are at sp+16, sp+20, etc.)
+- Return value in $v0
+- Error indicated by $a3 being set (or $v0 being negative for some conventions)
+
+MIPS Linux syscall numbers (o32):
+- 1 = exit
+- 2 = open (but actually on MIPS, open is 4002... wait, no)
+
+Actually, wait. Let me check the MIPS syscall numbers. For MIPS o32 Linux:
+- The syscall base is 4000
+- So SYS_exit = 4001
+- SYS_open = 4005 (or 4002?)
+
+Hmm, but the code uses `li v0, 2` for the open syscall. That doesn't match the standard MIPS Linux syscall numbers which start at 4000.
+
+Wait, maybe this is using the "new" MIPS syscall convention where the numbers don't have the 4000 offset? Or maybe it's using a different convention?
+
+Let me look at the actual syscall numbers used in the binary more carefully.
+
+[Running bash]
+[done] 0043a808 <fclose>:
+  43a808:	27bdffe8 	addiu	sp,sp,-24
+  43a80c:	afbf0014 	sw	ra,20(sp)
+  43a810:	afb00010 	sw	s0,16(sp)
+  43a814:	10800018 	beqz	a0,43a878 <fclose+0x70>
+  43a818:	00000000 	nop
+  43a81c:	00801825 	move	v1,a0
+  43a820:	8c8a0000 	lw	t2,0(a0)
+  43a824:	240b0003 	li	t3,3
+  43a828:	240c0000 	li	t4,0
+  43a82c:	01601025 	move	v0,t3
+  43a830:	01402025 	move	a0,t2
+  43a834:	01802825 	move	a1,t4
+  43a838:	01803025 	move	a2,t4
+  43a83c:	01803825 	move	a3,t4
+  43a840:	01804025 	move	t0,t4
+  43a844:	01804825 	move	t1,t4
+  43a848:	0000000c 	syscall
+  43a84c:	00408025 	move	s0,v0
+  43a850:	06010005 	bgez	s0,43a868 <fclose+0x60>
+  43a854:	00000000 	nop
+  43a858:	00100823 	negu	at,s0
+  43a85c:	3c02004b 	lui	v0,0x4b
+  43a860:	2410ffff 	li	s0,-1
+  43a864:	ac410a80 	sw	at,2688(v0)
+  43a868:	0c10e775 	jal	439dd4 <free>
+  43a86c:	00602025 	move	a0,v1
+  43a870:	0810ea22 	j	43a888 <fclose+0x80>
+  43a874:	001017c3 	sra	v0,s0,0x1f
+  43a878:	3c01004b 	lui	at,0x4b
+  43a87c:	24020009 	li	v0,9
+  43a880:	ac220a80 	sw	v0,2688(at)
+  43a884:	2402ffff 	li	v0,-1
+  43a888:	8fb00010 	lw	s0,16(sp)
+  43a88c:	8fbf0014 	lw	ra,20(sp)
+  43a890:	03e00008 	jr	ra
+  43a894:	27bd0018 	addiu	sp,sp,24
+
+0043a898 <fread>:
+
+[Thinking]
+OK, so for fclose, the syscall number is 3 (close). For fopen, the syscall number is 2 (open). These are NOT the standard MIPS Linux syscall numbers (which would be 4001, 4002, 4003, etc.). 
+
+Wait, actually on MIPS Linux, the syscall numbers for o32 are:
+- SYS_open = 4005
+- SYS_close = 4006
+- SYS_read = 4003
+- SYS_write = 4004
+
+But the binary uses 2 for open and 3 for close. That's more like the x86 convention. But this is a MIPS binary...
+
+Hmm, let me look at this more carefully. Maybe the binary was compiled with a custom libc that uses different syscall numbers? Or maybe it's using the "MIPS N32" ABI where syscall numbers are different?
+
+Actually, looking at the MIPS syscall conventions more carefully:
+
+For MIPS o32 ABI:
+- Syscall numbers start at 4000
+- SYS_exit = 4001
+- SYS_open = 4005 (or 4002 for some implementations)
+
+Wait, actually I need to check the actual Linux kernel MIPS syscall table. Let me look at the actual numbers.
+
+Actually, I just realized - maybe this binary was compiled with musl or some other libc that uses its own syscall wrappers. The syscall numbers in the binary might be the raw Linux kernel syscall numbers for MIPS.
+
+Let me check: On MIPS o32 Linux:
+- __NR_open = 4005
+- __NR_close = 4006
+- __NR_read = 4003
+- __NR_write = 4004
+- __NR_exit = 4001
+- __NR_brk = 4045
+- __NR_writev = 4146
+- __NR_exit_group = 4246
+
+But the binary uses 2 for open and 3 for close. These don't match.
+
+Wait, maybe this is a different convention. Let me look at the `syscall6` function.
+[Preparing bash]
+[done] OK, so for fclose, the syscall number is 3 (close). For fopen, the syscall number is 2 (open). These are NOT the standard MIPS Linux syscall numbers (which would be 4001, 4002, 4003, etc.). 
+
+Wait, actually on MIPS Linux, the syscall numbers for o32 are:
+- SYS_open = 4005
+- SYS_close = 4006
+- SYS_read = 4003
+- SYS_write = 4004
+
+But the binary uses 2 for open and 3 for close. That's more like the x86 convention. But this is a MIPS binary...
+
+Hmm, let me look at this more carefully. Maybe the binary was compiled with a custom libc that uses different syscall numbers? Or maybe it's using the "MIPS N32" ABI where syscall numbers are different?
+
+Actually, looking at the MIPS syscall conventions more carefully:
+
+For MIPS o32 ABI:
+- Syscall numbers start at 4000
+- SYS_exit = 4001
+- SYS_open = 4005 (or 4002 for some implementations)
+
+Wait, actually I need to check the actual Linux kernel MIPS syscall table. Let me look at the actual numbers.
+
+Actually, I just realized - maybe this binary was compiled with musl or some other libc that uses its own syscall wrappers. The syscall numbers in the binary might be the raw Linux kernel syscall numbers for MIPS.
+
+Let me check: On MIPS o32 Linux:
+- __NR_open = 4005
+- __NR_close = 4006
+- __NR_read = 4003
+- __NR_write = 4004
+- __NR_exit = 4001
+- __NR_brk = 4045
+- __NR_writev = 4146
+- __NR_exit_group = 4246
+
+But the binary uses 2 for open and 3 for close. These don't match.
+
+Wait, maybe this is a different convention. Let me look at the `syscall6` function.
+
+[Running bash]
+[done] 0043d974 <syscall6>:
+  43d974:	00e01825 	move	v1,a3
+  43d978:	00c05025 	move	t2,a2
+  43d97c:	00a05825 	move	t3,a1
+  43d980:	24010001 	li	at,1
+  43d984:	14810013 	bne	a0,at,43d9d4 <syscall6+0x60>
+  43d988:	00806025 	move	t4,a0
+  43d98c:	2d610002 	sltiu	at,t3,2
+  43d990:	10200010 	beqz	at,43d9d4 <syscall6+0x60>
+  43d994:	00000000 	nop
+  43d998:	240c0001 	li	t4,1
+  43d99c:	240d0000 	li	t5,0
+  43d9a0:	01801025 	move	v0,t4
+  43d9a4:	01602025 	move	a0,t3
+  43d9a8:	01402825 	move	a1,t2
+  43d9ac:	00603025 	move	a2,v1
+  43d9b0:	01a03825 	move	a3,t5
+  43d9b4:	01a04025 	move	t0,t5
+  43d9b8:	01a04825 	move	t1,t5
+  43d9bc:	0000000c 	syscall
+  43d9c0:	00401825 	move	v1,v0
+  43d9c4:	04610013 	bgez	v1,43da14 <syscall6+0xa0>
+  43d9c8:	00000000 	nop
+  43d9cc:	0810f681 	j	43da04 <syscall6+0x90>
+  43d9d0:	00000000 	nop
+  43d9d4:	240d0000 	li	t5,0
+  43d9d8:	01801025 	move	v0,t4
+  43d9dc:	01602025 	move	a0,t3
+  43d9e0:	01402825 	move	a1,t2
+  43d9e4:	00603025 	move	a2,v1
+  43d9e8:	01a03825 	move	a3,t5
+  43d9ec:	01a04025 	move	t0,t5
+  43d9f0:	01a04825 	move	t1,t5
+  43d9f4:	0000000c 	syscall
+  43d9f8:	00401825 	move	v1,v0
+  43d9fc:	04610005 	bgez	v1,43da14 <syscall6+0xa0>
+  43da00:	00000000 	nop
+  43da04:	00030823 	negu	at,v1
+  43da08:	3c02004b 	lui	v0,0x4b
+  43da0c:	2403ffff 	li	v1,-1
+
+[Thinking]
+Now I see the `syscall6` function. It's a wrapper that takes:
+- a0 = syscall number (or 1 for write)
+- a1 = arg1
+- a2 = arg2
+- a3 = arg3
+
+When a0 == 1, it sets v0 = 1 (write syscall) and calls syscall with:
+- a0 = t3 (the original a1)
+- a1 = t2 (the original a2)
+- a2 = v1 (the original a3)
+- a3 = 0
+
+So syscall6(1, fd, buf, count) becomes syscall(1, fd, buf, count, 0, 0, 0) = write(fd, buf, count).
+
+Wait, but the syscall number 1 for write? On MIPS Linux o32, write is 4004, not 1. But on x86, write is 1.
+
+Hmm, let me reconsider. Maybe this binary is using a custom syscall convention where the numbers are:
+- 1 = write
+- 2 = open
+- 3 = close
+
+These are the x86 Linux syscall numbers! But this is a MIPS binary...
+
+Wait, maybe this is a custom MIPS binary that was compiled with a custom libc that uses x86-style syscall numbers. The binary is statically linked, so it includes its own libc implementation. The syscall numbers in the binary are:
+- 1 = write
+- 2 = open
+- 3 = close
+
+These match the x86 Linux convention. But the binary is MIPS... so maybe the libc was written to use these numbers for a custom MIPS environment?
+
+Actually, looking at the source code more carefully, let me check the fake_fs.c and my_stdlib.c files.
+[Preparing read]
+
+[Preparing read]
+[done] Now I see the `syscall6` function. It's a wrapper that takes:
+- a0 = syscall number (or 1 for write)
+- a1 = arg1
+- a2 = arg2
+- a3 = arg3
+
+When a0 == 1, it sets v0 = 1 (write syscall) and calls syscall with:
+- a0 = t3 (the original a1)
+- a1 = t2 (the original a2)
+- a2 = v1 (the original a3)
+- a3 = 0
+
+So syscall6(1, fd, buf, count) becomes syscall(1, fd, buf, count, 0, 0, 0) = write(fd, buf, count).
+
+Wait, but the syscall number 1 for write? On MIPS Linux o32, write is 4004, not 1. But on x86, write is 1.
+
+Hmm, let me reconsider. Maybe this binary is using a custom syscall convention where the numbers are:
+- 1 = write
+- 2 = open
+- 3 = close
+
+These are the x86 Linux syscall numbers! But this is a MIPS binary...
+
+Wait, maybe this is a custom MIPS binary that was compiled with a custom libc that uses x86-style syscall numbers. The binary is statically linked, so it includes its own libc implementation. The syscall numbers in the binary are:
+- 1 = write
+- 2 = open
+- 3 = close
+
+These match the x86 Linux convention. But the binary is MIPS... so maybe the libc was written to use these numbers for a custom MIPS environment?
+
+Actually, looking at the source code more carefully, let me check the fake_fs.c and my_stdlib.c files.
+
+[Running read]
+[done] 1: #include "my_stdlib.h"
+2: 
+3: // System call numbers
+4: #define SYS_read    0
+5: #define SYS_write   1
+6: #define SYS_open    2
+7: #define SYS_close   3
+8: #define SYS_lseek   8
+9: #define SYS_fsync   74
+10: #define SYS_rename  82
+11: #define SYS_mkdir   83
+12: #define SYS_unlink  87
+13: 
+14: // Constants for file operations
+15: #define MAX_PATH_LENGTH 256
+16: #define MAX_FILES 1024
+17: #define MAX_FILE_DESCRIPTORS 1024
+18: #define MAX_FILE_SIZE (64 * 1024 * 1024)  // 1MB max file size for simplicity
+19: 
+20: // File types
+21: #define FILE_TYPE_REGULAR 0
+22: #define FILE_TYPE_DIRECTORY 1
+23: 
+24: // File open modes (compatible with standard C/POSIX)
+25: #define O_RDONLY 0
+26: #define O_WRONLY 1
+27: #define O_RDWR 2
+28: #define O_CREAT 64
+29: #define O_EXCL 128
+30: #define O_TRUNC 512
+31: #define O_APPEND 1024
+32: 
+33: // Seek whence values
+34: #define SEEK_SET 0
+35: #define SEEK_CUR 1
+36: #define SEEK_END 2
+37: 
+38: // Error codes (compatible with standard C/POSIX)
+39: #define ENOENT 2       // No such file or directory
+40: #define EEXIST 17      // File exists
+41: #define EISDIR 21      // Is a directory
+42: #define ENOTDIR 20     // Not a directory
+43: #define EMFILE 24      // Too many open files
+44: #define EINVAL 22      // Invalid argument
+45: #define EBADF 9        // Bad file descriptor
+46: #define ENOTEMPTY 39   // Directory not empty
+47: #define ENOMEM 12      // Out of memory
+48: #define EBUSY 16       // Device or resource busy
+49: 
+50: // Forward declarations
+51: struct FileNode;
+52: typedef unsigned int mode_t;
+53: typedef long off_t;
+54: typedef long ssize_t;
+55: 
+56: // Directory entry
+57: typedef struct {
+58:     char name[MAX_PATH_LENGTH];
+59:     struct FileNode* node;
+60: } DirEntry;
+61: 
+62: // File node structure
+63: typedef struct FileNode {
+64:     char name[MAX_PATH_LENGTH];
+65:     int type;               // Regular file or directory
+66:     time_t created;         // Creation time
+67:     time_t modified;        // Last modification time
+68:     time_t accessed;        // Last access time
+69:     
+70:     // File content
+71:     unsigned char* data;    // File data for regular files
+72:     size_t size;            // Current file size
+73:     size_t capacity;        // Allocated capacity
+74:     
+75:     // Directory content
+76:     DirEntry* entries;      // Directory entries for directories
+77:     size_t num_entries;     // Number of entries
+78:     size_t max_entries;     // Max entries allocated
+79:     
+80:     struct FileNode* parent; // Parent directory
+81: } FileNode;
+82: 
+83: // File descriptor structure
+84: typedef struct {
+85:     FileNode* node;
+86:     size_t position;
+87:     int mode;               // Read/write mode
+88:     bool used;              // Whether this file descriptor is in use
+89: } FileDescriptor;
+90: 
+91: // Global filesystem state
+92: static FileNode* root = NULL;
+93: static FileDescriptor fd_table[MAX_FILE_DESCRIPTORS];
+94: 
+95: // Real syscall function for Linux x86_64
+96: static long real_syscall6(long syscall_num, long arg1, long arg2, long arg3,
+97:                      long arg4, long arg5, long arg6) {
+98:     long result;
+99:     
+100:     /*
+101:      * Use a simplified approach that directly specifies which
+102:      * registers to use for each argument
+103:      */
+104:     __asm__ volatile(
+105:         /* Input arguments are already in the right locations */
+106:         "syscall"
+107:         : "=a" (result)
+108:         : "a" (syscall_num),
+109:           "D" (arg1),
+110:           "S" (arg2),
+111:           "d" (arg3),
+112:           "r" (arg4)   /* r10 */,
+113:           "r" (arg5)   /* r8 */,
+114:           "r" (arg6)   /* r9 */
+115:         : "rcx", "r11", "memory"
+116:     );
+117:     
+118:     /* Check for error and set errno */
+119:     if (result < 0 && result > -4096) {
+120:         errno = -result;
+121:         return -1;
+122:     }
+123:     
+124:     return result;
+125: }
+126: 
+127: FileNode* create_node(const char* name, int type, FileNode* parent);
+128: 
+129: // Helper function to initialize the filesystem
+130: void init_filesystem() {
+131:     // Create root directory if it doesn't exist
+132:     if (root == NULL) {
+133:         root = (FileNode*)malloc(sizeof(FileNode));
+134:         strcpy(root->name, "/");
+135:         root->type = FILE_TYPE_DIRECTORY;
+136:         root->created = root->modified = root->accessed = time(NULL);
+137:         root->data = NULL;
+138:         root->size = 0;
+139:         root->capacity = 0;
+140:         root->entries = (DirEntry*)malloc(10 * sizeof(DirEntry));
+141:         root->num_entries = 0;
+142:         root->max_entries = 10;
+143:         root->parent = root; // Root is its own parent
+144:         
+145:         // Initialize file descriptor table
+146:         for (int i = 0; i < MAX_FILE_DESCRIPTORS; i++) {
+147:             if (i < 5) {
+148:                 fd_table[i].used = 1;  // Reserve file descriptors 0-4
+149:                 fd_table[i].node = 0x12345;
+150:             } else {
+151:                 fd_table[i].used = 0;
+152:             }
+153:         }
+154:         
+155:         // Load doom.wad from the real filesystem
+156:         const char* wad_path = "doom.wad";
+157:         
+158:         // Open the WAD file from the real filesystem
+159:         int real_fd = real_syscall6(SYS_open, (long)wad_path, O_RDONLY, 0, 0, 0, 0);
+160:         if (real_fd >= 0) {
+161:             // Get the file size
+162:             off_t file_size = real_syscall6(SYS_lseek, real_fd, 0, SEEK_END, 0, 0, 0);
+163:             real_syscall6(SYS_lseek, real_fd, 0, SEEK_SET, 0, 0, 0); // Reset to beginning
+164:             
+165:             if (file_size > 0 && file_size <= MAX_FILE_SIZE) {
+166:                 // Allocate memory for the file data
+167:                 unsigned char* wad_data = (unsigned char*)malloc(file_size);
+168:                 if (wad_data != NULL) {
+169:                     // Read the file data
+170:                     ssize_t bytes_read = real_syscall6(SYS_read, real_fd, (long)wad_data, file_size, 0, 0, 0);
+171:                     
+172:                     if (bytes_read == file_size) {
+173:                         // Create a new file node for doom.wad
+174:                         FileNode* wad_node = create_node("doom.wad", FILE_TYPE_REGULAR, root);
+175:                         wad_node->data = wad_data;
+176:                         wad_node->size = file_size;
+177:                         wad_node->capacity = file_size;
+178:                         
+179:                         // Add the file to the root directory
+180:                         add_to_directory(root, "doom.wad", wad_node);
+181:                         
+182:                         printf("Loaded doom.wad (%d bytes) into in-memory filesystem\n", file_size);
+183:                     } else {
+184:                         free(wad_data);
+185:                         printf("Failed to read doom.wad: read %d of %d bytes\n", bytes_read, file_size);
+186:                     }
+187:                 } else {
+188:                     printf("Failed to allocate memory for doom.wad (%d bytes)\n", file_size);
+189:                 }
+190:             } else {
+191:                 printf("doom.wad file size invalid: %d bytes\n", file_size);
+192:             }
+193:             
+194:             // Close the real file
+195:             real_syscall6(SYS_close, real_fd, 0, 0, 0, 0, 0);
+196:         } else {
+197:             printf("Failed to open doom.wad: error %d\n", errno);
+198:         }
+199:     }
+200: }
+
+[636 more lines in file. Use offset=201 to continue.]
+
+[Running read]
+[done] 1: /**
+2:  * my_stdlib.c - Minimal standard library implementation
+3:  * Contains stubs for all functions declared in my_stdlib.h
+4:  */
+5: 
+6: #include "my_stdlib.h"
+7: 
+8: // System call numbers
+9: #define SYS_read    0
+10: #define SYS_write   1
+11: #define SYS_open    2
+12: #define SYS_close   3
+13: #define SYS_lseek   8
+14: #define SYS_fsync   74
+15: #define SYS_rename  82
+16: #define SYS_mkdir   83
+17: #define SYS_unlink  87
+18: 
+19: #if defined(ARCH_X86)
+20: 
+21: // Real syscall function for Linux x86_64
+22: static long real_syscall6(long syscall_num, long arg1, long arg2, long arg3,
+23:                      long arg4, long arg5, long arg6) {
+24:     long result;
+25:     
+26:     /*
+27:      * Use a simplified approach that directly specifies which
+28:      * registers to use for each argument
+29:      */
+30:     __asm__ volatile(
+31:         /* Input arguments are already in the right locations */
+32:         "syscall"
+33:         : "=a" (result)
+34:         : "a" (syscall_num),
+35:           "D" (arg1),
+36:           "S" (arg2),
+37:           "d" (arg3),
+38:           "r" (arg4)   /* r10 */,
+39:           "r" (arg5)   /* r8 */,
+40:           "r" (arg6)   /* r9 */
+41:         : "rcx", "r11", "memory"
+42:     );
+43:     
+44:     /* Check for error and set errno */
+45:     if (result < 0 && result > -4096) {
+46:         errno = -result;
+47:         return -1;
+48:     }
+49:     
+50:     return result;
+51: 
+52: }
+53: 
+54: 
+55: #else
+56: // Real syscall function for MIPS
+57: static long real_syscall6(long syscall_num, long arg1, long arg2, long arg3,
+58:                      long arg4, long arg5, long arg6) {
+59:     long result;
+60:     
+61:     /*
+62:      * Hacky MIPS syscall approach:
+63:      * - Syscall number goes in $v0 (register 2)
+64:      * - First four arguments go in $a0-$a3 (registers 4-7)
+65:      * - Additional arguments go in $t0-$t1 (registers 8-9)
+66:      * - Result comes back in $v0 (register 2)
+67:      */
+68:     __asm__ volatile(
+69:         /* Load syscall number into $v0 */
+70:         "move $v0, %1\n\t"
+71:         
+72:         /* Load first four arguments into $a0-$a3 */
+73:         "move $a0, %2\n\t"
+74:         "move $a1, %3\n\t"
+75:         "move $a2, %4\n\t"
+76:         "move $a3, %5\n\t"
+77:         
+78:         /* Load additional arguments into $t0-$t1 */
+79:         "move $t0, %6\n\t"  /* 5th arg in $t0 */
+80:         "move $t1, %7\n\t"  /* 6th arg in $t1 */
+81:         
+82:         /* Make the syscall */
+83:         "syscall\n\t"
+84:         
+85:         /* Get the return value */
+86:         "move %0, $v0"
+87:         
+88:         /* Output parameter */
+89:         : "=r" (result)
+90:         
+91:         /* Input parameters */
+92:         : "r" (syscall_num),
+93:           "r" (arg1),
+94:           "r" (arg2),
+95:           "r" (arg3),
+96:           "r" (arg4),
+97:           "r" (arg5),
+98:           "r" (arg6)
+99:         
+100:         /* Clobbered registers */
+101:         : "v0", "a0", "a1", "a2", "a3", "t0", "t1", "memory"
+102:     );
+103:     
+104:     /* 
+105:      * MIPS typically uses negative return values for errors
+106:      * and sets errno accordingly
+107:      */
+108:     if (result < 0) {
+109:         errno = -result;
+110:         return -1;
+111:     }
+112:     
+113:     return result;
+114: }
+115: #endif
+116: 
+117: #if 0
+118: // Constants for file operations
+119: #define MAX_PATH_LENGTH 256
+120: #define MAX_FILES 1024
+121: #define MAX_FILE_DESCRIPTORS 1024
+122: #define MAX_FILE_SIZE (64 * 1024 * 1024)  // 1MB max file size for simplicity
+123: 
+124: #define USE_FS
+125: 
+126: // File types
+127: #define FILE_TYPE_REGULAR 0
+128: #define FILE_TYPE_DIRECTORY 1
+129: 
+130: // File open modes (compatible with standard C/POSIX)
+131: #define O_RDONLY 0
+132: #define O_WRONLY 1
+133: #define O_RDWR 2
+134: #define O_CREAT 64
+135: #define O_EXCL 128
+136: #define O_TRUNC 512
+137: #define O_APPEND 1024
+138: 
+139: // Seek whence values
+140: #define SEEK_SET 0
+141: #define SEEK_CUR 1
+142: #define SEEK_END 2
+143: 
+144: // Error codes (compatible with standard C/POSIX)
+145: #define ENOENT 2       // No such file or directory
+146: #define EEXIST 17      // File exists
+147: #define EISDIR 21      // Is a directory
+148: #define ENOTDIR 20     // Not a directory
+149: #define EMFILE 24      // Too many open files
+150: #define EINVAL 22      // Invalid argument
+151: #define EBADF 9        // Bad file descriptor
+152: #define ENOTEMPTY 39   // Directory not empty
+153: #define ENOMEM 12      // Out of memory
+154: #define EBUSY 16       // Device or resource busy
+155: 
+156: // Forward declarations
+157: struct FileNode;
+158: typedef unsigned int mode_t;
+159: typedef long off_t;
+160: typedef long ssize_t;
+161: 
+162: // Directory entry
+163: typedef struct {
+164:     char name[MAX_PATH_LENGTH];
+165:     struct FileNode* node;
+166: } DirEntry;
+167: 
+168: // File node structure
+169: typedef struct FileNode {
+170:     char name[MAX_PATH_LENGTH];
+171:     int type;               // Regular file or directory
+172:     time_t created;         // Creation time
+173:     time_t modified;        // Last modification time
+174:     time_t accessed;        // Last access time
+175:     
+176:     // File content
+177:     unsigned char* data;    // File data for regular files
+178:     size_t size;            // Current file size
+179:     size_t capacity;        // Allocated capacity
+180:     
+181:     // Directory content
+182:     DirEntry* entries;      // Directory entries for directories
+183:     size_t num_entries;     // Number of entries
+184:     size_t max_entries;     // Max entries allocated
+185:     
+186:     struct FileNode* parent; // Parent directory
+187: } FileNode;
+188: 
+189: // File descriptor structure
+190: typedef struct {
+191:     FileNode* node;
+192:     size_t position;
+193:     int mode;               // Read/write mode
+194:     bool used;              // Whether this file descriptor is in use
+195: } FileDescriptor;
+196: 
+197: // Global filesystem state
+198: static FileNode* root = NULL;
+199: static FileDescriptor fd_table[MAX_FILE_DESCRIPTORS];
+200: 
+
+[2837 more lines in file. Use offset=201 to continue.]
+
+[Thinking]
+Now I understand the architecture. The MIPS binary uses custom syscall numbers:
+- SYS_read = 0
+- SYS_write = 1
+- SYS_open = 2
+- SYS_close = 3
+- SYS_lseek = 8
+- SYS_fsync = 74
+- SYS_rename = 82
+- SYS_mkdir = 83
+- SYS_unlink = 87
+
+These are x86_64 Linux syscall numbers! The binary was compiled with a custom libc that uses these numbers.
+
+The binary also has an in-memory filesystem (fake_fs) that loads doom.wad at startup. Let me understand the full flow:
+
+1. `__start` calls `main(0, 0)` which calls `doomgeneric_Create(0, 0)`
+2. `doomgeneric_Create` calls `D_DoomMain` which initializes the game
+3. Then the main loop calls `doomgeneric_Tick()` forever
+4. `DG_DrawFrame` saves frames as BMP files
+
+Now I need to understand what syscalls the binary actually makes. Let me look at the syscall sites more carefully and also understand the `syscall6` function.
+
+The `syscall6` function in the binary takes:
+- a0 = syscall number
+- a1 = arg1
+- a2 = arg2
+- a3 = arg3
+
+And it translates to:
+- v0 = syscall number
+- a0 = arg1
+- a1 = arg2
+- a2 = arg3
+- a3 = 0 (for some cases)
+- Then executes `syscall` instruction
+
+But there are also direct `syscall` instructions in fopen, fclose, fread, fwrite, etc. Let me map out all the syscalls.
+
+Let me look at all the functions that use syscall instructions.
+[Preparing bash]
+[done] Now I understand the architecture. The MIPS binary uses custom syscall numbers:
+- SYS_read = 0
+- SYS_write = 1
+- SYS_open = 2
+- SYS_close = 3
+- SYS_lseek = 8
+- SYS_fsync = 74
+- SYS_rename = 82
+- SYS_mkdir = 83
+- SYS_unlink = 87
+
+These are x86_64 Linux syscall numbers! The binary was compiled with a custom libc that uses these numbers.
+
+The binary also has an in-memory filesystem (fake_fs) that loads doom.wad at startup. Let me understand the full flow:
+
+1. `__start` calls `main(0, 0)` which calls `doomgeneric_Create(0, 0)`
+2. `doomgeneric_Create` calls `D_DoomMain` which initializes the game
+3. Then the main loop calls `doomgeneric_Tick()` forever
+4. `DG_DrawFrame` saves frames as BMP files
+
+Now I need to understand what syscalls the binary actually makes. Let me look at the syscall sites more carefully and also understand the `syscall6` function.
+
+The `syscall6` function in the binary takes:
+- a0 = syscall number
+- a1 = arg1
+- a2 = arg2
+- a3 = arg3
+
+And it translates to:
+- v0 = syscall number
+- a0 = arg1
+- a1 = arg2
+- a2 = arg3
+- a3 = 0 (for some cases)
+- Then executes `syscall` instruction
+
+But there are also direct `syscall` instructions in fopen, fclose, fread, fwrite, etc. Let me map out all the syscalls.
+
+Let me look at all the functions that use syscall instructions.
+
+[Running bash]
+[done] 0043a898 <fread>:
+  43a898:	10800021 	beqz	a0,43a920 <fread+0x88>
+  43a89c:	00000000 	nop
+  43a8a0:	10e0001f 	beqz	a3,43a920 <fread+0x88>
+  43a8a4:	00e01825 	move	v1,a3
+  43a8a8:	70c56802 	mul	t5,a2,a1
+  43a8ac:	00806025 	move	t4,a0
+  43a8b0:	00a05025 	move	t2,a1
+  43a8b4:	8c6e0000 	lw	t6,0(v1)
+  43a8b8:	240b0000 	li	t3,0
+  43a8bc:	01601025 	move	v0,t3
+  43a8c0:	01c02025 	move	a0,t6
+  43a8c4:	01802825 	move	a1,t4
+  43a8c8:	01a03025 	move	a2,t5
+  43a8cc:	01603825 	move	a3,t3
+  43a8d0:	01604025 	move	t0,t3
+  43a8d4:	01604825 	move	t1,t3
+  43a8d8:	0000000c 	syscall
+  43a8dc:	00406025 	move	t4,v0
+  43a8e0:	05800014 	bltz	t4,43a934 <fread+0x9c>
+  43a8e4:	00000000 	nop
+  43a8e8:	11800004 	beqz	t4,43a8fc <fread+0x64>
+  43a8ec:	00000000 	nop
+  43a8f0:	018d082b 	sltu	at,t4,t5
+  43a8f4:	10200003 	beqz	at,43a904 <fread+0x6c>
+  43a8f8:	00000000 	nop
+  43a8fc:	24010001 	li	at,1
+  43a900:	ac610004 	sw	at,4(v1)
+  43a904:	018a001b 	divu	zero,t4,t2
+  43a908:	014001f4 	teq	t2,zero,0x7
+  43a90c:	8c61000c 	lw	at,12(v1)
+  43a910:	002c0821 	addu	at,at,t4
+  43a914:	ac61000c 	sw	at,12(v1)
+  43a918:	0810ea52 	j	43a948 <fread+0xb0>
+  43a91c:	00005812 	mflo	t3
+  43a920:	3c01004b 	lui	at,0x4b
+  43a924:	24020016 	li	v0,22
+  43a928:	240b0000 	li	t3,0
+  43a92c:	0810ea52 	j	43a948 <fread+0xb0>
+  43a930:	ac220a80 	sw	v0,2688(at)
+  43a934:	000c0823 	negu	at,t4
+  43a938:	3c02004b 	lui	v0,0x4b
+  43a93c:	ac410a80 	sw	at,2688(v0)
+  43a940:	24010001 	li	at,1
+  43a944:	ac610008 	sw	at,8(v1)
+  43a948:	03e00008 	jr	ra
+  43a94c:	01601025 	move	v0,t3
+
+0043a950 <fwrite>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043a950 <fwrite>:
+  43a950:	27bdfff0 	addiu	sp,sp,-16
+  43a954:	afbf000c 	sw	ra,12(sp)
+  43a958:	afb10008 	sw	s1,8(sp)
+  43a95c:	afb00004 	sw	s0,4(sp)
+  43a960:	10800012 	beqz	a0,43a9ac <fwrite+0x5c>
+  43a964:	00000000 	nop
+  43a968:	10e00010 	beqz	a3,43a9ac <fwrite+0x5c>
+  43a96c:	00e08025 	move	s0,a3
+  43a970:	70c53802 	mul	a3,a2,a1
+  43a974:	00801025 	move	v0,a0
+  43a978:	00a08825 	move	s1,a1
+  43a97c:	8e050000 	lw	a1,0(s0)
+  43a980:	24040001 	li	a0,1
+  43a984:	0c10f65d 	jal	43d974 <syscall6>
+  43a988:	00403025 	move	a2,v0
+  43a98c:	0051001b 	divu	zero,v0,s1
+  43a990:	00400825 	move	at,v0
+  43a994:	022001f4 	teq	s1,zero,0x7
+  43a998:	8e03000c 	lw	v1,12(s0)
+  43a99c:	00610821 	addu	at,v1,at
+  43a9a0:	ae01000c 	sw	at,12(s0)
+  43a9a4:	0810ea6f 	j	43a9bc <fwrite+0x6c>
+  43a9a8:	00001012 	mflo	v0
+  43a9ac:	3c01004b 	lui	at,0x4b
+  43a9b0:	24020016 	li	v0,22
+  43a9b4:	ac220a80 	sw	v0,2688(at)
+  43a9b8:	24020000 	li	v0,0
+  43a9bc:	8fb00004 	lw	s0,4(sp)
+  43a9c0:	8fb10008 	lw	s1,8(sp)
+  43a9c4:	8fbf000c 	lw	ra,12(sp)
+  43a9c8:	03e00008 	jr	ra
+  43a9cc:	27bd0010 	addiu	sp,sp,16
+
+0043a9d0 <fread_unlocked>:
+
+[Thinking]
+Now I can see the fwrite function. It calls `syscall6(1, fd, buf, count)` where 1 = SYS_write. So the syscall6 function takes the syscall number as the first argument.
+
+Let me now look at the other syscall sites to understand all the syscalls used.
+[Preparing bash]
+[done] Now I can see the fwrite function. It calls `syscall6(1, fd, buf, count)` where 1 = SYS_write. So the syscall6 function takes the syscall number as the first argument.
+
+Let me now look at the other syscall sites to understand all the syscalls used.
+
+[Running bash]
+[done] (no output)
+
+[Preparing bash]
+
+[Running bash]
+[done]   43a770:	01404825 	move	t1,t2
+  43a774:	0000000c 	syscall
+--
+  43a7dc:	01404825 	move	t1,t2
+  43a7e0:	0000000c 	syscall
+--
+  43a844:	01804825 	move	t1,t4
+  43a848:	0000000c 	syscall
+--
+  43a8d4:	01604825 	move	t1,t3
+  43a8d8:	0000000c 	syscall
+--
+  43aa40:	00604825 	move	t1,v1
+  43aa44:	0000000c 	syscall
+--
+  43aae0:	01604825 	move	t1,t3
+  43aae4:	0000000c 	syscall
+--
+  43ab38:	01604825 	move	t1,t3
+  43ab3c:	0000000c 	syscall
+--
+  43ab8c:	01804825 	move	t1,t4
+  43ab90:	0000000c 	syscall
+--
+  43acb0:	01804825 	move	t1,t4
+  43acb4:	0000000c 	syscall
+--
+  43adec:	02604825 	move	t1,s3
+  43adf0:	0000000c 	syscall
+--
+  43b35c:	01404825 	move	t1,t2
+  43b360:	0000000c 	syscall
+--
+  43b714:	01404825 	move	t1,t2
+  43b718:	0000000c 	syscall
+--
+  43b7d0:	02604825 	move	t1,s3
+  43b7d4:	0000000c 	syscall
+--
+  43b958:	01404825 	move	t1,t2
+  43b95c:	0000000c 	syscall
+--
+  43ba70:	01404825 	move	t1,t2
+  43ba74:	0000000c 	syscall
+--
+  43bb2c:	02604825 	move	t1,s3
+  43bb30:	0000000c 	syscall
+--
+  43bc6c:	00604825 	move	t1,v1
+  43bc70:	0000000c 	syscall
+--
+  43bd24:	02604825 	move	t1,s3
+  43bd28:	0000000c 	syscall
+--
+  43c000:	02604825 	move	t1,s3
+  43c004:	0000000c 	syscall
+--
+  43c058:	02604825 	move	t1,s3
+  43c05c:	0000000c 	syscall
+--
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043a808 <fclose>:
+0043a898 <fread>:
+0043a9ec <fwrite_unlocked>:
+0043aa08 <fseek>:
+0043aa8c <ftell>:
+0043aab4 <fflush>:
+0043ab14 <remove>:
+0043ab64 <rename>:
+0043ac80 <putchar>:
+0043d8a0 <puts>:
+0043d974 <syscall6>:
+0043da1c <mkdir>:
+0043da70 <exit>:
+0043dc3c <lstat>:
+0043dc64 <gettimeofday>:
+0043dc6c <time>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043da70 <exit>:
+  43da70:	00801825 	move	v1,a0
+  43da74:	240a003c 	li	t2,60
+  43da78:	240b0000 	li	t3,0
+  43da7c:	01401025 	move	v0,t2
+  43da80:	00602025 	move	a0,v1
+  43da84:	01602825 	move	a1,t3
+  43da88:	01603025 	move	a2,t3
+  43da8c:	01603825 	move	a3,t3
+  43da90:	01604025 	move	t0,t3
+  43da94:	01604825 	move	t1,t3
+  43da98:	0000000c 	syscall
+  43da9c:	00401825 	move	v1,v0
+  43daa0:	04610004 	bgez	v1,43dab4 <exit+0x44>
+  43daa4:	00000000 	nop
+  43daa8:	00030823 	negu	at,v1
+  43daac:	3c02004b 	lui	v0,0x4b
+  43dab0:	ac410a80 	sw	at,2688(v0)
+  43dab4:	0810f6ad 	j	43dab4 <exit+0x44>
+  43dab8:	00000000 	nop
+
+0043dabc <system>:
+
+[Thinking]
+Now I can see the exit syscall uses number 60, which is the x86_64 Linux syscall number for exit_group. Let me map out all the syscall numbers used:
+
+- 0 = read (x86_64: SYS_read = 0)
+- 1 = write (x86_64: SYS_write = 1)
+- 2 = open (x86_64: SYS_open = 2)
+- 3 = close (x86_64: SYS_close = 3)
+- 8 = lseek (x86_64: SYS_lseek = 8)
+- 60 = exit (x86_64: SYS_exit_group = 231... wait, 60 is SYS_exit on x86_64)
+
+Wait, let me check x86_64 syscall numbers:
+- 0 = read
+- 1 = write
+- 2 = open
+- 3 = close
+- 8 = lseek
+- 60 = exit
+- 74 = fsync
+- 82 = rename
+- 83 = mkdir
+- 87 = unlink
+
+Yes, these are all x86_64 Linux syscall numbers! The MIPS binary was compiled with a custom libc that uses x86_64 syscall numbers.
+
+Now let me look at the other syscalls used.
+[Preparing bash]
+[done] Now I can see the exit syscall uses number 60, which is the x86_64 Linux syscall number for exit_group. Let me map out all the syscall numbers used:
+
+- 0 = read (x86_64: SYS_read = 0)
+- 1 = write (x86_64: SYS_write = 1)
+- 2 = open (x86_64: SYS_open = 2)
+- 3 = close (x86_64: SYS_close = 3)
+- 8 = lseek (x86_64: SYS_lseek = 8)
+- 60 = exit (x86_64: SYS_exit_group = 231... wait, 60 is SYS_exit on x86_64)
+
+Wait, let me check x86_64 syscall numbers:
+- 0 = read
+- 1 = write
+- 2 = open
+- 3 = close
+- 8 = lseek
+- 60 = exit
+- 74 = fsync
+- 82 = rename
+- 83 = mkdir
+- 87 = unlink
+
+Yes, these are all x86_64 Linux syscall numbers! The MIPS binary was compiled with a custom libc that uses x86_64 syscall numbers.
+
+Now let me look at the other syscalls used.
+
+[Running bash]
+[done] 0043aa08 <fseek>:
+  43aa08:	10800015 	beqz	a0,43aa60 <fseek+0x58>
+  43aa0c:	00000000 	nop
+  43aa10:	00c05825 	move	t3,a2
+  43aa14:	00a06025 	move	t4,a1
+  43aa18:	00805025 	move	t2,a0
+  43aa1c:	8c8d0000 	lw	t5,0(a0)
+  43aa20:	240e0008 	li	t6,8
+  43aa24:	24030000 	li	v1,0
+  43aa28:	01c01025 	move	v0,t6
+  43aa2c:	01a02025 	move	a0,t5
+  43aa30:	01802825 	move	a1,t4
+  43aa34:	01603025 	move	a2,t3
+  43aa38:	00603825 	move	a3,v1
+  43aa3c:	00604025 	move	t0,v1
+  43aa40:	00604825 	move	t1,v1
+  43aa44:	0000000c 	syscall
+  43aa48:	00405825 	move	t3,v0
+  43aa4c:	05600009 	bltz	t3,43aa74 <fseek+0x6c>
+  43aa50:	00000000 	nop
+  43aa54:	ad4b000c 	sw	t3,12(t2)
+  43aa58:	0810eaa1 	j	43aa84 <fseek+0x7c>
+  43aa5c:	ad400004 	sw	zero,4(t2)
+  43aa60:	3c01004b 	lui	at,0x4b
+  43aa64:	24020016 	li	v0,22
+  43aa68:	2403ffff 	li	v1,-1
+  43aa6c:	0810eaa1 	j	43aa84 <fseek+0x7c>
+  43aa70:	ac220a80 	sw	v0,2688(at)
+  43aa74:	000b0823 	negu	at,t3
+  43aa78:	3c02004b 	lui	v0,0x4b
+  43aa7c:	2403ffff 	li	v1,-1
+  43aa80:	ac410a80 	sw	at,2688(v0)
+  43aa84:	03e00008 	jr	ra
+  43aa88:	00601025 	move	v0,v1
+
+0043aa8c <ftell>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043aab4 <fflush>:
+  43aab4:	10800015 	beqz	a0,43ab0c <fflush+0x58>
+  43aab8:	00000000 	nop
+  43aabc:	8c830000 	lw	v1,0(a0)
+  43aac0:	240a004a 	li	t2,74
+  43aac4:	240b0000 	li	t3,0
+  43aac8:	01401025 	move	v0,t2
+  43aacc:	00602025 	move	a0,v1
+  43aad0:	01602825 	move	a1,t3
+  43aad4:	01603025 	move	a2,t3
+  43aad8:	01603825 	move	a3,t3
+  43aadc:	01604025 	move	t0,t3
+  43aae0:	01604825 	move	t1,t3
+  43aae4:	0000000c 	syscall
+  43aae8:	00401825 	move	v1,v0
+  43aaec:	04610005 	bgez	v1,43ab04 <fflush+0x50>
+  43aaf0:	00000000 	nop
+  43aaf4:	00030823 	negu	at,v1
+  43aaf8:	3c02004b 	lui	v0,0x4b
+  43aafc:	2403ffff 	li	v1,-1
+  43ab00:	ac410a80 	sw	at,2688(v0)
+  43ab04:	03e00008 	jr	ra
+  43ab08:	000317c3 	sra	v0,v1,0x1f
+  43ab0c:	03e00008 	jr	ra
+  43ab10:	24020000 	li	v0,0
+
+0043ab14 <remove>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043ab14 <remove>:
+  43ab14:	00801825 	move	v1,a0
+  43ab18:	240a0057 	li	t2,87
+  43ab1c:	240b0000 	li	t3,0
+  43ab20:	01401025 	move	v0,t2
+  43ab24:	00602025 	move	a0,v1
+  43ab28:	01602825 	move	a1,t3
+  43ab2c:	01603025 	move	a2,t3
+  43ab30:	01603825 	move	a3,t3
+  43ab34:	01604025 	move	t0,t3
+  43ab38:	01604825 	move	t1,t3
+  43ab3c:	0000000c 	syscall
+  43ab40:	00401825 	move	v1,v0
+  43ab44:	04610005 	bgez	v1,43ab5c <remove+0x48>
+  43ab48:	00000000 	nop
+  43ab4c:	00030823 	negu	at,v1
+  43ab50:	3c02004b 	lui	v0,0x4b
+  43ab54:	2403ffff 	li	v1,-1
+  43ab58:	ac410a80 	sw	at,2688(v0)
+  43ab5c:	03e00008 	jr	ra
+  43ab60:	000317c3 	sra	v0,v1,0x1f
+
+0043ab64 <rename>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043ab64 <rename>:
+  43ab64:	00a01825 	move	v1,a1
+  43ab68:	00805025 	move	t2,a0
+  43ab6c:	240b0052 	li	t3,82
+  43ab70:	240c0000 	li	t4,0
+  43ab74:	01601025 	move	v0,t3
+  43ab78:	01402025 	move	a0,t2
+  43ab7c:	00602825 	move	a1,v1
+  43ab80:	01803025 	move	a2,t4
+  43ab84:	01803825 	move	a3,t4
+  43ab88:	01804025 	move	t0,t4
+  43ab8c:	01804825 	move	t1,t4
+  43ab90:	0000000c 	syscall
+  43ab94:	00401825 	move	v1,v0
+  43ab98:	04610005 	bgez	v1,43abb0 <rename+0x4c>
+  43ab9c:	00000000 	nop
+  43aba0:	00030823 	negu	at,v1
+  43aba4:	3c02004b 	lui	v0,0x4b
+  43aba8:	2403ffff 	li	v1,-1
+  43abac:	ac410a80 	sw	at,2688(v0)
+  43abb0:	03e00008 	jr	ra
+  43abb4:	000317c3 	sra	v0,v1,0x1f
+
+0043abb8 <atoi>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043ac80 <putchar>:
+  43ac80:	27bdfff8 	addiu	sp,sp,-8
+  43ac84:	a3a40004 	sb	a0,4(sp)
+  43ac88:	27aa0004 	addiu	t2,sp,4
+  43ac8c:	00801825 	move	v1,a0
+  43ac90:	240b0001 	li	t3,1
+  43ac94:	240c0000 	li	t4,0
+  43ac98:	01601025 	move	v0,t3
+  43ac9c:	01602025 	move	a0,t3
+  43aca0:	01402825 	move	a1,t2
+  43aca4:	01603025 	move	a2,t3
+  43aca8:	01803825 	move	a3,t4
+  43acac:	01804025 	move	t0,t4
+  43acb0:	01804825 	move	t1,t4
+  43acb4:	0000000c 	syscall
+  43acb8:	00405025 	move	t2,v0
+  43acbc:	05410004 	bgez	t2,43acd0 <putchar+0x50>
+  43acc0:	00000000 	nop
+  43acc4:	000a0823 	negu	at,t2
+  43acc8:	3c02004b 	lui	v0,0x4b
+  43accc:	ac410a80 	sw	at,2688(v0)
+  43acd0:	00601025 	move	v0,v1
+  43acd4:	03e00008 	jr	ra
+  43acd8:	27bd0008 	addiu	sp,sp,8
+
+0043acdc <vprintf_internal>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043d8a0 <puts>:
+  43d8a0:	27bdfff8 	addiu	sp,sp,-8
+  43d8a4:	90810000 	lbu	at,0(a0)
+  43d8a8:	240a0000 	li	t2,0
+  43d8ac:	1020001c 	beqz	at,43d920 <puts+0x80>
+  43d8b0:	240b0000 	li	t3,0
+  43d8b4:	00801825 	move	v1,a0
+  43d8b8:	24820001 	addiu	v0,a0,1
+  43d8bc:	240b0000 	li	t3,0
+  43d8c0:	004b0821 	addu	at,v0,t3
+  43d8c4:	90210000 	lbu	at,0(at)
+  43d8c8:	1420fffd 	bnez	at,43d8c0 <puts+0x20>
+  43d8cc:	256b0001 	addiu	t3,t3,1
+  43d8d0:	11600012 	beqz	t3,43d91c <puts+0x7c>
+  43d8d4:	00000000 	nop
+  43d8d8:	240c0001 	li	t4,1
+  43d8dc:	240d0000 	li	t5,0
+  43d8e0:	01801025 	move	v0,t4
+  43d8e4:	01802025 	move	a0,t4
+  43d8e8:	00602825 	move	a1,v1
+  43d8ec:	01603025 	move	a2,t3
+  43d8f0:	01a03825 	move	a3,t5
+  43d8f4:	01a04025 	move	t0,t5
+  43d8f8:	01a04825 	move	t1,t5
+  43d8fc:	0000000c 	syscall
+  43d900:	00401825 	move	v1,v0
+  43d904:	04610006 	bgez	v1,43d920 <puts+0x80>
+  43d908:	00000000 	nop
+  43d90c:	00030823 	negu	at,v1
+  43d910:	3c02004b 	lui	v0,0x4b
+  43d914:	0810f648 	j	43d920 <puts+0x80>
+  43d918:	ac410a80 	sw	at,2688(v0)
+  43d91c:	240b0000 	li	t3,0
+  43d920:	2401000a 	li	at,10
+  43d924:	24030001 	li	v1,1
+  43d928:	27ac0004 	addiu	t4,sp,4
+  43d92c:	a3a10004 	sb	at,4(sp)
+  43d930:	00601025 	move	v0,v1
+  43d934:	00602025 	move	a0,v1
+  43d938:	01802825 	move	a1,t4
+  43d93c:	01603025 	move	a2,t3
+  43d940:	01403825 	move	a3,t2
+  43d944:	01404025 	move	t0,t2
+  43d948:	01404825 	move	t1,t2
+  43d94c:	0000000c 	syscall
+  43d950:	00401825 	move	v1,v0
+  43d954:	04610004 	bgez	v1,43d968 <puts+0xc8>
+  43d958:	00000000 	nop
+  43d95c:	00030823 	negu	at,v1
+  43d960:	3c02004b 	lui	v0,0x4b
+  43d964:	ac410a80 	sw	at,2688(v0)
+  43d968:	24020001 	li	v0,1
+  43d96c:	03e00008 	jr	ra
+  43d970:	27bd0008 	addiu	sp,sp,8
+
+0043d974 <syscall6>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043da1c <mkdir>:
+  43da1c:	00a01825 	move	v1,a1
+  43da20:	00805025 	move	t2,a0
+  43da24:	240b0053 	li	t3,83
+  43da28:	240c0000 	li	t4,0
+  43da2c:	01601025 	move	v0,t3
+  43da30:	01402025 	move	a0,t2
+  43da34:	00602825 	move	a1,v1
+  43da38:	01803025 	move	a2,t4
+  43da3c:	01803825 	move	a3,t4
+  43da40:	01804025 	move	t0,t4
+  43da44:	01804825 	move	t1,t4
+  43da48:	0000000c 	syscall
+  43da4c:	00401825 	move	v1,v0
+  43da50:	04610005 	bgez	v1,43da68 <mkdir+0x4c>
+  43da54:	00000000 	nop
+  43da58:	00030823 	negu	at,v1
+  43da5c:	3c02004b 	lui	v0,0x4b
+  43da60:	2403ffff 	li	v1,-1
+  43da64:	ac410a80 	sw	at,2688(v0)
+  43da68:	03e00008 	jr	ra
+  43da6c:	000317c3 	sra	v0,v1,0x1f
+
+0043da70 <exit>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043dc3c <lstat>:
+  43dc3c:	10a00007 	beqz	a1,43dc5c <lstat+0x20>
+  43dc40:	00000000 	nop
+  43dc44:	24020000 	li	v0,0
+  43dc48:	24030034 	li	v1,52
+  43dc4c:	00a20821 	addu	at,a1,v0
+  43dc50:	24420001 	addiu	v0,v0,1
+  43dc54:	1443fffd 	bne	v0,v1,43dc4c <lstat+0x10>
+  43dc58:	a0200000 	sb	zero,0(at)
+  43dc5c:	03e00008 	jr	ra
+  43dc60:	2402ffff 	li	v0,-1
+
+0043dc64 <gettimeofday>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043dc64 <gettimeofday>:
+  43dc64:	03e00008 	jr	ra
+  43dc68:	24020000 	li	v0,0
+
+0043dc6c <time>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 0043dc6c <time>:
+  43dc6c:	00801825 	move	v1,a0
+  43dc70:	240a00c9 	li	t2,201
+  43dc74:	240b0000 	li	t3,0
+  43dc78:	01401025 	move	v0,t2
+  43dc7c:	00602025 	move	a0,v1
+  43dc80:	01602825 	move	a1,t3
+  43dc84:	01603025 	move	a2,t3
+  43dc88:	01603825 	move	a3,t3
+  43dc8c:	01604025 	move	t0,t3
+  43dc90:	01604825 	move	t1,t3
+  43dc94:	0000000c 	syscall
+  43dc98:	00401825 	move	v1,v0
+  43dc9c:	04610005 	bgez	v1,43dcb4 <time+0x48>
+  43dca0:	00000000 	nop
+  43dca4:	00030823 	negu	at,v1
+  43dca8:	3c02004b 	lui	v0,0x4b
+  43dcac:	2403ffff 	li	v1,-1
+  43dcb0:	ac410a80 	sw	at,2688(v0)
+  43dcb4:	03e00008 	jr	ra
+
+[Thinking]
+Now I have a clear picture. The MIPS binary uses x86_64 Linux syscall numbers. Let me also check the `vprintf_internal` function to understand how printf works, and also look at the `syscall6` function more carefully.
+
+Let me also check what other syscalls might be needed. Let me look at the `brk` syscall which is commonly used for memory allocation.
+[Preparing bash]
+[done] Now I have a clear picture. The MIPS binary uses x86_64 Linux syscall numbers. Let me also check the `vprintf_internal` function to understand how printf works, and also look at the `syscall6` function more carefully.
+
+Let me also check what other syscalls might be needed. Let me look at the `brk` syscall which is commonly used for memory allocation.
+
+[Running bash]
+[done] 0043acdc <vprintf_internal>:
+  43acdc:	27bdff78 	addiu	sp,sp,-136
+  43ace0:	afbf0084 	sw	ra,132(sp)
+  43ace4:	afbe0080 	sw	s8,128(sp)
+  43ace8:	afb7007c 	sw	s7,124(sp)
+  43acec:	afb60078 	sw	s6,120(sp)
+  43acf0:	afb50074 	sw	s5,116(sp)
+  43acf4:	afb40070 	sw	s4,112(sp)
+  43acf8:	afb3006c 	sw	s3,108(sp)
+  43acfc:	afb20068 	sw	s2,104(sp)
+  43ad00:	afb10064 	sw	s1,100(sp)
+  43ad04:	afb00060 	sw	s0,96(sp)
+  43ad08:	3c016666 	lui	at,0x6666
+  43ad0c:	01008825 	move	s1,t0
+  43ad10:	00e0a825 	move	s5,a3
+  43ad14:	00c09025 	move	s2,a2
+  43ad18:	0080a025 	move	s4,a0
+  43ad1c:	24f0ffff 	addiu	s0,a3,-1
+  43ad20:	24130000 	li	s3,0
+  43ad24:	24170025 	li	s7,37
+  43ad28:	24160000 	li	s6,0
+  43ad2c:	afa50038 	sw	a1,56(sp)
+  43ad30:	34216667 	ori	at,at,0x6667
+  43ad34:	afa10028 	sw	at,40(sp)
+  43ad38:	3c010045 	lui	at,0x45
+  43ad3c:	242164d2 	addiu	at,at,25810
+  43ad40:	afa10024 	sw	at,36(sp)
+  43ad44:	3c01cccc 	lui	at,0xcccc
+  43ad48:	3421cccd 	ori	at,at,0xcccd
+  43ad4c:	afa10020 	sw	at,32(sp)
+  43ad50:	24010000 	li	at,0
+  43ad54:	afa10040 	sw	at,64(sp)
+  43ad58:	241e0000 	li	s8,0
+  43ad5c:	029e1821 	addu	v1,s4,s8
+  43ad60:	90620000 	lbu	v0,0(v1)
+  43ad64:	104008d2 	beqz	v0,43d0b0 <vprintf_internal+0x23d4>
+  43ad68:	00000000 	nop
+  43ad6c:	10570029 	beq	v0,s7,43ae14 <vprintf_internal+0x138>
+  43ad70:	00000000 	nop
+  43ad74:	12400008 	beqz	s2,43ad98 <vprintf_internal+0xbc>
+  43ad78:	00000000 	nop
+  43ad7c:	02d0082b 	sltu	at,s6,s0
+  43ad80:	10200022 	beqz	at,43ae0c <vprintf_internal+0x130>
+  43ad84:	00000000 	nop
+  43ad88:	02560821 	addu	at,s2,s6
+  43ad8c:	26d60001 	addiu	s6,s6,1
+  43ad90:	0810eb83 	j	43ae0c <vprintf_internal+0x130>
+  43ad94:	a0220000 	sb	v0,0(at)
+  43ad98:	1220000b 	beqz	s1,43adc8 <vprintf_internal+0xec>
+  43ad9c:	00000000 	nop
+  43ada0:	a3a20044 	sb	v0,68(sp)
+  43ada4:	27a60044 	addiu	a2,sp,68
+  43ada8:	24040001 	li	a0,1
+  43adac:	8e250000 	lw	a1,0(s1)
+  43adb0:	0c10f65d 	jal	43d974 <syscall6>
+  43adb4:	24070001 	li	a3,1
+  43adb8:	8e21000c 	lw	at,12(s1)
+  43adbc:	00220821 	addu	at,at,v0
+  43adc0:	0810eb83 	j	43ae0c <vprintf_internal+0x130>
+  43adc4:	ae21000c 	sw	at,12(s1)
+  43adc8:	27a30044 	addiu	v1,sp,68
+  43adcc:	a3a20044 	sb	v0,68(sp)
+  43add0:	240a0001 	li	t2,1
+  43add4:	01401025 	move	v0,t2
+  43add8:	01402025 	move	a0,t2
+  43addc:	00602825 	move	a1,v1
+  43ade0:	01403025 	move	a2,t2
+  43ade4:	02603825 	move	a3,s3
+  43ade8:	02604025 	move	t0,s3
+  43adec:	02604825 	move	t1,s3
+  43adf0:	0000000c 	syscall
+  43adf4:	00401825 	move	v1,v0
+  43adf8:	04610004 	bgez	v1,43ae0c <vprintf_internal+0x130>
+  43adfc:	00000000 	nop
+  43ae00:	00030823 	negu	at,v1
+  43ae04:	3c02004b 	lui	v0,0x4b
+  43ae08:	ac410a80 	sw	at,2688(v0)
+  43ae0c:	0810eb57 	j	43ad5c <vprintf_internal+0x80>
+  43ae10:	27de0001 	addiu	s8,s8,1
+  43ae14:	90620001 	lbu	v0,1(v1)
+  43ae18:	24640001 	addiu	a0,v1,1
+  43ae1c:	24610002 	addiu	at,v1,2
+  43ae20:	24070025 	li	a3,37
+  43ae24:	38430030 	xori	v1,v0,0x30
+  43ae28:	0023200a 	movz	a0,at,v1
+  43ae2c:	90830000 	lbu	v1,0(a0)
+  43ae30:	2461ffd0 	addiu	at,v1,-48
+  43ae34:	302100ff 	andi	at,at,0xff
+  43ae38:	2c21000a 	sltiu	at,at,10
+  43ae3c:	10200011 	beqz	at,43ae84 <vprintf_internal+0x1a8>
+  43ae40:	24170000 	li	s7,0
+  43ae44:	24170000 	li	s7,0
+  43ae48:	00170840 	sll	at,s7,0x1
+  43ae4c:	001728c0 	sll	a1,s7,0x3
+  43ae50:	306300ff 	andi	v1,v1,0xff
+  43ae54:	24940001 	addiu	s4,a0,1
+  43ae58:	00a10821 	addu	at,a1,at
+  43ae5c:	00230821 	addu	at,at,v1
+  43ae60:	90830001 	lbu	v1,1(a0)
+  43ae64:	2437ffd0 	addiu	s7,at,-48
+  43ae68:	2461ffd0 	addiu	at,v1,-48
+  43ae6c:	302100ff 	andi	at,at,0xff
+  43ae70:	2c21000a 	sltiu	at,at,10
+  43ae74:	1420fff4 	bnez	at,43ae48 <vprintf_internal+0x16c>
+  43ae78:	02802025 	move	a0,s4
+  43ae7c:	0810eba2 	j	43ae88 <vprintf_internal+0x1ac>
+  43ae80:	00000000 	nop
+  43ae84:	0080a025 	move	s4,a0
+  43ae88:	306100ff 	andi	at,v1,0xff
+  43ae8c:	2404002e 	li	a0,46
+  43ae90:	14240019 	bne	at,a0,43aef8 <vprintf_internal+0x21c>
+  43ae94:	2413ffff 	li	s3,-1
+  43ae98:	92830001 	lbu	v1,1(s4)
+  43ae9c:	26840001 	addiu	a0,s4,1
+  43aea0:	2461ffd0 	addiu	at,v1,-48
+  43aea4:	302100ff 	andi	at,at,0xff
+  43aea8:	2c21000a 	sltiu	at,at,10
+  43aeac:	10200011 	beqz	at,43aef4 <vprintf_internal+0x218>
+  43aeb0:	24130000 	li	s3,0
+  43aeb4:	24130000 	li	s3,0
+  43aeb8:	00130840 	sll	at,s3,0x1
+  43aebc:	001328c0 	sll	a1,s3,0x3
+  43aec0:	306300ff 	andi	v1,v1,0xff
+  43aec4:	24940001 	addiu	s4,a0,1
+  43aec8:	00a10821 	addu	at,a1,at
+  43aecc:	00230821 	addu	at,at,v1
+  43aed0:	90830001 	lbu	v1,1(a0)
+  43aed4:	2433ffd0 	addiu	s3,at,-48
+  43aed8:	2461ffd0 	addiu	at,v1,-48
+  43aedc:	302100ff 	andi	at,at,0xff
+  43aee0:	2c21000a 	sltiu	at,at,10
+  43aee4:	1420fff4 	bnez	at,43aeb8 <vprintf_internal+0x1dc>
+  43aee8:	02802025 	move	a0,s4
+  43aeec:	0810ebbe 	j	43aef8 <vprintf_internal+0x21c>
+  43aef0:	00000000 	nop
+  43aef4:	0080a025 	move	s4,a0
+  43aef8:	8fa10040 	lw	at,64(sp)
+  43aefc:	7c033420 	seb	a2,v1
+  43af00:	003e0821 	addu	at,at,s8
+  43af04:	afa1002c 	sw	at,44(sp)
+  43af08:	28c10069 	slti	at,a2,105
+  43af0c:	14200064 	bnez	at,43b0a0 <vprintf_internal+0x3c4>
+  43af10:	00000000 	nop
+  43af14:	24c3ff90 	addiu	v1,a2,-112
+  43af18:	2c61000b 	sltiu	at,v1,11
+  43af1c:	10200080 	beqz	at,43b120 <vprintf_internal+0x444>
+  43af20:	00000000 	nop
+  43af24:	00030880 	sll	at,v1,0x2
+  43af28:	3c030045 	lui	v1,0x45
+  43af2c:	00230821 	addu	at,at,v1
+  43af30:	8c2164a0 	lw	at,25760(at)
+  43af34:	00200008 	jr	at
+  43af38:	00000000 	nop
+  43af3c:	8fa10038 	lw	at,56(sp)
+  43af40:	afb5001c 	sw	s5,28(sp)
+  43af44:	8c350000 	lw	s5,0(at)
+  43af48:	24210004 	addiu	at,at,4
+  43af4c:	12400235 	beqz	s2,43b824 <vprintf_internal+0xb48>
+  43af50:	afa10038 	sw	at,56(sp)
+  43af54:	02d0082b 	sltu	at,s6,s0
+  43af58:	10200005 	beqz	at,43af70 <vprintf_internal+0x294>
+  43af5c:	00000000 	nop
+  43af60:	02560821 	addu	at,s2,s6
+  43af64:	24020030 	li	v0,48
+  43af68:	26d60001 	addiu	s6,s6,1
+  43af6c:	a0220000 	sb	v0,0(at)
+  43af70:	02d0082b 	sltu	at,s6,s0
+  43af74:	10200005 	beqz	at,43af8c <vprintf_internal+0x2b0>
+  43af78:	00000000 	nop
+  43af7c:	02560821 	addu	at,s2,s6
+  43af80:	24020078 	li	v0,120
+  43af84:	26d60001 	addiu	s6,s6,1
+  43af88:	a0220000 	sb	v0,0(at)
+  43af8c:	24020000 	li	v0,0
+  43af90:	24040000 	li	a0,0
+  43af94:	02a03025 	move	a2,s5
+  43af98:	00060902 	srl	at,a2,0x4
+  43af9c:	00802825 	move	a1,a0
+  43afa0:	00401825 	move	v1,v0
+  43afa4:	2cc70010 	sltiu	a3,a2,16
+  43afa8:	2442ffff 	addiu	v0,v0,-1
+  43afac:	24840001 	addiu	a0,a0,1
+  43afb0:	10e0fff9 	beqz	a3,43af98 <vprintf_internal+0x2bc>
+  43afb4:	00203025 	move	a2,at
+  43afb8:	0093082a 	slt	at,a0,s3
+  43afbc:	8fa60040 	lw	a2,64(sp)
+  43afc0:	0261200b 	movn	a0,s3,at
+  43afc4:	24810002 	addiu	at,a0,2
+  43afc8:	00de3021 	addu	a2,a2,s8
+  43afcc:	0037082a 	slt	at,at,s7
+  43afd0:	1020001c 	beqz	at,43b044 <vprintf_internal+0x368>
+  43afd4:	24c60002 	addiu	a2,a2,2
+  43afd8:	02e40823 	subu	at,s7,a0
+  43afdc:	2421fffe 	addiu	at,at,-2
+  43afe0:	18200018 	blez	at,43b044 <vprintf_internal+0x368>
+  43afe4:	00000000 	nop
+  43afe8:	24010001 	li	at,1
+  43afec:	00023023 	negu	a2,v0
+  43aff0:	00230823 	subu	at,at,v1
+  43aff4:	0033382a 	slt	a3,at,s3
+
+[Thinking]
+OK, this is getting complex. Let me now understand the full picture and start building the MIPS interpreter. I need to:
+
+1. Parse the ELF binary
+2. Load the segments into memory
+3. Implement MIPS instruction decoding and execution
+4. Handle syscalls (using x86_64 Linux syscall numbers)
+5. Handle file I/O for doom.wad and output BMP files
+
+Let me also check the memory layout and the brk syscall.
+[Preparing bash]
+[done] OK, this is getting complex. Let me now understand the full picture and start building the MIPS interpreter. I need to:
+
+1. Parse the ELF binary
+2. Load the segments into memory
+3. Implement MIPS instruction decoding and execution
+4. Handle syscalls (using x86_64 Linux syscall numbers)
+5. Handle file I/O for doom.wad and output BMP files
+
+Let me also check the memory layout and the brk syscall.
+
+[Running bash]
+[done] 00439970 <malloc>:
+  439970:	27bdffe8 	addiu	sp,sp,-24
+  439974:	afbf0014 	sw	ra,20(sp)
+  439978:	10800048 	beqz	a0,439a9c <malloc+0x12c>
+  43997c:	00000000 	nop
+  439980:	2c810081 	sltiu	at,a0,129
+  439984:	10200041 	beqz	at,439a8c <malloc+0x11c>
+  439988:	00000000 	nop
+  43998c:	3c01404b 	lui	at,0x404b
+  439990:	9021178c 	lbu	at,6028(at)
+  439994:	1420002c 	bnez	at,439a48 <malloc+0xd8>
+  439998:	00000000 	nop
+  43999c:	3c01004b 	lui	at,0x4b
+  4399a0:	3c07404b 	lui	a3,0x404b
+  4399a4:	24030000 	li	v1,0
+  4399a8:	2406fff8 	li	a2,-8
+  4399ac:	240a0004 	li	t2,4
+  4399b0:	8c220b14 	lw	v0,2836(at)
+  4399b4:	3c010045 	lui	at,0x45
+  4399b8:	24e8174c 	addiu	t0,a3,5964
+  4399bc:	24256504 	addiu	a1,at,25860
+  4399c0:	3c01004b 	lui	at,0x4b
+  4399c4:	24290b40 	addiu	t1,at,2880
+  4399c8:	00030880 	sll	at,v1,0x2
+  4399cc:	00036100 	sll	t4,v1,0x4
+  4399d0:	01226821 	addu	t5,t1,v0
+  4399d4:	240e0400 	li	t6,1024
+  4399d8:	240f0000 	li	t7,0
+  4399dc:	00a10821 	addu	at,a1,at
+  4399e0:	8c210000 	lw	at,0(at)
+  4399e4:	24210007 	addiu	at,at,7
+  4399e8:	00265824 	and	t3,at,a2
+  4399ec:	010c0821 	addu	at,t0,t4
+  4399f0:	ac2d0004 	sw	t5,4(at)
+  4399f4:	ac2b0008 	sw	t3,8(at)
+  4399f8:	ac20000c 	sw	zero,12(at)
+  4399fc:	01abc021 	addu	t8,t5,t3
+  439a00:	adaf0000 	sw	t7,0(t5)
+  439a04:	01a07825 	move	t7,t5
+  439a08:	25ceffff 	addiu	t6,t6,-1
+  439a0c:	15c0fffb 	bnez	t6,4399fc <malloc+0x8c>
+  439a10:	03006825 	move	t5,t8
+  439a14:	24e1174c 	addiu	at,a3,5964
+  439a18:	24630001 	addiu	v1,v1,1
+  439a1c:	002c0821 	addu	at,at,t4
+  439a20:	030b6023 	subu	t4,t8,t3
+  439a24:	ac2c0000 	sw	t4,0(at)
+  439a28:	000b0a80 	sll	at,t3,0xa
+  439a2c:	146affe6 	bne	v1,t2,4399c8 <malloc+0x58>
+  439a30:	00221021 	addu	v0,at,v0
+  439a34:	3c01404b 	lui	at,0x404b
+  439a38:	24030001 	li	v1,1
+  439a3c:	a023178c 	sb	v1,6028(at)
+  439a40:	3c01004b 	lui	at,0x4b
+  439a44:	ac220b14 	sw	v0,2836(at)
+  439a48:	3c01404b 	lui	at,0x404b
+  439a4c:	24050000 	li	a1,0
+  439a50:	24070010 	li	a3,16
+  439a54:	2423174c 	addiu	v1,at,5964
+  439a58:	3c010045 	lui	at,0x45
+
+[Preparing bash]
+
+[Running bash]
+[done] (no output)
+
+[Preparing bash]
+
+[Running bash]
+[done] (no output)
+
+[Preparing bash]
+
+[Running bash]
+[done]    497: 00439c70   156 FUNC    GLOBAL DEFAULT    3 basic_free
+   820: 00439970   340 FUNC    GLOBAL DEFAULT    3 malloc
+  1080: 004398b0   136 FUNC    GLOBAL DEFAULT    3 calloc
+  1336: 00439d0c   200 FUNC    GLOBAL DEFAULT    3 realloc
+  1883: 00439ae8   392 FUNC    GLOBAL DEFAULT    3 basic_malloc
+  2018: 00439dd4   180 FUNC    GLOBAL DEFAULT    3 free
+
+[Preparing bash]
+
+[Running bash]
+[done] 00439ae8 <basic_malloc>:
+  439ae8:	1080005f 	beqz	a0,439c68 <basic_malloc+0x180>
+  439aec:	24020000 	li	v0,0
+  439af0:	2481000f 	addiu	at,a0,15
+  439af4:	2402fff8 	li	v0,-8
+  439af8:	24030010 	li	v1,16
+  439afc:	2408ffff 	li	t0,-1
+  439b00:	00220824 	and	at,at,v0
+  439b04:	2c220011 	sltiu	v0,at,17
+  439b08:	0022180a 	movz	v1,at,v0
+  439b0c:	00031102 	srl	v0,v1,0x4
+  439b10:	00020842 	srl	at,v0,0x1
+  439b14:	2c440002 	sltiu	a0,v0,2
+  439b18:	25080001 	addiu	t0,t0,1
+  439b1c:	1080fffc 	beqz	a0,439b10 <basic_malloc+0x28>
+  439b20:	00201025 	move	v0,at
+  439b24:	2d0a001e 	sltiu	t2,t0,30
+  439b28:	25010001 	addiu	at,t0,1
+  439b2c:	2405001f 	li	a1,31
+  439b30:	3c02004b 	lui	v0,0x4b
+  439b34:	2406001f 	li	a2,31
+  439b38:	24040001 	li	a0,1
+  439b3c:	002a280b 	movn	a1,at,t2
+  439b40:	244b0a94 	addiu	t3,v0,2708
+  439b44:	00050880 	sll	at,a1,0x2
+  439b48:	01614821 	addu	t1,t3,at
+  439b4c:	8d220000 	lw	v0,0(t1)
+  439b50:	14400010 	bnez	v0,439b94 <basic_malloc+0xac>
+  439b54:	00a03825 	move	a3,a1
+  439b58:	2401001e 	li	at,30
+  439b5c:	00a03825 	move	a3,a1
+  439b60:	010a080b 	movn	at,t0,t2
+  439b64:	00010880 	sll	at,at,0x2
+  439b68:	01610821 	addu	at,t3,at
+  439b6c:	24240004 	addiu	a0,at,4
+  439b70:	10e60030 	beq	a3,a2,439c34 <basic_malloc+0x14c>
+  439b74:	00000000 	nop
+  439b78:	24890004 	addiu	t1,a0,4
+  439b7c:	8c820004 	lw	v0,4(a0)
+  439b80:	24e70001 	addiu	a3,a3,1
+  439b84:	1040fffa 	beqz	v0,439b70 <basic_malloc+0x88>
+  439b88:	01202025 	move	a0,t1
+  439b8c:	24e1ffff 	addiu	at,a3,-1
+  439b90:	2c24001f 	sltiu	a0,at,31
+  439b94:	8c410000 	lw	at,0(v0)
+  439b98:	ad210000 	sw	at,0(t1)
+  439b9c:	24a10001 	addiu	at,a1,1
+  439ba0:	0027082b 	sltu	at,at,a3
+  439ba4:	10200030 	beqz	at,439c68 <basic_malloc+0x180>
+  439ba8:	00000000 	nop
+  439bac:	2445fff8 	addiu	a1,v0,-8
+  439bb0:	24610018 	addiu	at,v1,24
+  439bb4:	8ca60000 	lw	a2,0(a1)
+  439bb8:	00c1082b 	sltu	at,a2,at
+  439bbc:	1420002a 	bnez	at,439c68 <basic_malloc+0x180>
+  439bc0:	00000000 	nop
+  439bc4:	00c33023 	subu	a2,a2,v1
+  439bc8:	aca30000 	sw	v1,0(a1)
+  439bcc:	00a32821 	addu	a1,a1,v1
+  439bd0:	24070000 	li	a3,0
+  439bd4:	2cc10010 	sltiu	at,a2,16
+  439bd8:	1420000c 	bnez	at,439c0c <basic_malloc+0x124>
+  439bdc:	aca60000 	sw	a2,0(a1)
+  439be0:	00063902 	srl	a3,a2,0x4
+  439be4:	2406ffff 	li	a2,-1
+  439be8:	00070842 	srl	at,a3,0x1
+  439bec:	2ce80002 	sltiu	t0,a3,2
+  439bf0:	24c60001 	addiu	a2,a2,1
+  439bf4:	1100fffc 	beqz	t0,439be8 <basic_malloc+0x100>
+  439bf8:	00203825 	move	a3,at
+  439bfc:	24c70001 	addiu	a3,a2,1
+  439c00:	2cc1001e 	sltiu	at,a2,30
+  439c04:	10200002 	beqz	at,439c10 <basic_malloc+0x128>
+  439c08:	2406001f 	li	a2,31
+  439c0c:	00e03025 	move	a2,a3
+  439c10:	00060880 	sll	at,a2,0x2
+  439c14:	3c06004b 	lui	a2,0x4b
+  439c18:	24c60a94 	addiu	a2,a2,2708
+  439c1c:	00c10821 	addu	at,a2,at
+  439c20:	8c260000 	lw	a2,0(at)
+
+[Thinking]
+The malloc implementation doesn't seem to use brk/mmap syscalls directly - it appears to use a pre-allocated heap area. Let me check the data segment to understand the memory layout better.
+
+Let me now look at the memory layout and understand what addresses are used.
+[Preparing bash]
+[done] The malloc implementation doesn't seem to use brk/mmap syscalls directly - it appears to use a pre-allocated heap area. Let me check the data segment to understand the memory layout better.
+
+Let me now look at the memory layout and understand what addresses are used.
+
+[Running bash]
+[done] There are 24 section headers, starting at offset 0x1789f8:
+
+Section Headers:
+  [Nr] Name              Type            Addr     Off    Size   ES Flg Lk Inf Al
+  [ 0]                   NULL            00000000 000000 000000 00      0   0  0
+  [ 1] .MIPS.abiflags    MIPS_ABIFLAGS   004000d8 0000d8 000018 18   A  0   0  8
+  [ 2] .reginfo          MIPS_REGINFO    004000f0 0000f0 000018 18   A  0   0  4
+  [ 3] .text             PROGBITS        00400110 000110 03dbd0 00  AX  0   0 16
+  [ 4] .rodata           PROGBITS        0043dce0 03dce0 018834 00   A  0   0  8
+  [ 5] .data             PROGBITS        00466520 056520 00eb80 00  WA  0   0 16
+  [ 6] .bss              NOBITS          004750c0 0650a0 4003c6d0 00  WA  0   0 64
+  [ 7] .comment          PROGBITS        00000000 0650a0 00001c 01  MS  0   0  1
+  [ 8] .pdr              PROGBITS        00000000 0650bc 007580 00      0   0  4
+  [ 9] .debug_info       MIPS_DWARF      00000000 06c63c 06a9ff 00      0   0  1
+  [10] .debug_abbrev     MIPS_DWARF      00000000 0d703b 00a19b 00      0   0  1
+  [11] .debug_line       MIPS_DWARF      00000000 0e11d6 01f3b3 00      0   0  1
+  [12] .debug_frame      MIPS_DWARF      00000000 10058c 006304 00      0   0  4
+  [13] .debug_str        MIPS_DWARF      00000000 106890 00d393 01  MS  0   0  1
+  [14] .debug_addr       MIPS_DWARF      00000000 113c23 006068 00      0   0  1
+  [15] .debug_line_str   MIPS_DWARF      00000000 119c8b 0005f7 01  MS  0   0  1
+  [16] .debug_loclists   MIPS_DWARF      00000000 11a282 01574b 00      0   0  1
+  [17] .debug_rnglists   MIPS_DWARF      00000000 12f9cd 00141c 00      0   0  1
+  [18] .debug_str_o[...] MIPS_DWARF      00000000 130de9 039884 00      0   0  1
+  [19] .gnu.attributes   GNU_ATTRIBUTES  00000000 16a66d 000010 00      0   0  1
+  [20] .mdebug.abi32     PROGBITS        00000000 16a67d 000000 00      0   0  1
+  [21] .symtab           SYMTAB          00000000 16a680 007ed0 10     22 466  4
+  [22] .strtab           STRTAB          00000000 172550 0063a1 00      0   0  1
+  [23] .shstrtab         STRTAB          00000000 1788f1 000105 00      0   0  1
+Key to Flags:
+  W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
+  L (link order), O (extra OS processing required), G (group), T (TLS),
+  C (compressed), x (unknown), o (OS specific), E (exclude),
+  D (mbind), p (processor specific)
+
+[Thinking]
+The BSS section is huge: 0x4003c6d0 bytes starting at 0x4750c0. That's about 1GB! The BSS extends from 0x4750c0 to 0x4750c0 + 0x4003c6d0 = 0x44791790. That's a lot of memory.
+
+But wait, the program header says:
+LOAD           0x056520 0x00466520 0x00466520 0x0eb80 0x4004b270 RW  0x10000
+
+So the second LOAD segment has:
+- File offset: 0x056520
+- VirtAddr: 0x00466520
+- FileSiz: 0x0eb80
+- MemSiz: 0x4004b270
+
+So the memory size is 0x4004b270 bytes, which is about 1GB. The file size is only 0x0eb80 bytes. The difference (0x4004b270 - 0x0eb80 = 0x4003c4f0) is the BSS section that needs to be zero-initialized.
+
+This is a lot of memory. I'll need to use a sparse memory model or something similar.
+
+Let me now start building the MIPS interpreter. I'll need to:
+
+1. Parse the ELF header and program headers
+2. Load the LOAD segments into memory
+3. Set up the stack
+4. Implement MIPS instruction decoding
+5. Handle syscalls
+6. Run the program
+
+For the memory model, I'll use a sparse approach with pages or just a big Buffer. Since the BSS is 1GB, I can't allocate that all upfront in Node.js easily. Let me use a Map-based sparse memory model.
+
+Actually, Node.js can handle 1GB buffers. Let me think about this...
+
+Actually, the BSS is 0x4003c6d0 = about 1GB. Node.js Buffer can handle this, but it would use a lot of memory. Let me use a sparse approach instead.
+
+Let me think about the architecture more carefully:
+
+Memory layout:
+- 0x00400000 - 0x00456514: Text + rodata (read-execute)
+- 0x00466520 - 0x44791790: Data + BSS (read-write)
+
+Actually, the second segment starts at 0x466520 and has memsz 0x4004b270, so it goes to 0x466520 + 0x4004b270 = 0x44B1790. Wait, that doesn't seem right. Let me recalculate.
+
+0x00466520 + 0x4004b270 = 0x44B1790
+
+Hmm, that's about 68MB. Wait, 0x4004b270 in decimal is 1073850992, which is about 1GB. And 0x466520 + 0x4004b270 = 0x404B1790. Wait, I need to be more careful with the addition.
+
+0x00466520 + 0x4004B270 = ?
+
+0x00466520
++ 0x4004B270
+-----------
+
+Let me add:
+0x00466520 + 0x4004B270 = 0x404B1790
+
+Wait, that's still about 1GB. Let me verify:
+0x404B1790 = 1077940368 in decimal, which is about 1GB.
+
+So the total memory range is from 0x400000 to 0x404B1790, which is about 1GB.
+
+I think I should use a sparse memory model. Let me use a Map of pages (4KB each).
+
+Actually, let me think about this differently. The BSS section is 0x4003c6d0 bytes, but most of it is probably unused. Doom typically uses maybe 16-32MB of memory. The BSS is so large probably because of some large static arrays.
+
+Let me use a page-based sparse memory model where each page is 4KB. I'll only allocate pages that are actually accessed.
+
+Now let me start coding the interpreter. This is going to be a significant piece of code.
+
+Key MIPS instructions I need to implement:
+- Arithmetic: ADD, ADDU, SUB, SUBU, AND, OR, XOR, NOR, SLT, SLTU
+- Shift: SLL, SRL, SRA, SLLV, SRLV, SRAV
+- Multiply/Divide: MULT, MULTU, DIV, DIVU, MFHI, MFLO, MTHI, MTLO
+- Memory: LW, LH, LHU, LB, LBU, SW, SH, SB
+- Branch: BEQ, BNE, BGTZ, BLEZ, BGEZ, BLTZ, BGEZAL, BLTZAL
+- Jump: J, JAL, JR, JALR
+- Immediate: ADDI, ADDIU, ANDI, ORI, XORI, SLTI, SLTIU, LUI
+- Special: SYSCALL, BREAK, NOP
+- MIPS32r2: SEB, SEH, WSBH, RDHWR, etc.
+
+Let me also check what MIPS32r2 instructions are used.
+[Preparing bash]
+[done] The BSS section is huge: 0x4003c6d0 bytes starting at 0x4750c0. That's about 1GB! The BSS extends from 0x4750c0 to 0x4750c0 + 0x4003c6d0 = 0x44791790. That's a lot of memory.
+
+But wait, the program header says:
+LOAD           0x056520 0x00466520 0x00466520 0x0eb80 0x4004b270 RW  0x10000
+
+So the second LOAD segment has:
+- File offset: 0x056520
+- VirtAddr: 0x00466520
+- FileSiz: 0x0eb80
+- MemSiz: 0x4004b270
+
+So the memory size is 0x4004b270 bytes, which is about 1GB. The file size is only 0x0eb80 bytes. The difference (0x4004b270 - 0x0eb80 = 0x4003c4f0) is the BSS section that needs to be zero-initialized.
+
+This is a lot of memory. I'll need to use a sparse memory model or something similar.
+
+Let me now start building the MIPS interpreter. I'll need to:
+
+1. Parse the ELF header and program headers
+2. Load the LOAD segments into memory
+3. Set up the stack
+4. Implement MIPS instruction decoding
+5. Handle syscalls
+6. Run the program
+
+For the memory model, I'll use a sparse approach with pages or just a big Buffer. Since the BSS is 1GB, I can't allocate that all upfront in Node.js easily. Let me use a Map-based sparse memory model.
+
+Actually, Node.js can handle 1GB buffers. Let me think about this...
+
+Actually, the BSS is 0x4003c6d0 = about 1GB. Node.js Buffer can handle this, but it would use a lot of memory. Let me use a sparse approach instead.
+
+Let me think about the architecture more carefully:
+
+Memory layout:
+- 0x00400000 - 0x00456514: Text + rodata (read-execute)
+- 0x00466520 - 0x44791790: Data + BSS (read-write)
+
+Actually, the second segment starts at 0x466520 and has memsz 0x4004b270, so it goes to 0x466520 + 0x4004b270 = 0x44B1790. Wait, that doesn't seem right. Let me recalculate.
+
+0x00466520 + 0x4004b270 = 0x44B1790
+
+Hmm, that's about 68MB. Wait, 0x4004b270 in decimal is 1073850992, which is about 1GB. And 0x466520 + 0x4004b270 = 0x404B1790. Wait, I need to be more careful with the addition.
+
+0x00466520 + 0x4004B270 = ?
+
+0x00466520
++ 0x4004B270
+-----------
+
+Let me add:
+0x00466520 + 0x4004B270 = 0x404B1790
+
+Wait, that's still about 1GB. Let me verify:
+0x404B1790 = 1077940368 in decimal, which is about 1GB.
+
+So the total memory range is from 0x400000 to 0x404B1790, which is about 1GB.
+
+I think I should use a sparse memory model. Let me use a Map of pages (4KB each).
+
+Actually, let me think about this differently. The BSS section is 0x4003c6d0 bytes, but most of it is probably unused. Doom typically uses maybe 16-32MB of memory. The BSS is so large probably because of some large static arrays.
+
+Let me use a page-based sparse memory model where each page is 4KB. I'll only allocate pages that are actually accessed.
+
+Now let me start coding the interpreter. This is going to be a significant piece of code.
+
+Key MIPS instructions I need to implement:
+- Arithmetic: ADD, ADDU, SUB, SUBU, AND, OR, XOR, NOR, SLT, SLTU
+- Shift: SLL, SRL, SRA, SLLV, SRLV, SRAV
+- Multiply/Divide: MULT, MULTU, DIV, DIVU, MFHI, MFLO, MTHI, MTLO
+- Memory: LW, LH, LHU, LB, LBU, SW, SH, SB
+- Branch: BEQ, BNE, BGTZ, BLEZ, BGEZ, BLTZ, BGEZAL, BLTZAL
+- Jump: J, JAL, JR, JALR
+- Immediate: ADDI, ADDIU, ANDI, ORI, XORI, SLTI, SLTIU, LUI
+- Special: SYSCALL, BREAK, NOP
+- MIPS32r2: SEB, SEH, WSBH, RDHWR, etc.
+
+Let me also check what MIPS32r2 instructions are used.
+
+[Running bash]
+[done] tart
+tat
+tdout
+terat
+tercept
+ternat
+text
+thmat
+tivat
+tivit
+tract
+tradlitt
+tret
+trncat
+trst
+trt
+
+[Preparing bash]
+
+[Running bash]
+[done] add
+addiu
+addu
+and
+andi
+bc1t
+beq
+beqz
+bgez
+bgtz
+blez
+bltz
+bne
+bnez
+c
+cvt
+div
+divu
+ext
+ins
+j
+jal
+jalr
+jr
+lb
+lbu
+ldc1
+lh
+lhu
+li
+lui
+lw
+lwc1
+lwl
+lwr
+mfc1
+mfhi
+mflo
+mov
+move
+movn
+movt
+movz
+mtc1
+mthc1
+mul
+mult
+multu
+neg
+negu
+nop
+nor
+or
+ori
+ror
+sb
+sdc1
+seb
+seh
+sh
+sll
+sllv
+slt
+slti
+sltiu
+sltu
+sra
+srav
+srl
+srlv
+subu
+sw
+swl
+swr
+syscall
+teq
+trunc
+wsbh
+xor
+xori
+
+[Thinking]
+OK, so I need to implement quite a few MIPS instructions. Let me categorize them:
+
+**R-type (opcode 0x00):**
+- ADD, ADDU, SUB, SUBU, AND, OR, XOR, NOR
+- SLT, SLTU
+- SLL, SRL, SRA, SLLV, SRLV, SRAV
+- MULT, MULTU, DIV, DIVU
+- MFHI, MFLO, MTHI, MTLO
+- JR, JALR
+- SYSCALL, BREAK
+- MOVN, MOVZ
+- SEB, SEH (MIPS32r2, function field 0x20, 0x28 with bit 6 set)
+- WSBH (MIPS32r2)
+- TEQ
+- INS, EXT (MIPS32r2)
+
+**I-type:**
+- ADDI, ADDIU
+- ANDI, ORI, XORI
+- SLTI, SLTIU
+- LUI
+- BEQ, BNE, BGTZ, BLEZ
+- BGEZ, BLTZ (REGIMM, opcode 0x01)
+- LB, LBU, LH, LHU, LW
+- SB, SH, SW
+- LWL, LWR, SWL, SWR (unaligned access)
+
+**J-type:**
+- J, JAL
+
+**Coprocessor 1 (floating point):**
+- LWC1, SWC1, LDC1, SDC1
+- MTC1, MFC1, MTHC1
+- CVT (conversions)
+- BC1T
+- MOVT
+- TRUNC
+- MUL (floating point multiply)
+
+I also see ROR (rotate right) which is a MIPS32r2 instruction.
+
+Let me also check if there are floating point operations used. Doom might use some floating point for trigonometric calculations.
+
+Actually, looking at the source code, doom uses fixed-point arithmetic mostly. But there might be some floating point for things like R_PointToAngle.
+
+Let me now start building the interpreter. I'll write it in JavaScript (Node.js).
+
+The key design decisions:
+1. Sparse memory model using Map of 4KB pages
+2. Full MIPS instruction set implementation
+3. Syscall handling using x86_64 Linux syscall numbers
+4. File I/O for doom.wad and output BMP files
+
+Let me start coding.
+[Preparing bash]
+[done] OK, so I need to implement quite a few MIPS instructions. Let me categorize them:
+
+**R-type (opcode 0x00):**
+- ADD, ADDU, SUB, SUBU, AND, OR, XOR, NOR
+- SLT, SLTU
+- SLL, SRL, SRA, SLLV, SRLV, SRAV
+- MULT, MULTU, DIV, DIVU
+- MFHI, MFLO, MTHI, MTLO
+- JR, JALR
+- SYSCALL, BREAK
+- MOVN, MOVZ
+- SEB, SEH (MIPS32r2, function field 0x20, 0x28 with bit 6 set)
+- WSBH (MIPS32r2)
+- TEQ
+- INS, EXT (MIPS32r2)
+
+**I-type:**
+- ADDI, ADDIU
+- ANDI, ORI, XORI
+- SLTI, SLTIU
+- LUI
+- BEQ, BNE, BGTZ, BLEZ
+- BGEZ, BLTZ (REGIMM, opcode 0x01)
+- LB, LBU, LH, LHU, LW
+- SB, SH, SW
+- LWL, LWR, SWL, SWR (unaligned access)
+
+**J-type:**
+- J, JAL
+
+**Coprocessor 1 (floating point):**
+- LWC1, SWC1, LDC1, SDC1
+- MTC1, MFC1, MTHC1
+- CVT (conversions)
+- BC1T
+- MOVT
+- TRUNC
+- MUL (floating point multiply)
+
+I also see ROR (rotate right) which is a MIPS32r2 instruction.
+
+Let me also check if there are floating point operations used. Doom might use some floating point for trigonometric calculations.
+
+Actually, looking at the source code, doom uses fixed-point arithmetic mostly. But there might be some floating point for things like R_PointToAngle.
+
+Let me now start building the interpreter. I'll write it in JavaScript (Node.js).
+
+The key design decisions:
+1. Sparse memory model using Map of 4KB pages
+2. Full MIPS instruction set implementation
+3. Syscall handling using x86_64 Linux syscall numbers
+4. File I/O for doom.wad and output BMP files
+
+Let me start coding.
+
+[Running bash]
+[done] 80
+
+[Preparing bash]
+
+[Running bash]
+[done]   40a274:	f7b40030 	sdc1	$f20,48(sp)
+  40a2a0:	c434117c 	lwc1	$f20,4476(at)
+  40a2c4:	44850000 	mtc1	a1,$f0
+  40a2d8:	44861000 	mtc1	a2,$f2
+  40a2f4:	f7a00010 	sdc1	$f0,16(sp)
+  40a410:	d7b40030 	ldc1	$f20,48(sp)
+  40f374:	44800000 	mtc1	zero,$f0
+  40f398:	c4200000 	lwc1	$f0,0(at)
+  433d04:	c42059d0 	lwc1	$f0,22992(at)
+  433d0c:	c4225054 	lwc1	$f2,20564(at)
+  433d20:	d42259d8 	ldc1	$f2,23000(at)
+  433d28:	4501007e 	bc1t	433f24 <V_DrawMouseSpeedBox+0x2d4>
+  433e10:	44810000 	mtc1	at,$f0
+  433e18:	c4225054 	lwc1	$f2,20564(at)
+  433e28:	44010000 	mfc1	at,$f0
+  43dba8:	44801000 	mtc1	zero,$f2
+  43dbb4:	44e01000 	mthc1	zero,$f2
+  43dbc4:	44802000 	mtc1	zero,$f4
+
+[Preparing bash]
+
+[Running bash]
+[done]   40152c:	70443002 	mul	a2,v0,a0
+  401800:	71c67002 	mul	t6,t6,a2
+  40182c:	71c10802 	mul	at,t6,at
+  401858:	71c10802 	mul	at,t6,at
+  4018c8:	70af7802 	mul	t7,a1,t7
+  4019fc:	70667002 	mul	t6,v1,a2
+  401a94:	70666802 	mul	t5,v1,a2
+  401afc:	71465802 	mul	t3,t2,a2
+  401b04:	70c10802 	mul	at,a2,at
+  40252c:	70620802 	mul	at,v1,v0
+  40259c:	70833002 	mul	a2,a0,v1
+  402614:	70620802 	mul	at,v1,v0
+  4048b0:	70501002 	mul	v0,v0,s0
+  4048bc:	70b02802 	mul	a1,a1,s0
+  4048c8:	71104002 	mul	t0,t0,s0
+  4048d4:	71304802 	mul	t1,t1,s0
+  406c40:	70a60802 	mul	at,a1,a2
+  406d00:	70a43002 	mul	a2,a1,a0
+  406d28:	70a41002 	mul	v0,a1,a0
+  406dd8:	70a43002 	mul	a2,a1,a0
+
+[Preparing bash]
+
+[Running bash]
+[done] (no output)
+
+[Preparing bash]
+
+[Running bash]
+[done]   433d28:	4501007e 	bc1t	433f24 <V_DrawMouseSpeedBox+0x2d4>
+
+[Thinking]
+OK, so floating point is used very minimally - just a few places. The main floating point operations are:
+- mtc1 (move to coprocessor 1)
+- mfc1 (move from coprocessor 1)
+- mthc1 (move to high half of double)
+- lwc1 (load word to coprocessor 1)
+- swc1 (store word from coprocessor 1)
+- ldc1 (load double to coprocessor 1)
+- sdc1 (store double from coprocessor 1)
+- bc1t (branch on FP condition true)
+
+There's only one bc1t instruction. Let me check what the FP operations are doing more carefully.
+
+Actually, looking at the code, the floating point operations seem to be used in V_DrawMouseSpeedBox and maybe some time-related functions. Doom itself uses fixed-point arithmetic, so FP might not be critical for the core game.
+
+Let me now start building the interpreter. This is going to be a big piece of code.
+
+Let me also check the `__start` function more carefully and understand the initial state.
+[Preparing bash]
+[done] OK, so floating point is used very minimally - just a few places. The main floating point operations are:
+- mtc1 (move to coprocessor 1)
+- mfc1 (move from coprocessor 1)
+- mthc1 (move to high half of double)
+- lwc1 (load word to coprocessor 1)
+- swc1 (store word from coprocessor 1)
+- ldc1 (load double to coprocessor 1)
+- sdc1 (store double from coprocessor 1)
+- bc1t (branch on FP condition true)
+
+There's only one bc1t instruction. Let me check what the FP operations are doing more carefully.
+
+Actually, looking at the code, the floating point operations seem to be used in V_DrawMouseSpeedBox and maybe some time-related functions. Doom itself uses fixed-point arithmetic, so FP might not be critical for the core game.
+
+Let me now start building the interpreter. This is going to be a big piece of code.
+
+Let me also check the `__start` function more carefully and understand the initial state.
+
+[Running bash]
+[done] 00400110 <__start>:
+  400110:	27bdffe8 	addiu	sp,sp,-24
+  400114:	afbf0014 	sw	ra,20(sp)
+  400118:	24040000 	li	a0,0
+  40011c:	0c10e558 	jal	439560 <doomgeneric_Create>
+  400120:	24050000 	li	a1,0
+  400124:	0c100fbc 	jal	403ef0 <doomgeneric_Tick>
+  400128:	00000000 	nop
+  40012c:	08100049 	j	400124 <__start+0x14>
+  400130:	00000000 	nop
+	...
+
+00400140 <I_InitTimidityConfig>:
+
+[Preparing bash]
+
+[Running bash]
+[done]    654: 00439560    72 FUNC    GLOBAL DEFAULT    3 doomgeneric_Create
+  1656: 00403ef0   104 FUNC    GLOBAL DEFAULT    3 doomgeneric_Tick
+
+[Preparing bash]
+
+[Running bash]
+[done] 00439560 <doomgeneric_Create>:
+  439560:	27bdffe8 	addiu	sp,sp,-24
+  439564:	afbf0014 	sw	ra,20(sp)
+  439568:	3c010048 	lui	at,0x48
+  43956c:	ac25c944 	sw	a1,-14012(at)
+  439570:	3c010048 	lui	at,0x48
+  439574:	0c103b8e 	jal	40ee38 <M_FindResponseFile>
+  439578:	ac24c940 	sw	a0,-14016(at)
+  43957c:	3c01000f 	lui	at,0xf
+  439580:	0c10e65c 	jal	439970 <malloc>
+  439584:	3424a000 	ori	a0,at,0xa000
+  439588:	3c01004b 	lui	at,0x4b
+  43958c:	0c10e56c 	jal	4395b0 <DG_Init>
+  439590:	ac220a40 	sw	v0,2624(at)
+  439594:	0c1011c2 	jal	404708 <D_DoomMain>
+  439598:	00000000 	nop
+  43959c:	8fbf0014 	lw	ra,20(sp)
+  4395a0:	03e00008 	jr	ra
+  4395a4:	27bd0018 	addiu	sp,sp,24
+	...
+
+004395b0 <DG_Init>:
+
+[Preparing bash]
+
+[Running bash]
+[done] 1543608 doomgeneric_mips
+
+[Preparing bash]
+
+[Running bash]
+[done] 
+Elf file type is EXEC (Executable file)
+Entry point 0x400110
+There are 5 program headers, starting at offset 52
+
+Program Headers:
+  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align
+  ABIFLAGS       0x0000d8 0x004000d8 0x004000d8 0x00018 0x00018 R   0x8
+  REGINFO        0x0000f0 0x004000f0 0x004000f0 0x00018 0x00018 R   0x4
+  LOAD           0x000000 0x00400000 0x00400000 0x56514 0x56514 R E 0x10000
+  LOAD           0x056520 0x00466520 0x00466520 0x0eb80 0x4004b270 RW  0x10000
+  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x10
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     .MIPS.abiflags 
+   01     .reginfo 
+   02     .MIPS.abiflags .reginfo .text .rodata 
+   03     .data .bss 
+   04     
+
+[Thinking]
+OK, now I have a clear picture. Let me build the MIPS interpreter.
+
+Memory layout:
+- Segment 1 (LOAD): 0x400000 - 0x456514 (text + rodata), file-backed, R+E
+- Segment 2 (LOAD): 0x466520 - 0x44B1790 (data + BSS), partially file-backed, RW
+  - Data: 0x466520 - 0x4750A0 (file-backed)
+  - BSS: 0x4750C0 - 0x44B1790 (zero-initialized)
+
+Wait, let me recalculate:
+0x466520 + 0x4004b270 = ?
+0x00466520 + 0x4004B270 = 0x404B1790
+
+Hmm, that's 0x404B1790 which is about 1GB. But the BSS section says it starts at 0x4750C0 with size 0x4003c6d0, which would end at 0x4750C0 + 0x4003c6d0 = 0x404B1790. OK, that matches.
+
+So the total memory range is 0x400000 to 0x404B1790, which is about 1GB. I need a sparse memory model.
+
+Let me also think about the stack. The stack typically starts at a high address. For MIPS Linux, the stack starts at 0x7FFF0000 or similar. I'll set it up at a reasonable address.
+
+Now let me code the interpreter. I'll use a page-based sparse memory model with 4KB pages.
+
+For performance, I'll try to use typed arrays where possible and optimize the hot loop.
+
+Let me also think about what syscalls I need to handle:
+- 0 = read(fd, buf, count) -> bytes_read
+- 1 = write(fd, buf, count) -> bytes_written
+- 2 = open(path, flags, mode) -> fd
+- 3 = close(fd) -> 0
+- 8 = lseek(fd, offset, whence) -> new_offset
+- 60 = exit(code)
+- 74 = fsync(fd) -> 0
+- 82 = rename(oldpath, newpath) -> 0
+- 83 = mkdir(path, mode) -> 0
+- 87 = unlink(path) -> 0
+- 201 = time(ptr) -> seconds
+
+The binary also uses the `syscall6` function which takes the syscall number as the first argument. But the direct syscall instructions use $v0 as the syscall number.
+
+Let me also look at the `init_filesystem` function to understand how doom.wad is loaded.
+[Preparing read]
+[done] OK, now I have a clear picture. Let me build the MIPS interpreter.
+
+Memory layout:
+- Segment 1 (LOAD): 0x400000 - 0x456514 (text + rodata), file-backed, R+E
+- Segment 2 (LOAD): 0x466520 - 0x44B1790 (data + BSS), partially file-backed, RW
+  - Data: 0x466520 - 0x4750A0 (file-backed)
+  - BSS: 0x4750C0 - 0x44B1790 (zero-initialized)
+
+Wait, let me recalculate:
+0x466520 + 0x4004b270 = ?
+0x00466520 + 0x4004B270 = 0x404B1790
+
+Hmm, that's 0x404B1790 which is about 1GB. But the BSS section says it starts at 0x4750C0 with size 0x4003c6d0, which would end at 0x4750C0 + 0x4003c6d0 = 0x404B1790. OK, that matches.
+
+So the total memory range is 0x400000 to 0x404B1790, which is about 1GB. I need a sparse memory model.
+
+Let me also think about the stack. The stack typically starts at a high address. For MIPS Linux, the stack starts at 0x7FFF0000 or similar. I'll set it up at a reasonable address.
+
+Now let me code the interpreter. I'll use a page-based sparse memory model with 4KB pages.
+
+For performance, I'll try to use typed arrays where possible and optimize the hot loop.
+
+Let me also think about what syscalls I need to handle:
+- 0 = read(fd, buf, count) -> bytes_read
+- 1 = write(fd, buf, count) -> bytes_written
+- 2 = open(path, flags, mode) -> fd
+- 3 = close(fd) -> 0
+- 8 = lseek(fd, offset, whence) -> new_offset
+- 60 = exit(code)
+- 74 = fsync(fd) -> 0
+- 82 = rename(oldpath, newpath) -> 0
+- 83 = mkdir(path, mode) -> 0
+- 87 = unlink(path) -> 0
+- 201 = time(ptr) -> seconds
+
+The binary also uses the `syscall6` function which takes the syscall number as the first argument. But the direct syscall instructions use $v0 as the syscall number.
+
+Let me also look at the `init_filesystem` function to understand how doom.wad is loaded.
+
+[Running read]
+[done] 201: 
+202: // Helper function to find a file node by path
+203: FileNode* find_node(const char* path, FileNode** parent_dir) {
+204:     if (root == NULL) {
+205:         init_filesystem();
+206:     }
+207:     
+208:     // Handle empty or root path
+209:     if (path == NULL || path[0] == '\0' || strcmp(path, "/") == 0) {
+210:         if (parent_dir) *parent_dir = NULL;
+211:         return root;
+212:     }
+213:     
+214:     // Make a copy of the path to tokenize
+215:     char path_copy[MAX_PATH_LENGTH];
+216:     strncpy(path_copy, path, MAX_PATH_LENGTH);
+217:     path_copy[MAX_PATH_LENGTH - 1] = '\0';
+218:     
+219:     // Start at root
+220:     FileNode* current = root;
+221:     FileNode* parent = NULL;
+222:     
+223:     // Handle absolute path
+224:     char* token = strtok(path_copy, "/");
+225:     if (path[0] == '/') {
+226:         // Path starts with /, so we start at the root
+227:         current = root;
+228:     }
+229:     
+230:     // Traverse the path
+231:     while (token != NULL) {
+232:         if (current->type != FILE_TYPE_DIRECTORY) {
+233:             return NULL; // Not a directory
+234:         }
+235:         
+236:         parent = current;
+237:         current = NULL;
+238:         
+239:         // Look for the token in the current directory
+240:         for (size_t i = 0; i < parent->num_entries; i++) {
+241:             if (strcmp(parent->entries[i].name, token) == 0) {
+242:                 current = parent->entries[i].node;
+243:                 break;
+244:             }
+245:         }
+246:         
+247:         if (current == NULL) {
+248:             // Not found
+249:             if (parent_dir) *parent_dir = parent;
+250:             return NULL;
+251:         }
+252:         
+253:         token = strtok(NULL, "/");
+254:     }
+255:     
+256:     if (parent_dir) *parent_dir = parent;
+257:     return current;
+258: }
+259: 
+260: // Helper function to create a new file node
+261: FileNode* create_node(const char* name, int type, FileNode* parent) {
+262:     FileNode* node = (FileNode*)malloc(sizeof(FileNode));
+263:     strncpy(node->name, name, MAX_PATH_LENGTH);
+264:     node->name[MAX_PATH_LENGTH - 1] = '\0';
+265:     node->type = type;
+266:     node->created = node->modified = node->accessed = time(NULL);
+267:     node->parent = parent;
+268:     
+269:     if (type == FILE_TYPE_REGULAR) {
+270:         // Initialize as an empty file
+271:         node->data = NULL;
+272:         node->size = 0;
+273:         node->capacity = 0;
+274:         node->entries = NULL;
+275:         node->num_entries = 0;
+276:         node->max_entries = 0;
+277:     } else {
+278:         // Initialize as an empty directory
+279:         node->data = NULL;
+280:         node->size = 0;
+281:         node->capacity = 0;
+282:         node->entries = (DirEntry*)malloc(10 * sizeof(DirEntry));
+283:         node->num_entries = 0;
+284:         node->max_entries = 10;
+285:     }
+286:     
+287:     return node;
+288: }
+289: 
+290: // Helper function to add a node to a directory
+291: int add_to_directory(FileNode* dir, const char* name, FileNode* node) {
+292:     if (dir->type != FILE_TYPE_DIRECTORY) {
+293:         return -ENOTDIR;
+294:     }
+295:     
+296:     // Check if a file with this name already exists
+297:     for (size_t i = 0; i < dir->num_entries; i++) {
+298:         if (strcmp(dir->entries[i].name, name) == 0) {
+299:             return -EEXIST;
+300:         }
+301:     }
+302:     
+303:     // Expand the directory if needed
+304:     if (dir->num_entries >= dir->max_entries) {
+305:         size_t new_max = dir->max_entries * 2;
+306:         DirEntry* new_entries = (DirEntry*)realloc(dir->entries, new_max * sizeof(DirEntry));
+307:         if (new_entries == NULL) {
+308:             return -ENOMEM;
+309:         }
+310:         dir->entries = new_entries;
+311:         dir->max_entries = new_max;
+312:     }
+313:     
+314:     // Add the new entry
+315:     strncpy(dir->entries[dir->num_entries].name, name, MAX_PATH_LENGTH);
+316:     dir->entries[dir->num_entries].name[MAX_PATH_LENGTH - 1] = '\0';
+317:     dir->entries[dir->num_entries].node = node;
+318:     dir->num_entries++;
+319:     
+320:     // Update directory modification time
+321:     dir->modified = time(NULL);
+322:     
+323:     return 0;
+324: }
+325: 
+326: // Helper function to allocate a file descriptor
+327: int allocate_fd(FileNode* node, int mode) {
+328:     for (int i = 0; i < MAX_FILE_DESCRIPTORS; i++) {
+329:         if (!fd_table[i].used) {
+330:             fd_table[i].node = node;
+331:             fd_table[i].position = 0;
+332:             fd_table[i].mode = mode;
+333:             fd_table[i].used = 1;
+334:             return i;
+335:         }
+336:     }
+337:     return -EMFILE; // Too many open files
+338: }
+339: 
+340: // Helper function to split a path into directory and filename
+341: void split_path(const char* path, char* dir_path, char* filename) {
+342:     const char* last_slash = strrchr(path, '/');
+343:     
+344:     if (last_slash == NULL) {
+345:         // No directory part
+346:         strcpy(dir_path, ".");
+347:         strcpy(filename, path);
+348:     } else if (last_slash == path) {
+349:         // Root directory
+350:         strcpy(dir_path, "/");
+351:         strcpy(filename, last_slash + 1);
+352:     } else {
+353:         // Extract directory path and filename
+354:         size_t dir_len = last_slash - path;
+355:         strncpy(dir_path, path, dir_len);
+356:         dir_path[dir_len] = '\0';
+357:         strcpy(filename, last_slash + 1);
+358:     }
+359: }
+360: 
+361: // Implementation of system calls
+362: 
+363: // SYS_read: Read from a file
+364: ssize_t sys_read(int fd, void* buf, size_t count) {
+365:     if (fd < 0 || fd >= MAX_FILE_DESCRIPTORS || !fd_table[fd].used) {
+366:         return -EBADF;
+367:     }
+368:     
+369:     FileNode* node = fd_table[fd].node;
+370:     node->accessed = time(NULL);
+371:     
+372:     if (node->type != FILE_TYPE_REGULAR) {
+373:         return -EISDIR;
+374:     }
+375:     
+376:     // Calculate how many bytes to read
+377:     size_t bytes_to_read = count;
+378:     if (fd_table[fd].position + bytes_to_read > node->size) {
+379:         bytes_to_read = node->size - fd_table[fd].position;
+380:     }
+381:     
+382:     if (bytes_to_read > 0 && node->data != NULL) {
+383:         memcpy(buf, node->data + fd_table[fd].position, bytes_to_read);
+384:         fd_table[fd].position += bytes_to_read;
+385:     }
+386:     
+387:     return bytes_to_read;
+388: }
+389: 
+390: // SYS_write: Write to a file
+391: ssize_t sys_write(int fd, const void* buf, size_t count) {
+392:     if (fd < 0 || fd >= MAX_FILE_DESCRIPTORS || !fd_table[fd].used) {
+393:         return -EBADF;
+394:     }
+395:     
+396:     FileNode* node = fd_table[fd].node;
+397:     
+398:     if (node->type != FILE_TYPE_DIRECTORY) {
+399:         // Calculate new file size
+400:         size_t new_size = fd_table[fd].position + count;
+
+[436 more lines in file. Use offset=401 to continue.]
+
+[Preparing read]
+
+[Running read]
+[done] 401:         
+402:         // Check if we need to expand the file
+403:         if (new_size > node->capacity) {
+404:             size_t new_capacity = node->capacity == 0 ? 1024 : node->capacity;
+405:             while (new_capacity < new_size) {
+406:                 new_capacity *= 2;
+407:             }
+408:             
+409:             if (new_capacity > MAX_FILE_SIZE) {
+410:                 new_capacity = MAX_FILE_SIZE;
+411:                 if (new_size > MAX_FILE_SIZE) {
+412:                     count = MAX_FILE_SIZE - fd_table[fd].position;
+413:                     new_size = MAX_FILE_SIZE;
+414:                 }
+415:             }
+416:             
+417:             unsigned char* new_data = (unsigned char*)realloc(node->data, new_capacity);
+418:             if (new_data == NULL) {
+419:                 return -ENOMEM;
+420:             }
+421:             
+422:             node->data = new_data;
+423:             node->capacity = new_capacity;
+424:         }
+425:         
+426:         // Write the data
+427:         memcpy(node->data + fd_table[fd].position, buf, count);
+428:         fd_table[fd].position += count;
+429:         
+430:         if (fd_table[fd].position > node->size) {
+431:             node->size = fd_table[fd].position;
+432:         }
+433:         
+434:         node->modified = time(NULL);
+435:         
+436:         return count;
+437:     } else {
+438:         return -EISDIR; // Cannot write to a directory
+439:     }
+440: }
+441: 
+442: // SYS_open: Open a file
+443: int sys_open(const char* pathname, int flags, mode_t mode) {
+444:     if (root == NULL) {
+445:         init_filesystem();
+446:     }
+447:     
+448:     FileNode* parent_dir = NULL;
+449:     FileNode* node = find_node(pathname, &parent_dir);
+450:     
+451:     if (node == NULL) {
+452:         // File not found
+453:         if (flags & O_CREAT) {
+454:             // Create a new file
+455:             char dir_path[MAX_PATH_LENGTH];
+456:             char filename[MAX_PATH_LENGTH];
+457:             
+458:             split_path(pathname, dir_path, filename);
+459:             
+460:             if (strlen(filename) == 0) {
+461:                 return -EINVAL; // Invalid filename
+462:             }
+463:             
+464:             if (parent_dir == NULL) {
+465:                 parent_dir = find_node(dir_path, NULL);
+466:                 if (parent_dir == NULL) {
+467:                     return -ENOENT; // Parent directory not found
+468:                 }
+469:             }
+470:             
+471:             if (parent_dir->type != FILE_TYPE_DIRECTORY) {
+472:                 return -ENOTDIR;
+473:             }
+474:             
+475:             node = create_node(filename, FILE_TYPE_REGULAR, parent_dir);
+476:             int result = add_to_directory(parent_dir, filename, node);
+477:             if (result < 0) {
+478:                 free(node);
+479:                 return result;
+480:             }
+481:         } else {
+482:             return -ENOENT; // File not found and we're not creating it
+483:         }
+484:     } else if (flags & O_CREAT && flags & O_EXCL) {
+485:         return -EEXIST; // File exists but O_CREAT|O_EXCL was specified
+486:     }
+487:     
+488:     if (node->type == FILE_TYPE_DIRECTORY && (flags & O_WRONLY || flags & O_RDWR)) {
+489:         return -EISDIR; // Cannot open directory for writing
+490:     }
+491:     
+492:     if (flags & O_TRUNC && (flags & O_WRONLY || flags & O_RDWR)) {
+493:         // Truncate the file
+494:         if (node->data != NULL) {
+495:             free(node->data);
+496:             node->data = NULL;
+497:         }
+498:         node->size = 0;
+499:         node->capacity = 0;
+500:         node->modified = time(NULL);
+501:     }
+502:     
+503:     int fd = allocate_fd(node, flags);
+504:     if (fd < 0) {
+505:         return fd;
+506:     }
+507:     
+508:     if (flags & O_APPEND) {
+509:         fd_table[fd].position = node->size;
+510:     } else {
+511:         fd_table[fd].position = 0;
+512:     }
+513:     
+514:     node->accessed = time(NULL);
+515:     
+516:     return fd;
+517: }
+518: 
+519: // SYS_close: Close a file
+520: int sys_close(int fd) {
+521:     if (fd < 0 || fd >= MAX_FILE_DESCRIPTORS || !fd_table[fd].used) {
+522:         return -EBADF;
+523:     }
+524:     
+525:     fd_table[fd].used = 0;
+526:     return 0;
+527: }
+528: 
+529: // SYS_lseek: Reposition read/write file offset
+530: off_t sys_lseek(int fd, off_t offset, int whence) {
+531:     if (fd < 0 || fd >= MAX_FILE_DESCRIPTORS || !fd_table[fd].used) {
+532:         return -EBADF;
+533:     }
+534:     
+535:     FileNode* node = fd_table[fd].node;
+536:     off_t new_pos = 0;
+537:     
+538:     switch (whence) {
+539:         case SEEK_SET:
+540:             new_pos = offset;
+541:             break;
+542:         case SEEK_CUR:
+543:             new_pos = fd_table[fd].position + offset;
+544:             break;
+545:         case SEEK_END:
+546:             new_pos = node->size + offset;
+547:             break;
+548:         default:
+549:             return -EINVAL;
+550:     }
+551:     
+552:     if (new_pos < 0) {
+553:         return -EINVAL;
+554:     }
+555:     
+556:     fd_table[fd].position = new_pos;
+557:     return new_pos;
+558: }
+559: 
+560: // SYS_fsync: Synchronize a file's in-memory state (no-op for in-memory FS)
+561: int sys_fsync(int fd) {
+562:     if (fd < 0 || fd >= MAX_FILE_DESCRIPTORS || !fd_table[fd].used) {
+563:         return -EBADF;
+564:     }
+565:     
+566:     // Nothing to do for an in-memory filesystem
+567:     return 0;
+568: }
+569: 
+570: 
+571: // SYS_unlink: Delete a file
+572: int sys_unlink(const char* pathname) {
+573:     if (root == NULL) {
+574:         init_filesystem();
+575:     }
+576:     
+577:     // Cannot unlink root
+578:     if (strcmp(pathname, "/") == 0) {
+579:         return -EBUSY;
+580:     }
+581:     
+582:     FileNode* parent_dir = NULL;
+583:     FileNode* node = find_node(pathname, &parent_dir);
+584:     
+585:     if (node == NULL) {
+586:         return -ENOENT; // File doesn't exist
+587:     }
+588:     
+589:     if (node->type == FILE_TYPE_DIRECTORY && node->num_entries > 0) {
+590:         return -ENOTEMPTY; // Directory not empty
+591:     }
+592:     
+593:     // Check if the file is open
+594:     for (int i = 0; i < MAX_FILE_DESCRIPTORS; i++) {
+595:         if (fd_table[i].used && fd_table[i].node == node) {
+596:             return -EBUSY; // File is open
+597:         }
+598:     }
+599:     
+600:     // Remove from parent directory
+601:     for (size_t i = 0; i < parent_dir->num_entries; i++) {
+602:         if (parent_dir->entries[i].node == node) {
+603:             // Remove this entry by shifting all entries after it
+604:             for (size_t j = i; j < parent_dir->num_entries - 1; j++) {
+605:                 parent_dir->entries[j] = parent_dir->entries[j + 1];
+606:             }
+607:             parent_dir->num_entries--;
+608:             parent_dir->modified = time(NULL);
+609:             break;
+610:         }
+611:     }
+612:     
+613:     // Free the node's resources
+614:     if (node->type == FILE_TYPE_REGULAR) {
+615:         if (node->data != NULL) {
+616:             free(node->data);
+617:         }
+618:     } else {
+619:         if (node->entries != NULL) {
+620:             free(node->entries);
+621:         }
+622:     }
+623:     
+624:     free(node);
+625:     
+626:     return 0;
+627: }
+628: 
+629: // SYS_rename: Rename a file
+630: int sys_rename(const char* oldpath, const char* newpath) {
+631:     if (root == NULL) {
+632:         init_filesystem();
+633:     }
+634:     
+635:     FileNode* old_parent = NULL;
+636:     FileNode* node = find_node(oldpath, &old_parent);
+637:     
+638:     if (node == NULL) {
+639:         return -ENOENT; // Old path doesn't exist
+640:     }
+641:     
+642:     // Cannot rename root
+643:     if (node == root) {
+644:         return -EBUSY;
+645:     }
+646:     
+647:     // Check if the new path already exists
+648:     FileNode* new_parent = NULL;
+649:     FileNode* existing = find_node(newpath, &new_parent);
+650:     
+651:     if (existing != NULL) {
+652:         // If the target exists and is a directory, it must be empty
+653:         if (existing->type == FILE_TYPE_DIRECTORY) {
+654:             if (existing->num_entries > 0) {
+655:                 return -ENOTEMPTY;
+656:             }
+657:             
+658:             // Remove the existing directory
+659:             int result = sys_unlink(newpath);
+660:             if (result < 0) {
+661:                 return result;
+662:             }
+663:         } else {
+664:             // Remove the existing file
+665:             int result = sys_unlink(newpath);
+666:             if (result < 0) {
+667:                 return result;
+668:             }
+669:         }
+670:     }
+671:     
+672:     // Get the new parent directory and filename
+673:     char new_dir_path[MAX_PATH_LENGTH];
+674:     char new_filename[MAX_PATH_LENGTH];
+675:     
+676:     split_path(newpath, new_dir_path, new_filename);
+677:     
+678:     if (strlen(new_filename) == 0) {
+679:         return -EINVAL; // Invalid new filename
+680:     }
+681:     
+682:     if (new_parent == NULL) {
+683:         new_parent = find_node(new_dir_path, NULL);
+684:         if (new_parent == NULL) {
+685:             return -ENOENT; // New parent directory not found
+686:         }
+687:     }
+688:     
+689:     if (new_parent->type != FILE_TYPE_DIRECTORY) {
+690:         return -ENOTDIR;
+691:     }
+692:     
+693:     // Remove from old parent
+694:     for (size_t i = 0; i < old_parent->num_entries; i++) {
+695:         if (old_parent->entries[i].node == node) {
+696:             // Remove this entry by shifting all entries after it
+697:             for (size_t j = i; j < old_parent->num_entries - 1; j++) {
+698:                 old_parent->entries[j] = old_parent->entries[j + 1];
+699:             }
+700:             old_parent->num_entries--;
+701:             break;
+702:         }
+703:     }
+704:     
+705:     // Update node name
+706:     strncpy(node->name, new_filename, MAX_PATH_LENGTH);
+707:     node->name[MAX_PATH_LENGTH - 1] = '\0';
+708:     node->parent = new_parent;
+709:     
+710:     // Add to new parent
+711:     int result = add_to_directory(new_parent, new_filename, node);
+712:     if (result < 0) {
+713:         // This is a serious error, we've already removed it from the old parent
+714:         // In a real filesystem, we'd need to handle this more gracefully
+715:         return result;
+716:     }
+717:     
+718:     old_parent->modified = time(NULL);
+719:     new_parent->modified = time(NULL);
+720:     
+721:     return 0;
+722: }
+723: 
+724: // SYS_mkdir: Create a directory
+725: int sys_mkdir(const char* pathname, mode_t mode) {
+726:     if (root == NULL) {
+727:         init_filesystem();
+728:     }
+729:     
+730:     FileNode* parent_dir = NULL;
+731:     FileNode* node = find_node(pathname, &parent_dir);
+732:     
+733:     if (node != NULL) {
+734:         return -EEXIST; // Already exists
+735:     }
+736:     
+737:     char dir_path[MAX_PATH_LENGTH];
+738:     char dirname[MAX_PATH_LENGTH];
+739:     
+740:     split_path(pathname, dir_path, dirname);
+741:     
+742:     if (strlen(dirname) == 0) {
+743:         return -EINVAL; // Invalid directory name
+744:     }
+745:     
+746:     if (parent_dir == NULL) {
+747:         parent_dir = find_node(dir_path, NULL);
+748:         if (parent_dir == NULL) {
+749:             return -ENOENT; // Parent directory not found
+750:         }
+751:     }
+752:     
+753:     if (parent_dir->type != FILE_TYPE_DIRECTORY) {
+754:         return -ENOTDIR;
+755:     }
+756:     
+757:     node = create_node(dirname, FILE_TYPE_DIRECTORY, parent_dir);
+758:     int result = add_to_directory(parent_dir, dirname, node);
+759:     if (result < 0) {
+760:         free(node);
+761:         return result;
+762:     }
+763:     
+764:     return 0;
+765: }
+766: 
+767: 
+768: // Main syscall handler
+769: long syscall_fs(int syscall_num, ...) {
+770:     va_list args;
+771:     va_start(args, syscall_num);
+772:     long ret = 0;
+773:     
+774:     switch (syscall_num) {
+775:         case SYS_read: {
+776:             int fd = va_arg(args, int);
+777:             void* buf = va_arg(args, void*);
+778:             size_t count = va_arg(args, size_t);
+779:             ret = sys_read(fd, buf, count);
+780:             break;
+781:         }
+782:         case SYS_write: {
+783:             int fd = va_arg(args, int);
+784:             const void* buf = va_arg(args, const void*);
+785:             size_t count = va_arg(args, size_t);
+786:             ret = sys_write(fd, buf, count);
+787:             break;
+788:         }
+789:         case SYS_open: {
+790:             const char* pathname = va_arg(args, const char*);
+791:             int flags = va_arg(args, int);
+792:             mode_t mode = va_arg(args, mode_t);
+793:             ret = sys_open(pathname, flags, mode);
+794:             break;
+795:         }
+796:         case SYS_close: {
+797:             int fd = va_arg(args, int);
+798:             ret = sys_close(fd);
+799:             break;
+800:         }
+801:         case SYS_lseek: {
+802:             int fd = va_arg(args, int);
+803:             off_t offset = va_arg(args, off_t);
+804:             int whence = va_arg(args, int);
+805:             ret = sys_lseek(fd, offset, whence);
+806:             break;
+807:         }
+808:         case SYS_fsync: {
+809:             int fd = va_arg(args, int);
+810:             ret = sys_fsync(fd);
+811:             break;
+812:         }
+813:         case SYS_rename: {
+814:             const char* oldpath = va_arg(args, const char*);
+815:             const char* newpath = va_arg(args, const char*);
+816:             ret = sys_rename(oldpath, newpath);
+817:             break;
+818:         }
+819:         case SYS_mkdir: {
+820:             const char* pathname = va_arg(args, const char*);
+821:             mode_t mode = va_arg(args, mode_t);
+822:             ret = sys_mkdir(pathname, mode);
+823:             break;
+824:         }
+825:         case SYS_unlink: {
+826:             const char* pathname = va_arg(args, const char*);
+827:             ret = sys_unlink(pathname);
+828:             break;
+829:         }
+830:         default:
+831:             ret = -EINVAL; // Invalid system call
+832:     }
+833:     
+834:     va_end(args);
+835:     return ret;
+836: }
+
+[Thinking]
+Now I have a complete understanding of the system. Let me now build the MIPS interpreter. I'll need to:
+
+1. Parse the ELF binary
+2. Load segments into memory
+3. Implement MIPS instruction decoding and execution
+4. Handle syscalls (using x86_64 Linux syscall numbers)
+5. Implement an in-memory filesystem (similar to fake_fs.c) that loads doom.wad
+6. Save BMP frames
+
+Let me also check the `my_stdlib.h` to understand what functions are declared there.
+[Preparing read]
+[done] Now I have a complete understanding of the system. Let me now build the MIPS interpreter. I'll need to:
+
+1. Parse the ELF binary
+2. Load segments into memory
+3. Implement MIPS instruction decoding and execution
+4. Handle syscalls (using x86_64 Linux syscall numbers)
+5. Implement an in-memory filesystem (similar to fake_fs.c) that loads doom.wad
+6. Save BMP frames
+
+Let me also check the `my_stdlib.h` to understand what functions are declared there.
+
+[Running read]
+[done] 1: /*
+2: #include<stdio.h>
+3: #include<stdlib.h>
+4: #include<math.h>
+5: #include <assert.h>
+6: #include <ctype.h>
+7: #include <fcntl.h>
+8: #include <math.h>
+9: #include <string.h>
+10: #include <strings.h>
+11: #include <sys/ioctl.h>
+12: #include <sys/mman.h>
+13: #include <sys/stat.h>
+14: #include <sys/time.h>
+15: #include <stdarg.h>
+16: #include <stdint.h>
+17: #include <limits.h>
+18: #include <errno.h>
+19: #include <stdio.h>
+20: #include <stdlib.h>
+21: #include <sys/types.h>
+22: #include <ctype.h>
+23: */
+24: 
+25: 
+26: /**
+27:  * my_stdlib.h - Minimal standard library for porting doomgeneric
+28:  * This header provides declarations for all necessary standard C functions
+29:  * to replace standard library dependencies.
+30:  */
+31: 
+32: #ifndef MY_DOOM_STDLIB_H
+33: #define MY_DOOM_STDLIB_H
+34: 
+35: #define INT_MAX 0x7FFFFFFF
+36: #define INT_MIN 0x80000000
+37: #define SHRT_MAX 32767
+38: 
+39: /* Basic type definitions */
+40: typedef unsigned long size_t;
+41: typedef long ssize_t;
+42: 
+43: 
+44: typedef struct {
+45:     int fd;           /* File descriptor */
+46:     int eof;          /* End of file indicator */
+47:     int error;        /* Error indicator */
+48:     long position;    /* Current file position */
+49:     /* You could add more fields as needed, such as:
+50:        - Buffer for buffered I/O
+51:        - Read/write mode flags
+52:        - Lock for thread safety
+53:     */
+54: } FILE;
+55: 
+56: /* Basic integer types */
+57: typedef signed char int8_t;
+58: typedef unsigned char uint8_t;
+59: typedef signed short int16_t;
+60: typedef unsigned short uint16_t;
+61: typedef signed int int32_t;
+62: typedef unsigned int uint32_t;
+63: typedef signed long long int64_t;
+64: typedef unsigned long long uint64_t;
+65: 
+66: /* Time types */
+67: typedef long time_t;
+68: 
+69: /* Platform-specific integer types */
+70: typedef long intptr_t;
+71: typedef unsigned long uintptr_t;
+72: 
+73: /* Boolean type */
+74: typedef int bool;
+75: 
+76: /* Structure definitions */
+77: struct stat {
+78:     int st_dev;
+79:     int st_ino;
+80:     int st_mode;
+81:     int st_nlink;
+82:     int st_uid;
+83:     int st_gid;
+84:     int st_rdev;
+85:     long st_size;
+86:     long st_atime;
+87:     long st_mtime;
+88:     long st_ctime;
+89:     int st_blksize;
+90:     int st_blocks;
+91: };
+92: 
+93: /* Mode bits for st_mode */
+94: #define S_IFMT   0170000 /* bit mask for the file type bit field */
+95: #define S_IFSOCK 0140000 /* socket */
+96: #define S_IFLNK  0120000 /* symbolic link */
+97: #define S_IFREG  0100000 /* regular file */
+98: #define S_IFBLK  0060000 /* block device */
+99: #define S_IFDIR  0040000 /* directory */
+100: #define S_IFCHR  0020000 /* character device */
+101: #define S_IFIFO  0010000 /* FIFO */
+102: #define S_ISUID  0004000 /* set-user-ID bit */
+103: #define S_ISGID  0002000 /* set-group-ID bit */
+104: #define S_ISVTX  0001000 /* sticky bit */
+105: 
+106: /* Macros for file types */
+107: #define S_ISDIR(m)  (((m) & S_IFMT) == S_IFDIR)
+108: #define S_ISREG(m)  (((m) & S_IFMT) == S_IFREG)
+109: #define S_ISLNK(m)  (((m) & S_IFMT) == S_IFLNK)
+110: #define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)
+111: #define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
+112: #define S_ISBLK(m)  (((m) & S_IFMT) == S_IFBLK)
+113: #define S_ISCHR(m)  (((m) & S_IFMT) == S_IFCHR)
+114: 
+115: /* Definitions for sys/time.h */
+116: struct timeval {
+117:     long tv_sec;     /* seconds */
+118:     long tv_usec;    /* microseconds */
+119: };
+120: 
+121: struct timezone {
+122:     int tz_minuteswest;  /* minutes west of Greenwich */
+123:     int tz_dsttime;      /* type of DST correction */
+124: };
+125: /* Variadic arguments handling */
+126: typedef __builtin_va_list va_list;
+127: typedef __builtin_va_list __va_list_tag;
+128: #define va_start(v,l) __builtin_va_start(v,l)
+129: #define va_end(v) __builtin_va_end(v)
+130: #define va_arg(v,l) __builtin_va_arg(v,l)
+131: #define va_copy(d,s) __builtin_va_copy(d,s)
+132: 
+133: /* IO constants */
+134: #define SEEK_SET 0
+135: #define SEEK_CUR 1
+136: #define SEEK_END 2
+137: #define EOF (-1)
+138: 
+139: /* Error codes */
+140: #define EPERM        1  /* Operation not permitted */
+141: #define ENOENT       2  /* No such file or directory */
+142: #define ESRCH        3  /* No such process */
+143: #define EINTR        4  /* Interrupted system call */
+144: #define EIO          5  /* I/O error */
+145: #define ENXIO        6  /* No such device or address */
+146: #define E2BIG        7  /* Argument list too long */
+147: #define ENOEXEC      8  /* Exec format error */
+148: #define EBADF        9  /* Bad file number */
+149: #define ECHILD      10  /* No child processes */
+150: #define EAGAIN      11  /* Try again */
+151: #define ENOMEM      12  /* Out of memory */
+152: #define EACCES      13  /* Permission denied */
+153: #define EFAULT      14  /* Bad address */
+154: #define ENOTBLK     15  /* Block device required */
+155: #define EBUSY       16  /* Device or resource busy */
+156: #define EEXIST      17  /* File exists */
+157: #define EXDEV       18  /* Cross-device link */
+158: #define ENODEV      19  /* No such device */
+159: #define ENOTDIR     20  /* Not a directory */
+160: #define EISDIR      21  /* Is a directory */
+161: #define EINVAL      22  /* Invalid argument */
+162: #define ENFILE      23  /* File table overflow */
+163: #define EMFILE      24  /* Too many open files */
+164: #define ENOTTY      25  /* Not a typewriter */
+165: #define ETXTBSY     26  /* Text file busy */
+166: #define EFBIG       27  /* File too large */
+167: #define ENOSPC      28  /* No space left on device */
+168: #define ESPIPE      29  /* Illegal seek */
+169: #define EROFS       30  /* Read-only file system */
+170: #define EMLINK      31  /* Too many links */
+171: #define EPIPE       32  /* Broken pipe */
+172: #define EDOM        33  /* Math argument out of domain of func */
+173: #define ERANGE      34  /* Math result not representable */
+174: 
+175: /* Global errno variable */
+176: extern int errno;
+177: 
+178: /* Standard streams */
+179: extern FILE* stdin;
+180: extern FILE* stdout;
+181: extern FILE* stderr;
+182: 
+183: /* String functions */
+184: size_t strlen(const char* s);
+185: int strcmp(const char* s1, const char* s2);
+186: int strncmp(const char* s1, const char* s2, size_t n);
+187: int strcasecmp(const char* s1, const char* s2);
+188: int strncasecmp(const char* s1, const char* s2, size_t n);
+189: char* strdup(const char* s);
+190: char* strchr(const char* s, int c);
+191: char* strrchr(const char* s, int c);
+192: char* strstr(const char* haystack, const char* needle);
+193: char* strcpy(char* dest, const char* src);
+194: char* strtok(char* str, const char* delim);
+195: size_t strcspn(const char* str, const char* reject);
+196: size_t strspn(const char* str, const char* accept);
+197: char* strncpy(char* dest, const char* src, size_t n);
+198: void* memmove(void* dest, const void* src, size_t n);
+199: 
+200: /* Character classification */
+
+[103 more lines in file. Use offset=201 to continue.]
+
+[Preparing read]
+
+[Running read]
+[done] 201: int isspace(int c);
+202: int isdigit(int c);
+203: int isalpha(int c);
+204: int isalnum(int c);
+205: int iscntrl(int c);
+206: int islower(int c);
+207: int isupper(int c);
+208: int isprint(int c);
+209: int ispunct(int c);
+210: int isgraph(int c);
+211: int isxdigit(int c);
+212: 
+213: /* Memory management */
+214: void* malloc(size_t size);
+215: void* calloc(size_t nmemb, size_t size);
+216: void* realloc(void* ptr, size_t size);
+217: void free(void* ptr);
+218: 
+219: /* Memory operations */
+220: void* memcpy(void* dest, const void* src, size_t n);
+221: void* memset(void* s, int c, size_t n);
+222: void* memchr(const void* s, int c, size_t n);
+223: int bcmp(const void* s1, const void* s2, size_t n);
+224: 
+225: /* File operations */
+226: int fileno(FILE *stream);
+227: FILE* fopen(const char* filename, const char* mode);
+228: int fclose(FILE* stream);
+229: size_t fread(void* ptr, size_t size, size_t nmemb, FILE* stream);
+230: size_t fwrite(const void* ptr, size_t size, size_t nmemb, FILE* stream);
+231: size_t fread_unlocked(void* ptr, size_t size, size_t nmemb, FILE* stream);
+232: size_t fwrite_unlocked(const void* ptr, size_t size, size_t nmemb, FILE* stream);
+233: int fseek(FILE* stream, long offset, int whence);
+234: long ftell(FILE* stream);
+235: int fflush(FILE* stream);
+236: int remove(const char* pathname);
+237: int rename(const char* oldpath, const char* newpath);
+238: 
+239: /* Formatted I/O */
+240: int printf(const char* format, ...);
+241: int fprintf(FILE* stream, const char* format, ...);
+242: int snprintf(char* str, size_t size, const char* format, ...);
+243: int vfprintf(FILE* stream, const char* format, va_list ap);
+244: int vsnprintf(char* str, size_t size, const char* format, va_list ap);
+245: int sscanf(const char* str, const char* format, ...);
+246: 
+247: /* Character I/O */
+248: int putchar(int c);
+249: int puts(const char* s);
+250: 
+251: /* Conversion functions */
+252: int atoi(const char* nptr);
+253: double atof(const char* nptr);
+254: int toupper(int c);
+255: 
+256: /* Directory operations */
+257: int mkdir(const char* pathname, int mode);
+258: 
+259: /* System functions */
+260: void exit(int status);
+261: int system(const char* command);
+262: int* __errno_location(void);
+263: int** __ctype_toupper_loc(void);
+264: 
+265: /* File statistics */
+266: int stat(const char* pathname, struct stat* statbuf);
+267: int fstat(int fd, struct stat* statbuf);
+268: int lstat(const char* pathname, struct stat* statbuf);
+269: 
+270: /* Time functions */
+271: int gettimeofday(struct timeval* tv, struct timezone* tz);
+272: time_t time(time_t* tloc);
+273: 
+274: /* Other system functions */
+275: int isatty(int fd);
+276: unsigned int sleep(unsigned int seconds);
+277: int usleep(unsigned int usec);
+278: 
+279: /* Variadic functions are now handled with __builtin_ functions above */
+280: 
+281: /* Math functions */
+282: float fabsf(float x);
+283: int abs(int x);
+284: double fabs(double x);
+285: int abs(int x);
+286: double sin(double x);
+287: double cos(double x);
+288: double tan(double x);
+289: double sqrt(double x);
+290: float sqrtf(float x);
+291: double pow(double x, double y);
+292: double floor(double x);
+293: double ceil(double x);
+294: double atan2(double y, double x);
+295: 
+296: /* Internal helpers */
+297: int __isoc99_sscanf(const char* str, const char* format, ...);
+298: /* This is actually the same function just with a different name in LLVM */
+299: 
+300: /* Useful macros */
+301: #define NULL ((void*)0)
+302: 
+303: #endif /* MY_DOOM_STDLIB_H */
+Now I have a thorough understanding of the binary. Let me build the MIPS interpreter. This is a large task, so I'll write it methodically.
+[Preparing bash]
+
+[Running bash]
+[done] -rw-r--r-- 1 root root 4196020 Sep 13  2025 doom.wad
+
+[Preparing bash]
+
+[Running bash]
+[done]   40661c:	7c022420 	seb	a0,v0
+  4066f8:	7c022420 	seb	a0,v0
+  406780:	7c022420 	seb	a0,v0
+  408970:	7c411080 	ext	at,v0,0x2,0x3
+  408f80:	7c121420 	seb	v0,s2
+  409ae8:	7c22a800 	ext	v0,at,0x0,0x16
+  40b33c:	7c032c20 	seb	a1,v1
+  40b7bc:	7c041420 	seb	v0,a0
+  40e628:	7c022c20 	seb	a1,v0
+  411184:	7c022420 	seb	a0,v0
+  4120d8:	7c020e20 	seh	at,v0
+  412a3c:	7c012620 	seh	a0,at
+  412b08:	7c112e20 	seh	a1,s1
+  412b40:	7c110e20 	seh	at,s1
+  412b74:	7c100e20 	seh	at,s0
+  412bc8:	7c010e20 	seh	at,at
+  413194:	7c022420 	seb	a0,v0
+  413204:	7c022420 	seb	a0,v0
+  417b20:	7c020e20 	seh	at,v0
+  417b5c:	7c020e20 	seh	at,v0
+
+[Preparing bash]
+
+[Running bash]
+[done]   408970:	7c411080 	ext	at,v0,0x2,0x3
+  409ae8:	7c22a800 	ext	v0,at,0x0,0x16
+  418be4:	7c260440 	ext	a2,at,0x11,0x1
+  418c98:	7c260440 	ext	a2,at,0x11,0x1
+  418cc8:	7c260440 	ext	a2,at,0x11,0x1
+  41c6b0:	7c42b000 	ext	v0,v0,0x0,0x17
+  41c6b4:	7d4ab000 	ext	t2,t2,0x0,0x17
+  41c728:	7e8179c0 	ext	at,s4,0x7,0x10
+  41c74c:	7e9379c0 	ext	s3,s4,0x7,0x10
+  420a8c:	7e643c00 	ext	a0,s3,0x10,0x8
+  420aa0:	7e643c00 	ext	a0,s3,0x10,0x8
+  420bbc:	7ee43c00 	ext	a0,s7,0x10,0x8
+  420bd0:	7ee43c00 	ext	a0,s7,0x10,0x8
+  422030:	7e043a00 	ext	a0,s0,0x8,0x8
+  422038:	7e043c00 	ext	a0,s0,0x10,0x8
+  426ae0:	7c236304 	ins	v1,at,0xc,0x1
+  426b88:	7c6310c0 	ext	v1,v1,0x3,0x3
+  428c44:	7ca13400 	ext	at,a1,0x10,0x7
+  428d7c:	7cc13400 	ext	at,a2,0x10,0x7
+  429508:	7c847980 	ext	a0,a0,0x6,0x10
+
+[Preparing bash]
+
+[Running bash]
+[done]   42e378:	002c0ec2 	ror	at,t4,0x1b
+  42e384:	002a6082 	ror	t4,t2,0x2
+  42e3c8:	003c7882 	ror	t7,gp,0x2
+  42e418:	002e6ec2 	ror	t5,t6,0x1b
+  42e41c:	002ec082 	ror	t8,t6,0x2
+  42e448:	003ccec2 	ror	t9,gp,0x1b
+  42e44c:	003c9082 	ror	s2,gp,0x2
+  42e484:	002ee6c2 	ror	gp,t6,0x1b
+  42e48c:	002e7082 	ror	t6,t6,0x2
+  42e4ac:	002fe6c2 	ror	gp,t7,0x1b
+
+[Preparing bash]
+
+[Running bash]
+[done]   4068d4:	8822000b 	lwl	v0,11(at)
+  4068d8:	98220008 	lwr	v0,8(at)
+  40e8b8:	88220003 	lwl	v0,3(at)
+  40e8bc:	98220000 	lwr	v0,0(at)
+  41caf8:	8a01008f 	lwl	at,143(s0)
+  41cafc:	8a030093 	lwl	v1,147(s0)
+  41cb14:	9a01008c 	lwr	at,140(s0)
+  41cb18:	9a030090 	lwr	v1,144(s0)
+  41cb48:	a8a10003 	swl	at,3(a1)
+  41cb50:	a8a30007 	swl	v1,7(a1)
+Now I have a comprehensive understanding. Let me write the MIPS interpreter:
+[Preparing write]
+error: error decoding response body

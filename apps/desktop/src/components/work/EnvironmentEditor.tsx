@@ -9,6 +9,7 @@ export interface EnvironmentEditorData {
   description: string;
   runnerType: "local" | "docker" | "cloud";
   dockerImage: string;
+  workingDir: string;
   variables: Record<string, string>;
   credentialIds: string[];
   isDefault: boolean;
@@ -33,6 +34,7 @@ export function EnvironmentEditor({
   const [description, setDescription] = useState(environment?.description ?? "");
   const [runnerType, setRunnerType] = useState<"local" | "docker" | "cloud">(environment?.runnerType ?? "local");
   const [dockerImage, setDockerImage] = useState(environment?.dockerImage ?? "debian:bookworm-slim");
+  const [workingDir, setWorkingDir] = useState(environment?.workingDir ?? "");
   const [vars, setVars] = useState<[string, string][]>(
     environment ? Object.entries(environment.variables) : []
   );
@@ -85,6 +87,7 @@ export function EnvironmentEditor({
         description: description.trim(),
         runnerType,
         dockerImage: dockerImage.trim(),
+        workingDir: workingDir.trim(),
         variables,
         credentialIds: Array.from(selectedCreds),
         isDefault,
@@ -191,6 +194,21 @@ export function EnvironmentEditor({
               />
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                 Image used for Docker runs in this environment.
+              </p>
+            </div>
+          )}
+
+          {runnerType === "local" && (
+            <div className="mt-4">
+              <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Working directory</label>
+              <input
+                value={workingDir}
+                onChange={(e) => setWorkingDir(e.target.value)}
+                placeholder="/absolute/path/where/agents/execute"
+                className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] mt-1 h-9 w-full rounded-[var(--radius-sm)] px-3 font-mono text-[13px]"
+              />
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                Absolute path where agents execute. Session file explorer is rooted here.
               </p>
             </div>
           )}

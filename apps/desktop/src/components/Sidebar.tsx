@@ -120,6 +120,12 @@ interface SidebarProps {
   onNavigateWork: (v: WorkView) => void;
   activeAgentCount: number;
   liveSessionCount: number;
+  draftCount?: number;
+  /** Display label for the Files section; null hides the section. */
+  activeSessionFilesName?: string | null;
+  /** Resolved working dir of the active session's environment; null disables the Files button. */
+  activeSessionFilesPath?: string | null;
+  onOpenSessionFiles?: () => void;
 
   // Legacy work mode props (kept for compatibility)
   /** @deprecated */ workspaces?: Workspace[];
@@ -160,6 +166,10 @@ export const Sidebar = memo(function Sidebar({
   onNavigateWork,
   activeAgentCount,
   liveSessionCount,
+  draftCount = 0,
+  activeSessionFilesName,
+  activeSessionFilesPath,
+  onOpenSessionFiles,
   themeMode,
   onToggleTheme,
   onOpenSettings,
@@ -187,6 +197,10 @@ export const Sidebar = memo(function Sidebar({
           onNavigate={onNavigateWork}
           activeAgentCount={activeAgentCount}
           liveSessionCount={liveSessionCount}
+          draftCount={draftCount}
+          activeSessionFilesName={activeSessionFilesName}
+          activeSessionFilesPath={activeSessionFilesPath}
+          onOpenSessionFiles={onOpenSessionFiles}
         />
       )}
 

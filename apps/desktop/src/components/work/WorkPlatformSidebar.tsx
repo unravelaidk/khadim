@@ -6,6 +6,7 @@ import { relTime } from "../../lib/ui";
 
 const ICONS: Record<WorkView, string> = {
   dashboard:    "ri-dashboard-3-line",
+  drafts:       "ri-quill-pen-line",
   agents:       "ri-robot-2-line",
   sessions:     "ri-chat-3-line",
   integrations: "ri-plug-line",
@@ -17,6 +18,7 @@ const ICONS: Record<WorkView, string> = {
 
 const LABELS: Record<WorkView, string> = {
   dashboard: "Overview",
+  drafts: "Drafts",
   agents: "Agents",
   sessions: "Sessions",
   integrations: "Integrations",
@@ -26,7 +28,7 @@ const LABELS: Record<WorkView, string> = {
   analytics: "Analytics",
 };
 
-const PRIMARY_NAV: WorkView[] = ["dashboard", "agents", "sessions"];
+const PRIMARY_NAV: WorkView[] = ["dashboard", "drafts", "agents", "sessions"];
 const SECONDARY_NAV: WorkView[] = ["integrations", "environments", "credentials", "memory", "analytics"];
 
 /* ─── Work Sidebar ─────────────────────────────────────────────────── */
@@ -37,8 +39,14 @@ interface WorkPlatformSidebarProps {
   activeAgentCount: number;
   liveSessionCount: number;
   needsAttentionCount?: number;
+  draftCount?: number;
   liveSessions?: SessionRecord[];
   onViewSession?: (id: string) => void;
+  /** Name of the session whose files can be opened from the sidebar. Null hides the Files section. */
+  activeSessionFilesName?: string | null;
+  /** Working dir resolved from the active session's environment. Null disables the Files button. */
+  activeSessionFilesPath?: string | null;
+  onOpenSessionFiles?: () => void;
 }
 
 export function WorkPlatformSidebar({
@@ -47,8 +55,12 @@ export function WorkPlatformSidebar({
   activeAgentCount,
   liveSessionCount,
   needsAttentionCount = 0,
+  draftCount = 0,
   liveSessions = [],
   onViewSession,
+  activeSessionFilesName,
+  activeSessionFilesPath,
+  onOpenSessionFiles,
 }: WorkPlatformSidebarProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -60,7 +72,7 @@ export function WorkPlatformSidebar({
               key={view}
               view={view}
               active={currentView === view}
-              badge={badgeFor(view, activeAgentCount, liveSessionCount, needsAttentionCount)}
+              badge={badgeFor(view, activeAgentCount, liveSessionCount, needsAttentionCount, draftCount)}
               isAttention={view === "sessions" && needsAttentionCount > 0 && liveSessionCount === 0}
               onClick={() => onNavigate(view)}
             />
@@ -81,6 +93,32 @@ export function WorkPlatformSidebar({
             />
           ))}
         </div>
+
+        {/* Files — active session's working directory */}
+        {activeSessionFilesName && (
+          <div className="mt-6 flex flex-col gap-0.5">
+            <p className="px-3 pb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
+              Files
+            </p>
+            <button
+              type="button"
+              onClick={onOpenSessionFiles}
+              disabled={!activeSessionFilesPath || !onOpenSessionFiles}
+              title={activeSessionFilesPath ?? "Set a working directory on this session's environment to browse files"}
+              className="group flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left transition-colors enabled:hover:bg-[var(--glass-bg)] disabled:opacity-50"
+            >
+              <i className="ri-folder-open-line text-base leading-none shrink-0 text-[var(--text-muted)] group-enabled:group-hover:text-[var(--text-secondary)]" />
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] text-[var(--text-primary)]">
+                  {activeSessionFilesName}
+                </span>
+                <span className="block truncate font-mono text-[10px] text-[var(--text-muted)]">
+                  {activeSessionFilesPath ?? "No working directory set"}
+                </span>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Live sessions — "Now" section */}
         {liveSessions.length > 0 && (
@@ -176,7 +214,9 @@ function badgeFor(
   activeAgentCount: number,
   liveSessionCount: number,
   needsAttentionCount: number,
+  draftCount: number,
 ): number | null {
+  if (view === "drafts" && draftCount > 0) return draftCount;
   if (view === "agents" && activeAgentCount > 0) return activeAgentCount;
   if (view === "sessions" && liveSessionCount > 0) return liveSessionCount;
   if (view === "sessions" && needsAttentionCount > 0) return needsAttentionCount;

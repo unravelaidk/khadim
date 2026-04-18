@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import type { ManagedAgent, SessionRecord } from "../../lib/types";
 import { relTime } from "../../lib/ui";
-import { AgentBuilderPanel } from "./AgentBuilderPanel";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Work Dashboard — mission control for Khadim's managed agent surface.
@@ -17,6 +16,8 @@ interface WorkDashboardProps {
   onNavigateSessions: () => void;
   onCreateAgent: () => void;
   onRunAgent: (id: string) => void;
+  /** Start a new Agent Builder draft with the given seed prompt. */
+  onStartBuilder: (seed: string) => void;
   totalTokens?: number;
   estimatedCost?: number;
   dailySessions?: { date: string; count: number }[];
@@ -31,15 +32,15 @@ export function WorkDashboard({
   onNavigateSessions,
   onCreateAgent,
   onRunAgent,
+  onStartBuilder,
 }: WorkDashboardProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [builderSeed, setBuilderSeed] = useState<string | null>(null);
 
   const startBuilder = (seed: string) => {
     const trimmed = seed.trim();
     if (!trimmed) return;
-    setBuilderSeed(trimmed);
+    onStartBuilder(trimmed);
     setInput("");
   };
 
@@ -94,20 +95,6 @@ export function WorkDashboard({
     : activeAgents.length > 0
       ? "Everything's ready."
       : "Let's build something.";
-
-  /* ── Builder active: swap the dashboard for the chat panel ───── */
-  if (builderSeed) {
-    return (
-      <AgentBuilderPanel
-        initialMessage={builderSeed}
-        onExit={() => setBuilderSeed(null)}
-        onAgentCreated={() => {
-          setBuilderSeed(null);
-          onNavigateAgents();
-        }}
-      />
-    );
-  }
 
   /* ── First-run: empty state ─────────────────────────────────────── */
   if (agents.length === 0) {

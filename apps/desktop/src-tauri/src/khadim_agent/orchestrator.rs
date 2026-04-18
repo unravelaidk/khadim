@@ -5,7 +5,7 @@ use crate::khadim_agent::modes::{build_mode, chat_mode};
 use crate::khadim_agent::session::KhadimSession;
 use crate::khadim_agent::KhadimManager;
 use crate::khadim_ai::types::{
-    AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolDefinition, ToolMessage,
+    AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolMessage,
 };
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
@@ -102,7 +102,7 @@ fn emit_tool_step_complete(
 }
 
 fn memory_scope_prompt(session: &KhadimSession) -> String {
-    if session.workspace_id == "__chat__" {
+    if matches!(session.workspace_id.as_str(), "__chat__" | "__agent_builder__") {
         "Runtime context:\n- You are in standalone chat mode.\n- Memory tools read from chat memory, plus chat-readable shared memory only when the user enabled that setting.\n- memory_save writes to the chat memory store.".to_string()
     } else if let Some(agent_id) = session.active_agent_id.as_deref() {
         format!(
@@ -193,13 +193,21 @@ pub async fn run_prompt_with_plugins(
 
     // Always use with_extras so skill dirs are available to the read tool
     let runtime = AgentRuntime::with_extras(&session.cwd, plugin_tools, skill_dirs, skills_prompt);
-    let mode = if session.workspace_id == "__chat__" {
+    let mode = if matches!(session.workspace_id.as_str(), "__chat__" | "__agent_builder__") {
         chat_mode()
     } else {
         build_mode()
     };
     let client = ModelClient::from_selection(selection).await?;
-    let system_prompt = format!("{}\n\n{}", runtime.build_prompt(&mode), memory_scope_prompt(session));
+    // If the session was created with an explicit system prompt override
+    // (e.g. Agent Builder), use it verbatim in place of the mode prompt.
+    // This avoids the coding-oriented tool/cwd scaffolding for purely
+    // conversational agents.
+    let base_prompt = match &session.system_prompt_override {
+        Some(override_prompt) => override_prompt.clone(),
+        None => runtime.build_prompt(&mode),
+    };
+    let system_prompt = format!("{}\n\n{}", base_prompt, memory_scope_prompt(session));
 
     repair_session_messages(&mut session.messages);
 
@@ -231,15 +239,7 @@ pub async fn run_prompt_with_plugins(
     for turn_index in 0..30 {
         let context = Context {
             messages: session.messages.clone(),
-            tools: runtime
-                .definitions()
-                .into_iter()
-                .map(|tool| ToolDefinition {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool.parameters,
-                })
-                .collect(),
+            tools: runtime.definitions(),
             session_id: Some(session.id.clone()),
         };
         let provider_name = client.model().provider.clone();

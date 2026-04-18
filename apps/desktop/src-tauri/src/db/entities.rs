@@ -123,6 +123,7 @@ pub mod environments {
         pub credential_ids_json: String,
         pub runner_type: String,
         pub docker_image: Option<String>,
+        pub working_dir: Option<String>,
         pub is_default: i32,
         pub created_at: String,
         pub updated_at: String,

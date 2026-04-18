@@ -157,6 +157,7 @@ export interface EnvironmentProfile {
   credential_ids: string[];
   runner_type: "local" | "docker" | "cloud";
   docker_image: string | null;
+  working_dir: string | null;
   is_default: boolean;
   created_at: string;
   updated_at: string;
@@ -169,6 +170,7 @@ export interface UpsertEnvironmentInput {
   credential_ids: string[];
   runner_type: "local" | "docker" | "cloud";
   docker_image?: string | null;
+  working_dir?: string | null;
   is_default: boolean;
 }
 
@@ -1345,8 +1347,16 @@ export const commands = {
     }),
 
   // Khadim backend
-  khadimCreateSession: (workspaceId?: string | null, cwdOverride?: string | null) =>
-    invoke<KhadimSessionCreated>("khadim_create_session", { workspaceId, cwdOverride }),
+  khadimCreateSession: (
+    workspaceId?: string | null,
+    cwdOverride?: string | null,
+    systemPromptOverride?: string | null,
+  ) =>
+    invoke<KhadimSessionCreated>("khadim_create_session", {
+      workspaceId,
+      cwdOverride,
+      systemPromptOverride,
+    }),
 
   khadimListModels: () =>
     invoke<KhadimModelOption[]>("khadim_list_models"),

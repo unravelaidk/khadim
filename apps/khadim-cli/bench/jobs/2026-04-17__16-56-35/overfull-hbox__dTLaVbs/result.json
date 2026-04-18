@@ -1,0 +1,108 @@
+{
+    "id": "d540e70f-fda0-4064-bd61-a4f30d68fc73",
+    "task_name": "terminal-bench/overfull-hbox",
+    "trial_name": "overfull-hbox__dTLaVbs",
+    "trial_uri": "file:///home/hanan/Documents/repo/khadim/apps/khadim-cli/bench/jobs/2026-04-17__16-56-35/overfull-hbox__dTLaVbs",
+    "task_id": {
+        "org": "terminal-bench",
+        "name": "overfull-hbox",
+        "ref": "sha256:984d672ae34ada00db17a8c024110fb3527fbb5bce0844e8c0fd9b4e4d4fdacf"
+    },
+    "source": "terminal-bench/terminal-bench-2",
+    "task_checksum": "1ca798568ce2876d672c27d6d69fca099b2488ca867a006828774aaaaea84f06",
+    "config": {
+        "task": {
+            "path": null,
+            "git_url": null,
+            "git_commit_id": null,
+            "name": "terminal-bench/overfull-hbox",
+            "ref": "sha256:984d672ae34ada00db17a8c024110fb3527fbb5bce0844e8c0fd9b4e4d4fdacf",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench/terminal-bench-2"
+        },
+        "trial_name": "overfull-hbox__dTLaVbs",
+        "trials_dir": "jobs/2026-04-17__16-56-35",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "khadim_harbor_agent:KhadimHarborAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "mounts_json": null,
+            "env": {},
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [
+            "/installed-agent/khadim-run.log"
+        ],
+        "job_id": "3ba16741-c7a6-44f8-97df-15ecce7a2958"
+    },
+    "agent_info": {
+        "name": "khadim-cli",
+        "version": "unknown",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "khadim-cli",
+            "version": "dev",
+            "provider": "opencode-go",
+            "model": "glm-5.1"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-17T15:40:42.322151Z",
+    "finished_at": "2026-04-17T15:52:09.056546Z",
+    "environment_setup": {
+        "started_at": "2026-04-17T15:40:42.333992Z",
+        "finished_at": "2026-04-17T15:40:55.726536Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-17T15:40:55.726554Z",
+        "finished_at": "2026-04-17T15:41:25.071945Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-17T15:41:25.072020Z",
+        "finished_at": "2026-04-17T15:50:14.211476Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-17T15:50:14.482728Z",
+        "finished_at": "2026-04-17T15:51:55.210925Z"
+    }
+}

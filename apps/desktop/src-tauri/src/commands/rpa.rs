@@ -73,6 +73,7 @@ pub(crate) struct UpsertEnvironmentInput {
     credential_ids: Vec<String>,
     runner_type: String,
     docker_image: Option<String>,
+    working_dir: Option<String>,
     is_default: bool,
 }
 
@@ -237,6 +238,10 @@ pub(crate) fn create_environment(
             let trimmed = value.trim().to_string();
             (!trimmed.is_empty()).then_some(trimmed)
         }),
+        working_dir: input.working_dir.and_then(|value| {
+            let trimmed = value.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        }),
         is_default: input.is_default,
         created_at: timestamp.clone(),
         updated_at: timestamp,
@@ -266,6 +271,10 @@ pub(crate) fn update_environment(
         credential_ids: input.credential_ids,
         runner_type: input.runner_type,
         docker_image: input.docker_image.and_then(|value| {
+            let trimmed = value.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        }),
+        working_dir: input.working_dir.and_then(|value| {
             let trimmed = value.trim().to_string();
             (!trimmed.is_empty()).then_some(trimmed)
         }),

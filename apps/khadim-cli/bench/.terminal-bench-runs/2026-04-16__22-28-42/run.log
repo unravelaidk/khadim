@@ -1,0 +1,57 @@
+Processing tasks in duration order (longest first):
++-----+-------------+------------+------------+
+|   # | Task Name   | Duration   | Source     |
++=====+=============+============+============+
+|   1 | hello-world | 3m 30s     | calculated |
++-----+-------------+------------+------------+
+Total tasks: 1
+Starting harness run
+Run ID: 2026-04-16__22-28-42
+Running task: hello-world
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-16__22-28-42 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml build
+Docker compose command failed with exit code 1
+Command: docker compose -p hello-world-1-of-1-2026-04-16__22-28-42 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml build
+STDERR: Cannot connect to the Docker daemon at unix:///home/hanan/.docker/desktop/docker.sock. Is the docker daemon running?
+
+
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-16__22-28-42 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml down
+Docker compose command failed with exit code 1
+Command: docker compose -p hello-world-1-of-1-2026-04-16__22-28-42 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml down
+STDERR: Cannot connect to the Docker daemon at unix:///home/hanan/.docker/desktop/docker.sock. Is the docker daemon running?
+
+Error cleaning up docker compose services: Command '['docker', 'compose', '-p', 'hello-world-1-of-1-2026-04-16__22-28-42', '-f', '/home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml', 'down']' returned non-zero exit status 1.
+Harness execution failed for /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world: Command '['docker', 'compose', '-p', 'hello-world-1-of-1-2026-04-16__22-28-42', '-f', '/home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml', 'build']' returned non-zero exit status 1.
+Traceback (most recent call last):
+  File "/home/hanan/.local/share/uv/tools/terminal-bench/lib/python3.13/site-packages/terminal_bench/harness/harness.py", line 1011, in _execute_single_trial
+    trial_results = self._run_trial(trial_handler)
+  File "/home/hanan/.local/share/uv/tools/terminal-bench/lib/python3.13/site-packages/terminal_bench/harness/harness.py", line 717, in _run_trial
+    with spin_up_terminal(
+         ~~~~~~~~~~~~~~~~^
+        client_container_name=trial_handler.client_container_name,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        disable_recording=trial_handler.task.disable_asciinema,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as terminal:
+    ^
+  File "/home/hanan/.local/share/uv/python/cpython-3.13.5-linux-x86_64-gnu/lib/python3.13/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/home/hanan/.local/share/uv/tools/terminal-bench/lib/python3.13/site-packages/terminal_bench/terminal/terminal.py", line 176, in spin_up_terminal
+    terminal.start()
+    ~~~~~~~~~~~~~~^^
+  File "/home/hanan/.local/share/uv/tools/terminal-bench/lib/python3.13/site-packages/terminal_bench/terminal/terminal.py", line 102, in start
+    self.container = self._compose_manager.start()
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/hanan/.local/share/uv/tools/terminal-bench/lib/python3.13/site-packages/terminal_bench/terminal/docker_compose_manager.py", line 126, in start
+    self._run_docker_compose_command(["build"])
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/hanan/.local/share/uv/tools/terminal-bench/lib/python3.13/site-packages/terminal_bench/terminal/docker_compose_manager.py", line 101, in _run_docker_compose_command
+    result = subprocess.run(
+        full_command,
+    ...<3 lines>...
+        text=True,
+    )
+  File "/home/hanan/.local/share/uv/python/cpython-3.13.5-linux-x86_64-gnu/lib/python3.13/subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['docker', 'compose', '-p', 'hello-world-1-of-1-2026-04-16__22-28-42', '-f', '/home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml', 'build']' returned non-zero exit status 1.
