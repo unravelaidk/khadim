@@ -123,6 +123,36 @@ Current state: lightweight script runner with env/secret injection.
 5. Support both isolated scratch containers (RPA/connector runs) and mounted workspace containers (coding runs)
 6. Surface Docker health, image readiness, and runner selection in UI
 
+### Memory & Self-Improvement System
+
+Khadim's memory system is inspired by Hermes Agent's self-improving loop. The agent curates its own memory, searches past conversations, and saves reusable skills — all through tools it controls.
+
+**Two-tier memory:**
+
+| Layer | Mechanism | Use Case |
+|-------|-----------|----------|
+| **Memory entries** | Structured `memory_search` / `memory_save` / `memory_delete` tools | Key facts always available (preferences, conventions, environment) |
+| **Session search** | FTS5 full-text search over all past messages | "Did we discuss X last week?" cross-session recall |
+
+**Memory tools:**
+- `memory_search` — scored search across linked stores (pinned bonus, store affinity, confidence, recall count)
+- `memory_save` — upsert entry with capacity warnings (soft limit 80 entries/store). When near capacity, the agent must consolidate related entries before adding new ones.
+- `memory_delete` — remove outdated/duplicate entries during consolidation
+- `memory_get` — fetch full entry by id
+- `session_search` — FTS5 search across all past conversations in the current workspace
+
+**Self-improvement behaviors (in system prompt):**
+- The agent saves durable facts proactively — user preferences, environment details, tool quirks, stable conventions
+- The agent searches memory BEFORE asking the user to repeat themselves
+- After complex tasks (5+ tool calls) or fixing tricky errors, the agent is nudged to save the approach as a skill (markdown file with frontmatter)
+- When a loaded skill is outdated or wrong, the agent patches it immediately
+- Memories are written as declarative facts, not instructions (avoids directive drift across sessions)
+
+**Capacity management:**
+- Soft limit of 80 entries per store
+- Warnings at 60 entries (75% full) to encourage consolidation
+- Hard warning at 80 entries requiring merge/replace before new saves
+
 ### Streaming Model
 
 All live events use the same normalized shape across OpenCode, Claude Code, and future Khadim-native backends:
@@ -193,7 +223,9 @@ Replace SSE (`/api/agent/stream`) with WebSocket (`/api/agent/ws`):
 | **Domain** | Pluggable tool set (coding, RPA, connectors). Engine is domain-agnostic |
 | **Environment** | Isolated runtime config with variables and credential bindings |
 | **Credential** | Securely stored secret (API key, OAuth token, login) |
-| **Memory** | Persistent knowledge agents accumulate across sessions |
+| **Memory** | Persistent knowledge agents accumulate across sessions (stores + entries) |
+| **Session Search** | FTS5 full-text search across all past conversations |
+| **Skill** | Reusable procedural memory saved as markdown with frontmatter |
 | **Runner** | Execution target — local, Docker, or cloud |
 
 ## Vocabulary
@@ -225,7 +257,7 @@ Replace SSE (`/api/agent/stream`) with WebSocket (`/api/agent/ws`):
 - Agent CRUD + AgentEditor
 - Scheduling (tokio-cron), Docker runner (bollard)
 - Environment + credential management
-- Memory stores
+- ~~Memory stores~~ ✓ (implemented with FTS5 session search, capacity management, and self-improvement nudges)
 
 ### Phase 4 — Polish + Enterprise
 - Audit trail + screenshot gallery

@@ -1,0 +1,19 @@
+[package]
+name = "khadim-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Khadim CLI coding agent"
+
+[dependencies]
+arboard = "3"
+crossterm = { version = "0.28", features = ["event-stream"] }
+dirs = "6"
+env_logger = "0.11"
+khadim-ai-core = { version = "0.1.0", path = "../../crates/khadim-ai-core" }
+khadim-coding-agent = { version = "0.1.0", path = "../../crates/khadim-coding-agent" }
+pulldown-cmark = { version = "0.13.3", default-features = false }
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+unicode-width = "0.2"

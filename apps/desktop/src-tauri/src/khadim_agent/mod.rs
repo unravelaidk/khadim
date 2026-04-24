@@ -30,7 +30,17 @@ impl KhadimManager {
     }
 
     pub fn create_session(&self, workspace_id: String, cwd: PathBuf) -> String {
-        let session = KhadimSession::new(workspace_id, cwd);
+        self.create_session_with_prompt(workspace_id, cwd, None)
+    }
+
+    pub fn create_session_with_prompt(
+        &self,
+        workspace_id: String,
+        cwd: PathBuf,
+        system_prompt_override: Option<String>,
+    ) -> String {
+        let session = KhadimSession::new(workspace_id, cwd)
+            .with_system_prompt(system_prompt_override);
         let session_id = session.id.clone();
         self.sessions
             .lock()

@@ -1,9 +1,9 @@
 use crate::db::context::{decode_json, encode_json, now, DbContext};
 use crate::db::entities::{
-    agent_runs, credentials, environments, managed_agents, memory_entries, memory_store_agents,
-    memory_stores,
+    agent_health_snapshots, agent_runs, approval_requests, credentials, environments, managed_agents,
+    memory_entries, memory_store_agents, memory_stores, queue_items, queues, schedules,
 };
-use crate::db::{CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry, MemoryStore};
+use crate::db::{AgentHealthSnapshot, AgentSchedule, ApprovalRequestRecord, CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry, MemoryStore, QueueDefinition, QueueItem};
 use crate::error::AppError;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
@@ -98,6 +98,8 @@ fn agent_to_domain(model: managed_agents::Model, runs: &[agent_runs::Model]) -> 
         environment_id: model.environment_id,
         max_turns: model.max_turns,
         max_tokens: model.max_tokens,
+        budget_policy: serde_json::from_str(&model.budget_policy_json).unwrap_or_default(),
+        artifact_policy: serde_json::from_str(&model.artifact_policy_json).unwrap_or_default(),
         variables: serde_json::from_str(&model.variables_json).unwrap_or_default(),
         version: model.version,
         total_sessions,
@@ -117,9 +119,82 @@ fn environment_to_domain(model: environments::Model) -> EnvironmentProfile {
         credential_ids: serde_json::from_str(&model.credential_ids_json).unwrap_or_default(),
         runner_type: model.runner_type,
         docker_image: model.docker_image,
+        working_dir: model.working_dir,
         is_default: model.is_default != 0,
         created_at: model.created_at,
         updated_at: model.updated_at,
+    }
+}
+
+fn schedule_to_domain(model: schedules::Model) -> AgentSchedule {
+    AgentSchedule {
+        id: model.id,
+        agent_id: model.agent_id,
+        kind: model.kind,
+        cron_expr: model.cron_expr,
+        is_paused: model.is_paused != 0,
+        next_run_at: model.next_run_at,
+        last_run_at: model.last_run_at,
+        last_outcome: model.last_outcome,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+    }
+}
+
+fn queue_to_domain(model: queues::Model) -> QueueDefinition {
+    QueueDefinition {
+        id: model.id,
+        name: model.name,
+        kind: model.kind,
+        source_config_json: model.source_config_json,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+    }
+}
+
+fn queue_item_to_domain(model: queue_items::Model) -> QueueItem {
+    QueueItem {
+        id: model.id,
+        queue_id: model.queue_id,
+        status: model.status,
+        payload_json: model.payload_json,
+        priority: model.priority,
+        visible_at: model.visible_at,
+        claimed_by_run_id: model.claimed_by_run_id,
+        claimed_at: model.claimed_at,
+        attempt_count: model.attempt_count,
+        max_attempts: model.max_attempts,
+        last_error: model.last_error,
+        dead_lettered_at: model.dead_lettered_at,
+        completed_at: model.completed_at,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+    }
+}
+
+fn health_snapshot_to_domain(model: agent_health_snapshots::Model) -> AgentHealthSnapshot {
+    AgentHealthSnapshot {
+        id: model.id,
+        agent_id: model.agent_id,
+        status: model.status,
+        reason: model.reason,
+        metrics_json: model.metrics_json,
+        created_at: model.created_at,
+    }
+}
+
+fn approval_request_to_domain(model: approval_requests::Model) -> ApprovalRequestRecord {
+    ApprovalRequestRecord {
+        id: model.id,
+        run_id: model.run_id,
+        scope: model.scope,
+        action_title: model.action_title,
+        risk_level: model.risk_level,
+        status: model.status,
+        requested_at: model.requested_at,
+        resolved_at: model.resolved_at,
+        resolution_note: model.resolution_note,
+        metadata_json: model.metadata_json,
     }
 }
 
@@ -157,6 +232,8 @@ impl AutomationRepository {
                 environment_id: Set(agent.environment_id.clone()),
                 max_turns: Set(agent.max_turns),
                 max_tokens: Set(agent.max_tokens),
+                budget_policy_json: Set(encode_json(&agent.budget_policy)?),
+                artifact_policy_json: Set(encode_json(&agent.artifact_policy)?),
                 variables_json: Set(encode_json(&agent.variables)?),
                 version: Set(agent.version),
                 created_at: Set(agent.created_at.clone()),
@@ -191,6 +268,8 @@ impl AutomationRepository {
             active.environment_id = Set(agent.environment_id.clone());
             active.max_turns = Set(agent.max_turns);
             active.max_tokens = Set(agent.max_tokens);
+            active.budget_policy_json = Set(encode_json(&agent.budget_policy)?);
+            active.artifact_policy_json = Set(encode_json(&agent.artifact_policy)?);
             active.variables_json = Set(encode_json(&agent.variables)?);
             active.version = Set(agent.version);
             active.updated_at = Set(agent.updated_at.clone());
@@ -203,6 +282,10 @@ impl AutomationRepository {
         let conn = self.ctx.conn();
         let id = id.to_string();
         self.ctx.run(async move {
+            schedules::Entity::delete_many()
+                .filter(schedules::Column::AgentId.eq(id.clone()))
+                .exec(&conn)
+                .await?;
             memory_store_agents::Entity::delete_many()
                 .filter(memory_store_agents::Column::AgentId.eq(id.clone()))
                 .exec(&conn)
@@ -215,6 +298,337 @@ impl AutomationRepository {
                 return Err(AppError::not_found(format!("Managed agent {id} not found")));
             }
             Ok(())
+        })
+    }
+
+    pub(crate) fn list_agent_schedules(&self) -> Result<Vec<AgentSchedule>, AppError> {
+        let conn = self.ctx.conn();
+        self.ctx.run(async move {
+            let rows = schedules::Entity::find()
+                .order_by_desc(schedules::Column::UpdatedAt)
+                .all(&conn)
+                .await?;
+            Ok(rows.into_iter().map(schedule_to_domain).collect())
+        })
+    }
+
+    pub(crate) fn upsert_agent_schedule(&self, schedule: &AgentSchedule) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let schedule = schedule.clone();
+        self.ctx.run(async move {
+            let existing = schedules::Entity::find_by_id(schedule.id.clone()).one(&conn).await?;
+            if let Some(existing) = existing {
+                let mut active: schedules::ActiveModel = existing.into();
+                active.agent_id = Set(schedule.agent_id.clone());
+                active.kind = Set(schedule.kind.clone());
+                active.cron_expr = Set(schedule.cron_expr.clone());
+                active.is_paused = Set(schedule.is_paused as i32);
+                active.next_run_at = Set(schedule.next_run_at.clone());
+                active.last_run_at = Set(schedule.last_run_at.clone());
+                active.last_outcome = Set(schedule.last_outcome.clone());
+                active.updated_at = Set(schedule.updated_at.clone());
+                active.update(&conn).await?;
+            } else {
+                schedules::Entity::insert(schedules::ActiveModel {
+                    id: Set(schedule.id.clone()),
+                    agent_id: Set(schedule.agent_id.clone()),
+                    kind: Set(schedule.kind.clone()),
+                    cron_expr: Set(schedule.cron_expr.clone()),
+                    is_paused: Set(schedule.is_paused as i32),
+                    next_run_at: Set(schedule.next_run_at.clone()),
+                    last_run_at: Set(schedule.last_run_at.clone()),
+                    last_outcome: Set(schedule.last_outcome.clone()),
+                    created_at: Set(schedule.created_at.clone()),
+                    updated_at: Set(schedule.updated_at.clone()),
+                })
+                .exec(&conn)
+                .await?;
+            }
+            Ok(())
+        })
+    }
+
+    pub(crate) fn delete_agent_schedule_by_agent_id(&self, agent_id: &str) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let agent_id = agent_id.to_string();
+        self.ctx.run(async move {
+            schedules::Entity::delete_many()
+                .filter(schedules::Column::AgentId.eq(agent_id))
+                .exec(&conn)
+                .await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn update_agent_schedule_runtime(&self, schedule_id: &str, next_run_at: Option<&str>, last_run_at: Option<&str>, last_outcome: Option<&str>, updated_at: &str) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let schedule_id = schedule_id.to_string();
+        let next_run_at = next_run_at.map(ToOwned::to_owned);
+        let last_run_at = last_run_at.map(ToOwned::to_owned);
+        let last_outcome = last_outcome.map(ToOwned::to_owned);
+        let updated_at = updated_at.to_string();
+        self.ctx.run(async move {
+            let model = schedules::Entity::find_by_id(schedule_id.clone())
+                .one(&conn)
+                .await?
+                .ok_or_else(|| AppError::not_found(format!("Schedule {schedule_id} not found")))?;
+            let mut active: schedules::ActiveModel = model.into();
+            active.next_run_at = Set(next_run_at);
+            active.last_run_at = Set(last_run_at);
+            active.last_outcome = Set(last_outcome);
+            active.updated_at = Set(updated_at);
+            active.update(&conn).await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn list_queues(&self) -> Result<Vec<QueueDefinition>, AppError> {
+        let conn = self.ctx.conn();
+        self.ctx.run(async move {
+            let rows = queues::Entity::find().order_by_desc(queues::Column::UpdatedAt).all(&conn).await?;
+            Ok(rows.into_iter().map(queue_to_domain).collect())
+        })
+    }
+
+    pub(crate) fn create_queue(&self, queue: &QueueDefinition) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let queue = queue.clone();
+        self.ctx.run(async move {
+            queues::Entity::insert(queues::ActiveModel {
+                id: Set(queue.id.clone()),
+                name: Set(queue.name.clone()),
+                kind: Set(queue.kind.clone()),
+                source_config_json: Set(queue.source_config_json.clone()),
+                created_at: Set(queue.created_at.clone()),
+                updated_at: Set(queue.updated_at.clone()),
+            })
+            .exec(&conn)
+            .await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn get_queue(&self, id: &str) -> Result<QueueDefinition, AppError> {
+        let conn = self.ctx.conn();
+        let id = id.to_string();
+        self.ctx.run(async move {
+            let row = queues::Entity::find_by_id(id.clone())
+                .one(&conn)
+                .await?
+                .ok_or_else(|| AppError::not_found(format!("Queue {id} not found")))?;
+            Ok(queue_to_domain(row))
+        })
+    }
+
+    pub(crate) fn list_queue_items(&self, queue_id: &str) -> Result<Vec<QueueItem>, AppError> {
+        let conn = self.ctx.conn();
+        let queue_id = queue_id.to_string();
+        self.ctx.run(async move {
+            let rows = queue_items::Entity::find()
+                .filter(queue_items::Column::QueueId.eq(queue_id))
+                .order_by_desc(queue_items::Column::Priority)
+                .order_by_asc(queue_items::Column::CreatedAt)
+                .all(&conn)
+                .await?;
+            Ok(rows.into_iter().map(queue_item_to_domain).collect())
+        })
+    }
+
+    pub(crate) fn get_queue_item(&self, item_id: &str) -> Result<QueueItem, AppError> {
+        let conn = self.ctx.conn();
+        let item_id = item_id.to_string();
+        self.ctx.run(async move {
+            let row = queue_items::Entity::find_by_id(item_id.clone())
+                .one(&conn)
+                .await?
+                .ok_or_else(|| AppError::not_found(format!("Queue item {item_id} not found")))?;
+            Ok(queue_item_to_domain(row))
+        })
+    }
+
+    pub(crate) fn find_next_ready_queue_item(&self, queue_id: &str, visible_before: &str) -> Result<Option<QueueItem>, AppError> {
+        let conn = self.ctx.conn();
+        let queue_id = queue_id.to_string();
+        let visible_before = visible_before.to_string();
+        self.ctx.run(async move {
+            let row = queue_items::Entity::find()
+                .filter(queue_items::Column::QueueId.eq(queue_id))
+                .filter(queue_items::Column::Status.eq("ready"))
+                .filter(queue_items::Column::VisibleAt.lte(visible_before))
+                .order_by_desc(queue_items::Column::Priority)
+                .order_by_asc(queue_items::Column::CreatedAt)
+                .one(&conn)
+                .await?;
+            Ok(row.map(queue_item_to_domain))
+        })
+    }
+
+    pub(crate) fn create_queue_item(&self, item: &QueueItem) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let item = item.clone();
+        self.ctx.run(async move {
+            queue_items::Entity::insert(queue_items::ActiveModel {
+                id: Set(item.id.clone()),
+                queue_id: Set(item.queue_id.clone()),
+                status: Set(item.status.clone()),
+                payload_json: Set(item.payload_json.clone()),
+                priority: Set(item.priority),
+                visible_at: Set(item.visible_at.clone()),
+                claimed_by_run_id: Set(item.claimed_by_run_id.clone()),
+                claimed_at: Set(item.claimed_at.clone()),
+                attempt_count: Set(item.attempt_count),
+                max_attempts: Set(item.max_attempts),
+                last_error: Set(item.last_error.clone()),
+                dead_lettered_at: Set(item.dead_lettered_at.clone()),
+                completed_at: Set(item.completed_at.clone()),
+                created_at: Set(item.created_at.clone()),
+                updated_at: Set(item.updated_at.clone()),
+            })
+            .exec(&conn)
+            .await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn update_queue_item(&self, item: &QueueItem) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let item = item.clone();
+        self.ctx.run(async move {
+            let model = queue_items::Entity::find_by_id(item.id.clone())
+                .one(&conn)
+                .await?
+                .ok_or_else(|| AppError::not_found(format!("Queue item {} not found", item.id)))?;
+            let mut active: queue_items::ActiveModel = model.into();
+            active.status = Set(item.status.clone());
+            active.payload_json = Set(item.payload_json.clone());
+            active.priority = Set(item.priority);
+            active.visible_at = Set(item.visible_at.clone());
+            active.claimed_by_run_id = Set(item.claimed_by_run_id.clone());
+            active.claimed_at = Set(item.claimed_at.clone());
+            active.attempt_count = Set(item.attempt_count);
+            active.max_attempts = Set(item.max_attempts);
+            active.last_error = Set(item.last_error.clone());
+            active.dead_lettered_at = Set(item.dead_lettered_at.clone());
+            active.completed_at = Set(item.completed_at.clone());
+            active.updated_at = Set(item.updated_at.clone());
+            active.update(&conn).await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn list_agent_health_snapshots(&self, agent_id: &str) -> Result<Vec<AgentHealthSnapshot>, AppError> {
+        let conn = self.ctx.conn();
+        let agent_id = agent_id.to_string();
+        self.ctx.run(async move {
+            let rows = agent_health_snapshots::Entity::find()
+                .filter(agent_health_snapshots::Column::AgentId.eq(agent_id))
+                .order_by_desc(agent_health_snapshots::Column::CreatedAt)
+                .all(&conn)
+                .await?;
+            Ok(rows.into_iter().map(health_snapshot_to_domain).collect())
+        })
+    }
+
+    pub(crate) fn create_agent_health_snapshot(&self, snapshot: &AgentHealthSnapshot) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let snapshot = snapshot.clone();
+        self.ctx.run(async move {
+            agent_health_snapshots::Entity::insert(agent_health_snapshots::ActiveModel {
+                id: Set(snapshot.id.clone()),
+                agent_id: Set(snapshot.agent_id.clone()),
+                status: Set(snapshot.status.clone()),
+                reason: Set(snapshot.reason.clone()),
+                metrics_json: Set(snapshot.metrics_json.clone()),
+                created_at: Set(snapshot.created_at.clone()),
+            })
+            .exec(&conn)
+            .await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn list_approval_requests(&self, run_id: &str) -> Result<Vec<ApprovalRequestRecord>, AppError> {
+        let conn = self.ctx.conn();
+        let run_id = run_id.to_string();
+        self.ctx.run(async move {
+            let rows = approval_requests::Entity::find()
+                .filter(approval_requests::Column::RunId.eq(run_id))
+                .order_by_desc(approval_requests::Column::RequestedAt)
+                .all(&conn)
+                .await?;
+            Ok(rows.into_iter().map(approval_request_to_domain).collect())
+        })
+    }
+
+    pub(crate) fn create_approval_request(&self, request: &ApprovalRequestRecord) -> Result<(), AppError> {
+        let conn = self.ctx.conn();
+        let request = request.clone();
+        self.ctx.run(async move {
+            approval_requests::Entity::insert(approval_requests::ActiveModel {
+                id: Set(request.id.clone()),
+                run_id: Set(request.run_id.clone()),
+                scope: Set(request.scope.clone()),
+                action_title: Set(request.action_title.clone()),
+                risk_level: Set(request.risk_level.clone()),
+                status: Set(request.status.clone()),
+                requested_at: Set(request.requested_at.clone()),
+                resolved_at: Set(request.resolved_at.clone()),
+                resolution_note: Set(request.resolution_note.clone()),
+                metadata_json: Set(request.metadata_json.clone()),
+            })
+            .exec(&conn)
+            .await?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn update_approval_request_status(
+        &self,
+        id: &str,
+        status: &str,
+        resolution_note: Option<&str>,
+        resolved_at: &str,
+    ) -> Result<ApprovalRequestRecord, AppError> {
+        let conn = self.ctx.conn();
+        let id = id.to_string();
+        let status = status.to_string();
+        let resolution_note = resolution_note.map(ToOwned::to_owned);
+        let resolved_at = resolved_at.to_string();
+        self.ctx.run(async move {
+            let model = approval_requests::Entity::find_by_id(id.clone())
+                .one(&conn)
+                .await?
+                .ok_or_else(|| AppError::not_found(format!("Approval request {id} not found")))?;
+            let mut active: approval_requests::ActiveModel = model.into();
+            active.status = Set(status.clone());
+            active.resolution_note = Set(resolution_note);
+            active.resolved_at = Set(Some(resolved_at));
+            let updated = active.update(&conn).await?;
+            Ok(approval_request_to_domain(updated))
+        })
+    }
+
+    pub(crate) fn set_agent_schedule_paused(
+        &self,
+        agent_id: &str,
+        is_paused: bool,
+    ) -> Result<Option<AgentSchedule>, AppError> {
+        let conn = self.ctx.conn();
+        let agent_id = agent_id.to_string();
+        let updated_at = now();
+        self.ctx.run(async move {
+            let existing = schedules::Entity::find()
+                .filter(schedules::Column::AgentId.eq(agent_id.clone()))
+                .one(&conn)
+                .await?;
+            let Some(model) = existing else {
+                return Ok(None);
+            };
+            let mut active: schedules::ActiveModel = model.into();
+            active.is_paused = Set(if is_paused { 1 } else { 0 });
+            active.updated_at = Set(updated_at);
+            let updated = active.update(&conn).await?;
+            Ok(Some(schedule_to_domain(updated)))
         })
     }
 
@@ -252,6 +666,7 @@ impl AutomationRepository {
                 credential_ids_json: Set(encode_json(&environment.credential_ids)?),
                 runner_type: Set(environment.runner_type.clone()),
                 docker_image: Set(environment.docker_image.clone()),
+                working_dir: Set(environment.working_dir.clone()),
                 is_default: Set(environment.is_default as i32),
                 created_at: Set(environment.created_at.clone()),
                 updated_at: Set(environment.updated_at.clone()),
@@ -289,6 +704,7 @@ impl AutomationRepository {
             active.credential_ids_json = Set(encode_json(&environment.credential_ids)?);
             active.runner_type = Set(environment.runner_type.clone());
             active.docker_image = Set(environment.docker_image.clone());
+            active.working_dir = Set(environment.working_dir.clone());
             active.is_default = Set(environment.is_default as i32);
             active.updated_at = Set(environment.updated_at.clone());
             active.update(&conn).await?;

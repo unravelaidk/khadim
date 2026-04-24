@@ -1,0 +1,108 @@
+{
+    "id": "b297d886-2932-4c31-bc01-baa044148036",
+    "task_name": "terminal-bench/make-mips-interpreter",
+    "trial_name": "make-mips-interpreter__GMoY5sM",
+    "trial_uri": "file:///home/hanan/Documents/repo/khadim/apps/khadim-cli/bench/jobs/2026-04-17__16-56-35/make-mips-interpreter__GMoY5sM",
+    "task_id": {
+        "org": "terminal-bench",
+        "name": "make-mips-interpreter",
+        "ref": "sha256:608e82ecd67ce469824a34181b580cbd0e1096cdfc05fe40edda3e6bfada9773"
+    },
+    "source": "terminal-bench/terminal-bench-2",
+    "task_checksum": "f7e68fab72321eeaf465b53a98a4c3aaf7b66d57a3d3465708a15ed2c9f55f70",
+    "config": {
+        "task": {
+            "path": null,
+            "git_url": null,
+            "git_commit_id": null,
+            "name": "terminal-bench/make-mips-interpreter",
+            "ref": "sha256:608e82ecd67ce469824a34181b580cbd0e1096cdfc05fe40edda3e6bfada9773",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench/terminal-bench-2"
+        },
+        "trial_name": "make-mips-interpreter__GMoY5sM",
+        "trials_dir": "jobs/2026-04-17__16-56-35",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "khadim_harbor_agent:KhadimHarborAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "mounts_json": null,
+            "env": {},
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [
+            "/installed-agent/khadim-run.log"
+        ],
+        "job_id": "3ba16741-c7a6-44f8-97df-15ecce7a2958"
+    },
+    "agent_info": {
+        "name": "khadim-cli",
+        "version": "unknown",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "khadim-cli",
+            "version": "dev",
+            "provider": "opencode-go",
+            "model": "glm-5.1"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-17T14:56:42.119927Z",
+    "finished_at": "2026-04-17T15:25:18.707713Z",
+    "environment_setup": {
+        "started_at": "2026-04-17T14:56:42.174374Z",
+        "finished_at": "2026-04-17T14:57:23.625178Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-17T14:57:23.625248Z",
+        "finished_at": "2026-04-17T14:57:39.576720Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-17T14:57:39.576867Z",
+        "finished_at": "2026-04-17T15:24:01.868586Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-17T15:24:02.178621Z",
+        "finished_at": "2026-04-17T15:25:04.332090Z"
+    }
+}

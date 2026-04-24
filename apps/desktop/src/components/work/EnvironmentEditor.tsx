@@ -2,6 +2,9 @@ import React, { useState, useCallback } from "react";
 import type { Environment, Credential } from "../../lib/types";
 import { getErrorMessage } from "../../lib/streaming";
 
+let openDialog: typeof import("@tauri-apps/plugin-dialog").open | null = null;
+import("@tauri-apps/plugin-dialog").then((mod) => { openDialog = mod.open; }).catch(() => {});
+
 /* ─── Environment Editor ───────────────────────────────────────────── */
 
 export interface EnvironmentEditorData {
@@ -9,6 +12,7 @@ export interface EnvironmentEditorData {
   description: string;
   runnerType: "local" | "docker" | "cloud";
   dockerImage: string;
+  workingDir: string;
   variables: Record<string, string>;
   credentialIds: string[];
   isDefault: boolean;
@@ -33,6 +37,7 @@ export function EnvironmentEditor({
   const [description, setDescription] = useState(environment?.description ?? "");
   const [runnerType, setRunnerType] = useState<"local" | "docker" | "cloud">(environment?.runnerType ?? "local");
   const [dockerImage, setDockerImage] = useState(environment?.dockerImage ?? "debian:bookworm-slim");
+  const [workingDir, setWorkingDir] = useState(environment?.workingDir ?? "");
   const [vars, setVars] = useState<[string, string][]>(
     environment ? Object.entries(environment.variables) : []
   );
@@ -60,6 +65,26 @@ export function EnvironmentEditor({
     }));
   }, []);
 
+  const pickWorkingDir = useCallback(async () => {
+    if (!openDialog) {
+      setSaveError("Native dialog not available.");
+      return;
+    }
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Select working directory",
+        defaultPath: workingDir || undefined,
+      });
+      if (selected && typeof selected === "string") {
+        setWorkingDir(selected);
+      }
+    } catch (error) {
+      setSaveError(getErrorMessage(error));
+    }
+  }, [workingDir]);
+
   const toggleCred = useCallback((id: string) => {
     setSelectedCreds((prev) => {
       const next = new Set(prev);
@@ -85,6 +110,7 @@ export function EnvironmentEditor({
         description: description.trim(),
         runnerType,
         dockerImage: dockerImage.trim(),
+        workingDir: workingDir.trim(),
         variables,
         credentialIds: Array.from(selectedCreds),
         isDefault,
@@ -191,6 +217,31 @@ export function EnvironmentEditor({
               />
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                 Image used for Docker runs in this environment.
+              </p>
+            </div>
+          )}
+
+          {runnerType === "local" && (
+            <div className="mt-4">
+              <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Working directory</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  value={workingDir}
+                  onChange={(e) => setWorkingDir(e.target.value)}
+                  placeholder="/absolute/path/where/agents/execute"
+                  className="depth-inset text-[var(--text-primary)] placeholder:text-[var(--text-muted)] h-9 flex-1 rounded-[var(--radius-sm)] px-3 font-mono text-[13px]"
+                />
+                <button
+                  type="button"
+                  onClick={pickWorkingDir}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--glass-border-strong)] bg-[var(--glass-bg)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]"
+                >
+                  <i className="ri-folder-open-line text-[14px] leading-none" />
+                  Browse…
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                Absolute path where agents execute. Session file explorer is rooted here.
               </p>
             </div>
           )}

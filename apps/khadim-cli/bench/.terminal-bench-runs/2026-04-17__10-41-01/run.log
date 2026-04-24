@@ -1,0 +1,30 @@
+Processing tasks in duration order (longest first):
++-----+-------------+------------+------------+
+|   # | Task Name   | Duration   | Source     |
++=====+=============+============+============+
+|   1 | hello-world | 3m 30s     | calculated |
++-----+-------------+------------+------------+
+Total tasks: 1
+Starting harness run
+Run ID: 2026-04-17__10-41-01
+Running task: hello-world
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-17__10-41-01 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml build
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-17__10-41-01 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml up -d
+Starting recording.
+Sending keys: ['asciinema rec --stdin /logs/agent.cast', 'Enter'] min_timeout_sec: 3.0 max_timeout_sec: 180.0
+Sending keys: ['clear', 'Enter'] min_timeout_sec: 0.0 max_timeout_sec: 180.0
+Sending keys: ['source /installed-agent/setup-env.sh', '; tmux wait -S done', 'Enter'] min_timeout_sec: 0.0 max_timeout_sec: inf
+Blocking command completed in 0.13s.
+Sending keys: ['/installed-agent/khadim-cli --cwd . --build --provider opencode-go --model glm-5 --prompt \'Create a file called hello.txt in the current directory. Write "Hello, world!" to it. Make sure it ends in a newline. Don\'"\'"\'t make any other files or folders.\'', '; tmux wait -S done', 'Enter'] min_timeout_sec: 0.0 max_timeout_sec: inf
+Blocking command completed in 14.18s.
+Starting recording.
+Sending keys: ['asciinema rec --stdin /logs/tests.cast', 'Enter'] min_timeout_sec: 3.0 max_timeout_sec: 180.0
+Sending keys: ['clear', 'Enter'] min_timeout_sec: 0.0 max_timeout_sec: 180.0
+Sending keys: ['bash ', '/tests/run-tests.sh', '; tmux wait -S done', 'Enter'] min_timeout_sec: 0.0 max_timeout_sec: 60.0
+Blocking command completed in 14.96s.
+Stopping recording.
+Sending keys: ['C-d'] min_timeout_sec: 0.1 max_timeout_sec: 180.0
+Stopping recording.
+Sending keys: ['C-d'] min_timeout_sec: 0.1 max_timeout_sec: 180.0
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-17__10-41-01 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml down
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-17__10-41-01 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml down --rmi all --volumes

@@ -1,0 +1,46 @@
+{
+    "id": "3ba16741-c7a6-44f8-97df-15ecce7a2958",
+    "started_at": "2026-04-17T16:56:38.149974",
+    "finished_at": null,
+    "n_total_trials": 89,
+    "stats": {
+        "n_trials": 8,
+        "n_errors": 2,
+        "evals": {
+            "khadim-cli__terminal-bench/terminal-bench-2": {
+                "n_trials": 7,
+                "n_errors": 2,
+                "metrics": [
+                    {
+                        "mean": 0.125
+                    }
+                ],
+                "pass_at_k": {},
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "make-mips-interpreter__GMoY5sM",
+                            "circuit-fibsqrt__83dYkwC",
+                            "overfull-hbox__dTLaVbs",
+                            "video-processing__7jRehML",
+                            "distribution-search__zCdQnSE",
+                            "break-filter-js-from-html__gDqdEBR"
+                        ],
+                        "1.0": [
+                            "build-pov-ray__JG8F3H8"
+                        ]
+                    }
+                },
+                "exception_stats": {
+                    "AgentTimeoutError": [
+                        "break-filter-js-from-html__gDqdEBR"
+                    ],
+                    "CancelledError": [
+                        "protein-assembly__JnrCToy"
+                    ]
+                }
+            }
+        }
+    },
+    "trial_results": []
+}

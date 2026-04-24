@@ -1,0 +1,31 @@
+{
+  "name": "@khadim/cli",
+  "version": "0.1.0",
+  "description": "Khadim CLI coding agent",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "khadim": "bin/khadim.js",
+    "khadim-cli": "bin/khadim.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unravelaidk/khadim.git",
+    "directory": "apps/khadim-cli"
+  },
+  "scripts": {
+    "build": "cargo build --manifest-path Cargo.toml",
+    "build:release": "cargo build --release --manifest-path Cargo.toml",
+    "dist:bin": "python3 scripts/build_dist_bin.py",
+    "dist:npm": "python3 scripts/stage_npm_package.py --version $npm_package_version --package main",
+    "dist": "npm run dist:bin && npm run dist:npm",
+    "dev": "cargo run --manifest-path Cargo.toml --",
+    "pack:npm": "npm run dist:npm"
+  }
+}

@@ -1,6 +1,6 @@
 use crate::agent_runner::helpers::now;
 use crate::db::{
-    AgentRun, AgentRunTurn, CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry,
+    AgentRun, AgentRunTurn, ArtifactPolicy, BudgetPolicy, CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry,
     MemoryStore,
 };
 use crate::error::AppError;
@@ -46,6 +46,17 @@ fn validate_chat_read_access(value: &str) -> Result<(), AppError> {
     }
 }
 
+fn default_budget_policy(max_tokens: i64) -> BudgetPolicy {
+    BudgetPolicy {
+        max_tokens_per_run: (max_tokens > 0).then_some(max_tokens),
+        ..BudgetPolicy::default()
+    }
+}
+
+fn default_artifact_policy() -> ArtifactPolicy {
+    ArtifactPolicy::default()
+}
+
 #[derive(Deserialize)]
 pub(crate) struct UpsertManagedAgentInput {
     name: String,
@@ -63,6 +74,8 @@ pub(crate) struct UpsertManagedAgentInput {
     max_turns: i64,
     max_tokens: i64,
     variables: Option<HashMap<String, String>>,
+    budget_policy: Option<BudgetPolicy>,
+    artifact_policy: Option<ArtifactPolicy>,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +86,7 @@ pub(crate) struct UpsertEnvironmentInput {
     credential_ids: Vec<String>,
     runner_type: String,
     docker_image: Option<String>,
+    working_dir: Option<String>,
     is_default: bool,
 }
 
@@ -119,6 +133,7 @@ pub(crate) fn list_managed_agents(
 #[tauri::command]
 pub(crate) fn create_managed_agent(
     state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     input: UpsertManagedAgentInput,
 ) -> Result<ManagedAgent, AppError> {
     validate_runner_type(&input.runner_type)?;
@@ -145,6 +160,10 @@ pub(crate) fn create_managed_agent(
         environment_id: input.environment_id,
         max_turns: input.max_turns,
         max_tokens: input.max_tokens,
+        budget_policy: input
+            .budget_policy
+            .unwrap_or_else(|| default_budget_policy(input.max_tokens)),
+        artifact_policy: input.artifact_policy.unwrap_or_else(default_artifact_policy),
         variables: input.variables.unwrap_or_default(),
         version: 1,
         total_sessions: 0,
@@ -154,12 +173,20 @@ pub(crate) fn create_managed_agent(
         updated_at: timestamp,
     };
     state.db.create_managed_agent(&agent)?;
+    let scheduler = state.scheduler_service.clone();
+    let agent_for_sync = agent.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = scheduler.sync_agent(app, &agent_for_sync).await {
+            log::error!("Failed to sync schedule for agent {}: {}", agent_for_sync.id, error.message);
+        }
+    });
     Ok(agent)
 }
 
 #[tauri::command]
 pub(crate) fn update_managed_agent(
     state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     input: UpsertManagedAgentInput,
 ) -> Result<ManagedAgent, AppError> {
@@ -192,6 +219,8 @@ pub(crate) fn update_managed_agent(
         environment_id: input.environment_id,
         max_turns: input.max_turns,
         max_tokens: input.max_tokens,
+        budget_policy: input.budget_policy.unwrap_or(existing.budget_policy),
+        artifact_policy: input.artifact_policy.unwrap_or(existing.artifact_policy),
         variables: input.variables.unwrap_or_default(),
         version: existing.version + 1,
         total_sessions: existing.total_sessions,
@@ -201,6 +230,13 @@ pub(crate) fn update_managed_agent(
         updated_at: now(),
     };
     state.db.update_managed_agent(&updated)?;
+    let scheduler = state.scheduler_service.clone();
+    let agent_for_sync = updated.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = scheduler.sync_agent(app, &agent_for_sync).await {
+            log::error!("Failed to sync schedule for agent {}: {}", agent_for_sync.id, error.message);
+        }
+    });
     Ok(updated)
 }
 
@@ -209,7 +245,14 @@ pub(crate) fn delete_managed_agent(
     state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<(), AppError> {
-    state.db.delete_managed_agent(&id)
+    state.db.delete_managed_agent(&id)?;
+    let scheduler = state.scheduler_service.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = scheduler.remove_agent(&id).await {
+            log::error!("Failed to remove schedule for agent {}: {}", id, error.message);
+        }
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -234,6 +277,10 @@ pub(crate) fn create_environment(
         credential_ids: input.credential_ids,
         runner_type: input.runner_type,
         docker_image: input.docker_image.and_then(|value| {
+            let trimmed = value.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        }),
+        working_dir: input.working_dir.and_then(|value| {
             let trimmed = value.trim().to_string();
             (!trimmed.is_empty()).then_some(trimmed)
         }),
@@ -266,6 +313,10 @@ pub(crate) fn update_environment(
         credential_ids: input.credential_ids,
         runner_type: input.runner_type,
         docker_image: input.docker_image.and_then(|value| {
+            let trimmed = value.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        }),
+        working_dir: input.working_dir.and_then(|value| {
             let trimmed = value.trim().to_string();
             (!trimmed.is_empty()).then_some(trimmed)
         }),
@@ -596,60 +647,10 @@ pub(crate) async fn run_managed_agent(
     agent_id: String,
     trigger: Option<String>,
 ) -> Result<AgentRun, AppError> {
-    let agent = state
-        .db
-        .list_managed_agents()?
-        .into_iter()
-        .find(|a| a.id == agent_id)
-        .ok_or_else(|| AppError::not_found(format!("Managed agent {agent_id} not found")))?;
-
-    let trigger = trigger.unwrap_or_else(|| "manual".to_string());
-    let run = crate::agent_runner::create_run_record(&state.db, &agent, &trigger)?;
-    let env = crate::agent_runner::resolve_environment(&state.db, &agent)?;
-
-    let run_clone = run.clone();
-    let db = Arc::clone(&state.db);
-    let runner_type = env.runner_type.clone();
-
-    match runner_type.as_str() {
-        "docker" => {
-            let agent_clone = agent.clone();
-            tokio::spawn(async move {
-                crate::agent_runner::docker::execute_docker_run(
-                    app,
-                    db,
-                    agent_clone,
-                    run_clone,
-                    env,
-                )
-                .await;
-            });
-        }
-        _ => {
-            // "local" or any unrecognized runner defaults to local execution
-            let khadim = state.khadim.clone();
-            let plugins = state.plugins.clone();
-            let skills = state.skills.clone();
-            let integrations = state.integrations.clone();
-            let agent_clone = agent.clone();
-            tokio::spawn(async move {
-                crate::agent_runner::local::execute_local_run(
-                    app,
-                    db,
-                    khadim,
-                    agent_clone,
-                    run_clone,
-                    env,
-                    plugins,
-                    skills,
-                    integrations,
-                )
-                .await;
-            });
-        }
-    }
-
-    Ok(run)
+    state
+        .run_service
+        .start_agent_run(app, agent_id, trigger)
+        .await
 }
 
 #[tauri::command]
@@ -662,13 +663,5 @@ pub(crate) fn stop_agent_run(
     state: State<'_, Arc<AppState>>,
     run_id: String,
 ) -> Result<(), AppError> {
-    let run = state.db.get_agent_run(&run_id)?;
-    if run.status != "running" && run.status != "pending" {
-        return Err(AppError::invalid_input(format!(
-            "Run {run_id} is not running (status: {})",
-            run.status
-        )));
-    }
-    let started = run.started_at.as_deref().unwrap_or("");
-    crate::agent_runner::fail_run(&state.db, &run_id, "Aborted by user", started)
+    state.run_service.stop_run(&run_id)
 }

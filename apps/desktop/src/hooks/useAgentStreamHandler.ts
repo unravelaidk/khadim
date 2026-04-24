@@ -90,6 +90,7 @@ interface UseAgentStreamHandlerArgs {
   completedStepsRef: MutableRefObject<Map<string, ThinkingStepData[]>>;
   erroredAgentSessionsRef: MutableRefObject<Set<string>>;
   chatConversationsRef: MutableRefObject<LocalChatConversation[]>;
+  chatSessionToConvRef: MutableRefObject<Map<string, string>>;
   chatActiveConvIdRef: MutableRefObject<string | null>;
   chatStreamingContentRef: MutableRefObject<string>;
   chatStreamingStepsRef: MutableRefObject<ThinkingStepData[]>;
@@ -124,6 +125,7 @@ export function useAgentStreamHandler({
   completedStepsRef,
   erroredAgentSessionsRef,
   chatConversationsRef,
+  chatSessionToConvRef,
   chatActiveConvIdRef,
   chatStreamingContentRef,
   chatStreamingStepsRef,
@@ -140,13 +142,18 @@ export function useAgentStreamHandler({
   formatStreamingError,
 }: UseAgentStreamHandlerArgs) {
   return useEffectEvent((evt: AgentStreamEvent) => {
-    const standaloneChatIndex = evt.workspace_id === standaloneWorkspaceId
-      ? chatConversationsRef.current.findIndex((conversation) => conversation.sessionId === evt.session_id)
-      : -1;
-    const isChatSession = standaloneChatIndex >= 0;
+    let standaloneConvId: string | null = null;
+    if (evt.workspace_id === standaloneWorkspaceId) {
+      standaloneConvId = chatSessionToConvRef.current.get(evt.session_id) ?? null;
+      if (!standaloneConvId) {
+        const found = chatConversationsRef.current.find((conversation) => conversation.sessionId === evt.session_id);
+        standaloneConvId = found?.id ?? null;
+      }
+    }
+    const isChatSession = standaloneConvId !== null;
 
     if (isChatSession) {
-      const standaloneConversation = chatConversationsRef.current[standaloneChatIndex] ?? null;
+      const standaloneConversation = chatConversationsRef.current.find((conversation) => conversation.id === standaloneConvId) ?? null;
       if (evt.event_type === "text_delta" && evt.content) {
         chatErroredSessionsRef.current.delete(evt.session_id);
         setChatConversations((prev) => prev.map((conversation) => {

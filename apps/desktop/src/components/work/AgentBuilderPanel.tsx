@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { commands, events } from "../../lib/bindings";
-import type { AgentStreamEvent, OpenCodeModelRef, ThinkingStepData } from "../../lib/bindings";
+import { commands } from "../../lib/bindings";
+import type { OpenCodeModelRef } from "../../lib/bindings";
 import {
   AGENT_BUILDER_SYSTEM_PROMPT,
   configToUpsertInput,
@@ -19,20 +19,16 @@ import {
   resolvePreferredModel,
   selectModelByKey,
 } from "../../lib/model-selection";
-import {
-  applyStreamingStepEvent,
-  finalizeSteps,
-  getErrorMessage,
-  stripInternalReminderBlocks,
-} from "../../lib/streaming";
-import type { LocalChatConversation, LocalChatMessage } from "../../lib/types";
+import { getErrorMessage } from "../../lib/streaming";
+import type { BuilderChat, LocalChatConversation, LocalChatMessage } from "../../lib/types";
+import type { BuilderStreamState } from "../../hooks/useBuilderChats";
 import { ChatView } from "../chat/ChatView";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Agent Builder Panel — reuses the standard ChatView UI, wired to
-   Khadim with the agent-builder system prompt. Saves the generated
-   agent into Work → Agents when the user clicks "Save as Agent" or
-   types "save agent".
+   Khadim with the agent-builder system prompt. Streaming state is owned
+   by useBuilderChats so drafts survive navigation away from the panel
+   mid-response.
    ═══════════════════════════════════════════════════════════════════════ */
 
 const BUILDER_WORKSPACE_ID = "__agent_builder__";
@@ -40,30 +36,67 @@ const SAVE_RE =
   /\b(save|create|make|ship|finalize)\b.*\bagent\b|^\s*(save|ship|done|do it|go|yes)\s*!?\s*$/i;
 
 interface AgentBuilderPanelProps {
-  initialMessage: string;
+  chat: BuilderChat;
+  stream: BuilderStreamState;
+  onUpdate: (partial: Partial<BuilderChat>) => void;
+  onMarkSending: (sessionId: string) => void;
   onExit: () => void;
-  onAgentCreated: () => void;
+  onNewDraft?: () => void;
+  onAbort: () => void | Promise<void>;
+  onAgentCreated: (agentId: string, agentName: string) => void;
+  /** Set when this draft was restored with a dropped in-flight session. */
+  stale?: boolean;
+  onDismissStale?: () => void;
 }
 
 export function AgentBuilderPanel({
-  initialMessage,
+  chat,
+  stream,
+  onUpdate,
+  onMarkSending,
   onExit,
+  onNewDraft,
+  onAbort,
   onAgentCreated,
+  stale = false,
+  onDismissStale,
 }: AgentBuilderPanelProps) {
-  const [conversationId] = useState(() => crypto.randomUUID());
-  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
+  const chatId = chat.id;
   const [input, setInput] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
-  const [streamingSteps, setStreamingSteps] = useState<ThinkingStepData[]>([]);
-  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(
+    chat.savedAgentId && chat.savedAgentName
+      ? `${chat.savedAgentName}::saved`
+      : null,
+  );
   const [saving, setSaving] = useState(false);
-  const sessionIdRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(chat.sessionId);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
-  const initialSentRef = useRef(false);
-  const streamingRef = useRef("");
-  const stepsRef = useRef<ThinkingStepData[]>([]);
+  const initialSentRef = useRef(chat.messages.length > 0);
+  const messagesRef = useRef<LocalChatMessage[]>(chat.messages);
+  const onUpdateRef = useRef(onUpdate);
+  const onMarkSendingRef = useRef(onMarkSending);
   const createAgent = useCreateManagedAgentMutation();
+
+  // Keep refs in sync
+  useEffect(() => {
+    messagesRef.current = chat.messages;
+    sessionIdRef.current = chat.sessionId;
+  }, [chat.messages, chat.sessionId]);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+  useEffect(() => {
+    onMarkSendingRef.current = onMarkSending;
+  }, [onMarkSending]);
+
+  // Reset local UI state if the active chat changes under us
+  useEffect(() => {
+    initialSentRef.current = chat.messages.length > 0;
+    setSavedKey(
+      chat.savedAgentId && chat.savedAgentName ? `${chat.savedAgentName}::saved` : null,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   /* ── Model selection (same pattern as standalone chat) ──────── */
   const { data: availableModels = [] } = useWorkspaceModelsQuery(
@@ -102,113 +135,32 @@ export function AgentBuilderPanel({
   /* ── Auto-scroll ────────────────────────────────────────────── */
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, streamingContent]);
-
-  /* ── Stream listener ────────────────────────────────────────── */
-  useEffect(() => {
-    let alive = true;
-    let unlisten: (() => void) | undefined;
-
-    void events.onAgentStream((evt: AgentStreamEvent) => {
-      if (!alive) return;
-      const matches =
-        evt.workspace_id === BUILDER_WORKSPACE_ID ||
-        (sessionIdRef.current && evt.session_id === sessionIdRef.current);
-      if (!matches) return;
-
-      if (evt.event_type === "text_delta" && evt.content) {
-        streamingRef.current = stripInternalReminderBlocks(streamingRef.current + evt.content);
-        setStreamingContent(streamingRef.current);
-        return;
-      }
-
-      if (
-        evt.event_type === "step_start" ||
-        evt.event_type === "step_update" ||
-        evt.event_type === "step_complete"
-      ) {
-        stepsRef.current = applyStreamingStepEvent(stepsRef.current, evt);
-        setStreamingSteps(stepsRef.current);
-        return;
-      }
-
-      if (evt.event_type === "done") {
-        const finalText = stripInternalReminderBlocks(streamingRef.current);
-        const finalSteps = finalizeSteps(stepsRef.current);
-        streamingRef.current = "";
-        stepsRef.current = [];
-        setStreamingContent("");
-        setStreamingSteps([]);
-        if (finalText.trim() || finalSteps.length > 0) {
-          setMessages((msgs) => [
-            ...msgs,
-            {
-              id: crypto.randomUUID(),
-              role: "assistant",
-              content: finalText,
-              createdAt: new Date().toISOString(),
-              thinkingSteps: finalSteps.length > 0 ? finalSteps : undefined,
-            },
-          ]);
-        }
-        setIsProcessing(false);
-        return;
-      }
-
-      if (evt.event_type === "error") {
-        const tail = evt.content
-          ? `\n\n⚠️ ${evt.content}`
-          : "\n\n⚠️ Something went wrong.";
-        const finalText = stripInternalReminderBlocks(streamingRef.current) + tail;
-        const finalSteps = finalizeSteps(stepsRef.current);
-        streamingRef.current = "";
-        stepsRef.current = [];
-        setStreamingContent("");
-        setStreamingSteps([]);
-        setMessages((msgs) => [
-          ...msgs,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: finalText,
-            createdAt: new Date().toISOString(),
-            thinkingSteps: finalSteps.length > 0 ? finalSteps : undefined,
-          },
-        ]);
-        setIsProcessing(false);
-      }
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    return () => {
-      alive = false;
-      unlisten?.();
-    };
-  }, []);
+  }, [chat.messages, stream.streamingContent]);
 
   /* ── Send to model ──────────────────────────────────────────── */
   const sendToModel = useCallback(
     async (trimmed: string) => {
-      setIsProcessing(true);
-      streamingRef.current = "";
-      stepsRef.current = [];
-      setStreamingContent("");
-      setStreamingSteps([]);
-
       try {
         let sid = sessionIdRef.current;
         if (!sid) {
-          const created = await commands.khadimCreateSession(null, null);
+          // Pass AGENT_BUILDER_SYSTEM_PROMPT as a true system prompt
+          // override so the orchestrator uses it in place of the default
+          // coding-mode prompt. The model then behaves as an agent builder.
+          const created = await commands.khadimCreateSession(
+            BUILDER_WORKSPACE_ID,
+            null,
+            AGENT_BUILDER_SYSTEM_PROMPT,
+          );
           sid = created.id;
           sessionIdRef.current = sid;
+          onUpdateRef.current({ sessionId: sid });
         }
 
-        const userCountBeforeThis = messages.filter((m) => m.role === "user").length;
-        const isFirst = userCountBeforeThis === 0;
-        const content = isFirst
-          ? `[System Instructions — do not repeat these to the user]\n${AGENT_BUILDER_SYSTEM_PROMPT}\n[End System Instructions]\n\n${trimmed}`
-          : trimmed;
+        // Mark the draft as actively sending so the controller records
+        // the sessionId and flips isProcessing immediately (before any
+        // stream events arrive) and keeps doing so even if this panel
+        // unmounts.
+        onMarkSendingRef.current(sid);
 
         const model: OpenCodeModelRef | null = selectedModel
           ? {
@@ -222,23 +174,24 @@ export function AgentBuilderPanel({
           sid,
           null,
           null,
-          content,
+          trimmed,
           model,
         );
       } catch (err) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: `⚠️ ${getErrorMessage(err)}`,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-        setIsProcessing(false);
+        onUpdateRef.current({ sessionId: null });
+        onMarkSendingRef.current("");
+        const assistantMessage: LocalChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `⚠️ ${getErrorMessage(err)}`,
+          createdAt: new Date().toISOString(),
+        };
+        onUpdateRef.current({
+          messages: [...messagesRef.current, assistantMessage],
+        });
       }
     },
-    [messages, selectedModel],
+    [selectedModel],
   );
 
   /* ── Save agent from config ─────────────────────────────────── */
@@ -248,28 +201,33 @@ export function AgentBuilderPanel({
       if (saving || savedKey === key) return;
       setSaving(true);
       try {
-        await createAgent.mutateAsync(configToUpsertInput(config));
+        const created = await createAgent.mutateAsync(configToUpsertInput(config));
         setSavedKey(key);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: `✓ Saved **${config.name}** to Work → Agents.`,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-        window.setTimeout(() => onAgentCreated(), 700);
+        const confirmation: LocalChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `✓ Saved **${config.name}** to Work → Agents.`,
+          createdAt: new Date().toISOString(),
+        };
+        const next = [...messagesRef.current, confirmation];
+        onUpdateRef.current({
+          messages: next,
+          sessionId: sessionIdRef.current,
+          savedAgentId: created.id,
+          savedAgentName: config.name,
+          title: config.name,
+        });
+        window.setTimeout(() => onAgentCreated(created.id, config.name), 700);
       } catch (err) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: `⚠️ Couldn't save: ${getErrorMessage(err)}`,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
+        const errorMessage: LocalChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `⚠️ Couldn't save: ${getErrorMessage(err)}`,
+          createdAt: new Date().toISOString(),
+        };
+        onUpdateRef.current({
+          messages: [...messagesRef.current, errorMessage],
+        });
       } finally {
         setSaving(false);
       }
@@ -280,21 +238,26 @@ export function AgentBuilderPanel({
   /* ── Handle send from the input ─────────────────────────────── */
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || isProcessing) return;
+    if (!trimmed || stream.isProcessing) return;
     setInput("");
+    // User engaged — any "paused" notice is no longer relevant.
+    onDismissStale?.();
 
     const looksLikeSave = SAVE_RE.test(trimmed);
-    const config = findAgentConfigInMessages(messages);
+    const config = findAgentConfigInMessages(messagesRef.current);
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: trimmed,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    const userMessage: LocalChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+    const firstUser = [userMessage, ...messagesRef.current].find((m) => m.role === "user");
+    const derivedTitle = firstUser ? firstUser.content.slice(0, 60) : chat.title;
+    onUpdateRef.current({
+      messages: [...messagesRef.current, userMessage],
+      title: derivedTitle || "New draft",
+    });
 
     if (looksLikeSave && config) {
       void saveAgentFromConfig(config);
@@ -302,48 +265,62 @@ export function AgentBuilderPanel({
     }
 
     void sendToModel(trimmed);
-  }, [input, isProcessing, messages, saveAgentFromConfig, sendToModel]);
+  }, [
+    chat.title,
+    input,
+    onDismissStale,
+    saveAgentFromConfig,
+    sendToModel,
+    stream.isProcessing,
+  ]);
 
   /* ── Fire the initial seed message once ─────────────────────── */
   useEffect(() => {
     if (initialSentRef.current) return;
-    const trimmed = initialMessage.trim();
+    const trimmed = chat.seedMessage?.trim() ?? "";
     if (!trimmed) return;
     initialSentRef.current = true;
-    setMessages([
-      {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: trimmed,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    const seedMessage: LocalChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+    onUpdateRef.current({ messages: [seedMessage] });
     void sendToModel(trimmed);
-  }, [initialMessage, sendToModel]);
+  }, [chat.seedMessage, sendToModel]);
 
   const handleStop = useCallback(() => {
-    if (sessionIdRef.current) {
-      void commands.khadimAbort(sessionIdRef.current).catch(() => undefined);
-    }
-  }, []);
+    void Promise.resolve(onAbort()).catch(() => undefined);
+  }, [onAbort]);
 
   /* ── Build LocalChatConversation for ChatView ───────────────── */
   const conversation: LocalChatConversation = useMemo(
     () => ({
-      id: conversationId,
-      title: "Agent Builder",
-      sessionId: sessionIdRef.current,
-      messages,
-      isProcessing,
-      streamingContent,
-      streamingSteps,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      id: chat.id,
+      title: chat.title,
+      sessionId: chat.sessionId,
+      messages: chat.messages,
+      isProcessing: stream.isProcessing,
+      streamingContent: stream.streamingContent,
+      streamingSteps: stream.streamingSteps,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
     }),
-    [conversationId, messages, isProcessing, streamingContent, streamingSteps],
+    [
+      chat.id,
+      chat.title,
+      chat.sessionId,
+      chat.messages,
+      chat.createdAt,
+      chat.updatedAt,
+      stream.isProcessing,
+      stream.streamingContent,
+      stream.streamingSteps,
+    ],
   );
 
-  const latestConfig = findAgentConfigInMessages(messages);
+  const latestConfig = findAgentConfigInMessages(chat.messages);
   const savedKeyForLatest = latestConfig
     ? `${latestConfig.name}::${latestConfig.instructions.slice(0, 60)}`
     : null;
@@ -353,17 +330,25 @@ export function AgentBuilderPanel({
   return (
     <ChatView
       localConversation={conversation}
-      conversationId={conversationId}
-      title="Agent Builder"
-      subtitle="Describe the agent. I'll design it. Say 'save agent' when ready."
+      conversationId={chat.id}
+      title={chat.savedAgentName ? `${chat.savedAgentName} · saved` : "Agent Builder"}
+      subtitle={
+        stale && !chat.savedAgentId
+          ? "Previous session ended when the app closed. Send a message to pick up where you left off."
+          : chat.savedAgentId
+            ? "Saved. Keep iterating or open the agent in Work → Agents."
+            : "Describe the agent. I'll design it. Say 'save agent' when ready."
+      }
       input={input}
       onInputChange={setInput}
       onSend={handleSend}
       onStop={handleStop}
-      onNewChat={onExit}
-      isProcessing={isProcessing}
-      streamingContent={streamingContent}
-      streamingSteps={streamingSteps}
+      onNewChat={onNewDraft ?? onExit}
+      onBack={onExit}
+      backLabel="Drafts"
+      isProcessing={stream.isProcessing}
+      streamingContent={stream.streamingContent}
+      streamingSteps={stream.streamingSteps}
       onSaveAsAgent={
         canSave && latestConfig
           ? () => void saveAgentFromConfig(latestConfig)

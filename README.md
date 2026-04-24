@@ -99,7 +99,7 @@ Khadim supports **19 LLM providers** out of the box. Bring your own API key, or 
 |----------|----------------|-------|
 | [OpenAI](https://platform.openai.com/) | `OPENAI_API_KEY` | GPT-4o, GPT-4o Mini, o1, and more |
 | [Anthropic](https://www.anthropic.com/) | `ANTHROPIC_API_KEY` | Claude Sonnet 4, Claude 3.5 Haiku |
-| [OpenAI Codex](https://openai.com/codex) | `OPENAI_CODEX_API_KEY` | GPT-5.3 Codex, GPT-5.2 Codex (requires ChatGPT Plus/Pro) |
+| [OpenAI Codex](https://openai.com/codex) | `OPENAI_CODEX_TOKEN` or `OPENAI_CODEX_API_KEY` | GPT-5.3 Codex, GPT-5.2 Codex (requires ChatGPT Plus/Pro) |
 | [xAI (Grok)](https://x.ai/) | `XAI_API_KEY` | Grok 4, Grok 3 |
 | [Groq](https://groq.com/) | `GROQ_API_KEY` | Llama 3.3 70B — ultra-fast inference |
 | [Mistral](https://mistral.ai/) | `MISTRAL_API_KEY` | Mistral Large, Codestral |

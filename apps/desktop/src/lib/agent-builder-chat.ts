@@ -53,8 +53,8 @@ export const AGENT_BUILDER_SYSTEM_PROMPT = `You are Khadim's Agent Builder. Your
 - If the user changes their mind about something, regenerate the full config block.
 - Be concise and practical. No filler.`;
 
-/** Matches the last ```agent-config ... ``` block in a string. */
-const CONFIG_BLOCK_RE = /```agent-config\s*\n([\s\S]*?)```/g;
+/** Matches fenced code blocks. We accept `agent-config`, `json`, or untagged. */
+const FENCED_BLOCK_RE = /```(?:agent-config|json)?\s*\n([\s\S]*?)```/g;
 
 export interface ParsedAgentConfig {
   name: string;
@@ -69,47 +69,105 @@ export interface ParsedAgentConfig {
   variables: Record<string, string>;
 }
 
-/**
- * Extract the last `agent-config` JSON block from message text.
- * Returns null if no valid block is found.
- */
-export function extractAgentConfig(text: string): ParsedAgentConfig | null {
-  let lastMatch: string | null = null;
-  let m: RegExpExecArray | null;
-  // eslint-disable-next-line no-cond-assign
-  while ((m = CONFIG_BLOCK_RE.exec(text)) !== null) {
-    lastMatch = m[1];
-  }
-  if (!lastMatch) return null;
+const VALID_TOOLS = new Set([
+  "browser", "email", "spreadsheet", "http", "files", "shell", "screen", "coding",
+]);
+const VALID_TRIGGERS = new Set(["manual", "schedule", "event"]);
+const VALID_APPROVAL = new Set(["auto", "ask", "never"]);
 
+function coerceTrigger(value: unknown): "manual" | "schedule" | "event" {
+  if (typeof value !== "string") return "manual";
+  const v = value.trim().toLowerCase();
+  // "cron" is a common model deviation — it's really a schedule.
+  if (v === "cron") return "schedule";
+  if (VALID_TRIGGERS.has(v)) return v as "manual" | "schedule" | "event";
+  return "manual";
+}
+
+function tryParseConfig(candidate: string): ParsedAgentConfig | null {
+  let raw: unknown;
   try {
-    const raw = JSON.parse(lastMatch.trim());
-    if (!raw || typeof raw !== "object") return null;
-    if (!raw.name || !raw.instructions) return null;
-
-    const VALID_TOOLS = new Set([
-      "browser", "email", "spreadsheet", "http", "files", "shell", "screen", "coding",
-    ]);
-    const VALID_TRIGGERS = new Set(["manual", "schedule", "event"]);
-    const VALID_APPROVAL = new Set(["auto", "ask", "never"]);
-
-    return {
-      name: String(raw.name).trim(),
-      description: String(raw.description ?? "").trim(),
-      instructions: String(raw.instructions).trim(),
-      tools: Array.isArray(raw.tools)
-        ? raw.tools.filter((t: unknown) => typeof t === "string" && VALID_TOOLS.has(t))
-        : ["shell", "files"],
-      trigger_type: VALID_TRIGGERS.has(raw.trigger_type) ? raw.trigger_type : "manual",
-      trigger_config: String(raw.trigger_config ?? ""),
-      approval_mode: VALID_APPROVAL.has(raw.approval_mode) ? raw.approval_mode : "ask",
-      max_turns: typeof raw.max_turns === "number" && raw.max_turns > 0 ? raw.max_turns : 25,
-      max_tokens: typeof raw.max_tokens === "number" && raw.max_tokens > 0 ? raw.max_tokens : 100000,
-      variables: raw.variables && typeof raw.variables === "object" ? raw.variables : {},
-    };
+    raw = JSON.parse(candidate);
   } catch {
     return null;
   }
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.name !== "string" || !obj.name.trim()) return null;
+  if (typeof obj.instructions !== "string" || !obj.instructions.trim()) return null;
+
+  return {
+    name: obj.name.trim(),
+    description: String(obj.description ?? "").trim(),
+    instructions: obj.instructions.trim(),
+    tools: Array.isArray(obj.tools)
+      ? (obj.tools as unknown[]).filter((t): t is string => typeof t === "string" && VALID_TOOLS.has(t))
+      : ["shell", "files"],
+    trigger_type: coerceTrigger(obj.trigger_type),
+    trigger_config: String(obj.trigger_config ?? ""),
+    approval_mode: typeof obj.approval_mode === "string" && VALID_APPROVAL.has(obj.approval_mode)
+      ? obj.approval_mode as "auto" | "ask" | "never"
+      : "ask",
+    max_turns: typeof obj.max_turns === "number" && obj.max_turns > 0 ? obj.max_turns : 25,
+    max_tokens: typeof obj.max_tokens === "number" && obj.max_tokens > 0 ? obj.max_tokens : 100000,
+    variables: obj.variables && typeof obj.variables === "object"
+      ? obj.variables as Record<string, string>
+      : {},
+  };
+}
+
+/**
+ * Find every `{ ... }` substring whose braces balance. Useful when the
+ * model emits bare JSON without a fence.
+ */
+function findBalancedJsonObjects(text: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === "\"") { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          out.push(text.slice(i, j + 1));
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Extract the last agent config from message text. Tries fenced blocks
+ * first (agent-config / json / untagged), then falls back to scanning for
+ * bare JSON objects with the right shape.
+ */
+export function extractAgentConfig(text: string): ParsedAgentConfig | null {
+  const candidates: string[] = [];
+  let m: RegExpExecArray | null;
+  FENCED_BLOCK_RE.lastIndex = 0;
+  // eslint-disable-next-line no-cond-assign
+  while ((m = FENCED_BLOCK_RE.exec(text)) !== null) {
+    candidates.push(m[1].trim());
+  }
+  for (const obj of findBalancedJsonObjects(text)) {
+    candidates.push(obj);
+  }
+
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const parsed = tryParseConfig(candidates[i]);
+    if (parsed) return parsed;
+  }
+  return null;
 }
 
 /**

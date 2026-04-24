@@ -100,8 +100,32 @@ pub mod managed_agents {
         pub environment_id: Option<String>,
         pub max_turns: i64,
         pub max_tokens: i64,
+        pub budget_policy_json: String,
+        pub artifact_policy_json: String,
         pub variables_json: String,
         pub version: i64,
+        pub created_at: String,
+        pub updated_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod schedules {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "schedules")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub agent_id: String,
+        pub kind: String,
+        pub cron_expr: Option<String>,
+        pub is_paused: i32,
+        pub next_run_at: Option<String>,
+        pub last_run_at: Option<String>,
+        pub last_outcome: Option<String>,
         pub created_at: String,
         pub updated_at: String,
     }
@@ -123,6 +147,7 @@ pub mod environments {
         pub credential_ids_json: String,
         pub runner_type: String,
         pub docker_image: Option<String>,
+        pub working_dir: Option<String>,
         pub is_default: i32,
         pub created_at: String,
         pub updated_at: String,
@@ -232,10 +257,12 @@ pub mod agent_runs {
         pub started_at: Option<String>,
         pub finished_at: Option<String>,
         pub duration_ms: Option<i64>,
+        pub ended_reason: Option<String>,
         pub result_summary: Option<String>,
         pub error_message: Option<String>,
         pub input_tokens: Option<i64>,
         pub output_tokens: Option<i64>,
+        pub work_dir: Option<String>,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
@@ -258,6 +285,159 @@ pub mod agent_run_turns {
         pub token_output: Option<i64>,
         pub duration_ms: Option<i64>,
         pub created_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod run_events {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "run_events")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub run_id: String,
+        pub sequence_number: i64,
+        pub event_type: String,
+        pub source: String,
+        pub title: Option<String>,
+        pub content: Option<String>,
+        pub status: Option<String>,
+        pub tool_name: Option<String>,
+        pub metadata_json: String,
+        pub created_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod artifacts {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "artifacts")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub run_id: String,
+        pub agent_id: Option<String>,
+        pub kind: String,
+        pub label: String,
+        pub path: Option<String>,
+        pub mime_type: Option<String>,
+        pub size_bytes: Option<i64>,
+        pub sha256: Option<String>,
+        pub storage_type: String,
+        pub metadata_json: String,
+        pub created_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod budget_ledger {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "budget_ledger")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub agent_id: Option<String>,
+        pub run_id: Option<String>,
+        pub scope: String,
+        pub metric: String,
+        pub delta: f64,
+        pub window_key: String,
+        pub metadata_json: String,
+        pub created_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod queues {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "queues")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub name: String,
+        pub kind: String,
+        pub source_config_json: String,
+        pub created_at: String,
+        pub updated_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod queue_items {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "queue_items")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub queue_id: String,
+        pub status: String,
+        pub payload_json: String,
+        pub priority: i64,
+        pub visible_at: String,
+        pub claimed_by_run_id: Option<String>,
+        pub claimed_at: Option<String>,
+        pub attempt_count: i64,
+        pub max_attempts: i64,
+        pub last_error: Option<String>,
+        pub dead_lettered_at: Option<String>,
+        pub completed_at: Option<String>,
+        pub created_at: String,
+        pub updated_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod agent_health_snapshots {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "agent_health_snapshots")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub agent_id: String,
+        pub status: String,
+        pub reason: Option<String>,
+        pub metrics_json: String,
+        pub created_at: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod approval_requests {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "approval_requests")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub run_id: String,
+        pub scope: String,
+        pub action_title: String,
+        pub risk_level: String,
+        pub status: String,
+        pub requested_at: String,
+        pub resolved_at: Option<String>,
+        pub resolution_note: Option<String>,
+        pub metadata_json: String,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}

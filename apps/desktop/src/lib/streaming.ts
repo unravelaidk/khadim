@@ -1,4 +1,4 @@
-import type { AgentStreamEvent, AppError, ThinkingStepData } from "./bindings";
+import type { AgentStreamEvent, AppError, QuestionItem, QuestionOption, ThinkingStepData } from "./bindings";
 
 export function getErrorMessage(error: unknown) {
   const raw = error && typeof error === "object" && "message" in error
@@ -33,6 +33,72 @@ export function formatStreamingError(message: string | null | undefined) {
 
 export function stripInternalReminderBlocks(value: string): string {
   return value.replace(/\s*<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "").trimEnd();
+}
+
+function normalizeQuestionOption(value: unknown): QuestionOption | null {
+  if (typeof value === "string") {
+    const label = value.trim();
+    return label ? { label, description: "" } : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const label = typeof record.label === "string"
+    ? record.label.trim()
+    : typeof record.value === "string"
+      ? record.value.trim()
+      : "";
+  if (!label) return null;
+  return {
+    label,
+    description: typeof record.description === "string" ? record.description : "",
+  };
+}
+
+function normalizeQuestionItem(value: unknown): QuestionItem | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const question = typeof record.question === "string"
+    ? record.question.trim()
+    : typeof record.prompt === "string"
+      ? record.prompt.trim()
+      : typeof record.text === "string"
+        ? record.text.trim()
+        : "";
+  if (!question) return null;
+  const header = typeof record.header === "string" && record.header.trim()
+    ? record.header.trim()
+    : typeof record.title === "string" && record.title.trim()
+      ? record.title.trim()
+      : "Question";
+  const rawOptions = Array.isArray(record.options)
+    ? record.options
+    : Array.isArray(record.choices)
+      ? record.choices
+      : [];
+  const options = rawOptions
+    .map((option) => normalizeQuestionOption(option))
+    .filter((option): option is QuestionOption => option != null);
+  return {
+    header,
+    question,
+    options,
+    multiple: record.multiple === true,
+    custom: typeof record.custom === "boolean" ? record.custom : true,
+  };
+}
+
+export function normalizeQuestionPayload(value: unknown): QuestionItem[] {
+  const items = Array.isArray(value) ? value : value != null ? [value] : [];
+  return items
+    .map((item) => normalizeQuestionItem(item))
+    .filter((item): item is QuestionItem => item != null);
+}
+
+export function flattenQuestionAnswers(answers: string[][]): string {
+  return answers
+    .map((group) => group.map((v) => v.trim()).filter(Boolean).join(", "))
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function finalizeSteps(steps: ThinkingStepData[]): ThinkingStepData[] {

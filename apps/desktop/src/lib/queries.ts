@@ -67,6 +67,7 @@ export function environmentRecordToUI(r: EnvironmentProfile): Environment {
     credentialIds: r.credential_ids,
     runnerType: r.runner_type,
     dockerImage: r.docker_image,
+    workingDir: r.working_dir,
     isDefault: r.is_default,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -140,6 +141,7 @@ export function agentRunRecordToUI(r: AgentRunRecord): SessionRecord {
     tokenUsage: (r.input_tokens != null && r.output_tokens != null)
       ? { inputTokens: r.input_tokens, outputTokens: r.output_tokens }
       : null,
+    workDir: r.work_dir,
   };
 }
 
@@ -187,6 +189,15 @@ export const desktopQueryKeys = {
   memoryEntries: (storeId: string | null) => ["memory-entries", storeId] as const,
   agentRuns: ["agent-runs"] as const,
   agentRunTurns: (runId: string | null) => ["agent-run-turns", runId] as const,
+  runEvents: (runId: string | null) => ["run-events", runId] as const,
+  runArtifacts: (runId: string | null) => ["run-artifacts", runId] as const,
+  runApprovals: (runId: string | null) => ["run-approvals", runId] as const,
+  agentSchedules: ["agent-schedules"] as const,
+  agentHealthSnapshots: (agentId: string | null) => ["agent-health-snapshots", agentId] as const,
+  budgetLedger: (agentId: string | null, windowKey: string | null) =>
+    ["budget-ledger", agentId, windowKey] as const,
+  queues: ["queues"] as const,
+  queueItems: (queueId: string | null) => ["queue-items", queueId] as const,
   // Integrations
   integrations: ["integrations"] as const,
   integrationActions: (integrationId: string) => ["integration-actions", integrationId] as const,
@@ -861,6 +872,157 @@ export function useStopAgentRunMutation() {
     mutationFn: (runId: string) => commands.stopAgentRun(runId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: desktopQueryKeys.agentRuns });
+    },
+  });
+}
+
+// ── Run telemetry: events / artifacts / approvals ───────────────────
+
+export function useRunEventsQuery(runId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.runEvents(runId),
+    queryFn: () => (runId ? commands.listRunEvents(runId) : Promise.resolve([])),
+    enabled: enabled && Boolean(runId),
+    refetchInterval: 4000,
+  });
+}
+
+export function useRunArtifactsQuery(runId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.runArtifacts(runId),
+    queryFn: () => (runId ? commands.listRunArtifacts(runId) : Promise.resolve([])),
+    enabled: enabled && Boolean(runId),
+    refetchInterval: 6000,
+  });
+}
+
+export function useRunApprovalsQuery(runId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.runApprovals(runId),
+    queryFn: () => (runId ? commands.listApprovalRequests(runId) : Promise.resolve([])),
+    enabled: enabled && Boolean(runId),
+    refetchInterval: 4000,
+  });
+}
+
+export function useDecideApprovalMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      approvalId,
+      decision,
+      note,
+      runId,
+    }: {
+      approvalId: string;
+      decision: "approve" | "deny";
+      note?: string;
+      runId: string;
+    }) =>
+      commands
+        .decideApprovalRequest({ approval_id: approvalId, decision, note: note ?? null })
+        .then((record) => ({ record, runId })),
+    onSuccess: ({ runId }) => {
+      qc.invalidateQueries({ queryKey: desktopQueryKeys.runApprovals(runId) });
+      qc.invalidateQueries({ queryKey: desktopQueryKeys.runEvents(runId) });
+    },
+  });
+}
+
+// ── Schedules / Health / Budget / Queues ────────────────────────────
+
+export function useAgentSchedulesQuery(enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.agentSchedules,
+    queryFn: () => commands.listAgentSchedules(),
+    enabled,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSetAgentSchedulePausedMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, isPaused }: { agentId: string; isPaused: boolean }) =>
+      commands.setAgentSchedulePaused(agentId, isPaused),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: desktopQueryKeys.agentSchedules });
+      qc.invalidateQueries({ queryKey: desktopQueryKeys.managedAgents });
+    },
+  });
+}
+
+export function useAgentHealthSnapshotsQuery(agentId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.agentHealthSnapshots(agentId),
+    queryFn: () =>
+      agentId ? commands.listAgentHealthSnapshots(agentId) : Promise.resolve([]),
+    enabled: enabled && Boolean(agentId),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRefreshAgentHealthMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      commands.refreshAgentHealth(agentId).then((snapshot) => ({ snapshot, agentId })),
+    onSuccess: ({ agentId }) => {
+      qc.invalidateQueries({ queryKey: desktopQueryKeys.agentHealthSnapshots(agentId) });
+    },
+  });
+}
+
+export function useBudgetLedgerQuery(
+  agentId: string | null,
+  windowKey: string | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: desktopQueryKeys.budgetLedger(agentId, windowKey),
+    queryFn: () => commands.listBudgetLedger(agentId, windowKey),
+    enabled,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useQueuesQuery(enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.queues,
+    queryFn: () => commands.listQueues(),
+    enabled,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useQueueItemsQuery(queueId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: desktopQueryKeys.queueItems(queueId),
+    queryFn: () => (queueId ? commands.listQueueItems(queueId) : Promise.resolve([])),
+    enabled: enabled && Boolean(queueId),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useEnqueueQueueItemMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      queueId,
+      payloadJson,
+      priority,
+    }: {
+      queueId: string;
+      payloadJson: string;
+      priority?: number;
+    }) =>
+      commands.enqueueQueueItem({
+        queue_id: queueId,
+        payload_json: payloadJson,
+        priority: priority ?? null,
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: desktopQueryKeys.queueItems(vars.queueId) });
     },
   });
 }

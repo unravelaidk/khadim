@@ -1,0 +1,18 @@
+name: khadim-bench
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - uv
+  - git
+  - curl
+  - jq
+  - nodejs>=22
+  - rust
+  - pkg-config
+  - openssl
+  - ca-certificates
+  - pip:
+      - harbor
+      - terminal-bench

@@ -1,0 +1,35 @@
+{
+    "id": "24a64319-d6f4-4f06-a0b8-3721e0c75658",
+    "started_at": "2026-04-17T16:34:32.786583",
+    "finished_at": null,
+    "n_total_trials": 89,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 1,
+        "evals": {
+            "khadim-cli__terminal-bench/terminal-bench-2": {
+                "n_trials": 1,
+                "n_errors": 1,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "pass_at_k": {},
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "make-mips-interpreter__zoZEBxT"
+                        ]
+                    }
+                },
+                "exception_stats": {
+                    "NonZeroAgentExitCodeError": [
+                        "make-mips-interpreter__zoZEBxT"
+                    ]
+                }
+            }
+        }
+    },
+    "trial_results": []
+}

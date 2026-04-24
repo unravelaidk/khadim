@@ -409,7 +409,12 @@ const ResultsList = memo(forwardRef<HTMLDivElement, ResultsListProps>(
         )}
         {!indexing && results.length === 0 && !query && indexReady && (
           <div className="px-4 py-12 text-center text-[12px] text-[var(--text-muted)]">
-            Type to search files
+            No files in this workspace yet
+          </div>
+        )}
+        {!indexing && !indexReady && results.length === 0 && !query && (
+          <div className="px-4 py-12 text-center text-[12px] text-[var(--text-muted)]">
+            Couldn't read this workspace directory
           </div>
         )}
         {results.map((result, i) => (

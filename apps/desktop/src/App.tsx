@@ -47,6 +47,7 @@ import { createAgentInstance, createLocalConversation } from "./lib/types";
 import { useStandaloneChat } from "./hooks/useStandaloneChat";
 import { useAgentPersistence } from "./hooks/useAgentPersistence";
 import { usePluginTabs } from "./hooks/usePluginTabs";
+import { useBuilderChatCount } from "./hooks/useBuilderChats";
 import { Sidebar } from "./components/Sidebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { WorkspaceList } from "./components/WorkspaceList";
@@ -63,7 +64,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { WorkspaceContextRail } from "./components/WorkspaceContextRail";
 import { WorkArea } from "./components/WorkArea";
 import { TerminalDock } from "./components/TerminalDock";
-import { useManagedAgentsQuery, useAgentRunsQuery } from "./lib/queries";
+import { useManagedAgentsQuery, useAgentRunsQuery, useEnvironmentsQuery } from "./lib/queries";
 import { FileFinder } from "./components/FileFinder";
 import { GitChangesPanel } from "./components/GitChangesPanel";
 
@@ -167,6 +168,9 @@ export default function App() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(true);
+  // Work-mode session selection — lifted so the sidebar can show a Files section for the active session
+  const [selectedWorkSessionId, setSelectedWorkSessionId] = useState<string | null>(null);
+  const [workSessionFilesOpen, setWorkSessionFilesOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const {
@@ -209,6 +213,7 @@ export default function App() {
   // ── RPA platform data (for sidebar badges) ──────────────────────
   const rpaManagedAgentsQ = useManagedAgentsQuery(interactionMode === "work");
   const rpaRunsQ = useAgentRunsQuery(interactionMode === "work");
+  const rpaEnvsQ = useEnvironmentsQuery(interactionMode === "work");
   const rpaActiveAgentCount = useMemo(
     () => (rpaManagedAgentsQ.data ?? []).filter(a => a.status === "active").length,
     [rpaManagedAgentsQ.data],
@@ -217,10 +222,21 @@ export default function App() {
     () => (rpaRunsQ.data ?? []).filter(s => s.status === "running" || s.status === "pending").length,
     [rpaRunsQ.data],
   );
+
+  // ── Resolve working dir for the currently-selected work session ───
+  const selectedWorkSession = useMemo(
+    () => (rpaRunsQ.data ?? []).find((s) => s.id === selectedWorkSessionId) ?? null,
+    [rpaRunsQ.data, selectedWorkSessionId],
+  );
+  const selectedWorkSessionEnv = useMemo(() => {
+    if (!selectedWorkSession?.environmentId) return null;
+    return (rpaEnvsQ.data ?? []).find((e) => e.id === selectedWorkSession.environmentId) ?? null;
+  }, [selectedWorkSession, rpaEnvsQ.data]);
   const sidebarActiveAgentCount = useMemo(
     () => interactionMode === "work" ? rpaActiveAgentCount : agents.filter(a => a.status === "running").length,
     [interactionMode, rpaActiveAgentCount, agents],
   );
+  const draftCount = useBuilderChatCount();
 
   const { data: runtime = null } = useRuntimeSummaryQuery();
   const { data: githubAuthStatus = null } = useGitHubAuthStatusQuery();
@@ -303,6 +319,7 @@ export default function App() {
     chatSessionIdRef,
     chatActiveConvIdRef,
     chatConversationsRef,
+    chatSessionToConvRef,
     chatStreamingContentRef,
     chatStreamingStepsRef,
     chatErroredSessionsRef,
@@ -465,6 +482,7 @@ export default function App() {
     completedStepsRef,
     erroredAgentSessionsRef,
     chatConversationsRef,
+    chatSessionToConvRef,
     chatActiveConvIdRef,
     chatStreamingContentRef,
     chatStreamingStepsRef,
@@ -810,6 +828,11 @@ export default function App() {
         onNavigateWork={handleNavigateWork}
         activeAgentCount={sidebarActiveAgentCount}
         liveSessionCount={rpaLiveSessionCount}
+        draftCount={draftCount}
+        // Work mode — session files
+        activeSessionFilesName={selectedWorkSession?.agentName ?? null}
+        activeSessionFilesPath={selectedWorkSessionEnv?.workingDir ?? null}
+        onOpenSessionFiles={() => setWorkSessionFilesOpen(true)}
         themeMode={themeMode}
         onToggleTheme={handleToggleTheme}
         onOpenSettings={handleOpenSettings}
@@ -957,6 +980,10 @@ export default function App() {
             <WorkArea
               view={workView}
               onNavigate={handleNavigateWork}
+              selectedSessionId={selectedWorkSessionId}
+              onSelectSession={setSelectedWorkSessionId}
+              sessionFilesOpen={workSessionFilesOpen}
+              onSetSessionFilesOpen={setWorkSessionFilesOpen}
             />
         )}
 

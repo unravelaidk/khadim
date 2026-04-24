@@ -1,0 +1,11 @@
+Processing tasks in duration order (longest first):
++-----+-------------+------------+------------+
+|   # | Task Name   | Duration   | Source     |
++=====+=============+============+============+
+|   1 | hello-world | 3m 30s     | calculated |
++-----+-------------+------------+------------+
+Total tasks: 1
+Starting harness run
+Run ID: 2026-04-16__22-30-05
+Running task: hello-world
+Running docker compose command: docker compose -p hello-world-1-of-1-2026-04-16__22-30-05 -f /home/hanan/.cache/terminal-bench/terminal-bench-core/0.1.1/hello-world/docker-compose.yaml build

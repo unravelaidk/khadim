@@ -1,10 +1,12 @@
 use crate::error::AppError;
 use crate::khadim_ai::env_api_keys::get_env_api_key;
 use crate::khadim_ai::oauth::{get_openai_codex_api_key, has_openai_codex_auth_sync};
-use crate::khadim_ai::models::builtin_models;
+use crate::khadim_ai::models::{builtin_models, find_model};
 use crate::khadim_ai::providers::request_headers::build_codex_request_headers;
+use crate::khadim_ai::types::{Cost, InputKind};
 use crate::db::Database;
 use base64::Engine;
+use khadim_ai_core::pricing::default_cost_for;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, OnceLock};
@@ -57,6 +59,68 @@ pub struct ModelConfigInput {
 pub struct DiscoveredProviderModel {
     pub id: String,
     pub name: String,
+    /// Owning provider id, echoed back so frontend consumers don't have
+    /// to track it separately.
+    #[serde(default)]
+    pub provider: String,
+    /// Upstream API family (e.g. `openai-responses`, `anthropic-messages`).
+    /// Empty when not known (e.g. user-discovered custom OpenAI-compatible model).
+    #[serde(default)]
+    pub api: String,
+    /// Whether this model is a reasoning model.
+    #[serde(default)]
+    pub reasoning: bool,
+    /// Supported input modalities, as lowercase strings (`"text"`, `"image"`).
+    #[serde(default)]
+    pub input: Vec<String>,
+    /// Max context window (tokens). `0` when unknown.
+    #[serde(default)]
+    pub context_window: u64,
+    /// Max output tokens. `0` when unknown.
+    #[serde(default)]
+    pub max_tokens: u64,
+    /// Per-million-token pricing. All zeros when unknown.
+    #[serde(default)]
+    pub cost: Cost,
+}
+
+fn input_kind_str(kind: &InputKind) -> &'static str {
+    match kind {
+        InputKind::Text => "text",
+        InputKind::Image => "image",
+    }
+}
+
+/// Build a fully-populated `DiscoveredProviderModel` for a given
+/// `(provider, id, name)` triple. Looks up the builtin catalog first; when
+/// absent (provider-discovered or user-synced ids), falls back to a
+/// minimal entry enriched with `default_cost_for` pricing so the frontend
+/// still gets cost info.
+fn enrich_discovered(provider: &str, id: &str, name: &str) -> DiscoveredProviderModel {
+    if let Some(model) = find_model(provider, id) {
+        return DiscoveredProviderModel {
+            id: model.id,
+            name: model.name,
+            provider: model.provider,
+            api: model.api,
+            reasoning: model.reasoning,
+            input: model.input.iter().map(|k| input_kind_str(k).to_string()).collect(),
+            context_window: model.context_window,
+            max_tokens: model.max_tokens,
+            cost: model.cost,
+        };
+    }
+    DiscoveredProviderModel {
+        id: id.to_string(),
+        name: name.to_string(),
+        provider: provider.to_string(),
+        api: String::new(),
+        reasoning: false,
+        input: vec!["text".to_string()],
+        context_window: 0,
+        max_tokens: 0,
+        cost: default_cost_for(provider, id),
+    }
 }
 
 fn provider_name(provider: &str) -> String {
@@ -80,6 +144,7 @@ fn provider_name(provider: &str) -> String {
         "opencode" => "OpenCode",
         "opencode-go" => "OpenCode Go",
         "kimi-coding" => "Kimi Coding",
+        "nvidia" => "NVIDIA",
         "google" => "Google",
         "google-vertex" => "Google Vertex",
         other => other,
@@ -231,6 +296,7 @@ pub fn supported_providers() -> Vec<ProviderOption> {
         "opencode",
         "opencode-go",
         "kimi-coding",
+        "nvidia",
         "google",
         "google-vertex",
     ]
@@ -444,8 +510,15 @@ fn registry_models_for_provider(provider: &str) -> Vec<DiscoveredProviderModel> 
         .into_iter()
         .filter(|model| model.provider == provider)
         .map(|model| DiscoveredProviderModel {
-            id: model.id,
-            name: model.name,
+            id: model.id.clone(),
+            name: model.name.clone(),
+            provider: model.provider.clone(),
+            api: model.api.clone(),
+            reasoning: model.reasoning,
+            input: model.input.iter().map(|k| input_kind_str(k).to_string()).collect(),
+            context_window: model.context_window,
+            max_tokens: model.max_tokens,
+            cost: model.cost,
         })
         .collect()
 }
@@ -497,6 +570,7 @@ async fn discover_opencode_models(provider: &str, api_key: Option<String>, base_
     });
 
     Ok(normalize_model_pairs(
+        provider,
         registry_models_for_provider(provider)
             .into_iter()
             .map(|model| (model.id, model.name))
@@ -504,11 +578,14 @@ async fn discover_opencode_models(provider: &str, api_key: Option<String>, base_
     ))
 }
 
-fn normalize_model_pairs(items: impl IntoIterator<Item = (String, String)>) -> Vec<DiscoveredProviderModel> {
+fn normalize_model_pairs(
+    provider: &str,
+    items: impl IntoIterator<Item = (String, String)>,
+) -> Vec<DiscoveredProviderModel> {
     let mut unique = BTreeMap::new();
     for (id, name) in items {
         if !id.trim().is_empty() {
-            unique.insert(id.clone(), DiscoveredProviderModel { id, name });
+            unique.insert(id.clone(), enrich_discovered(provider, &id, &name));
         }
     }
     unique.into_values().collect()
@@ -610,7 +687,7 @@ async fn discover_codex_models() -> Result<Vec<DiscoveredProviderModel>, AppErro
         .get("models")
         .into_iter()
         .flat_map(extract_codex_model_pairs);
-    let models = normalize_model_pairs(model_pairs);
+    let models = normalize_model_pairs("openai-codex", model_pairs);
     if models.is_empty() {
         return Err(AppError::health(
             "Failed to parse OpenAI Codex model list from Codex backend",
@@ -661,7 +738,7 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
             .and_then(|value| value.as_array())
             .cloned()
             .unwrap_or_default();
-        return Ok(normalize_model_pairs(models.into_iter().filter_map(|model| {
+        return Ok(normalize_model_pairs("ollama", models.into_iter().filter_map(|model| {
             let id = model.get("model").or_else(|| model.get("name")).and_then(|value| value.as_str())?;
             let name = model.get("name").or_else(|| model.get("model")).and_then(|value| value.as_str()).unwrap_or(id);
             Some((id.to_string(), name.to_string()))
@@ -680,7 +757,7 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
         headers.insert("anthropic-version", reqwest::header::HeaderValue::from_static("2023-06-01"));
         let payload = fetch_json(&url, headers).await?;
         let models = payload.get("data").and_then(|value| value.as_array()).cloned().unwrap_or_default();
-        return Ok(normalize_model_pairs(models.into_iter().filter_map(|model| {
+        return Ok(normalize_model_pairs("anthropic", models.into_iter().filter_map(|model| {
             let id = model.get("id").and_then(|value| value.as_str())?;
             let name = model.get("display_name").and_then(|value| value.as_str()).unwrap_or(id);
             Some((id.to_string(), name.to_string()))
@@ -708,7 +785,7 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
     }
     let payload = fetch_json(&format!("{}/models", resolved_base_url.trim_end_matches('/')), headers).await?;
     let models = payload.get("data").and_then(|value| value.as_array()).cloned().unwrap_or_default();
-    Ok(normalize_model_pairs(models.into_iter().filter_map(|model| {
+    Ok(normalize_model_pairs(provider, models.into_iter().filter_map(|model| {
         let id = model.get("id").and_then(|value| value.as_str())?;
         let name = model.get("name").and_then(|value| value.as_str()).unwrap_or(id);
         Some((id.to_string(), name.to_string()))
@@ -1046,4 +1123,11 @@ pub fn active_model_option(db: &Database) -> Result<Option<crate::khadim_ai::mod
         model_name: config.name.clone(),
         is_default: config.is_default,
     }))
+}
+
+/// Look up a saved model config by id. Returns `None` if no config with
+/// that id exists. Used for budget/pricing resolution where callers only
+/// know the agent's configured `model_id`.
+pub fn get_config(db: &Database, id: &str) -> Result<Option<ModelConfig>, AppError> {
+    Ok(load_configs(db)?.into_iter().find(|config| config.id == id))
 }
