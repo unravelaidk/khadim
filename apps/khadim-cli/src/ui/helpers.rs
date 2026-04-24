@@ -91,6 +91,47 @@ pub fn remove_char_at(s: &mut String, char_idx: usize) {
     s.drain(byte_idx..byte_idx + ch_len);
 }
 
+/// Render `text` as a sequence of per-character spans with a brightness band
+/// that moves across it on each tick — a cheap shimmer for "thinking" states.
+///
+/// Uses `tick` as the time source so callers don't need an extra timer.
+pub fn shimmer_spans(
+    text: &str,
+    tick: u64,
+    base: ratatui::style::Color,
+) -> Vec<ratatui::text::Span<'static>> {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::Span;
+
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return Vec::new();
+    }
+    // Period covers the text plus leading/trailing padding so the band drifts
+    // in and out rather than popping at the edges.
+    let padding = 6usize;
+    let period = chars.len() + padding * 2;
+    // Advance ~4 columns per tick; tick granularity is fine enough that this
+    // reads as smooth motion at the usual 8fps UI redraw rate.
+    let head = (tick as usize / 1).wrapping_mul(1) % period;
+    let band_half: isize = 3;
+
+    let mut spans = Vec::with_capacity(chars.len());
+    for (i, ch) in chars.iter().enumerate() {
+        let pos = i as isize + padding as isize;
+        let dist = (pos - head as isize).abs();
+        let style = if dist == 0 {
+            Style::default().fg(base).add_modifier(Modifier::BOLD)
+        } else if dist <= band_half {
+            Style::default().fg(base)
+        } else {
+            Style::default().fg(base).add_modifier(Modifier::DIM)
+        };
+        spans.push(Span::styled(ch.to_string(), style));
+    }
+    spans
+}
+
 /// Truncate a string to at most `max` characters, adding "…" if truncated.
 pub fn truncate_str(s: &str, max: usize) -> &str {
     if s.chars().count() <= max {
@@ -104,34 +145,6 @@ pub fn truncate_str(s: &str, max: usize) -> &str {
             .unwrap_or(0);
         &s[..end]
     }
-}
-
-/// Word-wrap text to a maximum width (character-aware).
-pub fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
-    if max_width == 0 || text.is_empty() {
-        return vec![text.to_string()];
-    }
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    let mut col = 0;
-    for word in text.split_whitespace() {
-        let wlen = word.chars().count();
-        if col > 0 && col + 1 + wlen > max_width {
-            lines.push(current);
-            current = String::new();
-            col = 0;
-        }
-        if col > 0 {
-            current.push(' ');
-            col += 1;
-        }
-        current.push_str(word);
-        col += wlen;
-    }
-    if !current.is_empty() || lines.is_empty() {
-        lines.push(current);
-    }
-    lines
 }
 
 /// Wrap text to an exact character width, breaking at word boundaries when possible.

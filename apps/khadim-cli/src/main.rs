@@ -12,7 +12,7 @@ use args::{parse_args, CliConfig};
 use domain::commands::CommandPickerKind;
 use domain::events::WorkerEvent;
 use domain::login::LoginPhase;
-use domain::settings::{SettingsFocus, SettingsMode, StoredSettings};
+use domain::settings::{is_oauth_provider, SettingsFocus, SettingsPicker, StoredSettings};
 use domain::transcript::TranscriptEntry;
 use infrastructure::terminal::TerminalGuard;
 use khadim_ai_core::error::AppError;
@@ -57,6 +57,60 @@ async fn main() {
         eprintln!("error: {}", error.message);
         std::process::exit(1);
     }
+}
+
+// ── Settings panel action helpers ────────────────────────────────────
+//
+// These helpers live in main.rs rather than app.rs because they straddle
+// the UI state (TuiApp) and the service layer (AppService) — the UI
+// mutation and the persistence step need to happen together.
+
+fn flush_settings_key(app: &mut app::TuiApp, app_service: &mut services::app_service::AppService) {
+    let provider = app_service
+        .stored_settings()
+        .provider
+        .clone()
+        .unwrap_or_default();
+    if provider.is_empty() || is_oauth_provider(&provider) {
+        return;
+    }
+    // Only write when the buffer actually differs from what's stored, to
+    // avoid disk writes on every focus change.
+    let current = app_service
+        .stored_settings()
+        .api_keys
+        .get(&provider)
+        .cloned()
+        .unwrap_or_default();
+    let buffer = app.settings.api_key_buffer.trim().to_string();
+    if buffer == current {
+        return;
+    }
+    app_service.update_api_key(&provider, &buffer);
+    if let Err(err) = app_service.save_settings() {
+        app.entries.push(TranscriptEntry::Error { text: err.message });
+        app.entries.push(TranscriptEntry::Separator);
+    }
+}
+
+fn apply_settings_picker(
+    app: &mut app::TuiApp,
+    app_service: &mut services::app_service::AppService,
+    kind: SettingsPicker,
+    id: &str,
+) {
+    let result = match kind {
+        SettingsPicker::Provider => app_service.switch_provider(id),
+        SettingsPicker::Model => app_service.switch_model(id),
+    };
+    if let Err(err) = result {
+        app.entries.push(TranscriptEntry::Error { text: err.message });
+        app.entries.push(TranscriptEntry::Separator);
+        return;
+    }
+    // Re-seed the UI buffer from the (possibly new) provider's stored key.
+    app.settings = app::build_settings_state(app_service.stored_settings());
+    app.settings_open = true;
 }
 
 async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), AppError> {
@@ -204,7 +258,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     if app.pending && !app.confirm_quit {
                         app.confirm_quit = true;
                         app.entries.push(TranscriptEntry::System {
-                            text: "⚠ Agent is still running. Press Ctrl+C again to force quit."
+                            text: "agent is still running — press ctrl+c again to force quit"
                                 .into(),
                         });
                         app.entries.push(TranscriptEntry::Separator);
@@ -223,14 +277,16 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     break;
                 }
 
-                // F2: toggle settings
+                // F2: toggle settings. Closing flushes any staged key edits
+                // to persistent storage so in-flight typing isn't lost.
                 if key.code == KeyCode::F(2) {
-                    app.settings_open = !app.settings_open;
-                    if !app.settings_open {
+                    if app.settings_open {
+                        flush_settings_key(&mut app, &mut app_service);
+                        app.settings_open = false;
                         app.settings = app::build_settings_state(app_service.stored_settings());
-                        app.settings_dirty = false;
                     } else {
-                        app.settings.mode = SettingsMode::Browsing;
+                        app.settings = app::build_settings_state(app_service.stored_settings());
+                        app.settings_open = true;
                     }
                     continue;
                 }
@@ -245,12 +301,12 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     } else if app.login_state.is_some() {
                         app.close_login();
                     } else if app.settings_open {
-                        if app.settings.mode != SettingsMode::Browsing {
-                            app.settings.mode = SettingsMode::Browsing;
+                        if app.settings.picker.is_some() {
+                            app.close_settings_picker();
                         } else {
+                            flush_settings_key(&mut app, &mut app_service);
                             app.settings_open = false;
                             app.settings = app::build_settings_state(app_service.stored_settings());
-                            app.settings_dirty = false;
                         }
                     } else if app.pending {
                         app_service.abort_run();
@@ -274,7 +330,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 match app_service.delete_session(&id).await {
                                     Ok(()) => {
                                         app.entries.push(TranscriptEntry::System {
-                                            text: format!("🗑 Deleted session '{}'", id),
+                                            text: format!("deleted session '{}'", id),
                                         });
                                     }
                                     Err(err) => {
@@ -421,149 +477,125 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     continue;
                 }
 
-                // Settings overlay input handling
+                // Settings overlay input handling.
+                //
+                // Two modes:
+                //   picker open  → ↑↓ browse list, Enter selects and persists
+                //   browsing     → ↑↓ move focus, Enter activates row, keys
+                //                  edit the api-key buffer when focused on Auth
+                //
+                // Provider and model changes persist immediately via
+                // app_service.switch_*. The API-key buffer is flushed to
+                // storage on blur (focus change, panel close).
                 if app.settings_open {
-                    use SettingsMode;
-                    match app.settings.mode {
-                        SettingsMode::Browsing => match key.code {
-                            KeyCode::Up => app.move_focus_up(),
-                            KeyCode::Down | KeyCode::Tab => app.move_focus_down(),
-                            KeyCode::Enter | KeyCode::Right => app.enter_field(),
-                            KeyCode::Left => match app.settings.focus {
-                                SettingsFocus::Provider => app.move_provider(-1),
-                                SettingsFocus::Model => app.move_model(-1),
-                                SettingsFocus::ApiKey => {}
-                            },
-                            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                let provider = app_service
-                                    .stored_settings()
-                                    .provider
-                                    .clone()
-                                    .unwrap_or_else(|| "openai".to_string());
-                                app_service.update_api_key(&provider, &app.settings.api_key);
-                                if let Err(err) = app_service.save_settings() {
-                                    app.entries
-                                        .push(TranscriptEntry::Error { text: err.message });
-                                } else {
-                                    if let Err(err) = app_service.load_settings() {
-                                        app.entries
-                                            .push(TranscriptEntry::Error { text: err.message });
-                                    } else {
-                                        app.settings_open = false;
-                                        app.settings_dirty = false;
-                                        app.entries.push(TranscriptEntry::System {
-                                            text: "✓ Settings saved".into(),
-                                        });
-                                        app.entries.push(TranscriptEntry::Separator);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        },
-                        SettingsMode::Choosing => match key.code {
-                            KeyCode::Up => app.move_list_up(),
-                            KeyCode::Down => app.move_list_down(),
-                            KeyCode::Enter | KeyCode::Right => app.select_current_option(),
-                            KeyCode::Esc | KeyCode::Left => app.exit_field(),
-                            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                let provider = app_service
-                                    .stored_settings()
-                                    .provider
-                                    .clone()
-                                    .unwrap_or_else(|| "openai".to_string());
-                                app_service.update_api_key(&provider, &app.settings.api_key);
-                                if let Err(err) = app_service.save_settings() {
-                                    app.entries
-                                        .push(TranscriptEntry::Error { text: err.message });
-                                } else {
-                                    if let Err(err) = app_service.load_settings() {
-                                        app.entries
-                                            .push(TranscriptEntry::Error { text: err.message });
-                                    } else {
-                                        app.settings_open = false;
-                                        app.settings_dirty = false;
-                                        app.entries.push(TranscriptEntry::System {
-                                            text: "✓ Settings saved".into(),
-                                        });
-                                        app.entries.push(TranscriptEntry::Separator);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        },
-                        SettingsMode::EditingKey => match key.code {
-                            KeyCode::Esc => app.exit_field(),
-                            KeyCode::Enter => app.exit_field(),
-                            KeyCode::Left => {
-                                if app.settings.api_key_cursor > 0 {
-                                    app.settings.api_key_cursor -= 1;
-                                }
-                            }
-                            KeyCode::Right => {
-                                if app.settings.api_key_cursor
-                                    < app.settings.api_key.chars().count()
+                    if app.settings.picker.is_some() {
+                        match key.code {
+                            KeyCode::Up => app.settings_picker_move(-1, app_service.stored_settings()),
+                            KeyCode::Down => app.settings_picker_move(1, app_service.stored_settings()),
+                            KeyCode::Enter | KeyCode::Right => {
+                                if let Some((kind, id)) =
+                                    app.settings_picker_selection(app_service.stored_settings())
                                 {
-                                    app.settings.api_key_cursor += 1;
+                                    apply_settings_picker(&mut app, &mut app_service, kind, &id);
                                 }
+                                app.close_settings_picker();
                             }
-                            KeyCode::Home => app.settings.api_key_cursor = 0,
-                            KeyCode::End => {
-                                app.settings.api_key_cursor = app.settings.api_key.chars().count()
+                            KeyCode::Esc | KeyCode::Left => app.close_settings_picker(),
+                            _ => {}
+                        }
+                        continue;
+                    }
+
+                    let is_auth_editable = !is_oauth_provider(
+                        app_service.stored_settings().provider.as_deref().unwrap_or(""),
+                    );
+                    let focus = app.settings.focus;
+
+                    match key.code {
+                        KeyCode::Up => {
+                            flush_settings_key(&mut app, &mut app_service);
+                            app.move_focus_up(app_service.stored_settings());
+                        }
+                        KeyCode::Down | KeyCode::Tab => {
+                            flush_settings_key(&mut app, &mut app_service);
+                            app.move_focus_down(app_service.stored_settings());
+                        }
+                        KeyCode::Enter => match focus {
+                            SettingsFocus::Provider | SettingsFocus::Model => {
+                                app.open_settings_picker(app_service.stored_settings());
                             }
-                            KeyCode::Backspace => {
-                                if app.settings.api_key_cursor > 0 {
-                                    app.settings.api_key_cursor = ui::helpers::remove_char_before(
-                                        &mut app.settings.api_key,
-                                        app.settings.api_key_cursor,
-                                    );
-                                    app.settings_dirty = true;
-                                }
-                            }
-                            KeyCode::Delete => {
-                                ui::helpers::remove_char_at(
-                                    &mut app.settings.api_key,
-                                    app.settings.api_key_cursor,
-                                );
-                                app.settings_dirty = true;
-                            }
-                            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                let provider = app_service
-                                    .stored_settings()
-                                    .provider
-                                    .clone()
-                                    .unwrap_or_else(|| "openai".to_string());
-                                app_service.update_api_key(&provider, &app.settings.api_key);
-                                if let Err(err) = app_service.save_settings() {
-                                    app.entries
-                                        .push(TranscriptEntry::Error { text: err.message });
+                            SettingsFocus::Auth => {
+                                if is_auth_editable {
+                                    // Enter on the key field commits the buffer
+                                    // and advances focus back to the top.
+                                    flush_settings_key(&mut app, &mut app_service);
                                 } else {
-                                    if let Err(err) = app_service.load_settings() {
-                                        app.entries
-                                            .push(TranscriptEntry::Error { text: err.message });
-                                    } else {
+                                    // OAuth provider: launch the login flow.
+                                    let provider_id = app_service
+                                        .stored_settings()
+                                        .provider
+                                        .clone()
+                                        .unwrap_or_default();
+                                    if !provider_id.is_empty() {
                                         app.settings_open = false;
-                                        app.settings_dirty = false;
-                                        app.entries.push(TranscriptEntry::System {
-                                            text: "✓ Settings saved".into(),
-                                        });
-                                        app.entries.push(TranscriptEntry::Separator);
+                                        app.open_login_selector();
+                                        app.start_login_for_provider(&provider_id);
+                                        app_service.start_oauth_login(&provider_id);
                                     }
                                 }
                             }
-                            KeyCode::Char(ch)
-                                if !key.modifiers.contains(KeyModifiers::CONTROL)
-                                    && !key.modifiers.contains(KeyModifiers::ALT) =>
-                            {
-                                ui::helpers::insert_char(
-                                    &mut app.settings.api_key,
-                                    app.settings.api_key_cursor,
-                                    ch,
-                                );
-                                app.settings.api_key_cursor += 1;
-                                app.settings_dirty = true;
-                            }
-                            _ => {}
                         },
+                        KeyCode::Left if focus == SettingsFocus::Auth && is_auth_editable => {
+                            if app.settings.api_key_cursor > 0 {
+                                app.settings.api_key_cursor -= 1;
+                            }
+                        }
+                        KeyCode::Right if focus == SettingsFocus::Auth && is_auth_editable => {
+                            if app.settings.api_key_cursor
+                                < app.settings.api_key_buffer.chars().count()
+                            {
+                                app.settings.api_key_cursor += 1;
+                            }
+                        }
+                        KeyCode::Home if focus == SettingsFocus::Auth && is_auth_editable => {
+                            app.settings.api_key_cursor = 0;
+                        }
+                        KeyCode::End if focus == SettingsFocus::Auth && is_auth_editable => {
+                            app.settings.api_key_cursor =
+                                app.settings.api_key_buffer.chars().count();
+                        }
+                        KeyCode::Backspace
+                            if focus == SettingsFocus::Auth && is_auth_editable =>
+                        {
+                            if app.settings.api_key_cursor > 0 {
+                                app.settings.api_key_cursor = ui::helpers::remove_char_before(
+                                    &mut app.settings.api_key_buffer,
+                                    app.settings.api_key_cursor,
+                                );
+                            }
+                        }
+                        KeyCode::Delete
+                            if focus == SettingsFocus::Auth && is_auth_editable =>
+                        {
+                            ui::helpers::remove_char_at(
+                                &mut app.settings.api_key_buffer,
+                                app.settings.api_key_cursor,
+                            );
+                        }
+                        KeyCode::Char(ch)
+                            if focus == SettingsFocus::Auth
+                                && is_auth_editable
+                                && !key.modifiers.contains(KeyModifiers::CONTROL)
+                                && !key.modifiers.contains(KeyModifiers::ALT) =>
+                        {
+                            ui::helpers::insert_char(
+                                &mut app.settings.api_key_buffer,
+                                app.settings.api_key_cursor,
+                                ch,
+                            );
+                            app.settings.api_key_cursor += 1;
+                        }
+                        _ => {}
                     }
                     continue;
                 }
@@ -729,14 +761,16 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     app_service.new_session().await;
                                     app.clear(&config, app_service.stored_settings());
                                     app.entries.push(TranscriptEntry::System {
-                                        text: "📄 New session started".into(),
+                                        text: "new session started".into(),
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
                                     continue;
                                 }
                                 CommandResult::OpenSettings => {
+                                    app.settings = app::build_settings_state(
+                                        app_service.stored_settings(),
+                                    );
                                     app.settings_open = true;
-                                    app.settings.mode = SettingsMode::Browsing;
                                     continue;
                                 }
                                 CommandResult::OpenProviderPicker => {
@@ -819,9 +853,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     {
                                         Ok(()) => {
                                             let msg = if existed {
-                                                format!("💾 Saved session '{}' (overwritten)", name)
+                                                format!("saved session '{}' (overwritten)", name)
                                             } else {
-                                                format!("💾 Saved session '{}'", name)
+                                                format!("saved session '{}'", name)
                                             };
                                             app.entries.push(TranscriptEntry::System { text: msg });
                                         }
@@ -841,7 +875,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     match app_service.delete_session(&name).await {
                                         Ok(()) => {
                                             app.entries.push(TranscriptEntry::System {
-                                                text: format!("🗑 Deleted session '{}'", name),
+                                                text: format!("deleted session '{}'", name),
                                             });
                                         }
                                         Err(err) => {
@@ -861,7 +895,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                         Ok(()) => {
                                             app.entries.push(TranscriptEntry::System {
                                                 text: format!(
-                                                    "✏ Renamed session '{}' → '{}'",
+                                                    "renamed session '{}' → '{}'",
                                                     old_name, new_name
                                                 ),
                                             });
@@ -926,7 +960,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     match crate::services::export_service::copy_last_assistant_response(&app.entries) {
                                         Ok(_) => {
                                             app.entries.push(TranscriptEntry::System {
-                                                text: "📋 Copied last response to clipboard".into(),
+                                                text: "copied last response to clipboard".into(),
                                             });
                                         }
                                         Err(err) => {
@@ -1026,7 +1060,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 }
                                 CommandResult::ShowConfig(path) => {
                                     app.entries.push(TranscriptEntry::System {
-                                        text: format!("📁 Config: {}", path),
+                                        text: format!("config  {}", path),
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
                                     continue;
@@ -1075,7 +1109,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     }
                                     app.entries.push(TranscriptEntry::System {
                                         text: format!(
-                                            "📄 Inserted '{}' ({} chars)",
+                                            "inserted '{}' · {} chars",
                                             path,
                                             content.len()
                                         ),

@@ -72,27 +72,39 @@ pub fn is_oauth_provider(provider: &str) -> bool {
 
 // ── Settings UI State (not persisted) ────────────────────────────────
 
+/// Which row the user is currently focused on inside the settings panel.
+///
+/// The `Auth` row adapts to the current provider: for OAuth providers it
+/// triggers login/logout; for API-key providers it exposes an editable key
+/// field. There is no longer a separate "editing key" mode — the key field
+/// is always editable when `Auth` is focused on an API-key provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsFocus {
     Provider,
     Model,
-    ApiKey,
+    Auth,
 }
 
+/// Which sub-picker (if any) is currently expanded. `None` means the user
+/// is browsing the row list. When `Some`, keyboard events go to the picker
+/// list until the user confirms or cancels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsMode {
-    Browsing,   // Navigating between fields
-    Choosing,   // Choosing from a list (provider or model)
-    EditingKey, // Editing the API key text
+pub enum SettingsPicker {
+    Provider,
+    Model,
 }
 
+/// Transient UI state for the settings panel.
+///
+/// Provider and model selection persist to `StoredSettings` immediately
+/// when chosen. The API key is *staged* in `api_key_buffer` and written
+/// on blur (focus change, panel close) so typing mid-key doesn't produce
+/// partial writes. No explicit save step is required from the user.
 #[derive(Debug, Clone)]
 pub struct SettingsState {
-    pub provider_index: usize,
-    pub model_index: usize,
-    pub api_key: String,
-    pub api_key_cursor: usize,
     pub focus: SettingsFocus,
-    pub mode: SettingsMode,
-    pub list_scroll: usize,
+    pub picker: Option<SettingsPicker>,
+    pub picker_index: usize,
+    pub api_key_buffer: String,
+    pub api_key_cursor: usize,
 }

@@ -4,6 +4,7 @@
 pub struct SlashCommand {
     pub name: &'static str,
     pub description: &'static str,
+    #[allow(dead_code)]
     pub icon: &'static str,
 }
 

@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 // ── General utilities ────────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub fn clamp_index(index: usize, len: usize) -> usize {
     if len == 0 {
         0
@@ -63,6 +64,13 @@ pub fn provider_auth_status(settings: &StoredSettings, provider: &str) -> &'stat
     }
 }
 
+// ── Model metadata ───────────────────────────────────────────────────
+
+/// Max tokens the model can hold in context. Falls back to 0 when unknown.
+pub fn context_window_for(provider: &str, model_id: &str) -> u64 {
+    find_or_synth_model(provider, model_id).context_window
+}
+
 // ── Cost estimation ──────────────────────────────────────────────────
 
 pub fn estimate_cost(
@@ -101,16 +109,16 @@ pub fn format_tokens(n: u64) -> String {
 
 pub fn friendly_tool_name(tool: &str) -> String {
     match tool {
-        "model" => "🧠 thinking".to_string(),
-        "read" => "📖 read".to_string(),
-        "write" => "✏️ write".to_string(),
-        "edit" => "✏️ edit".to_string(),
-        "bash" => "💻 bash".to_string(),
-        "grep" => "🔍 grep".to_string(),
-        "glob" => "🔍 glob".to_string(),
-        "web_search" => "🌐 search".to_string(),
-        "ls" => "📁 ls".to_string(),
-        "delegate_to_agent" => "🤖 agent".to_string(),
+        "model" => "thinking".to_string(),
+        "read" => "read".to_string(),
+        "write" => "write".to_string(),
+        "edit" => "edit".to_string(),
+        "bash" => "bash".to_string(),
+        "grep" => "grep".to_string(),
+        "glob" => "glob".to_string(),
+        "web_search" => "search".to_string(),
+        "ls" => "ls".to_string(),
+        "delegate_to_agent" => "agent".to_string(),
         _ => tool.to_string(),
     }
 }

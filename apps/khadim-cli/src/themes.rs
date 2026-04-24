@@ -96,8 +96,10 @@ pub struct ThemeColors {
     pub error: Color,
     pub thinking: Color,
     pub border_idle: Color,
+    #[allow(dead_code)]
     pub border_active: Color,
     pub border_error: Color,
+    #[allow(dead_code)]
     pub footer_bg: Color,
     pub footer_text: Color,
     pub system_text: Color,

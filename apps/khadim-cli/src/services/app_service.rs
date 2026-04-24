@@ -185,11 +185,17 @@ impl AppService {
         Ok(())
     }
 
+    /// Persist an API key for `provider`. An empty or whitespace-only `key`
+    /// removes any stored key for that provider so the user can clear one
+    /// from the UI.
     pub fn update_api_key(&mut self, provider: &str, key: &str) {
-        if !key.trim().is_empty() {
+        let trimmed = key.trim();
+        if trimmed.is_empty() {
+            self.stored_settings.api_keys.remove(provider);
+        } else {
             self.stored_settings
                 .api_keys
-                .insert(provider.to_string(), key.trim().to_string());
+                .insert(provider.to_string(), trimmed.to_string());
         }
     }
 
@@ -469,46 +475,43 @@ impl AppService {
             "/model" => CommandResult::OpenModelPicker,
             "/theme" => CommandResult::OpenThemePicker,
             "/help" => {
-                let mut lines = vec!["── Commands ──────────────────────────────────".to_string()];
+                let mut lines = vec!["commands".to_string()];
                 for cmd in all_slash_commands() {
-                    lines.push(format!(
-                        "  {} {:12} {}",
-                        cmd.icon, cmd.name, cmd.description
-                    ));
+                    lines.push(format!("  {:<14}  {}", cmd.name, cmd.description));
                 }
                 lines.push(String::new());
-                lines.push("── Shortcuts ─────────────────────────────────".to_string());
-                lines.push("  Enter        Send message".to_string());
-                lines.push("  Shift+Enter  Insert newline".to_string());
-                lines.push("  Esc          Abort agent / close overlay".to_string());
-                lines.push("  Ctrl+C       Quit".to_string());
-                lines.push("  Ctrl+L       Clear session".to_string());
-                lines.push("  Ctrl+K       Clear input".to_string());
-                lines.push("  Ctrl+O       Toggle tool output (expand/collapse)".to_string());
-                lines.push("  F2           Settings panel".to_string());
-                lines.push("  Tab          Accept command suggestion".to_string());
-                lines.push("  Up/Down      Navigate suggestions or scroll".to_string());
+                lines.push("shortcuts".to_string());
+                lines.push("  enter         send message".to_string());
+                lines.push("  shift+enter   insert newline".to_string());
+                lines.push("  esc           abort · close overlay".to_string());
+                lines.push("  ctrl+c        quit".to_string());
+                lines.push("  ctrl+l        clear session".to_string());
+                lines.push("  ctrl+k        clear input".to_string());
+                lines.push("  ctrl+o        toggle tool output".to_string());
+                lines.push("  f2            settings".to_string());
+                lines.push("  tab           accept suggestion".to_string());
+                lines.push("  ↑↓            history · scroll".to_string());
                 CommandResult::ShowHelp(lines)
             }
             "/providers" => {
-                let mut lines = vec!["── Available Providers ──".to_string()];
+                let mut lines = vec!["providers".to_string()];
                 for p in provider_catalog() {
                     let status = provider_auth_status(&self.stored_settings, &p.id);
                     let oauth_label = if crate::domain::settings::is_oauth_provider(&p.id) {
-                        " (oauth)"
+                        " · oauth"
                     } else {
                         ""
                     };
-                    lines.push(format!("  {} [{}]{} {}", p.name, p.id, oauth_label, status));
+                    lines.push(format!("  {:<18}  {}{}  ·  {}", p.name, p.id, oauth_label, status));
                 }
                 CommandResult::ShowProviders(lines)
             }
             "/sessions" => {
-                let mut lines = vec!["── Saved Sessions ──".to_string()];
+                let mut lines = vec!["sessions".to_string()];
                 match self.list_sessions() {
                     Ok(sessions) => {
                         if sessions.is_empty() {
-                            lines.push("  (no saved sessions)".to_string());
+                            lines.push("  (none)".to_string());
                         } else {
                             for s in sessions {
                                 let active = if self.session_name.as_deref() == Some(&s.name) {
@@ -517,7 +520,7 @@ impl AppService {
                                     ""
                                 };
                                 lines.push(format!(
-                                    "  {}{} — {} entries — updated {}",
+                                    "  {}{}  ·  {} entries  ·  updated {}",
                                     s.name,
                                     active,
                                     s.entry_count,
@@ -527,7 +530,7 @@ impl AppService {
                         }
                     }
                     Err(err) => {
-                        lines.push(format!("  Error: {}", err.message));
+                        lines.push(format!("  error: {}", err.message));
                     }
                 }
                 CommandResult::ShowSessions(lines)

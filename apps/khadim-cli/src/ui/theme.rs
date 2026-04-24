@@ -68,12 +68,14 @@ pub fn thinking() -> Color {
 pub fn border_idle() -> Color {
     get_current_theme().border_idle
 }
+#[allow(dead_code)]
 pub fn border_active() -> Color {
     get_current_theme().border_active
 }
 pub fn border_error() -> Color {
     get_current_theme().border_error
 }
+#[allow(dead_code)]
 pub fn footer_bg() -> Color {
     get_current_theme().footer_bg
 }
@@ -113,24 +115,17 @@ pub fn md_table_header() -> Color {
     get_current_theme().md_table_header
 }
 
-// ── Markdown color functions (theme-aware) ──────────────────────────────────
-// These use the dynamic theme for core markdown colors, with fallback constants
-// for specialized markdown elements not yet in ThemeColors.
+// ── Derived markdown colors ──────────────────────────────────────────
+// Tokens the renderer needs but the per-theme `ThemeColors` struct
+// doesn't carry as fields. Each is derived from an existing theme color
+// so themes don't have to ship more fields just to enable these markdown
+// elements.
 
 pub fn md_strikethrough() -> Color {
     text_dim()
 }
 pub fn md_image() -> Color {
-    Color::Rgb(244, 114, 182)
-} // pink-400
-pub fn md_math() -> Color {
-    Color::Rgb(52, 211, 153)
-} // emerald-400
-pub fn md_diagram() -> Color {
-    Color::Rgb(251, 146, 60)
-} // orange-400
-pub fn md_footnote() -> Color {
-    system_text()
+    Color::Rgb(244, 114, 182) // pink-400
 }
 pub fn md_task_checked() -> Color {
     tool_label()
@@ -138,16 +133,9 @@ pub fn md_task_checked() -> Color {
 pub fn md_task_unchecked() -> Color {
     text_muted()
 }
-pub fn md_definition_term() -> Color {
-    accent()
-}
-pub fn md_superscript() -> Color {
-    thinking()
-}
-pub fn md_subscript() -> Color {
-    thinking()
-}
 
+// GFM blockquote alert label colors. Each `[!KIND]` alert renders with a
+// matching label color so users can tell them apart at a glance.
 pub fn md_bq_note() -> Color {
     system_text()
 }

@@ -1,7 +1,9 @@
 use crate::args::CliConfig;
 use crate::domain::commands::{filter_slash_commands, CommandPickerState, SlashCommand};
 use crate::domain::login::{LoginPhase, LoginState};
-use crate::domain::settings::{SettingsFocus, SettingsMode, SettingsState, StoredSettings};
+use crate::domain::settings::{
+    is_oauth_provider, SettingsFocus, SettingsPicker, SettingsState, StoredSettings,
+};
 use crate::domain::transcript::TranscriptEntry;
 use crate::services::catalog_service::provider_auth_status;
 use crate::services::settings_service::effective_settings;
@@ -11,67 +13,23 @@ use std::cell::{Cell, RefCell};
 
 // ── Settings UI helpers ──────────────────────────────────────────────
 
+/// Build fresh transient settings-UI state from persisted settings.
+///
+/// The API-key buffer is seeded from `settings.api_keys` only (not the env
+/// var fallback) so the user doesn't see an env-provided key and overwrite
+/// it unintentionally. If no key is stored, the buffer is empty.
 pub fn build_settings_state(settings: &StoredSettings) -> SettingsState {
-    let providers = crate::services::catalog_service::provider_catalog();
-    let provider_index = providers
-        .iter()
-        .position(|p| settings.provider.as_deref() == Some(p.id.as_str()))
-        .unwrap_or(0);
-    let selected_provider = providers
-        .get(provider_index)
-        .map(|p| p.id.as_str())
-        .unwrap_or("openai");
-    let models = crate::services::catalog_service::models_for_provider(selected_provider);
-    let model_index = models
-        .iter()
-        .position(|(id, _)| settings.model_id.as_deref() == Some(id.as_str()))
-        .unwrap_or(0);
-    let api_key = settings
-        .get_api_key_for(selected_provider)
+    let buffer = settings
+        .provider
+        .as_deref()
+        .and_then(|p| settings.api_keys.get(p).cloned())
         .unwrap_or_default();
-
     SettingsState {
-        provider_index,
-        model_index,
-        api_key,
-        api_key_cursor: 0,
         focus: SettingsFocus::Provider,
-        mode: SettingsMode::Browsing,
-        list_scroll: 0,
-    }
-}
-
-#[allow(dead_code)]
-pub fn stored_settings_from_state(state: &SettingsState) -> StoredSettings {
-    let providers = crate::services::catalog_service::provider_catalog();
-    let provider = providers.get(crate::services::catalog_service::clamp_index(
-        state.provider_index,
-        providers.len(),
-    ));
-    let models = provider
-        .map(|p| crate::services::catalog_service::models_for_provider(&p.id))
-        .unwrap_or_default();
-    let model = models.get(crate::services::catalog_service::clamp_index(
-        state.model_index,
-        models.len(),
-    ));
-
-    let provider_id = provider.map(|p| p.id.clone());
-    let mut api_keys = std::collections::HashMap::new();
-    if let Some(ref pid) = provider_id {
-        if !state.api_key.trim().is_empty() {
-            api_keys.insert(pid.clone(), state.api_key.trim().to_string());
-        }
-    }
-
-    StoredSettings {
-        provider: provider_id,
-        model_id: model.map(|(id, _)| id.clone()),
-        api_key: None,
-        api_keys,
-        theme_family: None,
-        theme_variant: None,
-        system_prompt: None,
+        picker: None,
+        picker_index: 0,
+        api_key_cursor: buffer.chars().count(),
+        api_key_buffer: buffer,
     }
 }
 
@@ -174,7 +132,6 @@ pub struct TuiApp {
     pub visible_height: Cell<usize>,
     pub current_mode: String,
     pub settings_open: bool,
-    pub settings_dirty: bool,
     pub settings: SettingsState,
     pub input_focused: bool,
     pub tick_count: u64,
@@ -227,7 +184,7 @@ impl TuiApp {
         }
 
         entries.push(TranscriptEntry::System {
-            text: "  enter send · shift+enter newline · esc abort · ctrl+l clear · ctrl+o tools · F2 settings · tab mode".into(),
+            text: "  enter send · shift+enter newline · esc abort · ctrl+l clear · ctrl+o tools · f2 settings · tab mode".into(),
         });
         entries.push(TranscriptEntry::System {
             text: "  type / to see all commands".into(),
@@ -259,7 +216,6 @@ impl TuiApp {
             visible_height: Cell::new(0),
             current_mode: "auto".into(),
             settings_open: false,
-            settings_dirty: false,
             settings: build_settings_state(settings),
             input_focused: true,
             tick_count: 0,
@@ -530,7 +486,7 @@ impl TuiApp {
                 .map(|p| p.name.clone())
                 .unwrap_or_else(|| provider_id.to_string());
             login.phase = LoginPhase::InProgress;
-            login.messages = vec![format!("🔑 Logging in to {}...", name)];
+            login.messages = vec![format!("signing in to {}…", name)];
         }
     }
 
@@ -675,124 +631,123 @@ impl TuiApp {
         }
     }
 
-    pub fn enter_field(&mut self) {
-        match self.settings.focus {
-            SettingsFocus::Provider | SettingsFocus::Model => {
-                self.settings.mode = SettingsMode::Choosing;
-                self.settings.list_scroll = match self.settings.focus {
-                    SettingsFocus::Provider => self.settings.provider_index,
-                    SettingsFocus::Model => self.settings.model_index,
-                    SettingsFocus::ApiKey => 0,
-                };
-            }
-            SettingsFocus::ApiKey => {
-                self.settings.mode = SettingsMode::EditingKey;
-                self.settings.api_key_cursor = self.settings.api_key.chars().count();
-            }
-        }
-    }
+    // ── Settings panel: focus navigation ─────────────────────────────
+    //
+    // All three rows (provider/model/auth) form a vertical cycle. Moving
+    // off the Auth row also flushes the staged API-key buffer to storage
+    // so typed keys don't silently vanish.
 
-    pub fn exit_field(&mut self) {
-        self.settings.mode = SettingsMode::Browsing;
-    }
-
-    pub fn select_current_option(&mut self) {
-        match self.settings.focus {
-            SettingsFocus::Provider => {
-                self.settings.provider_index = self.settings.list_scroll;
-                self.settings.model_index = 0;
-                let providers = crate::services::catalog_service::provider_catalog();
-                if let Some(p) = providers.get(crate::services::catalog_service::clamp_index(
-                    self.settings.provider_index,
-                    providers.len(),
-                )) {
-                    self.settings.api_key = get_env_api_key(&p.id).unwrap_or_default();
-                }
-                self.settings_dirty = true;
-            }
-            SettingsFocus::Model => {
-                self.settings.model_index = self.settings.list_scroll;
-                self.settings_dirty = true;
-            }
-            SettingsFocus::ApiKey => {}
-        }
-        self.settings.mode = SettingsMode::Browsing;
-    }
-
-    pub fn move_focus_up(&mut self) {
+    pub fn move_focus_up(&mut self, settings: &StoredSettings) {
+        self.blur_auth_if_leaving(settings);
         self.settings.focus = match self.settings.focus {
-            SettingsFocus::Provider => SettingsFocus::ApiKey,
+            SettingsFocus::Provider => SettingsFocus::Auth,
             SettingsFocus::Model => SettingsFocus::Provider,
-            SettingsFocus::ApiKey => SettingsFocus::Model,
+            SettingsFocus::Auth => SettingsFocus::Model,
         };
+        self.refocus_buffer(settings);
     }
 
-    pub fn move_focus_down(&mut self) {
+    pub fn move_focus_down(&mut self, settings: &StoredSettings) {
+        self.blur_auth_if_leaving(settings);
         self.settings.focus = match self.settings.focus {
             SettingsFocus::Provider => SettingsFocus::Model,
-            SettingsFocus::Model => SettingsFocus::ApiKey,
-            SettingsFocus::ApiKey => SettingsFocus::Provider,
+            SettingsFocus::Model => SettingsFocus::Auth,
+            SettingsFocus::Auth => SettingsFocus::Provider,
         };
+        self.refocus_buffer(settings);
     }
 
-    pub fn move_list_up(&mut self) {
-        if self.settings.list_scroll > 0 {
-            self.settings.list_scroll -= 1;
-        }
-    }
-
-    pub fn move_list_down(&mut self) {
-        let max = match self.settings.focus {
-            SettingsFocus::Provider => crate::services::catalog_service::provider_catalog().len(),
-            SettingsFocus::Model => {
-                let providers = crate::services::catalog_service::provider_catalog();
-                let provider = providers.get(crate::services::catalog_service::clamp_index(
-                    self.settings.provider_index,
-                    providers.len(),
-                ));
-                crate::services::catalog_service::models_for_provider(
-                    provider.map(|p| p.id.as_str()).unwrap_or("openai"),
-                )
-                .len()
+    /// When leaving the Auth row on an API-key provider, re-seed the buffer
+    /// from persisted settings so the next time it's focused the user sees
+    /// what was actually saved.
+    fn refocus_buffer(&mut self, settings: &StoredSettings) {
+        if self.settings.focus == SettingsFocus::Auth {
+            let provider = settings.provider.as_deref().unwrap_or("");
+            if !is_oauth_provider(provider) {
+                let key = settings.api_keys.get(provider).cloned().unwrap_or_default();
+                self.settings.api_key_cursor = key.chars().count();
+                self.settings.api_key_buffer = key;
             }
-            SettingsFocus::ApiKey => 0,
-        };
-        if self.settings.list_scroll + 1 < max {
-            self.settings.list_scroll += 1;
         }
     }
 
-    pub fn move_provider(&mut self, delta: isize) {
-        let providers = crate::services::catalog_service::provider_catalog();
-        if providers.is_empty() {
-            return;
-        }
-        let next = ((self.settings.provider_index as isize + delta)
-            .rem_euclid(providers.len() as isize)) as usize;
-        self.settings.provider_index = next;
-        self.settings.model_index = 0;
-        if let Some(p) = providers.get(next) {
-            self.settings.api_key = get_env_api_key(&p.id).unwrap_or_default();
-        }
-        self.settings_dirty = true;
+    fn blur_auth_if_leaving(&mut self, _settings: &StoredSettings) {
+        // Intentionally a no-op hook: the caller is expected to flush the
+        // staged key via app_service before calling move_focus_*. This keeps
+        // the persistence step out of the pure-state helper.
     }
 
-    pub fn move_model(&mut self, delta: isize) {
-        let providers = crate::services::catalog_service::provider_catalog();
-        let Some(provider) = providers.get(crate::services::catalog_service::clamp_index(
-            self.settings.provider_index,
-            providers.len(),
-        )) else {
-            return;
+    // ── Settings panel: picker ───────────────────────────────────────
+
+    pub fn open_settings_picker(&mut self, settings: &StoredSettings) {
+        match self.settings.focus {
+            SettingsFocus::Provider => {
+                let providers = crate::services::catalog_service::provider_catalog();
+                let current = providers
+                    .iter()
+                    .position(|p| settings.provider.as_deref() == Some(p.id.as_str()))
+                    .unwrap_or(0);
+                self.settings.picker = Some(SettingsPicker::Provider);
+                self.settings.picker_index = current;
+            }
+            SettingsFocus::Model => {
+                let provider_id = settings.provider.clone().unwrap_or_default();
+                let models =
+                    crate::services::catalog_service::models_for_provider(&provider_id);
+                let current = models
+                    .iter()
+                    .position(|(id, _)| settings.model_id.as_deref() == Some(id.as_str()))
+                    .unwrap_or(0);
+                self.settings.picker = Some(SettingsPicker::Model);
+                self.settings.picker_index = current;
+            }
+            SettingsFocus::Auth => {}
+        }
+    }
+
+    pub fn close_settings_picker(&mut self) {
+        self.settings.picker = None;
+    }
+
+    pub fn settings_picker_move(&mut self, delta: isize, settings: &StoredSettings) {
+        let Some(kind) = self.settings.picker else { return; };
+        let len = match kind {
+            SettingsPicker::Provider => {
+                crate::services::catalog_service::provider_catalog().len()
+            }
+            SettingsPicker::Model => {
+                let pid = settings.provider.as_deref().unwrap_or("");
+                crate::services::catalog_service::models_for_provider(pid).len()
+            }
         };
-        let models = crate::services::catalog_service::models_for_provider(&provider.id);
-        if models.is_empty() {
+        if len == 0 {
             return;
         }
-        let next = ((self.settings.model_index as isize + delta).rem_euclid(models.len() as isize))
-            as usize;
-        self.settings.model_index = next;
-        self.settings_dirty = true;
+        let next = (self.settings.picker_index as isize + delta).rem_euclid(len as isize) as usize;
+        self.settings.picker_index = next;
+    }
+
+    /// Read the picker's currently-highlighted item. Returns `(id, kind)`.
+    pub fn settings_picker_selection(
+        &self,
+        settings: &StoredSettings,
+    ) -> Option<(SettingsPicker, String)> {
+        let kind = self.settings.picker?;
+        match kind {
+            SettingsPicker::Provider => {
+                let providers = crate::services::catalog_service::provider_catalog();
+                providers
+                    .get(self.settings.picker_index)
+                    .map(|p| (kind, p.id.clone()))
+            }
+            SettingsPicker::Model => {
+                let pid = settings.provider.as_deref().unwrap_or("");
+                let models = crate::services::catalog_service::models_for_provider(pid);
+                models
+                    .get(self.settings.picker_index)
+                    .map(|(id, _)| (kind, id.clone()))
+            }
+        }
     }
 
     // ── Input history navigation ─────────────────────────────────────
