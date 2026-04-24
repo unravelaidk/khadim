@@ -37,3 +37,6 @@ apps/*/target-debian
 *.njsproj
 *.sln
 *.sw?
+
+# Khadim video (local only)
+khadim-video/

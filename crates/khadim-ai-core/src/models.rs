@@ -86,20 +86,134 @@ pub async fn refresh_nvidia_models(api_key: Option<&str>) -> Result<(), crate::e
     Ok(())
 }
 
+// ── OpenRouter model autodiscovery cache ─────────────────────────────
+
+static OPENROUTER_MODELS_CACHE: OnceLock<Mutex<Vec<Model>>> = OnceLock::new();
+
+fn openrouter_cache() -> &'static Mutex<Vec<Model>> {
+    OPENROUTER_MODELS_CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Return cached OpenRouter models (empty if never refreshed).
+pub fn get_openrouter_models() -> Vec<Model> {
+    openrouter_cache().lock().unwrap().clone()
+}
+
+/// Fetch available models from the OpenRouter `/models` endpoint.
+///
+/// OpenRouter returns a standard OpenAI-compatible model list.  We parse
+/// each entry and infer image support from the model ID / description.
+pub async fn refresh_openrouter_models(api_key: Option<&str>) -> Result<(), crate::error::AppError> {
+    use crate::env_api_keys::{get_env_api_key, get_env_base_url};
+
+    let base_url = get_env_base_url("openrouter")
+        .unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string());
+    let api_key = api_key
+        .map(|s| s.to_string())
+        .or_else(|| get_env_api_key("openrouter"));
+
+    let client = reqwest::Client::new();
+    let mut request = client
+        .get(format!("{}/models", base_url.trim_end_matches('/')))
+        .header("HTTP-Referer", "https://github.com/unravel-ai/khadim")
+        .header("X-Title", "Khadim");
+    if let Some(ref key) = api_key {
+        request = request.bearer_auth(key);
+    }
+    let response = request.send().await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(crate::error::AppError::health(format!(
+            "OpenRouter models fetch failed: HTTP {status} - {body}"
+        )));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|err| {
+        crate::error::AppError::health(format!(
+            "Failed to parse OpenRouter models response: {err}"
+        ))
+    })?;
+
+    let mut models = Vec::new();
+    if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+        for item in data {
+            let Some(id) = item.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let name = item
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(id);
+            let description = item
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Heuristic: detect vision / image support from model metadata.
+            let supports_image = item
+                .get("architecture")
+                .and_then(|v| v.get("modality"))
+                .and_then(|v| v.as_str())
+                .map(|m| m.contains("image"))
+                .unwrap_or_else(|| {
+                    // Fallback heuristic based on model id / description.
+                    let check = format!("{} {}", id, description).to_lowercase();
+                    check.contains("vision")
+                        || check.contains("multimodal")
+                        || check.contains("gpt-4o")
+                        || check.contains("claude-3")
+                        || check.contains("gemini")
+                        || check.contains("llava")
+                        || check.contains("qwen2-vl")
+                        || check.contains("pixtral")
+                });
+
+            let mut model = base_model("openrouter", id, name, "openai-completions", true);
+            if supports_image {
+                model.input.push(InputKind::Image);
+            }
+            model.context_window = item
+                .get("context_length")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200_000);
+            model.max_tokens = item
+                .get("top_provider")
+                .and_then(|v| v.get("max_completion_tokens"))
+                .and_then(|v| v.as_u64())
+                .or_else(|| item.get("max_tokens").and_then(|v| v.as_u64()))
+                .unwrap_or(8_192);
+
+            models.push(model);
+        }
+    }
+
+    let mut cache = openrouter_cache().lock().unwrap();
+    *cache = models;
+    Ok(())
+}
+
 /// Return all builtin models merged with any cached autodiscovered models.
-/// Hard-coded NVIDIA models are replaced by the cached set when available.
+/// Hard-coded NVIDIA and OpenRouter models are replaced by the cached set when available.
 pub fn all_models() -> Vec<Model> {
     let mut models: Vec<Model> = builtin_models()
         .into_iter()
-        .filter(|m| m.provider != "nvidia")
+        .filter(|m| m.provider != "nvidia" && m.provider != "openrouter")
         .collect();
 
     let nvidia_cached = get_nvidia_models();
     if nvidia_cached.is_empty() {
-        // fallback to hard-coded NVIDIA models
         models.extend(builtin_models().into_iter().filter(|m| m.provider == "nvidia"));
     } else {
         models.extend(nvidia_cached);
+    }
+
+    let openrouter_cached = get_openrouter_models();
+    if openrouter_cached.is_empty() {
+        models.extend(builtin_models().into_iter().filter(|m| m.provider == "openrouter"));
+    } else {
+        models.extend(openrouter_cached);
     }
 
     models
@@ -1736,6 +1850,22 @@ pub fn builtin_models() -> Vec<Model> {
             true,
             "https://opencode.ai/zen/go/v1",
         ),
+        model_with_base_url(
+            "opencode-go",
+            "deepseek-v4",
+            "DeepSeek V4",
+            "openai-completions",
+            true,
+            "https://opencode.ai/zen/go/v1",
+        ),
+        model_with_base_url(
+            "opencode-go",
+            "deepseek-v4-pro",
+            "DeepSeek V4 Pro",
+            "openai-completions",
+            true,
+            "https://opencode.ai/zen/go/v1",
+        ),
         // ── Kimi Coding ─────────────────────────────────────────────
         base_model(
             "kimi-coding",
@@ -1843,6 +1973,13 @@ pub fn builtin_models() -> Vec<Model> {
             "nvidia",
             "deepseek-ai/deepseek-r1",
             "DeepSeek-R1",
+            "openai-completions",
+            true,
+        ),
+        base_model(
+            "nvidia",
+            "deepseek-ai/deepseek-v4-pro",
+            "DeepSeek-V4-Pro",
             "openai-completions",
             true,
         ),
@@ -2516,13 +2653,15 @@ pub fn builtin_models() -> Vec<Model> {
             true,
         ),
         // ── OpenRouter ──────────────────────────────────────────────
-        // OpenRouter fetches models dynamically, but we include a representative default
+        // OpenRouter models are fetched dynamically, but we include a
+        // representative default so the provider is usable when the cache
+        // has not yet been populated.
         base_model(
             "openrouter",
             "openai/gpt-4.1-mini",
             "OpenRouter GPT-4.1 Mini",
             "openai-completions",
-            true,
+            false,
         ),
     ]
 }
@@ -2603,4 +2742,22 @@ pub fn find_or_synth_model(provider: &str, model_id: &str) -> Model {
         _ => "openai-completions",
     };
     base_model(provider, model_id, model_id, api, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_refresh_openrouter_models_without_api_key() {
+        let result = refresh_openrouter_models(None).await;
+        assert!(result.is_ok(), "refresh_openrouter_models failed: {:?}", result.err());
+        let models = get_openrouter_models();
+        println!("Fetched {} OpenRouter models (no API key)", models.len());
+        assert!(
+            models.len() > 100,
+            "Expected >100 OpenRouter models, got {}",
+            models.len()
+        );
+    }
 }

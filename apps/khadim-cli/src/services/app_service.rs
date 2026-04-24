@@ -23,7 +23,7 @@ use khadim_ai_core::error::AppError;
 use khadim_ai_core::types::ModelSelection;
 use khadim_coding_agent::KhadimSession;
 use khadim_coding_agent::{
-    build_mode, chat_mode, explore_mode, plan_mode, run_prompt, run_prompt_with_explicit_mode,
+    build_mode, chat_mode, explore_mode, plan_mode, run_prompt_with_runtime, run_prompt_with_runtime_and_explicit_mode, AgentRuntime,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -31,10 +31,6 @@ use tokio::sync::Mutex;
 
 /// Result of executing a slash command.
 pub enum CommandResult {
-    /// Quit the application.
-    Quit,
-    /// Clear the transcript.
-    Clear,
     /// Reset the session.
     Reset,
     /// Open settings overlay.
@@ -83,8 +79,8 @@ pub enum CommandResult {
     ShowConfig(String),
     /// Clear input history.
     ClearHistory,
-    /// Read file into input.
-    ReadFile { path: String, content: String },
+    /// Refresh dynamic model lists.
+    RefreshModels,
     /// Not a recognized command.
     None,
 }
@@ -239,10 +235,32 @@ impl AppService {
         let system_prompt = self.stored_settings.system_prompt.clone();
         let session = self.session.clone();
         let worker_tx = self.worker_tx.clone();
+
+        // Bridge for the question tool to communicate with the TUI
+        let (question_tx, mut question_rx) = tokio::sync::mpsc::unbounded_channel::<(
+            crate::tools::question_tool::QuestionRequest,
+            tokio::sync::oneshot::Sender<crate::tools::question_tool::QuestionResponse>,
+        )>();
+        let question_bridge = crate::tools::question_tool::QuestionBridge { tx: question_tx };
+        let question_tool = Arc::new(crate::tools::question_tool::QuestionTool::new(question_bridge));
+
         let handle = tokio::spawn(async move {
+            // Forward question requests from the agent task to the main UI thread
+            let worker_tx_for_questions = worker_tx.clone();
+            let question_forwarder = tokio::spawn(async move {
+                while let Some((request, response_tx)) = question_rx.recv().await {
+                    let _ = worker_tx_for_questions.send(WorkerEvent::QuestionRequest {
+                        request,
+                        response_tx,
+                    });
+                }
+            });
+
             let mut sess = session.lock().await;
             sess.system_prompt_override = system_prompt;
+            let cwd = sess.cwd.clone();
             drop(sess);
+
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
             let worker_tx_clone = worker_tx.clone();
             let worker_tx_for_result = worker_tx.clone();
@@ -251,39 +269,47 @@ impl AppService {
                     let _ = worker_tx_clone.send(WorkerEvent::Stream(event));
                 }
             });
+
             let mut sess = session.lock().await;
+            let runtime = AgentRuntime::with_extras(&cwd, vec![question_tool], String::new());
             let result = match explicit_mode.as_deref() {
                 Some("build") => {
-                    run_prompt_with_explicit_mode(&mut sess, &prompt, selection, build_mode(), &tx)
-                        .await
+                    run_prompt_with_runtime_and_explicit_mode(
+                        &mut sess, &prompt, selection, build_mode(), &tx, runtime,
+                    )
+                    .await
                 }
                 Some("plan") => {
-                    run_prompt_with_explicit_mode(&mut sess, &prompt, selection, plan_mode(), &tx)
-                        .await
+                    run_prompt_with_runtime_and_explicit_mode(
+                        &mut sess, &prompt, selection, plan_mode(), &tx, runtime,
+                    )
+                    .await
                 }
                 Some("explore") => {
-                    run_prompt_with_explicit_mode(
-                        &mut sess,
-                        &prompt,
-                        selection,
-                        explore_mode(),
-                        &tx,
+                    run_prompt_with_runtime_and_explicit_mode(
+                        &mut sess, &prompt, selection, explore_mode(), &tx, runtime,
                     )
                     .await
                 }
                 Some("chat") => {
-                    run_prompt_with_explicit_mode(&mut sess, &prompt, selection, chat_mode(), &tx)
-                        .await
+                    run_prompt_with_runtime_and_explicit_mode(
+                        &mut sess, &prompt, selection, chat_mode(), &tx, runtime,
+                    )
+                    .await
                 }
-                _ => run_prompt(&mut sess, &prompt, selection, &tx).await,
+                _ => run_prompt_with_runtime(&mut sess, &prompt, selection, &tx, runtime, khadim_coding_agent::RunConfig::default()).await,
             };
             drop(tx);
             let _ = forwarder.await;
+            drop(question_forwarder);
             let _ = worker_tx_for_result.send(WorkerEvent::Finished(result));
         });
         self.current_run = Some(handle);
     }
 
+    /// Abort the current agent run.  The abort signals the tokio task to
+    /// cancel at its next `.await` point, which releases the session mutex
+    /// so that `auto_save_session` (or any subsequent lock) will not hang.
     pub fn abort_run(&mut self) {
         if let Some(handle) = self.current_run.take() {
             handle.abort();
@@ -467,8 +493,6 @@ impl AppService {
 
     pub fn execute_slash_command(&mut self, cmd: &str) -> CommandResult {
         match cmd {
-            "/exit" | "/quit" => CommandResult::Quit,
-            "/clear" => CommandResult::Clear,
             "/reset" => CommandResult::Reset,
             "/settings" => CommandResult::OpenSettings,
             "/provider" => CommandResult::OpenProviderPicker,
@@ -563,9 +587,6 @@ impl AppService {
             "/export" => {
                 return CommandResult::ShowSystemMessage("Usage: /export [path]".to_string());
             }
-            "/file" => {
-                return CommandResult::ShowSystemMessage("Usage: /file <path>".to_string());
-            }
             "/system" => {
                 return CommandResult::ShowSystemMessage("Usage: /system <prompt>".to_string());
             }
@@ -594,6 +615,7 @@ impl AppService {
                     .unwrap_or_else(|_| "(unknown)".to_string());
                 CommandResult::ShowConfig(path)
             }
+            "/refresh-models" => CommandResult::RefreshModels,
             _ => {
                 if let Some(name) = cmd.strip_prefix("/session ") {
                     let name = name.trim();
@@ -647,26 +669,6 @@ impl AppService {
                             Some(path.to_string())
                         },
                     };
-                }
-                if let Some(path) = cmd.strip_prefix("/file ") {
-                    let path = path.trim();
-                    if !path.is_empty() {
-                        let full_path = self.config.cwd.join(path);
-                        match std::fs::read_to_string(&full_path) {
-                            Ok(content) => {
-                                return CommandResult::ReadFile {
-                                    path: path.to_string(),
-                                    content,
-                                };
-                            }
-                            Err(err) => {
-                                return CommandResult::ShowSystemMessage(format!(
-                                    "Failed to read '{}': {}",
-                                    path, err
-                                ));
-                            }
-                        }
-                    }
                 }
                 if let Some(prompt) = cmd.strip_prefix("/system ") {
                     let prompt = prompt.trim();
@@ -785,10 +787,22 @@ impl AppService {
             .iter()
             .position(|(id, _)| self.stored_settings.model_id.as_deref() == Some(id.as_str()))
             .unwrap_or(0);
-        let items: Vec<(String, String, String)> = models
+        let mut items: Vec<(String, String, String)> = models
             .iter()
             .map(|(id, name)| (id.clone(), name.clone(), String::new()))
             .collect();
+
+        // OpenRouter models are fetched dynamically.  If the cache is still
+        // empty, show a placeholder so the user knows what's happening.
+        if provider_id == "openrouter" && items.is_empty() {
+            items.push((
+                String::new(),
+                "(models still loading — close picker and retry in a moment)"
+                    .to_string(),
+                String::new(),
+            ));
+        }
+
         CommandPickerState {
             kind: CommandPickerKind::Model,
             items,

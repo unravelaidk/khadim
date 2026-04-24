@@ -562,8 +562,9 @@ impl Tool for EditTool {
         }
 
         let target = normalize_path(&self.root, path)?;
-        let mut content = std::fs::read_to_string(&target)
+        let original = std::fs::read_to_string(&target)
             .map_err(|e| AppError::io(format!("Failed to read {}: {e}", target.display())))?;
+        let mut content = original.clone();
 
         let mut applied = 0;
         let mut errors = Vec::new();
@@ -603,7 +604,17 @@ impl Tool for EditTool {
             result.push_str(&errors.join("\n"));
         }
 
-        Ok(ToolResult::text(result))
+        let mut tool_result = ToolResult::text(result);
+        // Include before/after in metadata so the UI can render a diff.
+        if applied > 0 {
+            tool_result.metadata = Some(json!({
+                "path": target.to_string_lossy().to_string(),
+                "before": original,
+                "after": content,
+            }));
+        }
+
+        Ok(tool_result)
     }
 }
 

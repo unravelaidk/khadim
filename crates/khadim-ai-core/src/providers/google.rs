@@ -10,6 +10,7 @@ fn convert_contents(context: &Context) -> Vec<serde_json::Value> {
     context.messages.iter().filter_map(|message| match message {
         crate::types::ChatMessage::System { .. } => None,
         crate::types::ChatMessage::User { content } => Some(json!({"role":"user","parts":[{"text":content}]})),
+        crate::types::ChatMessage::UserWithImages { content, .. } => Some(json!({"role":"user","parts":[{"text":content}]})),
         crate::types::ChatMessage::Assistant { content, tool_calls, .. } => {
             let mut parts = Vec::new();
             if let Some(content) = content { if !content.is_empty() { parts.push(json!({"text":content})); } }

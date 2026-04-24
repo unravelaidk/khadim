@@ -156,25 +156,27 @@ fn print_help() {
          COMMANDS (type / to see preview):\n\
          \x20 /help            Show all commands & shortcuts\n\
          \x20 /sessions        List saved sessions\n\
-         \x20 /session         Switch to a session\n\
+         \x20 /session NAME    Switch to a session\n\
          \x20 /new             Start a new session\n\
          \x20 /save NAME       Save current session\n\
          \x20 /delete NAME     Delete a saved session\n\
          \x20 /rename OLD NEW  Rename a saved session\n\
+         \x20 /theme           Switch theme\n\
          \x20 /provider        Switch AI provider\n\
          \x20 /model           Switch model\n\
-         \x20 /theme           Switch theme\n\
          \x20 /login           OAuth login (Copilot, Codex)\n\
-         \x20 /settings        Open settings panel (same as F2)\n\
-         \x20 /providers       List all providers and auth status\n\
-         \x20 /copy            Copy last assistant response\n\
+         \x20 /settings        Open settings panel (F2)\n\
+         \x20 /providers       List providers & auth status\n\
+         \x20 /reset           Reset session\n\
+         \x20 /copy            Copy last response to clipboard\n\
          \x20 /export [PATH]   Export conversation to markdown\n\
          \x20 /system PROMPT   Set custom system prompt\n\
+         \x20 /tokens          Show token usage breakdown\n\
          \x20 /history         Show input history\n\
-         \x20 /version         Show version\n\
-         \x20 /reset           Reset session\n\
-         \x20 /clear           Clear screen\n\
-         \x20 /exit            Quit\n\n\
+         \x20 /clear-history   Clear input history\n\
+         \x20 /config          Show config directory path\n\
+         \x20 /version         Show version info\n\
+         \x20 /refresh-models  Refresh dynamic model lists\n\n\
          SHORTCUTS:\n\
          \x20 Enter           Send message\n\
          \x20 Shift+Enter     Insert newline\n\

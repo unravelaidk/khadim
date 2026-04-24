@@ -10,11 +10,13 @@ pub struct SlashCommand {
 
 pub fn all_slash_commands() -> Vec<SlashCommand> {
     vec![
+        // ── Reference ──────────────────────────────────────────────
         SlashCommand {
             name: "/help",
             description: "Show all commands & shortcuts",
             icon: "❓",
         },
+        // ── Sessions ───────────────────────────────────────────────
         SlashCommand {
             name: "/sessions",
             description: "List saved sessions",
@@ -45,6 +47,7 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             description: "Rename a saved session",
             icon: "✏",
         },
+        // ── Quick-switch ───────────────────────────────────────────
         SlashCommand {
             name: "/theme",
             description: "Switch theme",
@@ -60,11 +63,13 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             description: "Switch model",
             icon: "🧠",
         },
+        // ── Auth ───────────────────────────────────────────────────
         SlashCommand {
             name: "/login",
             description: "OAuth login (Copilot, Codex)",
             icon: "🔑",
         },
+        // ── Settings ───────────────────────────────────────────────
         SlashCommand {
             name: "/settings",
             description: "Open settings panel (F2)",
@@ -75,19 +80,15 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             description: "List providers & auth status",
             icon: "📋",
         },
+        // ── Actions ────────────────────────────────────────────────
         SlashCommand {
             name: "/reset",
             description: "Reset session",
             icon: "↻",
         },
         SlashCommand {
-            name: "/clear",
-            description: "Clear screen",
-            icon: "🧹",
-        },
-        SlashCommand {
             name: "/copy",
-            description: "Copy last assistant response to clipboard",
+            description: "Copy last response to clipboard",
             icon: "📋",
         },
         SlashCommand {
@@ -96,14 +97,15 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             icon: "📤",
         },
         SlashCommand {
-            name: "/file",
-            description: "Read a file into the input",
-            icon: "📄",
-        },
-        SlashCommand {
             name: "/system",
             description: "Set a custom system prompt",
             icon: "📝",
+        },
+        // ── Info ───────────────────────────────────────────────────
+        SlashCommand {
+            name: "/tokens",
+            description: "Show token usage breakdown",
+            icon: "📊",
         },
         SlashCommand {
             name: "/history",
@@ -116,11 +118,6 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             icon: "🧹",
         },
         SlashCommand {
-            name: "/tokens",
-            description: "Show token usage breakdown",
-            icon: "📊",
-        },
-        SlashCommand {
             name: "/config",
             description: "Show config directory path",
             icon: "📁",
@@ -130,10 +127,11 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             description: "Show version info",
             icon: "ℹ",
         },
+        // ── Maintenance ────────────────────────────────────────────
         SlashCommand {
-            name: "/exit",
-            description: "Quit khadim",
-            icon: "🚪",
+            name: "/refresh-models",
+            description: "Refresh dynamic model lists",
+            icon: "🔄",
         },
     ]
 }

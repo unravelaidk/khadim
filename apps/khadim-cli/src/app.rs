@@ -73,6 +73,7 @@ impl TranscriptEntryStamp {
                 content,
                 is_error,
                 collapsed,
+                ..
             } => Self {
                 kind: 5,
                 ptr_a: tool.as_ptr() as usize,
@@ -145,6 +146,9 @@ pub struct TuiApp {
     pub saved_input: String,
     pub confirm_quit: bool,
     pub last_window_size: (u16, u16),
+    pub kill_buffer: String,
+    // ── Question tool state ──
+    pub pending_question: Option<crate::domain::question::PendingQuestionState>,
 }
 
 impl TuiApp {
@@ -165,11 +169,9 @@ impl TuiApp {
         let version = env!("CARGO_PKG_VERSION");
         let mut entries = vec![
             TranscriptEntry::System {
-                text: format!("✦ khadim-cli v{} — AI coding agent", version),
-            },
-            TranscriptEntry::System {
                 text: format!(
-                    "  provider: {}  |  model: {}  |  auth: {}",
+                    "✦ khadim-cli v{}  ·  {}/{}  ·  auth: {}",
+                    version,
                     provider_id,
                     eff.model_id.as_deref().unwrap_or("(not set)"),
                     key_status,
@@ -184,10 +186,7 @@ impl TuiApp {
         }
 
         entries.push(TranscriptEntry::System {
-            text: "  enter send · shift+enter newline · esc abort · ctrl+l clear · ctrl+o tools · f2 settings · tab mode".into(),
-        });
-        entries.push(TranscriptEntry::System {
-            text: "  type / to see all commands".into(),
+            text: "  enter send · esc abort · ctrl+l clear · /help".into(),
         });
         entries.push(TranscriptEntry::Separator);
 
@@ -228,6 +227,8 @@ impl TuiApp {
             saved_input: String::new(),
             confirm_quit: false,
             last_window_size: (0, 0),
+            kill_buffer: String::new(),
+            pending_question: None,
         }
     }
 
@@ -274,6 +275,9 @@ impl TuiApp {
         self.turn_tokens_cache_write = 0;
         self.status = "running".into();
         self.auto_scroll = true;
+        // Reset scroll and cache so the new turn starts from the bottom
+        self.scroll_offset = 0;
+        self.transcript_render_cache.borrow_mut().clear();
         // Reset history navigation
         self.history_index = None;
         self.saved_input.clear();
@@ -363,11 +367,18 @@ impl TuiApp {
                     self.status = "idle".into();
                 } else {
                     self.status = "idle".into();
+                    let diff_meta = event.metadata.as_ref().and_then(|m| {
+                        let path = m.get("path")?.as_str()?.to_string();
+                        let before = m.get("before")?.as_str()?.to_string();
+                        let after = m.get("after")?.as_str()?.to_string();
+                        Some(crate::domain::transcript::DiffMeta { path, before, after })
+                    });
                     self.entries.push(TranscriptEntry::ToolComplete {
                         tool: tool_name,
                         content,
                         is_error,
                         collapsed: self.tools_collapsed,
+                        diff_meta,
                     });
                 }
             }
@@ -446,6 +457,9 @@ impl TuiApp {
             text: "Agent aborted by user".into(),
         });
         self.entries.push(TranscriptEntry::Separator);
+        // Clear render cache so stale entries don't interfere with
+        // the next run's viewport calculations.
+        self.transcript_render_cache.borrow_mut().clear();
     }
 
     pub fn abort_with_message(&mut self, msg: &str) {
@@ -456,6 +470,7 @@ impl TuiApp {
             text: msg.to_string(),
         });
         self.entries.push(TranscriptEntry::Separator);
+        self.transcript_render_cache.borrow_mut().clear();
     }
 
     pub fn open_login_selector(&mut self) {
@@ -837,11 +852,76 @@ impl TuiApp {
         let old_cursor = self.cursor;
         self.move_word_left();
         let new_cursor = self.cursor;
-        // Remove characters between new_cursor and old_cursor
+        let mut removed = String::new();
         for _ in 0..(old_cursor - new_cursor) {
-            self.cursor = crate::ui::helpers::remove_char_before(&mut self.input, old_cursor);
+            let byte_idx = crate::ui::helpers::char_idx_to_byte_idx(&self.input, new_cursor);
+            removed.push(self.input.remove(byte_idx));
         }
         self.cursor = new_cursor;
+        self.kill_buffer = removed;
+    }
+
+    pub fn delete_word_after(&mut self) {
+        let len = self.input.chars().count();
+        if self.cursor >= len {
+            return;
+        }
+        let old_cursor = self.cursor;
+        self.move_word_right();
+        let new_cursor = self.cursor;
+        let mut removed = String::new();
+        for _ in 0..(new_cursor - old_cursor) {
+            let byte_idx = crate::ui::helpers::char_idx_to_byte_idx(&self.input, old_cursor);
+            removed.push(self.input.remove(byte_idx));
+        }
+        self.cursor = old_cursor;
+        self.kill_buffer = removed;
+    }
+
+    pub fn kill_to_beginning_of_line(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let bol = self.input[..crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor)]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let byte_bol = bol;
+        let byte_cur = crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor);
+        self.kill_buffer = self.input[byte_bol..byte_cur].to_string();
+        self.input.drain(byte_bol..byte_cur);
+        self.cursor = self.input[..byte_bol].chars().count();
+    }
+
+    pub fn kill_to_end_of_line(&mut self) {
+        let len = self.input.chars().count();
+        if self.cursor >= len {
+            return;
+        }
+        let byte_cur = crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor);
+        let eol = self.input[byte_cur..]
+            .find('\n')
+            .map(|i| byte_cur + i)
+            .unwrap_or(self.input.len());
+        self.kill_buffer = self.input[byte_cur..eol].to_string();
+        self.input.drain(byte_cur..eol);
+    }
+
+    pub fn yank(&mut self) {
+        if self.kill_buffer.is_empty() {
+            return;
+        }
+        let byte_idx = crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor);
+        self.input.insert_str(byte_idx, &self.kill_buffer);
+        self.cursor += self.kill_buffer.chars().count();
+    }
+
+    pub fn move_to_beginning(&mut self) {
+        self.cursor = 0;
+    }
+
+    pub fn move_to_end(&mut self) {
+        self.cursor = self.input.chars().count();
     }
 
     // ── Resize handling ──────────────────────────────────────────────
@@ -850,6 +930,114 @@ impl TuiApp {
         self.last_window_size = (width, height);
         // Clear render cache on resize since line wrapping changes
         self.transcript_render_cache.borrow_mut().clear();
+    }
+
+    // ── Question tool helpers ────────────────────────────────────────
+
+    pub fn has_pending_question(&self) -> bool {
+        self.pending_question.is_some()
+    }
+
+    pub fn set_pending_question(
+        &mut self,
+        request: crate::tools::question_tool::QuestionRequest,
+        response_tx: tokio::sync::oneshot::Sender<crate::tools::question_tool::QuestionResponse>,
+    ) {
+        self.pending_question = Some(crate::domain::question::PendingQuestionState {
+            request,
+            current_idx: 0,
+            answers: std::collections::HashMap::new(),
+            response_tx,
+        });
+        self.input.clear();
+        self.cursor = 0;
+    }
+
+    /// Submit the current input as the answer to the current pending question.
+    /// Returns true if all questions are answered and the response was sent.
+    pub fn submit_question_answer(&mut self) -> bool {
+        let Some(ref mut state) = self.pending_question else {
+            return false;
+        };
+        let raw_answer = self.input.trim().to_string();
+
+        // Map numeric answers to option labels when options are present
+        let answer_vec = if raw_answer.is_empty() {
+            vec![]
+        } else {
+            if let Some(q) = state.current_question() {
+                if let Some(ref options) = q.options {
+                    if let Ok(num) = raw_answer.parse::<usize>() {
+                        if num == 0 && q.allow_other {
+                            vec!["Other".to_string()]
+                        } else if num > 0 && num <= options.len() {
+                            vec![options[num - 1].label.clone()]
+                        } else {
+                            vec![raw_answer.clone()]
+                        }
+                    } else {
+                        vec![raw_answer.clone()]
+                    }
+                } else {
+                    vec![raw_answer.clone()]
+                }
+            } else {
+                vec![raw_answer.clone()]
+            }
+        };
+
+        let display_answer = answer_vec.join(", ");
+
+        // Record the question and answer in the transcript
+        if let Some(q) = state.current_question() {
+            let question_text = if let Some(ref options) = q.options {
+                let opts = options
+                    .iter()
+                    .enumerate()
+                    .map(|(i, o)| format!("  {}. {} — {}", i + 1, o.label, o.description.as_deref().unwrap_or("")))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{}\n{}", q.question, opts)
+            } else {
+                q.question.clone()
+            };
+            self.entries.push(TranscriptEntry::ToolComplete {
+                tool: "question".to_string(),
+                content: format!("Q: {}\nA: {}", question_text, display_answer),
+                is_error: false,
+                collapsed: false,
+                diff_meta: None,
+            });
+        }
+
+        state.submit_answer(answer_vec);
+        self.input.clear();
+        self.cursor = 0;
+
+        if state.all_answered() {
+            let state = self.pending_question.take().unwrap();
+            let response = state.build_response();
+            let _ = state.response_tx.send(response);
+            return true;
+        }
+        false
+    }
+
+    pub fn cancel_question(&mut self) {
+        if let Some(state) = self.pending_question.take() {
+            if let Some(q) = state.current_question() {
+                self.entries.push(TranscriptEntry::ToolComplete {
+                    tool: "question".to_string(),
+                    content: format!("Q: {}\nA: (skipped)", q.question),
+                    is_error: false,
+                    collapsed: false,
+                    diff_meta: None,
+                });
+            }
+            let _ = state.response_tx.send(crate::tools::question_tool::QuestionResponse {
+                answers: state.answers,
+            });
+        }
     }
 }
 

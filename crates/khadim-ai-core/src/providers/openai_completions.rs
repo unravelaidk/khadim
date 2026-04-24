@@ -37,6 +37,16 @@ fn build_openai_headers(model: &Model, messages: &[crate::types::ChatMessage]) -
         }
     }
 
+    // OpenRouter requires these headers for rankings and rate-limits.
+    if model.provider == "openrouter" {
+        if let Ok(val) = reqwest::header::HeaderValue::from_str("https://github.com/unravel-ai/khadim") {
+            headers.insert("HTTP-Referer", val);
+        }
+        if let Ok(val) = reqwest::header::HeaderValue::from_str("Khadim") {
+            headers.insert("X-Title", val);
+        }
+    }
+
     headers
 }
 

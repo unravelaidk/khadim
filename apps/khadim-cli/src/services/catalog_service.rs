@@ -71,6 +71,13 @@ pub fn context_window_for(provider: &str, model_id: &str) -> u64 {
     find_or_synth_model(provider, model_id).context_window
 }
 
+/// Whether the effective model supports image inputs.
+/// Falls back to `true` when the model is unknown (conservative default).
+pub fn model_supports_images(provider: &str, model_id: &str) -> bool {
+    let model = find_or_synth_model(provider, model_id);
+    model.input.iter().any(|k| matches!(k, khadim_ai_core::types::InputKind::Image))
+}
+
 // ── Cost estimation ──────────────────────────────────────────────────
 
 pub fn estimate_cost(

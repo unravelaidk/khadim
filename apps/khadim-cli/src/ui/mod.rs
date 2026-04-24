@@ -1,5 +1,8 @@
+pub mod diff;
 pub mod helpers;
+pub mod highlight;
 pub mod markdown;
+pub mod paste;
 pub mod table;
 pub mod theme;
 
@@ -25,8 +28,10 @@ use crate::services::catalog_service::{
 };
 use crate::services::settings_service::effective_settings;
 use crate::ui::helpers::{
-    count_wrapped_lines, cursor_to_row_col, shimmer_spans, truncate_str, wrap_text_to_width,
+    count_wrapped_lines, cursor_to_row_col, hard_wrap_lines, shimmer_spans, truncate_str,
+    wrap_text_to_width,
 };
+use crate::ui::highlight::highlight_code_block;
 use crate::ui::theme::*;
 
 /// Fast plain-text renderer for the currently-streaming assistant entry.
@@ -312,6 +317,7 @@ fn render_transcript_entry(entry: &TranscriptEntry, content_width: usize) -> Vec
             content,
             is_error,
             collapsed,
+            diff_meta,
         } => {
             let (icon, status_color) = if *is_error {
                 ("✗", error())
@@ -363,26 +369,67 @@ fn render_transcript_entry(entry: &TranscriptEntry, content_width: usize) -> Vec
 
                 let max_lines = 20;
                 let total_lines = content.lines().count();
-                for (i, line) in content.lines().enumerate() {
-                    if i >= max_lines {
+
+                if let Some(meta) = diff_meta {
+                    // Render a unified diff for edit tool results.
+                    let old_lines: Vec<&str> = meta.before.lines().collect();
+                    let new_lines: Vec<&str> = meta.after.lines().collect();
+                    let diff_lines = crate::ui::diff::render_simple_diff(&old_lines, &new_lines, content_width);
+                    for (i, line) in diff_lines.into_iter().enumerate() {
+                        if i >= max_lines {
+                            lines.push(Line::from(vec![
+                                Span::styled("    ", Style::default()),
+                                Span::styled(
+                                    format!("⋯ {} more  ctrl+o to collapse", total_lines.saturating_sub(max_lines)),
+                                    Style::default()
+                                        .fg(text_muted())
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                            ]));
+                            break;
+                        }
+                        lines.push(line);
+                    }
+                } else if tool == "read" && !content.is_empty() {
+                    // Render read tool output with syntax highlighting and line numbers.
+                    let rendered = render_read_content(content, content_width);
+                    for (i, line) in rendered.into_iter().enumerate() {
+                        if i >= max_lines {
+                            lines.push(Line::from(vec![
+                                Span::styled("    ", Style::default()),
+                                Span::styled(
+                                    format!("⋯ {} more  ctrl+o to collapse", total_lines - max_lines),
+                                    Style::default()
+                                        .fg(text_muted())
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                            ]));
+                            break;
+                        }
+                        lines.push(line);
+                    }
+                } else {
+                    for (i, line) in content.lines().enumerate() {
+                        if i >= max_lines {
+                            lines.push(Line::from(vec![
+                                Span::styled("    ", Style::default()),
+                                Span::styled(
+                                    format!("⋯ {} more  ctrl+o to collapse", total_lines - max_lines),
+                                    Style::default()
+                                        .fg(text_muted())
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                            ]));
+                            break;
+                        }
                         lines.push(Line::from(vec![
                             Span::styled("    ", Style::default()),
                             Span::styled(
-                                format!("⋯ {} more  ctrl+o to collapse", total_lines - max_lines),
-                                Style::default()
-                                    .fg(text_muted())
-                                    .add_modifier(Modifier::ITALIC),
+                                truncate_str(line, content_width.saturating_sub(4)).to_string(),
+                                Style::default().fg(tool_text()),
                             ),
                         ]));
-                        break;
                     }
-                    lines.push(Line::from(vec![
-                        Span::styled("    ", Style::default()),
-                        Span::styled(
-                            truncate_str(line, content_width.saturating_sub(4)).to_string(),
-                            Style::default().fg(tool_text()),
-                        ),
-                    ]));
                 }
                 lines.push(Line::from(""));
             }
@@ -433,6 +480,118 @@ fn friendly_tool_display(tool: &str) -> String {
     }
 }
 
+/// Try to guess a language from file content heuristics.
+fn detect_lang_from_content(content: &str) -> Option<&str> {
+    let first = content.lines().next()?;
+    // Shebang detection
+    if first.starts_with("#!/usr/bin/env python") || first.starts_with("#!/usr/bin/python") {
+        return Some("python");
+    }
+    if first.starts_with("#!/bin/bash") || first.starts_with("#!/bin/sh") || first.starts_with("#!/usr/bin/env bash") {
+        return Some("bash");
+    }
+    if first.starts_with("#!/usr/bin/env node") {
+        return Some("javascript");
+    }
+    if first.starts_with("#!/usr/bin/env ruby") {
+        return Some("ruby");
+    }
+    if first.starts_with("#!/usr/bin/env lua") {
+        return Some("lua");
+    }
+    // Common header patterns
+    if content.contains("package main") && content.contains("func ") {
+        return Some("go");
+    }
+    if content.contains("fn main()") && content.contains("use std::") {
+        return Some("rust");
+    }
+    if content.contains("import ") && content.contains("from ") && content.contains("def ") {
+        return Some("python");
+    }
+    None
+}
+
+/// Render a `read` tool's file content with syntax highlighting and styled line numbers.
+fn render_read_content(content: &str, content_width: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let max_width = content_width.saturating_sub(6); // 4 indent + line number gutter
+
+    // Try to detect language from content.
+    let lang = detect_lang_from_content(content);
+    let highlighted = lang.and_then(|l| highlight_code_block(l, content));
+
+    // Build a map: line index -> Vec<Span> for highlighted content.
+    let highlighted_lines: Option<Vec<Vec<Span<'static>>>> = highlighted.map(|hl| {
+        hl.into_iter()
+            .map(|(_no, spans)| spans)
+            .collect()
+    });
+
+    for (i, raw) in content.lines().enumerate() {
+        // Parse "123: content" line-number prefix from read tool output.
+        let (num_str, body) = if let Some(pos) = raw.find(": ") {
+            let num_part = &raw[..pos];
+            if num_part.chars().all(|c| c.is_ascii_digit()) {
+                (Some(num_part), &raw[pos + 2..])
+            } else {
+                (None, raw)
+            }
+        } else {
+            (None, raw)
+        };
+
+        let mut spans: Vec<Span<'static>> = vec![Span::styled("    ", Style::default())];
+
+        if let Some(num) = num_str {
+            // Right-align line numbers in a 5-char gutter.
+            let gutter = format!("{:>4} ", num);
+            spans.push(Span::styled(
+                gutter,
+                Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+            ));
+
+            if let Some(ref hl) = highlighted_lines {
+                if let Some(line_spans) = hl.get(i) {
+                    // Truncate spans to fit max_width while preserving styles.
+                    let mut col = 0;
+                    for span in line_spans {
+                        let text = span.content.to_string();
+                        let text_width = text.chars().count();
+                        if col + text_width > max_width {
+                            let take = max_width.saturating_sub(col);
+                            let trimmed: String = text.chars().take(take).collect();
+                            if !trimmed.is_empty() {
+                                spans.push(Span::styled(trimmed, span.style));
+                            }
+                            break;
+                        }
+                        spans.push(span.clone());
+                        col += text_width;
+                    }
+                } else {
+                    spans.push(Span::styled(
+                        truncate_str(body, max_width).to_string(),
+                        Style::default().fg(tool_text()),
+                    ));
+                }
+            } else {
+                spans.push(Span::styled(
+                    truncate_str(body, max_width).to_string(),
+                    Style::default().fg(tool_text()),
+                ));
+            }
+        } else {
+            spans.push(Span::styled(
+                truncate_str(raw, max_width + 5).to_string(),
+                Style::default().fg(tool_text()),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
 pub fn render_footer(
     frame: &mut Frame,
     area: Rect,
@@ -466,7 +625,13 @@ pub fn render_footer(
         }
     };
 
-    let mode_label = if mode == "auto" { "auto" } else { mode.as_str() };
+    let mode_label = if app.has_pending_question() {
+        "question"
+    } else if mode == "auto" {
+        "auto"
+    } else {
+        mode.as_str()
+    };
 
     let dim = Style::default().fg(footer_text()).add_modifier(Modifier::DIM);
     let sep = Span::styled("  ·  ", dim);
@@ -1256,6 +1421,102 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
     frame.render_widget(Paragraph::new(lines), rect);
 }
 
+/// Render a question overlay at the bottom of the transcript area.
+/// Shows the current question, options (if any), and answer hints.
+pub fn render_question_overlay(frame: &mut Frame, app: &TuiApp, transcript_area: Rect) {
+    let Some(ref state) = app.pending_question else { return };
+    let Some(q) = state.current_question() else { return };
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Header showing progress
+    let progress = format!(
+        "  Question {}/{} ",
+        state.current_idx + 1,
+        state.request.questions.len()
+    );
+    lines.push(Line::from(Span::styled(
+        progress,
+        Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+
+    // Question text
+    let question_lines = wrap_text_to_width(&q.question, transcript_area.width.saturating_sub(4) as usize);
+    for line in question_lines {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", line),
+            Style::default().fg(text_primary()),
+        )));
+    }
+
+    // Options
+    if let Some(ref options) = q.options {
+        lines.push(Line::from(""));
+        for (i, opt) in options.iter().enumerate() {
+            let opt_text = format!(
+                "  {}. {}{}",
+                i + 1,
+                opt.label,
+                opt.description.as_deref().map(|d| format!(" — {}", d)).unwrap_or_default()
+            );
+            lines.push(Line::from(Span::styled(
+                opt_text,
+                Style::default().fg(text_dim()),
+            )));
+        }
+        if q.allow_other {
+            lines.push(Line::from(Span::styled(
+                "  0. Other (type your own answer)",
+                Style::default().fg(text_muted()),
+            )));
+        }
+    }
+
+    // Hints
+    lines.push(Line::from(""));
+    if q.secret {
+        lines.push(Line::from(Span::styled(
+            "  Type your answer (hidden) · enter to submit · esc to skip",
+            Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            "  Type your answer · enter to submit · esc to skip",
+            Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+        )));
+    }
+
+    let content_height = lines.len() as u16;
+    let overlay_height = content_height.min(transcript_area.height.saturating_sub(2)).max(6);
+    let overlay_y = transcript_area.y + transcript_area.height - overlay_height - 1;
+
+    let overlay_rect = Rect {
+        x: transcript_area.x + 1,
+        y: overlay_y,
+        width: transcript_area.width.saturating_sub(2),
+        height: overlay_height,
+    };
+
+    // Clear background
+    frame.render_widget(Clear, overlay_rect);
+
+    // Border block
+    let border_style = Style::default().fg(accent());
+    let block = ratatui::widgets::Block::default()
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(border_style)
+        .title(Span::styled(" 🤔 Question ", border_style));
+
+    let inner = block.inner(overlay_rect);
+    frame.render_widget(block, overlay_rect);
+
+    let paragraph = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .style(Style::default().fg(text_primary()));
+    frame.render_widget(paragraph, inner);
+}
+
 pub fn render(
     frame: &mut Frame,
     app: &TuiApp,
@@ -1270,16 +1531,14 @@ pub fn render(
     const COMPOSER_GUTTER: u16 = 2;
     let input_inner_width = area.width.saturating_sub(COMPOSER_GUTTER) as usize;
     let input_text_lines = count_wrapped_lines(&app.input, input_inner_width);
-    let input_text_height = input_text_lines.clamp(1, 8);
-    let composer_height = 1 + input_text_height; // separator rule + text
+    let input_text_height = input_text_lines.clamp(3, 16);
+    // Cap composer height so the transcript area always gets at least
+    // its minimum 4 rows + 1 footer row, preventing content from
+    // spilling under the input area.
+    let max_composer = area.height.saturating_sub(5);
+    let composer_height = (1 + input_text_height).min(max_composer).max(4);
 
     let (cursor_row, _) = cursor_to_row_col(&app.input, app.cursor, input_inner_width);
-    let max_input_scroll = input_text_lines.saturating_sub(input_text_height);
-    let input_scroll = if cursor_row >= input_text_height {
-        (cursor_row - input_text_height + 1).min(max_input_scroll)
-    } else {
-        0
-    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1301,11 +1560,21 @@ pub fn render(
         width: composer_area.width,
         height: 1,
     };
+    // Clamp input area height to the composer's remaining space so
+    // the input never renders past the composer's bottom edge.
+    let actual_input_height = (composer_area.height.saturating_sub(1)).min(input_text_height);
     let input_area = Rect {
         x: composer_area.x,
         y: composer_area.y + 1,
         width: composer_area.width,
-        height: input_text_height,
+        height: actual_input_height,
+    };
+    // Recalculate input scroll for the actual (possibly clamped) height.
+    let max_input_scroll = input_text_lines.saturating_sub(actual_input_height);
+    let input_scroll = if cursor_row >= actual_input_height {
+        (cursor_row - actual_input_height + 1).min(max_input_scroll)
+    } else {
+        0
     };
 
     // ── Transcript ───────────────────────────────────────────────
@@ -1331,7 +1600,6 @@ pub fn render(
         height: transcript_area.height,
     };
     let transcript = Paragraph::new(visible_lines)
-        .wrap(Wrap { trim: false })
         .scroll((paragraph_scroll_y, 0));
     frame.render_widget(transcript, transcript_content_area);
 
@@ -1370,7 +1638,7 @@ pub fn render(
     frame.render_widget(rule, separator_area);
 
     // ── Composer body ────────────────────────────────────────────
-    if app.pending {
+    if app.pending && !app.has_pending_question() {
         let spinner = spinner_frame(app.tick_count);
         let mut spans: Vec<Span<'static>> = vec![
             Span::styled("  ", Style::default()),
@@ -1426,9 +1694,12 @@ pub fn render(
         let gutter = Paragraph::new(gutter_lines);
         frame.render_widget(gutter, gutter_area);
 
-        let input_widget = Paragraph::new(app.input.as_str())
+        let wrapped_input: Vec<Line> = hard_wrap_lines(&app.input, input_inner_width)
+            .into_iter()
+            .map(Line::from)
+            .collect();
+        let input_widget = Paragraph::new(wrapped_input)
             .style(Style::default().fg(text_primary()))
-            .wrap(Wrap { trim: false })
             .scroll((input_scroll, 0));
         frame.render_widget(input_widget, text_area);
 
@@ -1453,6 +1724,11 @@ pub fn render(
     // ── Login overlay ────────────────────────────────────────────
     if app.login_state.is_some() {
         render_login_overlay(frame, app);
+    }
+
+    // ── Question overlay ───────────────────────────────────────
+    if app.has_pending_question() {
+        render_question_overlay(frame, app, transcript_area);
     }
 
     // ── Command picker overlay ──────────────────────────────────

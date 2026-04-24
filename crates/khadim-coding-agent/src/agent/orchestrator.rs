@@ -149,7 +149,9 @@ pub fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
 
     for message in messages.drain(..) {
         match &message {
-            ChatMessage::System { .. } | ChatMessage::User { .. } => {
+            ChatMessage::System { .. }
+            | ChatMessage::User { .. }
+            | ChatMessage::UserWithImages { .. } => {
                 flush_missing_tool_results(&mut repaired, &pending_tool_calls, &existing_tool_results);
                 pending_tool_calls.clear();
                 existing_tool_results.clear();
@@ -733,6 +735,23 @@ pub async fn run_prompt_with_explicit_mode(
     session.system_prompt_override = None; // Ensure we use the explicit mode, not an override
     let old_override = session.system_prompt_override.take();
     let runtime = AgentRuntime::new(&session.cwd);
+    let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, RunConfig::default()).await;
+    session.system_prompt_override = old_override;
+    result
+}
+
+/// Run a prompt with an explicit mode and a pre-configured runtime.
+/// Used by the CLI to inject custom tools (e.g. the question tool).
+pub async fn run_prompt_with_runtime_and_explicit_mode(
+    session: &mut KhadimSession,
+    prompt: &str,
+    selection: Option<ModelSelection>,
+    mode: AgentModeDefinition,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    runtime: AgentRuntime,
+) -> Result<String, AppError> {
+    session.system_prompt_override = None;
+    let old_override = session.system_prompt_override.take();
     let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, RunConfig::default()).await;
     session.system_prompt_override = old_override;
     result

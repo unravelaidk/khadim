@@ -30,7 +30,7 @@ Rules:
 - Use line_edit for reliable changes to large files (replace by line number).
 - Use append to add content to the end of a file without reading it first.
 - Read large files in chunks with offset/limit.
-- Don't ask questions. Use your tools to figure things out.
+- Use the question tool only when you genuinely need clarification on preferences, ambiguous requirements, or implementation choices. Otherwise, figure things out with your other tools.
 
 Date: {date}
 Working directory: {cwd}",

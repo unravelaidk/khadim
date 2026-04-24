@@ -46,6 +46,16 @@ pub fn to_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                 existing_tool_results.clear();
                 converted.push(json!({ "role": "user", "content": content }));
             }
+            ChatMessage::UserWithImages { content, .. } => {
+                flush_orphaned_tool_results(
+                    &mut converted,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+                converted.push(json!({ "role": "user", "content": content }));
+            }
             ChatMessage::Assistant {
                 content,
                 tool_calls,
@@ -178,6 +188,16 @@ pub fn to_openai_responses_input(messages: &[ChatMessage], include_system: bool)
                 existing_tool_results.clear();
                 converted.push(json!({ "role": "user", "content": content }));
             }
+            ChatMessage::UserWithImages { content, .. } => {
+                flush_orphaned_response_outputs(
+                    &mut converted,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+                converted.push(json!({ "role": "user", "content": content }));
+            }
             ChatMessage::Assistant {
                 content,
                 tool_calls,
@@ -277,6 +297,10 @@ pub fn to_anthropic_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<s
                 }
             }
             ChatMessage::User { content } => converted.push(json!({
+                "role": "user",
+                "content": [{"type": "text", "text": content}],
+            })),
+            ChatMessage::UserWithImages { content, .. } => converted.push(json!({
                 "role": "user",
                 "content": [{"type": "text", "text": content}],
             })),

@@ -29,6 +29,7 @@ fn convert_messages(context: &Context) -> Vec<serde_json::Value> {
         match message {
             crate::types::ChatMessage::System { .. } => {}
             crate::types::ChatMessage::User { content } => result.push(json!({"role":"user","content":[{"text":content}]})),
+            crate::types::ChatMessage::UserWithImages { content, .. } => result.push(json!({"role":"user","content":[{"text":content}]})),
             crate::types::ChatMessage::Assistant { content, tool_calls, .. } => {
                 let mut blocks = Vec::new();
                 if let Some(content) = content { if !content.is_empty() { blocks.push(json!({"text":content})); } }

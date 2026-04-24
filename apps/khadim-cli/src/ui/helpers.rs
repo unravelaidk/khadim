@@ -35,17 +35,45 @@ pub fn cursor_to_row_col(text: &str, cursor: usize, width: usize) -> (u16, u16) 
             row += 1;
             col = 0;
         } else {
-            col += 1;
-            if col >= width as u16 {
+            // Wrap BEFORE placing a character that would overflow, so a line
+            // that is exactly `width` characters wide stays on one row.
+            if col + 1 > width as u16 {
                 row += 1;
                 col = 0;
             }
+            col += 1;
         }
         char_idx += 1;
     }
 
     // Cursor at end
     (row, col)
+}
+
+/// Hard-wrap `text` into visual lines of at most `width` characters,
+/// splitting at newlines and then at the width boundary.
+/// This must stay in sync with [`count_wrapped_lines`] and [`cursor_to_row_col`].
+pub fn hard_wrap_lines(text: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![text.to_string()];
+    }
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.split('\n') {
+        if line.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        for chunk in chars.chunks(width) {
+            lines.push(chunk.iter().collect());
+        }
+    }
+    // str::split('\n') on a trailing-\n string already yields a trailing empty
+    // slice, but if the input is completely empty we need one empty line.
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }
 
 /// Convert a character index to a byte index in a string.
@@ -230,5 +258,78 @@ mod tests {
         let text = "line one\nline two";
         let result = wrap_text_to_width(text, 20);
         assert_eq!(result, vec!["line one", "line two"]);
+    }
+
+    #[test]
+    fn test_hard_wrap_lines_basic() {
+        assert_eq!(hard_wrap_lines("hello", 10), vec!["hello"]);
+        assert_eq!(
+            hard_wrap_lines("supercalifragilistic", 10),
+            vec!["supercalif", "ragilistic"]
+        );
+    }
+
+    #[test]
+    fn test_hard_wrap_lines_with_newlines() {
+        assert_eq!(
+            hard_wrap_lines("hello\nworld", 10),
+            vec!["hello", "world"]
+        );
+        assert_eq!(
+            hard_wrap_lines("hello\n", 10),
+            vec!["hello", ""]
+        );
+        assert_eq!(
+            hard_wrap_lines("hello\n\nworld", 10),
+            vec!["hello", "", "world"]
+        );
+    }
+
+    #[test]
+    fn test_hard_wrap_lines_exact_width() {
+        // A line of exactly `width` chars should stay on one row.
+        assert_eq!(hard_wrap_lines("abcde", 5), vec!["abcde"]);
+        assert_eq!(hard_wrap_lines("abcdef", 5), vec!["abcde", "f"]);
+    }
+
+    #[test]
+    fn test_cursor_to_row_col_basic() {
+        assert_eq!(cursor_to_row_col("hello", 5, 10), (0, 5));
+    }
+
+    #[test]
+    fn test_cursor_to_row_col_exact_width() {
+        // Cursor at end of exactly-width text should stay on the same line.
+        assert_eq!(cursor_to_row_col("abcde", 5, 5), (0, 5));
+        // Cursor after the first char of the next chunk.
+        assert_eq!(cursor_to_row_col("abcdef", 6, 5), (1, 1));
+    }
+
+    #[test]
+    fn test_cursor_to_row_col_with_newlines() {
+        assert_eq!(cursor_to_row_col("hello\nworld", 5, 10), (0, 5));
+        assert_eq!(cursor_to_row_col("hello\nworld", 6, 10), (1, 0));
+        assert_eq!(cursor_to_row_col("hello\nworld", 11, 10), (1, 5));
+    }
+
+    #[test]
+    fn test_hard_wrap_and_cursor_agree() {
+        // For any text, the number of lines produced by hard_wrap_lines must
+        // match count_wrapped_lines, and cursor_to_row_col must stay within bounds.
+        let text = "hello\nworld! this is a test\nfoo";
+        let width = 8;
+        let lines = hard_wrap_lines(text, width);
+        assert_eq!(lines.len() as u16, count_wrapped_lines(text, width));
+        for (cursor, _) in text.chars().enumerate().chain(std::iter::once((text.chars().count(), ' '))) {
+            let (row, col) = cursor_to_row_col(text, cursor, width);
+            assert!(
+                row < lines.len() as u16 || (row == lines.len() as u16 && col == 0),
+                "cursor {} out of bounds: row={}, col={}, lines={}",
+                cursor,
+                row,
+                col,
+                lines.len()
+            );
+        }
     }
 }

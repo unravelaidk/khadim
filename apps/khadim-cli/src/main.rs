@@ -5,6 +5,7 @@ mod infrastructure;
 mod services;
 mod splash;
 mod themes;
+mod tools;
 mod ui;
 
 use app::TuiApp;
@@ -31,9 +32,12 @@ async fn main() {
         let config = parse_args()?;
         let settings = load_settings()?;
 
-        // Kick off NVIDIA model autodiscovery in the background
+        // Kick off NVIDIA and OpenRouter model autodiscovery in the background
         tokio::spawn(async move {
             let _ = khadim_ai_core::models::refresh_nvidia_models(None).await;
+        });
+        tokio::spawn(async move {
+            let _ = khadim_ai_core::models::refresh_openrouter_models(None).await;
         });
 
         if let Some(prompt) = config.prompt.clone() {
@@ -157,7 +161,77 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
         }
     }
 
+    // Graceful shutdown on SIGINT / SIGTERM so the terminal is always restored.
+    //
+    // The signal handler runs in a loop so a second Ctrl-C does NOT fall
+    // through to the OS default handler (which would kill the process
+    // before TerminalGuard::drop can restore the terminal).
+    //
+    // Flow:
+    //   First Ctrl-C  → set shutdown flag, but DON'T exit immediately
+    //                    while the agent is running (mirrors the keyboard
+    //                    handler's two-press confirmation).
+    //   Second Ctrl-C → send on exit channel, abort agent, save, break.
+    //
+    // SIGTERM always triggers an immediate graceful exit.
+    let (exit_tx, mut exit_rx) = tokio::sync::mpsc::unbounded_channel();
+    let shutdown_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let shutdown_flag = shutdown_requested.clone();
+    let exit_tx_sigint = exit_tx.clone();
+    tokio::spawn(async move {
+        loop {
+            if tokio::signal::ctrl_c().await.is_err() {
+                break;
+            }
+            if shutdown_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                let _ = exit_tx_sigint.send(());
+                break;
+            }
+            shutdown_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
+    #[cfg(unix)]
+    {
+        let exit_tx = exit_tx.clone();
+        tokio::spawn(async move {
+            use tokio::signal::unix::{signal, SignalKind};
+            if let Ok(mut sigterm) = signal(SignalKind::terminate()) {
+                sigterm.recv().await;
+                let _ = exit_tx.send(());
+            }
+        });
+    }
+
     loop {
+        // If a forced shutdown signal (second Ctrl-C or SIGTERM) was
+        // received, abort the agent first so the session lock is released,
+        // then save and exit.
+        if exit_rx.try_recv().is_ok() {
+            app_service.abort_run();
+            app_service
+                .auto_save_session(
+                    &app.entries,
+                    app.tokens_in,
+                    app.tokens_out,
+                    app.tokens_cache_read,
+                    app.tokens_cache_write,
+                    &app.current_mode,
+                )
+                .await;
+            break;
+        }
+
+        // If the OS signal handler received its first Ctrl-C but the
+        // keyboard handler hasn't fired yet (e.g. terminal didn't
+        // capture the key event), mirror the two-press confirmation:
+        // warn if the agent is running, exit cleanly if idle.
+        if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst)
+            && !app.confirm_quit
+            && app.pending
+        {
+            app.confirm_quit = true;
+        }
+
         // Drain queued worker events
         loop {
             match worker_rx.try_recv() {
@@ -199,6 +273,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         }
                         app.entries.push(TranscriptEntry::Separator);
                     }
+                    WorkerEvent::QuestionRequest { request, response_tx } => {
+                        app.set_pending_question(request, response_tx);
+                    }
                 },
                 Err(_) => break,
             }
@@ -212,6 +289,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         WorkerEvent::Stream(stream) => app.apply_event(stream),
                         WorkerEvent::Finished(result) => app.finish_result(result),
                         WorkerEvent::LoginProgress { .. } | WorkerEvent::LoginComplete { .. } => {}
+                        WorkerEvent::QuestionRequest { request, response_tx } => {
+                            app.set_pending_question(request, response_tx);
+                        }
                     },
                     Err(_) => break,
                 }
@@ -255,7 +335,8 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
 
                 // Ctrl-C: quit (with confirmation if running)
                 if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    if app.pending && !app.confirm_quit {
+                    let os_signal_already = shutdown_requested.load(std::sync::atomic::Ordering::SeqCst);
+                    if app.pending && !app.confirm_quit && !os_signal_already {
                         app.confirm_quit = true;
                         app.entries.push(TranscriptEntry::System {
                             text: "agent is still running — press ctrl+c again to force quit"
@@ -264,6 +345,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         app.entries.push(TranscriptEntry::Separator);
                         continue;
                     }
+                    // Abort the agent first so the session lock is released,
+                    // then save and exit.
+                    app_service.abort_run();
                     app_service
                         .auto_save_session(
                             &app.entries,
@@ -295,6 +379,11 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                 if key.code == KeyCode::Esc {
                     if app.confirm_quit {
                         app.confirm_quit = false;
+                        shutdown_requested.store(false, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    if app.has_pending_question() {
+                        app.cancel_question();
+                        continue;
                     }
                     if app.command_picker.is_some() {
                         app.close_picker();
@@ -629,6 +718,45 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         app.input.clear();
                         app.cursor = 0;
                     }
+                    // Ctrl+J / Ctrl+M are reliable newlines even on terminals that
+                    // don't distinguish Shift+Enter from Enter.
+                    KeyCode::Char('j' | 'm')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        ui::helpers::insert_char(&mut app.input, app.cursor, '\n');
+                        app.cursor += 1;
+                    }
+                    // Ctrl+Shift+V: paste image from clipboard.
+                    KeyCode::Char('V')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && key.modifiers.contains(KeyModifiers::SHIFT) =>
+                    {
+                        let eff = services::settings_service::effective_settings(
+                            &config,
+                            app_service.stored_settings(),
+                        );
+                        let provider = eff.provider.as_deref().unwrap_or("");
+                        let model = eff.model_id.as_deref().unwrap_or("");
+                        let supports =
+                            services::catalog_service::model_supports_images(provider, model);
+                        if !supports {
+                            app.entries.push(TranscriptEntry::System {
+                                text: format!(
+                                    "⚠ {}/{} does not support image inputs. Switch models to use images.",
+                                    provider, model
+                                ),
+                            });
+                            app.entries.push(TranscriptEntry::Separator);
+                            continue;
+                        }
+                        if let Some(path) = ui::paste::paste_clipboard_image_to_temp() {
+                            let placeholder = format!("[Image: {}]", path);
+                            let byte_idx =
+                                ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
+                            app.input.insert_str(byte_idx, &placeholder);
+                            app.cursor += placeholder.chars().count();
+                        }
+                    }
                     KeyCode::PageUp => {
                         let max_scroll = app
                             .content_lines
@@ -692,16 +820,45 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         }
                     }
                     KeyCode::Home => {
-                        app.auto_scroll = false;
-                        app.scroll_offset = 0;
+                        if app.input_focused && !app.input.is_empty() {
+                            // Move cursor to beginning of current line in input.
+                            let bol = app.input[..ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor)]
+                                .rfind('\n')
+                                .map(|i| i + 1)
+                                .unwrap_or(0);
+                            app.cursor = app.input[..bol].chars().count();
+                        } else {
+                            app.auto_scroll = false;
+                            app.scroll_offset = 0;
+                        }
                     }
                     KeyCode::End => {
-                        app.auto_scroll = true;
+                        if app.input_focused && !app.input.is_empty() {
+                            // Move cursor to end of current line in input.
+                            let byte_cur = ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
+                            let eol = app.input[byte_cur..]
+                                .find('\n')
+                                .map(|i| byte_cur + i)
+                                .unwrap_or(app.input.len());
+                            app.cursor = app.input[..eol].chars().count();
+                        } else {
+                            app.auto_scroll = true;
+                        }
                     }
                     KeyCode::Enter => {
+                        // Shift+Enter inserts a newline.  Bare Enter submits.
+                        // Some terminals don't report Shift on Enter, so we also
+                        // support Ctrl+J (and Ctrl+M) as reliable newline.
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             ui::helpers::insert_char(&mut app.input, app.cursor, '\n');
                             app.cursor += 1;
+                        } else if app.has_pending_question() {
+                            let answer = app.input.trim().to_string();
+                            if answer.is_empty() {
+                                continue;
+                            }
+                            app.submit_question_answer();
+                            continue;
                         } else {
                             if app.slash_preview_visible() {
                                 let cmds = app.filtered_commands();
@@ -721,23 +878,6 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
 
                             // Check for slash commands
                             match app_service.execute_slash_command(&prompt) {
-                                CommandResult::Quit => {
-                                    app_service
-                                        .auto_save_session(
-                                            &app.entries,
-                                            app.tokens_in,
-                                            app.tokens_out,
-                                            app.tokens_cache_read,
-                                            app.tokens_cache_write,
-                                            &app.current_mode,
-                                        )
-                                        .await;
-                                    break;
-                                }
-                                CommandResult::Clear => {
-                                    app.clear(&config, app_service.stored_settings());
-                                    continue;
-                                }
                                 CommandResult::Reset => {
                                     app_service.reset_session().await;
                                     app.clear(&config, app_service.stored_settings());
@@ -1095,31 +1235,24 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     app.entries.push(TranscriptEntry::Separator);
                                     continue;
                                 }
-                                CommandResult::ReadFile { path, content } => {
-                                    let ext = std::path::Path::new(&path)
-                                        .extension()
-                                        .and_then(|s| s.to_str())
-                                        .unwrap_or("");
-                                    let insert = format!("\n```{ext}\n{content}\n```\n");
-                                    ui::helpers::insert_char(&mut app.input, app.cursor, '\n');
-                                    app.cursor += 1;
-                                    for ch in insert.chars() {
-                                        ui::helpers::insert_char(&mut app.input, app.cursor, ch);
-                                        app.cursor += 1;
-                                    }
+                                CommandResult::RefreshModels => {
                                     app.entries.push(TranscriptEntry::System {
-                                        text: format!(
-                                            "inserted '{}' · {} chars",
-                                            path,
-                                            content.len()
-                                        ),
+                                        text: "refreshing model lists…".into(),
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
+                                    tokio::spawn(async move {
+                                        let _ = khadim_ai_core::models::refresh_openrouter_models(None).await;
+                                        let _ = khadim_ai_core::models::refresh_nvidia_models(None).await;
+                                    });
                                     continue;
                                 }
                                 CommandResult::None => {
                                     // Not a command — submit as prompt
                                     app.submit_user_prompt(&prompt);
+                                    // Drain any buffered events from a previous
+                                    // (aborted) run so they don't interfere with
+                                    // the new run's state.
+                                    while worker_rx.try_recv().is_ok() {}
                                     let mode = if app.current_mode == "auto" {
                                         None
                                     } else {
@@ -1130,36 +1263,61 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                             }
                         }
                     }
+                    KeyCode::Backspace
+                        if key.modifiers.contains(KeyModifiers::ALT)
+                            || key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        app.delete_word_before();
+                    }
                     KeyCode::Backspace => {
                         app.cursor = ui::helpers::remove_char_before(&mut app.input, app.cursor);
                         app.command_preview_index = 0;
+                    }
+                    KeyCode::Delete
+                        if key.modifiers.contains(KeyModifiers::ALT)
+                            || key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        app.delete_word_after();
                     }
                     KeyCode::Delete => {
                         ui::helpers::remove_char_at(&mut app.input, app.cursor);
                         app.command_preview_index = 0;
                     }
                     KeyCode::Left => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            || key.modifiers.contains(KeyModifiers::ALT)
+                        {
                             app.move_word_left();
                         } else if app.cursor > 0 {
                             app.cursor -= 1;
                         }
                     }
                     KeyCode::Right => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            || key.modifiers.contains(KeyModifiers::ALT)
+                        {
                             app.move_word_right();
                         } else if app.cursor < app.input.chars().count() {
                             app.cursor += 1;
                         }
                     }
                     KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.cursor = 0;
+                        app.move_to_beginning();
                     }
                     KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.cursor = app.input.chars().count();
+                        app.move_to_end();
                     }
                     KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.delete_word_before();
+                    }
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.kill_to_beginning_of_line();
+                    }
+                    KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.kill_to_end_of_line();
+                    }
+                    KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.yank();
                     }
                     KeyCode::Char(ch)
                         if !key.modifiers.contains(KeyModifiers::CONTROL)
@@ -1171,6 +1329,21 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     }
                     _ => {}
                 }
+            }
+
+            Event::Paste(text) => {
+                // Smart paste: detect image/file paths and inline them.
+                if let Some(replacement) = ui::paste::process_paste(&text) {
+                    let byte_idx = ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
+                    app.input.insert_str(byte_idx, &replacement);
+                    app.cursor += replacement.chars().count();
+                } else {
+                    // Bracketed-paste support: insert the whole chunk at once.
+                    let byte_idx = ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
+                    app.input.insert_str(byte_idx, &text);
+                    app.cursor += text.chars().count();
+                }
+                app.command_preview_index = 0;
             }
 
             Event::Resize(width, height) => {

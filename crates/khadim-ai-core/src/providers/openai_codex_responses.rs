@@ -161,6 +161,15 @@ fn convert_input(context: &Context) -> Vec<serde_json::Value> {
                     "content": [{ "type": "input_text", "text": content }],
                 }));
             }
+            ChatMessage::UserWithImages { content, .. } => {
+                flush_orphaned_tool_results(&mut converted, &pending_tool_calls, &existing_tool_results);
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+                converted.push(json!({
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": content }],
+                }));
+            }
             ChatMessage::Assistant { content, tool_calls, .. } => {
                 flush_orphaned_tool_results(&mut converted, &pending_tool_calls, &existing_tool_results);
                 pending_tool_calls.clear();

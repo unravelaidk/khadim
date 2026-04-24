@@ -58,6 +58,17 @@ pub struct Model {
     pub cost: Cost,
 }
 
+/// An image attached to a user message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageAttachment {
+    /// Original file path or URL (for display/reference).
+    pub source: String,
+    /// Base64-encoded image data (without the data URI prefix).
+    pub base64_data: String,
+    /// MIME type, e.g. "image/png".
+    pub mime_type: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum ChatMessage {
@@ -66,6 +77,10 @@ pub enum ChatMessage {
     },
     User {
         content: String,
+    },
+    UserWithImages {
+        content: String,
+        images: Vec<ImageAttachment>,
     },
     Assistant {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,6 +93,17 @@ pub enum ChatMessage {
         reasoning_content: Option<String>,
     },
     Tool(ToolMessage),
+}
+
+impl ChatMessage {
+    /// Return a simple text representation of the user-facing content.
+    pub fn user_text(&self) -> Option<&str> {
+        match self {
+            ChatMessage::User { content } => Some(content),
+            ChatMessage::UserWithImages { content, .. } => Some(content),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -28,6 +28,7 @@ use ratatui::text::{Line, Span, Text};
 use textwrap::{Options as WrapOptions, WordSplitter};
 use unicode_width::UnicodeWidthStr;
 
+use super::highlight::{highlight_code_block, normalize_lang};
 use super::theme::{
     md_blockquote, md_bq_caution, md_bq_important, md_bq_note, md_bq_tip, md_bq_warning,
     md_code_bg, md_code_fg, md_heading, md_hr, md_image, md_link, md_list_bullet,
@@ -480,6 +481,7 @@ where
         if let Some(block) = self.code_block.take() {
             // Optional dim language label.
             let lang = block.lang.split([',', ' ', '\t']).next().unwrap_or("").trim();
+            let normalized = normalize_lang(lang);
             if !lang.is_empty() {
                 let mut line = Line::default();
                 line.push_span(Span::styled(
@@ -488,11 +490,31 @@ where
                 ));
                 self.push_line(line);
             }
-            // Emit code lines verbatim — no wrapping, preserve whitespace.
-            for raw in block.buffer.lines() {
-                let mut line = Line::default();
-                line.push_span(Span::styled(raw.to_string(), self.styles.code_block));
-                self.push_code_line(line);
+
+            // Try syntax highlighting; fall back to plain theme-colored text.
+            let highlighted = (!lang.is_empty())
+                .then(|| highlight_code_block(normalized, &block.buffer))
+                .flatten();
+
+            if let Some(lines) = highlighted {
+                for (_line_no, spans) in lines {
+                    let mut line = Line::default();
+                    // Re-apply the code-block background to every span so the
+                    // whole line has a uniform background even where syntax
+                    // tokens don't reach.
+                    for span in spans {
+                        let style = span.style.patch(self.styles.code_block);
+                        line.push_span(Span::styled(span.content.to_string(), style));
+                    }
+                    self.push_code_line(line);
+                }
+            } else {
+                // Emit code lines verbatim — no wrapping, preserve whitespace.
+                for raw in block.buffer.lines() {
+                    let mut line = Line::default();
+                    line.push_span(Span::styled(raw.to_string(), self.styles.code_block));
+                    self.push_code_line(line);
+                }
             }
         }
         self.indents.pop();
