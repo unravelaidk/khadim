@@ -150,12 +150,14 @@ jobs:
             apps/khadim-cli/dist/npm/*.tgz
           fail_on_unmatched_files: false
 
-      - name: Publish npm packages with npm trusted publishing
+      - name: Publish npm packages
         shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -n "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "NODE_AUTH_TOKEN must not be set when using npm trusted publishing."
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "Missing NPM_TOKEN repository secret."
             exit 1
           fi
           version="${TAG_NAME#cli-v}"
@@ -173,7 +175,7 @@ jobs:
               exit 1
             fi
 
-            local publish_cmd=(npm publish "$tarball" --access public --provenance --tag "$tag")
+            local publish_cmd=(npm publish "$tarball" --access public --tag "$tag")
             echo "+ ${publish_cmd[*]}"
             set +e
             local output
