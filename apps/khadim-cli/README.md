@@ -19,7 +19,7 @@ wget -qO- https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-
 ```
 
 The installer will:
-1. Install `@khadim/cli` globally with npm or bun by default
+1. Install `@unravelai/khadim` globally with npm or bun by default
 2. Expose both `khadim` and `khadim-cli` commands
 3. Fall back to a Rust source build only if npm/bun is unavailable
 4. Update your shell configuration to add `~/.local/bin` to `PATH` when using source/prebuilt installs
@@ -61,7 +61,7 @@ The binary will be available at `apps/khadim-cli/target/release/khadim-cli`.
 Khadim CLI can also be distributed as a Codex-style npm package: a small JavaScript launcher plus platform-specific native binary packages.
 
 ```bash
-npm install -g @khadim/cli
+npm install -g @unravelai/khadim
 khadim --help
 ```
 
@@ -100,7 +100,7 @@ python3 apps/khadim-cli/scripts/stage_npm_package.py \
   --artifact-dir ./artifacts
 ```
 
-This produces one main `@khadim/cli` launcher tarball and one native tarball per supported platform in `apps/khadim-cli/dist/npm`.
+This produces one main `@unravelai/khadim` launcher tarball and one native tarball per supported platform in `apps/khadim-cli/dist/npm`.
 
 For local development, `npm run dist` creates both the runnable `dist/bin` binaries and the main npm tarball.
 

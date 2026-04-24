@@ -8,7 +8,7 @@ REPO_URL="https://github.com/unravelaidk/khadim"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="khadim-cli"
 COMMAND_NAME="khadim"
-NPM_PACKAGE="${KHADIM_CLI_NPM_PACKAGE:-@khadim/cli}"
+NPM_PACKAGE="${KHADIM_CLI_NPM_PACKAGE:-@unravelai/khadim}"
 CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
 
 # Colors

@@ -10,10 +10,10 @@ const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 
 const PLATFORM_PACKAGE_BY_TARGET = {
-  "x86_64-unknown-linux-gnu": "@khadim/cli-linux-x64",
-  "aarch64-unknown-linux-gnu": "@khadim/cli-linux-arm64",
-  "x86_64-apple-darwin": "@khadim/cli-darwin-x64",
-  "aarch64-apple-darwin": "@khadim/cli-darwin-arm64",
+  "x86_64-unknown-linux-gnu": "@unravelai/khadim-linux-x64",
+  "aarch64-unknown-linux-gnu": "@unravelai/khadim-linux-arm64",
+  "x86_64-apple-darwin": "@unravelai/khadim-darwin-x64",
+  "aarch64-apple-darwin": "@unravelai/khadim-darwin-arm64",
 };
 
 function currentTargetTriple() {
@@ -36,8 +36,8 @@ function detectPackageManager() {
 
 function reinstallHint() {
   return detectPackageManager() === "bun"
-    ? "bun install -g @khadim/cli@latest"
-    : "npm install -g @khadim/cli@latest";
+    ? "bun install -g @unravelai/khadim@latest"
+    : "npm install -g @unravelai/khadim@latest";
 }
 
 const targetTriple = currentTargetTriple();

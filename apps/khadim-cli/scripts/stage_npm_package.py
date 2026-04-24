@@ -2,7 +2,7 @@
 """Stage npm packages for the Khadim CLI.
 
 This follows the Codex-style packaging model:
-- @khadim/cli is a tiny JavaScript launcher package.
+- @unravelai/khadim is a tiny JavaScript launcher package.
 - Platform-specific native payloads are published as aliasable optional deps.
 """
 
@@ -18,33 +18,33 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLI_ROOT = SCRIPT_DIR.parent
 REPO_ROOT = CLI_ROOT.parent.parent
-NPM_NAME = "@khadim/cli"
+NPM_NAME = "@unravelai/khadim"
 BINARY_NAME = "khadim-cli"
 
 PLATFORM_PACKAGES: dict[str, dict[str, str]] = {
     "linux-x64": {
-        "alias": "@khadim/cli-linux-x64",
+        "alias": "@unravelai/khadim-linux-x64",
         "target": "x86_64-unknown-linux-gnu",
         "artifact": "khadim-cli-linux-x86_64",
         "os": "linux",
         "cpu": "x64",
     },
     "linux-arm64": {
-        "alias": "@khadim/cli-linux-arm64",
+        "alias": "@unravelai/khadim-linux-arm64",
         "target": "aarch64-unknown-linux-gnu",
         "artifact": "khadim-cli-linux-aarch64",
         "os": "linux",
         "cpu": "arm64",
     },
     "darwin-x64": {
-        "alias": "@khadim/cli-darwin-x64",
+        "alias": "@unravelai/khadim-darwin-x64",
         "target": "x86_64-apple-darwin",
         "artifact": "khadim-cli-macos-x86_64",
         "os": "darwin",
         "cpu": "x64",
     },
     "darwin-arm64": {
-        "alias": "@khadim/cli-darwin-arm64",
+        "alias": "@unravelai/khadim-darwin-arm64",
         "target": "aarch64-apple-darwin",
         "artifact": "khadim-cli-macos-aarch64",
         "os": "darwin",
