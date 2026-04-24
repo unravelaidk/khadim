@@ -472,13 +472,6 @@ export function useBuilderChats(): BuilderChatsController {
       );
     };
 
-    const touchChat = (chatId: string) => {
-      const now = new Date().toISOString();
-      setChats((prev) =>
-        prev.map((c) => (c.id === chatId ? { ...c, updatedAt: now } : c)),
-      );
-    };
-
     /** Mirror the in-memory stream into the chat so partial progress survives
      *  an app restart. Called after each text_delta / step event. */
     const syncStreamIntoChat = (
