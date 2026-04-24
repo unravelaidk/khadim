@@ -127,7 +127,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
           scope: "@khadim"
 
@@ -149,3 +149,53 @@ jobs:
             artifacts/**/*
             apps/khadim-cli/dist/npm/*.tgz
           fail_on_unmatched_files: false
+
+      - name: Publish npm packages
+        shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${NPM_TOKEN:-}" ]]; then
+            export NODE_AUTH_TOKEN="$NPM_TOKEN"
+          fi
+          version="${TAG_NAME#cli-v}"
+          npm_tag="latest"
+          if [[ "$version" == *-* ]]; then
+            npm_tag="${version#*-}"
+            npm_tag="${npm_tag%%.*}"
+          fi
+
+          publish_tarball() {
+            local tarball="$1"
+            local tag="$2"
+            if [[ ! -f "$tarball" ]]; then
+              echo "Missing npm tarball: $tarball"
+              exit 1
+            fi
+
+            local publish_cmd=(npm publish "$tarball" --access public --tag "$tag")
+            echo "+ ${publish_cmd[*]}"
+            set +e
+            local output
+            output="$("${publish_cmd[@]}" 2>&1)"
+            local status=$?
+            set -e
+            echo "$output"
+
+            if [[ $status -eq 0 ]]; then
+              return 0
+            fi
+            if grep -qiE "previously published|cannot publish over|version already exists" <<< "$output"; then
+              echo "Skipping already-published package version for $tarball"
+              return 0
+            fi
+            return "$status"
+          }
+
+          npm_dir="apps/khadim-cli/dist/npm"
+          publish_tarball "$npm_dir/khadim-cli-npm-linux-x64-${version}.tgz" "linux-x64"
+          publish_tarball "$npm_dir/khadim-cli-npm-linux-arm64-${version}.tgz" "linux-arm64"
+          publish_tarball "$npm_dir/khadim-cli-npm-darwin-x64-${version}.tgz" "darwin-x64"
+          publish_tarball "$npm_dir/khadim-cli-npm-darwin-arm64-${version}.tgz" "darwin-arm64"
+          publish_tarball "$npm_dir/khadim-cli-npm-${version}.tgz" "$npm_tag"
