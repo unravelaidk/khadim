@@ -10,6 +10,25 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+/// Kill a child process and its entire process group.
+/// On Unix, we send SIGKILL to the process group (negative PID).
+/// Falls back to killing just the child if process group kill fails.
+async fn kill_process_tree(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    {
+        if let Some(pid) = child.id() {
+            // Kill the entire process group
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
+            }
+        }
+    }
+    // Always also kill via tokio as a fallback (works cross-platform)
+    let _ = child.kill().await;
+    // Reap the zombie so the PID is released
+    let _ = child.wait().await;
+}
+
 fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
     let candidate = Path::new(raw);
     let joined = if candidate.is_absolute() {
@@ -255,15 +274,31 @@ impl Tool for GrepTool {
 
         let target = normalize_path(&self.root, path)?;
         let mut cmd = Command::new("grep");
-        cmd.arg("-rn")
+        cmd.kill_on_drop(true)
+            .arg("-rIn")
+            .arg("-i")
+            .arg("--binary-files=without-match")
+            .arg("--devices=skip")
+            .arg("--exclude-dir=.git")
+            .arg("--exclude-dir=node_modules")
+            .arg("--exclude-dir=target")
+            .arg("--exclude-dir=dist")
+            .arg("--exclude-dir=build")
+            .arg("--exclude-dir=.next")
+            .arg("--exclude-dir=coverage")
             .arg("--color=never")
             .arg("-m").arg("100"); // limit matches per file
 
-        if let Some(glob) = include {
-            cmd.arg("--include").arg(glob);
+        if target.is_file() {
+            // When searching a single file, --include is irrelevant and can
+            // cause grep to skip the file. Pass the file directly.
+            cmd.arg("--").arg(pattern).arg(&target);
+        } else {
+            if let Some(glob) = include {
+                cmd.arg("--include").arg(glob);
+            }
+            cmd.arg("--").arg(pattern).arg(&target);
         }
-
-        cmd.arg("--").arg(pattern).arg(&target);
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(30),
@@ -273,9 +308,24 @@ impl Tool for GrepTool {
         .map_err(|_| AppError::process_kill("grep timed out after 30s".to_string()))?
         .map_err(|err| AppError::process_spawn(format!("Failed to run grep: {err}")))?;
 
+        if output.status.code() == Some(1) {
+            return Ok(ToolResult::text(format!(
+                "No matches found in {}.",
+                target.display()
+            )));
+        }
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::process_spawn(format!(
+                "Failed to run grep: {}",
+                stderr.trim()
+            )));
+        }
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let result = if stdout.is_empty() {
-            "No matches found.".to_string()
+            format!("No matches found in {}.", target.display())
         } else {
             truncate_output(&stdout, 50_000)
         };
@@ -322,24 +372,50 @@ impl Tool for BashTool {
             .and_then(|value| value.as_u64())
             .unwrap_or(600_000); // 10 minutes default
 
-        let mut child = Command::new("bash")
-            .arg("-lc")
+        // Create a new process group so we can kill all children on timeout.
+        // On Unix, pre_exec sets the child as its own process group leader.
+        let mut cmd = Command::new("bash");
+        cmd.arg("-lc")
             .arg(command)
             .current_dir(&self.root)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        #[cfg(unix)]
+        {
+            unsafe {
+                cmd.pre_exec(|| {
+                    // Make this process the leader of a new process group
+                    libc::setpgid(0, 0);
+                    Ok(())
+                });
+            }
+        }
+
+        let mut child = cmd
             .spawn()
             .map_err(|err| AppError::process_spawn(format!("Failed to spawn bash: {err}")))?;
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
+        // Cap collected output to prevent OOM on noisy processes
+        const MAX_COLLECTED_BYTES: usize = 512_000; // 512 KB
+
         let stdout_task = tokio::spawn(async move {
             let mut lines = Vec::new();
+            let mut total_bytes: usize = 0;
             if let Some(stdout) = stdout {
                 let mut reader = BufReader::new(stdout).lines();
                 while let Ok(Some(line)) = reader.next_line().await {
+                    total_bytes += line.len() + 1;
                     lines.push(line);
+                    if total_bytes >= MAX_COLLECTED_BYTES {
+                        lines.push(format!("... (stdout truncated at {} bytes)", total_bytes));
+                        // Drain remaining to avoid blocking the pipe
+                        while let Ok(Some(_)) = reader.next_line().await {}
+                        break;
+                    }
                 }
             }
             lines
@@ -347,22 +423,64 @@ impl Tool for BashTool {
 
         let stderr_task = tokio::spawn(async move {
             let mut lines = Vec::new();
+            let mut total_bytes: usize = 0;
             if let Some(stderr) = stderr {
                 let mut reader = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = reader.next_line().await {
+                    total_bytes += line.len() + 1;
                     lines.push(line);
+                    if total_bytes >= MAX_COLLECTED_BYTES {
+                        lines.push(format!("... (stderr truncated at {} bytes)", total_bytes));
+                        while let Ok(Some(_)) = reader.next_line().await {}
+                        break;
+                    }
                 }
             }
             lines
         });
 
-        let status = tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), child.wait())
-            .await
-            .map_err(|_| AppError::process_kill(format!("bash timed out after {timeout_ms}ms")))?
-            .map_err(|err| AppError::process_kill(format!("Failed to wait for bash: {err}")))?;
+        // Wait for the process with a timeout
+        let timed_out;
+        let status = match tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            child.wait(),
+        ).await {
+            Ok(Ok(status)) => {
+                timed_out = false;
+                Some(status)
+            }
+            Ok(Err(err)) => {
+                // wait() itself failed — kill and report
+                kill_process_tree(&mut child).await;
+                return Err(AppError::process_kill(format!("Failed to wait for bash: {err}")));
+            }
+            Err(_elapsed) => {
+                // TIMEOUT — kill the entire process group, then collect
+                // whatever output was already captured
+                timed_out = true;
+                kill_process_tree(&mut child).await;
+                None
+            }
+        };
 
-        let stdout_lines = stdout_task.await.unwrap_or_default();
-        let stderr_lines = stderr_task.await.unwrap_or_default();
+        // Now that the process is dead (or exited), the pipe readers will
+        // see EOF and finish. Give them a short grace period.
+        let stdout_lines = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stdout_task,
+        ).await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or_default();
+
+        let stderr_lines = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stderr_task,
+        ).await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or_default();
+
         let mut output = stdout_lines.join("\n");
         if !stderr_lines.is_empty() {
             if !output.is_empty() {
@@ -373,8 +491,16 @@ impl Tool for BashTool {
         if output.is_empty() {
             output = "(no output)".to_string();
         }
-        if !status.success() {
-            output.push_str(&format!("\n\nCommand exited with status {status}"));
+
+        if timed_out {
+            output.push_str(&format!(
+                "\n\nProcess timed out after {}ms and was killed (including all child processes)",
+                timeout_ms
+            ));
+        } else if let Some(status) = status {
+            if !status.success() {
+                output.push_str(&format!("\n\nCommand exited with status {status}"));
+            }
         }
 
         // Truncate very large output to avoid blowing up context
@@ -519,33 +645,59 @@ impl Tool for GlobTool {
         let base_path = input.get("path").and_then(|value| value.as_str()).unwrap_or(".");
         let base = normalize_path(&self.root, base_path)?;
 
-        // Collect all files recursively, then filter by pattern
+        const MAX_RESULTS: usize = 1_000;
         let mut found = Vec::new();
-        collect_files(&base, &base, &mut found)?;
+        collect_files_filtered(&base, &base, pattern, &mut found, MAX_RESULTS)?;
 
-        // Filter by glob pattern
-        let filtered: Vec<String> = found.into_iter().filter(|path| {
-            matches_glob(path, pattern)
-        }).collect();
-
-        if filtered.is_empty() {
+        if found.is_empty() {
             Ok(ToolResult::text("No files matched the pattern."))
         } else {
-            Ok(ToolResult::text(filtered.join("\n"),))
+            let mut result = found.join("\n");
+            if result.len() > 50_000 {
+                result = truncate_output(&result, 50_000);
+            }
+            Ok(ToolResult::text(result))
         }
     }
 }
 
-fn collect_files(dir: &Path, base: &Path, found: &mut Vec<String>) -> Result<(), AppError> {
+const EXCLUDED_DIRS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+];
+
+fn collect_files_filtered(
+    dir: &Path,
+    base: &Path,
+    pattern: &str,
+    found: &mut Vec<String>,
+    max_results: usize,
+) -> Result<(), AppError> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
 
         if path.is_dir() {
-            collect_files(&path, base, found)?;
+            // Skip common noise directories
+            if EXCLUDED_DIRS.contains(&file_name_str.as_ref()) {
+                continue;
+            }
+            collect_files_filtered(&path, base, pattern, found, max_results)?;
         } else {
-            found.push(relative);
+            let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+            if matches_glob(&relative, pattern) {
+                found.push(relative);
+                if found.len() >= max_results {
+                    return Ok(());
+                }
+            }
         }
     }
     Ok(())
@@ -626,6 +778,7 @@ impl Tool for WebSearchTool {
 
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .map_err(|e| AppError::io(format!("Failed to build HTTP client: {e}")))?;
 
@@ -637,73 +790,132 @@ impl Tool for WebSearchTool {
         .map_err(|_| AppError::process_kill("web_search timed out after 15s".to_string()))?
         .map_err(|e| AppError::io(format!("Web search request failed: {e}")))?;
 
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            // DuckDuckGo sometimes returns a block page with a 200 but empty results,
+            // or a 403/429 with a short message.
+            if body.len() < 200 && status.as_u16() >= 400 {
+                return Ok(ToolResult::text(format!(
+                    "Search engine returned HTTP {}. The query may have been blocked. Try rephrasing the query or using web_search later.",
+                    status
+                )));
+            }
+            return Ok(ToolResult::text(format!(
+                "Search engine returned HTTP {}. Response preview: {}",
+                status,
+                &body[..body.len().min(500)]
+            )));
+        }
+
         let html = response.text().await
             .map_err(|e| AppError::io(format!("Failed to read search response: {e}")))?;
 
-        // Parse DuckDuckGo HTML results
-        let mut results = Vec::new();
-        let mut in_result = false;
-        let mut current_title = String::new();
-        let mut current_url = String::new();
-        let mut current_snippet = String::new();
+        // Detect blocking / CAPTCHA pages
+        let html_lower = html.to_lowercase();
+        let has_results = html_lower.contains("result__a");
+        let looks_blocked = html_lower.contains("automated queries")
+            || html_lower.contains("captcha")
+            || html_lower.contains("robot")
+            || html_lower.contains("verify you are human")
+            || html_lower.contains("anomaly-modal")
+            || html_lower.contains("challenge-form")
+            || html_lower.contains("bots use duckduckgo");
 
-        for line in html.lines() {
-            let line = line.trim();
-
-            if line.contains("class=\"result__a\"") {
-                in_result = true;
-                current_title.clear();
-                current_url.clear();
-                current_snippet.clear();
-
-                // Extract URL from href
-                if let Some(start) = line.find("href=\"") {
-                    let rest = &line[start + 6..];
-                    if let Some(end) = rest.find('"') {
-                        current_url = rest[..end].to_string();
-                        // DuckDuckGo uses redirect URLs, extract the actual URL
-                        if let Some(actual) = extract_ddg_url(&current_url) {
-                            current_url = actual;
-                        }
-                    }
-                }
-
-                // Extract title
-                if let Some(start) = line.find('>') {
-                    let rest = &line[start + 1..];
-                    if let Some(end) = rest.find('<') {
-                        current_title = html_escape::decode_html_entities(&rest[..end]).to_string();
-                    }
-                }
-            } else if line.contains("class=\"result__snippet\"") {
-                if in_result {
-                    if let Some(start) = line.find('>') {
-                        let rest = &line[start + 1..];
-                        if let Some(end) = rest.find('<') {
-                            current_snippet = html_escape::decode_html_entities(&rest[..end]).to_string();
-                        }
-                    }
-                    if !current_title.is_empty() {
-                        results.push(format!(
-                            "[{}] {}\n  {}",
-                            results.len() + 1,
-                            current_title,
-                            current_snippet
-                        ));
-                        if results.len() >= num_results {
-                            break;
-                        }
-                    }
-                    in_result = false;
-                }
-            }
+        if looks_blocked && !has_results {
+            return Ok(ToolResult::text(
+                "Search engine (DuckDuckGo) detected automated access and served a block/CAPTCHA page. Web search is currently unavailable. Try using the tool again later, or rely on local files and documentation instead.".to_string()
+            ));
         }
+
+        let results = parse_ddg_results(&html, num_results);
 
         if results.is_empty() {
-            Ok(ToolResult::text(format!("No search results found for: {}", query)))
+            Ok(ToolResult::text(format!(
+                "No search results found for: {}. The search engine may have changed its page layout or returned an empty results page.",
+                query
+            )))
         } else {
-            Ok(ToolResult::text(format!("Search results for '{}':\n\n{}", query, results.join("\n\n"))))
+            Ok(ToolResult::text(format!(
+                "Search results for '{}':\n\n{}",
+                query,
+                results.join("\n\n")
+            )))
         }
+    }
+}
+
+/// Parse DuckDuckGo HTML results using block-based extraction.
+/// Splits on `<div class="result` so multi-line tags don't break parsing.
+fn parse_ddg_results(html: &str, limit: usize) -> Vec<String> {
+    let mut results = Vec::new();
+
+    // DuckDuckGo wraps each result in a div with class "result ..."
+    for block in html.split(r#"<div class="result"#).skip(1) {
+        let title = extract_tag_text(block, r#"class="result__a""#, "</a>");
+        let snippet = extract_tag_text(block, r#"class="result__snippet""#, "</a>");
+        let href = extract_tag_attr(block, r#"class="result__a""#, "href");
+
+        let url = href
+            .as_ref()
+            .and_then(|h| extract_ddg_url(h))
+            .or(href)
+            .unwrap_or_default();
+
+        if let Some(title) = title {
+            let snippet = snippet.unwrap_or_default();
+            results.push(format!(
+                "{}\n  URL: {}\n  {}",
+                title,
+                url,
+                snippet
+            ));
+            if results.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    results
+}
+
+/// Extract the text content of a tag that contains `marker`.
+/// Finds the first tag containing `marker`, then returns everything
+/// between its closing `>` and `end_tag`.
+fn extract_tag_text(html: &str, marker: &str, end_tag: &str) -> Option<String> {
+    let marker_pos = html.find(marker)?;
+    // Walk back from marker to find the opening '<'
+    let tag_start = html[..marker_pos].rfind('<')?;
+    // Find the closing '>' of this tag
+    let after_tag_start = &html[tag_start..];
+    let close_bracket = after_tag_start.find('>')?;
+    let content_start = tag_start + close_bracket + 1;
+    let content = &html[content_start..];
+    let end_pos = content.find(end_tag)?;
+    let text = html_escape::decode_html_entities(&content[..end_pos])
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// Extract an attribute value from the first tag containing `marker`.
+fn extract_tag_attr(html: &str, marker: &str, attr: &str) -> Option<String> {
+    let marker_pos = html.find(marker)?;
+    let tag_start = html[..marker_pos].rfind('<')?;
+    let tag = &html[tag_start..];
+    let attr_prefix = format!(r#"{}=""#, attr);
+    let attr_pos = tag.find(&attr_prefix)?;
+    let after_attr = &tag[attr_pos + attr_prefix.len()..];
+    let end_quote = after_attr.find('"')?;
+    let value = after_attr[..end_quote].to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
     }
 }
 

@@ -3,9 +3,18 @@ use crate::db::entities::{conversations, messages};
 use crate::db::{ChatMessage, Conversation};
 use crate::error::AppError;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct SessionSearchResult {
+    pub message_id: String,
+    pub conversation_id: String,
+    pub role: String,
+    pub content_snippet: String,
+    pub created_at: String,
+}
 
 #[derive(Clone)]
 pub(crate) struct ChatRepository {
@@ -198,6 +207,89 @@ impl ChatRepository {
                 .all(&conn)
                 .await?;
             Ok(models.into_iter().map(to_message).collect())
+        })
+    }
+
+    /// Full-text search across all messages using FTS5.
+    pub(crate) fn search_messages(
+        &self,
+        query: &str,
+        workspace_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SessionSearchResult>, AppError> {
+        let conn = self.ctx.conn();
+        let query = query.to_string();
+        let workspace_id = workspace_id.map(ToOwned::to_owned);
+        self.ctx.run(async move {
+            // Sanitize the query for FTS5 MATCH — strip special chars that would cause syntax errors
+            let sanitized = query
+                .replace('"', " ")
+                .replace('+', " ")
+                .replace('*', " ")
+                .replace('{', " ")
+                .replace('}', " ")
+                .replace('(', " ")
+                .replace(')', " ")
+                .replace('^', " ");
+            let sanitized = sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
+
+            if sanitized.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let sql = if let Some(ref _ws) = workspace_id {
+                "SELECT m.id, m.conversation_id, m.role, m.content, m.created_at \
+                 FROM messages_fts fts \
+                 JOIN messages m ON m.rowid = fts.rowid \
+                 JOIN conversations c ON c.id = m.conversation_id \
+                 WHERE fts.messages_fts MATCH ? AND c.workspace_id = ? \
+                 ORDER BY rank \
+                 LIMIT ?"
+            } else {
+                "SELECT m.id, m.conversation_id, m.role, m.content, m.created_at \
+                 FROM messages_fts fts \
+                 JOIN messages m ON m.rowid = fts.rowid \
+                 WHERE fts.messages_fts MATCH ? \
+                 ORDER BY rank \
+                 LIMIT ?"
+            };
+
+            let limit_i64 = limit as i64;
+            let values: Vec<sea_orm::Value> = if workspace_id.is_some() {
+                vec![
+                    sanitized.into(),
+                    workspace_id.unwrap().into(),
+                    limit_i64.into(),
+                ]
+            } else {
+                vec![sanitized.into(), limit_i64.into()]
+            };
+
+            let rows = conn
+                .query_all(sea_orm::Statement::from_sql_and_values(
+                    sea_orm::DbBackend::Sqlite,
+                    sql,
+                    values,
+                ))
+                .await?;
+
+            let mut results = Vec::new();
+            for row in rows {
+                let content: String = row.try_get::<String>("", "content").unwrap_or_default();
+                let snippet = if content.len() > 300 {
+                    format!("{}...", &content[..300])
+                } else {
+                    content
+                };
+                results.push(SessionSearchResult {
+                    message_id: row.try_get::<String>("", "id").unwrap_or_default(),
+                    conversation_id: row.try_get::<String>("", "conversation_id").unwrap_or_default(),
+                    role: row.try_get::<String>("", "role").unwrap_or_default(),
+                    content_snippet: snippet,
+                    created_at: row.try_get::<String>("", "created_at").unwrap_or_default(),
+                });
+            }
+            Ok(results)
         })
     }
 }

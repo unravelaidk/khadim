@@ -6,6 +6,8 @@ export { AgentList } from "./AgentList";
 export { AgentEditor } from "./AgentEditor";
 export type { AgentEditorData } from "./AgentEditor";
 export { SessionList, SessionDetail } from "./SessionList";
+export { SessionLogView } from "./SessionLogView";
+export { SessionInsightsPanel } from "./SessionInsightsPanel";
 export { EnvironmentList } from "./EnvironmentList";
 export { EnvironmentEditor } from "./EnvironmentEditor";
 export type { EnvironmentEditorData } from "./EnvironmentEditor";

@@ -9,6 +9,7 @@ pub mod openai_codex_responses;
 pub mod openai_responses;
 pub mod request_headers;
 pub mod transform_messages;
+pub mod usage;
 
 use crate::api_registry::ApiProvider;
 

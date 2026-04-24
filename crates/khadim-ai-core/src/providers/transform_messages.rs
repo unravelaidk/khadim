@@ -2,12 +2,20 @@ use crate::types::{ChatMessage, Context, ToolCall};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
+/// Normalize a tool-call id to be safe for OpenAI-compatible providers.
+///
+/// Copilot (and OpenAI Codex / OpenCode) return pipe-separated IDs such as
+/// `{call_id}|{id}` where the `{id}` part can be 400+ chars with special
+/// characters (+, /, =).  We extract just the `{call_id}` part, sanitise
+/// remaining characters, and truncate to `max_len`.
 pub fn normalize_tool_call_id(id: &str, max_len: usize) -> String {
-    let normalized = id.replace(
+    // Handle pipe-separated IDs from OpenAI Responses API-like providers.
+    let id_part = id.split('|').next().unwrap_or(id);
+    let sanitized = id_part.replace(
         |c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-',
         "_",
     );
-    normalized.chars().take(max_len).collect()
+    sanitized.chars().take(max_len).collect()
 }
 
 pub fn to_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
@@ -130,22 +138,21 @@ pub fn to_openai_responses_input(messages: &[ChatMessage], include_system: bool)
     let mut pending_tool_calls = Vec::<String>::new();
     let mut existing_tool_results = HashSet::<String>::new();
 
-    let flush_orphaned_response_outputs = |
-        converted: &mut Vec<Value>,
-        pending_tool_calls: &[String],
-        existing_tool_results: &HashSet<String>,
-    | {
-        for tool_call_id in pending_tool_calls {
-            if existing_tool_results.contains(tool_call_id) {
-                continue;
+    let flush_orphaned_response_outputs =
+        |converted: &mut Vec<Value>,
+         pending_tool_calls: &[String],
+         existing_tool_results: &HashSet<String>| {
+            for tool_call_id in pending_tool_calls {
+                if existing_tool_results.contains(tool_call_id) {
+                    continue;
+                }
+                converted.push(json!({
+                    "type": "function_call_output",
+                    "call_id": tool_call_id,
+                    "output": "No result provided",
+                }));
             }
-            converted.push(json!({
-                "type": "function_call_output",
-                "call_id": tool_call_id,
-                "output": "No result provided",
-            }));
-        }
-    };
+        };
 
     for message in messages {
         match message {

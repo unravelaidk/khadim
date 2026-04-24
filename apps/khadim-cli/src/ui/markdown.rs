@@ -1,15 +1,28 @@
-use pulldown_cmark::{Alignment, BlockQuoteKind, Event as MdEvent, Options, Parser, Tag, TagEnd, CodeBlockKind};
+use pulldown_cmark::{
+    Alignment, BlockQuoteKind, CodeBlockKind, Event as MdEvent, Options, Parser, Tag, TagEnd,
+};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::helpers::{truncate_str, wrap_text};
 use super::theme::*;
-use super::helpers::{wrap_text, truncate_str};
 
 /// Languages that are diagram types and should get special rendering
-const DIAGRAM_LANGS: &[&str] = &["mermaid", "plantuml", "graphviz", "dot", "d2", "vega", "vega-lite", "tikz"];
+const DIAGRAM_LANGS: &[&str] = &[
+    "mermaid",
+    "plantuml",
+    "graphviz",
+    "dot",
+    "d2",
+    "vega",
+    "vega-lite",
+    "tikz",
+];
 
 /// Map a GFM blockquote kind to an icon, label, and color
-fn blockquote_kind_info(kind: &BlockQuoteKind) -> (&'static str, &'static str, ratatui::style::Color) {
+fn blockquote_kind_info(
+    kind: &BlockQuoteKind,
+) -> (&'static str, &'static str, ratatui::style::Color) {
     match kind {
         BlockQuoteKind::Note => ("📝", "Note", md_bq_note()),
         BlockQuoteKind::Tip => ("💡", "Tip", md_bq_tip()),
@@ -20,18 +33,12 @@ fn blockquote_kind_info(kind: &BlockQuoteKind) -> (&'static str, &'static str, r
 }
 
 pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
+    // Lean option set: GFM already covers tables, strikethrough and tasklists.
+    // Math, definition lists, footnotes etc. add parse overhead for little gain
+    // in an AI assistant CLI.
     let mut options = Options::empty();
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_FOOTNOTES);
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TASKLISTS);
-    options.insert(Options::ENABLE_SMART_PUNCTUATION);
-    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
-    options.insert(Options::ENABLE_MATH);
     options.insert(Options::ENABLE_GFM);
-    options.insert(Options::ENABLE_DEFINITION_LIST);
-    options.insert(Options::ENABLE_SUPERSCRIPT);
-    options.insert(Options::ENABLE_SUBSCRIPT);
+    options.insert(Options::ENABLE_SMART_PUNCTUATION);
 
     let parser = Parser::new_ext(md, options);
     let mut lines: Vec<Line<'a>> = Vec::new();
@@ -109,12 +116,17 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                     Span::styled(prefix_char.to_string(), Style::default().fg(md_heading())),
                 ];
                 spans.append(&mut current_spans);
-                let styled: Vec<Span<'a>> = spans.into_iter().map(|s| {
-                    Span::styled(
-                        s.content.to_string(),
-                        Style::default().fg(md_heading()).add_modifier(Modifier::BOLD),
-                    )
-                }).collect();
+                let styled: Vec<Span<'a>> = spans
+                    .into_iter()
+                    .map(|s| {
+                        Span::styled(
+                            s.content.to_string(),
+                            Style::default()
+                                .fg(md_heading())
+                                .add_modifier(Modifier::BOLD),
+                        )
+                    })
+                    .collect();
                 lines.push(Line::from(""));
                 lines.push(Line::from(styled));
                 heading_level = None;
@@ -135,12 +147,18 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                 if is_diagram {
                     // Diagram rendering
                     let icon = "📊";
-                    let label = if code_lang.is_empty() { "diagram".to_string() } else { code_lang.clone() };
+                    let label = if code_lang.is_empty() {
+                        "diagram".to_string()
+                    } else {
+                        code_lang.clone()
+                    };
                     lines.push(Line::from(vec![
                         Span::raw(format!("{indent}  ")),
                         Span::styled(
                             format!("{icon} Diagram ({label})"),
-                            Style::default().fg(md_diagram()).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(md_diagram())
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]));
                     let max_w = width.saturating_sub(6);
@@ -153,17 +171,18 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                         lines.push(Line::from(vec![
                             Span::styled(
                                 format!("{indent}  │ "),
-                                Style::default().fg(md_diagram()).add_modifier(Modifier::DIM),
+                                Style::default()
+                                    .fg(md_diagram())
+                                    .add_modifier(Modifier::DIM),
                             ),
-                            Span::styled(
-                                display,
-                                Style::default().fg(md_diagram()),
-                            ),
+                            Span::styled(display, Style::default().fg(md_diagram())),
                         ]));
                     }
                     lines.push(Line::from(Span::styled(
                         format!("{indent}  └──────"),
-                        Style::default().fg(md_diagram()).add_modifier(Modifier::DIM),
+                        Style::default()
+                            .fg(md_diagram())
+                            .add_modifier(Modifier::DIM),
                     )));
                     is_diagram = false;
                 } else {
@@ -175,7 +194,9 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                     };
                     lines.push(Line::from(Span::styled(
                         header,
-                        Style::default().fg(md_code_fg()).add_modifier(Modifier::DIM),
+                        Style::default()
+                            .fg(md_code_fg())
+                            .add_modifier(Modifier::DIM),
                     )));
                     let max_w = width.saturating_sub(6);
                     for code_line in code_buf.lines() {
@@ -187,7 +208,9 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                         lines.push(Line::from(vec![
                             Span::styled(
                                 format!("{indent}  │ "),
-                                Style::default().fg(md_code_fg()).add_modifier(Modifier::DIM),
+                                Style::default()
+                                    .fg(md_code_fg())
+                                    .add_modifier(Modifier::DIM),
                             ),
                             Span::styled(
                                 display,
@@ -197,7 +220,9 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                     }
                     lines.push(Line::from(Span::styled(
                         format!("{indent}  └──────"),
-                        Style::default().fg(md_code_fg()).add_modifier(Modifier::DIM),
+                        Style::default()
+                            .fg(md_code_fg())
+                            .add_modifier(Modifier::DIM),
                     )));
                 }
                 code_lang.clear();
@@ -223,7 +248,12 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                 let depth_indent = "  ".repeat(list_depth.saturating_sub(1) as usize);
                 let (bullet_str, bullet_st) = if let Some(checked) = task_checked.take() {
                     if checked {
-                        ("✓ ".to_string(), Style::default().fg(md_task_checked()).add_modifier(Modifier::BOLD))
+                        (
+                            "✓ ".to_string(),
+                            Style::default()
+                                .fg(md_task_checked())
+                                .add_modifier(Modifier::BOLD),
+                        )
                     } else {
                         ("○ ".to_string(), Style::default().fg(md_task_unchecked()))
                     }
@@ -259,39 +289,54 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
             }
             MdEvent::End(TagEnd::Table) => {
                 in_table = false;
-                let table_lines = super::table::render_table_lines(&table_rows, &table_alignments, width);
+                let table_lines =
+                    super::table::render_table_lines(&table_rows, &table_alignments, width);
                 lines.push(Line::from(""));
                 lines.extend(table_lines);
                 lines.push(Line::from(""));
             }
-            MdEvent::Start(Tag::TableHead) => { table_current_row.clear(); }
+            MdEvent::Start(Tag::TableHead) => {
+                table_current_row.clear();
+            }
             MdEvent::End(TagEnd::TableHead) => {
                 table_rows.push(table_current_row.clone());
                 table_current_row.clear();
             }
-            MdEvent::Start(Tag::TableRow) => { table_current_row.clear(); }
+            MdEvent::Start(Tag::TableRow) => {
+                table_current_row.clear();
+            }
             MdEvent::End(TagEnd::TableRow) => {
                 table_rows.push(table_current_row.clone());
                 table_current_row.clear();
             }
-            MdEvent::Start(Tag::TableCell) => { in_table_cell = true; table_cell_buf.clear(); }
+            MdEvent::Start(Tag::TableCell) => {
+                in_table_cell = true;
+                table_cell_buf.clear();
+            }
             MdEvent::End(TagEnd::TableCell) => {
                 in_table_cell = false;
                 table_current_row.push(table_cell_buf.trim().to_string());
             }
 
             // ── Paragraphs ──
-            MdEvent::Start(Tag::Paragraph) => { current_spans.clear(); }
+            MdEvent::Start(Tag::Paragraph) => {
+                current_spans.clear();
+            }
             MdEvent::End(TagEnd::Paragraph) => {
                 if !in_table && !in_footnote_def && !in_definition_title && !in_definition_def {
                     if !current_spans.is_empty() {
-                        let bq_color = blockquote_kind.as_ref().map_or(md_blockquote(), |k| blockquote_kind_info(k).2);
+                        let bq_color = blockquote_kind
+                            .as_ref()
+                            .map_or(md_blockquote(), |k| blockquote_kind_info(k).2);
                         let prefix = if in_blockquote {
                             format!("{indent}  │ ")
                         } else {
                             indent.to_string()
                         };
-                        let full_text: String = current_spans.iter().map(|s| s.content.to_string()).collect();
+                        let full_text: String = current_spans
+                            .iter()
+                            .map(|s| s.content.to_string())
+                            .collect();
                         if full_text.len() <= width.saturating_sub(4) {
                             flush_line(&mut current_spans, &mut lines, &prefix);
                         } else {
@@ -299,8 +344,12 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                                 Style::default().fg(bq_color).add_modifier(Modifier::ITALIC)
                             } else {
                                 let mut s = Style::default().fg(text_primary());
-                                if bold { s = s.add_modifier(Modifier::BOLD); }
-                                if italic { s = s.add_modifier(Modifier::ITALIC); }
+                                if bold {
+                                    s = s.add_modifier(Modifier::BOLD);
+                                }
+                                if italic {
+                                    s = s.add_modifier(Modifier::ITALIC);
+                                }
                                 s
                             };
                             for wl in wrap_text(&full_text, width.saturating_sub(4)) {
@@ -317,20 +366,44 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
             }
 
             // ── Inline styles ──
-            MdEvent::Start(Tag::Strong) => { bold = true; }
-            MdEvent::End(TagEnd::Strong) => { bold = false; }
-            MdEvent::Start(Tag::Emphasis) => { italic = true; }
-            MdEvent::End(TagEnd::Emphasis) => { italic = false; }
-            MdEvent::Start(Tag::Strikethrough) => { strikethrough = true; }
-            MdEvent::End(TagEnd::Strikethrough) => { strikethrough = false; }
-            MdEvent::Start(Tag::Superscript) => { superscript = true; }
-            MdEvent::End(TagEnd::Superscript) => { superscript = false; }
-            MdEvent::Start(Tag::Subscript) => { subscript = true; }
-            MdEvent::End(TagEnd::Subscript) => { subscript = false; }
+            MdEvent::Start(Tag::Strong) => {
+                bold = true;
+            }
+            MdEvent::End(TagEnd::Strong) => {
+                bold = false;
+            }
+            MdEvent::Start(Tag::Emphasis) => {
+                italic = true;
+            }
+            MdEvent::End(TagEnd::Emphasis) => {
+                italic = false;
+            }
+            MdEvent::Start(Tag::Strikethrough) => {
+                strikethrough = true;
+            }
+            MdEvent::End(TagEnd::Strikethrough) => {
+                strikethrough = false;
+            }
+            MdEvent::Start(Tag::Superscript) => {
+                superscript = true;
+            }
+            MdEvent::End(TagEnd::Superscript) => {
+                superscript = false;
+            }
+            MdEvent::Start(Tag::Subscript) => {
+                subscript = true;
+            }
+            MdEvent::End(TagEnd::Subscript) => {
+                subscript = false;
+            }
 
             // ── Links ──
-            MdEvent::Start(Tag::Link { .. }) => { in_link = true; }
-            MdEvent::End(TagEnd::Link) => { in_link = false; }
+            MdEvent::Start(Tag::Link { .. }) => {
+                in_link = true;
+            }
+            MdEvent::End(TagEnd::Link) => {
+                in_link = false;
+            }
 
             // ── Images ──
             MdEvent::Start(Tag::Image { dest_url, .. }) => {
@@ -341,7 +414,11 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
             }
             MdEvent::End(TagEnd::Image) => {
                 in_image = false;
-                let alt = if image_alt_buf.is_empty() { "image".to_string() } else { image_alt_buf.clone() };
+                let alt = if image_alt_buf.is_empty() {
+                    "image".to_string()
+                } else {
+                    image_alt_buf.clone()
+                };
                 let url_display = if image_url.is_empty() {
                     String::new()
                 } else {
@@ -350,8 +427,16 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                 lines.push(Line::from(vec![
                     Span::raw(format!("{indent}  ")),
                     Span::styled("🖼 ".to_string(), Style::default().fg(md_image())),
-                    Span::styled(alt, Style::default().fg(md_image()).add_modifier(Modifier::ITALIC)),
-                    Span::styled(url_display, Style::default().fg(md_image()).add_modifier(Modifier::DIM)),
+                    Span::styled(
+                        alt,
+                        Style::default()
+                            .fg(md_image())
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                    Span::styled(
+                        url_display,
+                        Style::default().fg(md_image()).add_modifier(Modifier::DIM),
+                    ),
                 ]));
                 image_alt_buf.clear();
                 image_url.clear();
@@ -365,7 +450,10 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                     let (icon, label, color) = blockquote_kind_info(bk);
                     lines.push(Line::from(vec![
                         Span::raw(format!("{indent}  ")),
-                        Span::styled(format!("{icon} {label}"), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            format!("{icon} {label}"),
+                            Style::default().fg(color).add_modifier(Modifier::BOLD),
+                        ),
                     ]));
                 }
             }
@@ -391,7 +479,9 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                     Span::raw(format!("{indent}  ")),
                     Span::styled(
                         format!("[{}]:", label),
-                        Style::default().fg(md_footnote()).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(md_footnote())
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]));
             }
@@ -406,7 +496,9 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
             MdEvent::FootnoteReference(label) => {
                 current_spans.push(Span::styled(
                     format!("[{}]", label),
-                    Style::default().fg(md_footnote()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(md_footnote())
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
 
@@ -422,12 +514,17 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                 if !current_spans.is_empty() {
                     let mut spans = vec![Span::raw(format!("{indent}  "))];
                     spans.append(&mut current_spans);
-                    let styled: Vec<Span<'a>> = spans.into_iter().map(|s| {
-                        Span::styled(
-                            s.content.to_string(),
-                            Style::default().fg(md_definition_term()).add_modifier(Modifier::BOLD),
-                        )
-                    }).collect();
+                    let styled: Vec<Span<'a>> = spans
+                        .into_iter()
+                        .map(|s| {
+                            Span::styled(
+                                s.content.to_string(),
+                                Style::default()
+                                    .fg(md_definition_term())
+                                    .add_modifier(Modifier::BOLD),
+                            )
+                        })
+                        .collect();
                     lines.push(Line::from(styled));
                 }
             }
@@ -439,7 +536,10 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                 in_definition_def = false;
                 if !current_spans.is_empty() {
                     let prefix = format!("{indent}    ");
-                    let full_text: String = current_spans.iter().map(|s| s.content.to_string()).collect();
+                    let full_text: String = current_spans
+                        .iter()
+                        .map(|s| s.content.to_string())
+                        .collect();
                     for wl in wrap_text(&full_text, width.saturating_sub(6)) {
                         lines.push(Line::from(vec![
                             Span::raw(prefix.clone()),
@@ -455,7 +555,9 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
             MdEvent::InlineMath(expr) => {
                 current_spans.push(Span::styled(
                     expr.to_string(),
-                    Style::default().fg(md_math()).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(md_math())
+                        .add_modifier(Modifier::ITALIC),
                 ));
             }
             MdEvent::DisplayMath(expr) => {
@@ -475,10 +577,7 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                             format!("{indent}  │ "),
                             Style::default().fg(md_math()).add_modifier(Modifier::DIM),
                         ),
-                        Span::styled(
-                            display,
-                            Style::default().fg(md_math()),
-                        ),
+                        Span::styled(display, Style::default().fg(md_math())),
                     ]));
                 }
                 lines.push(Line::from(Span::styled(
@@ -488,13 +587,21 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
             }
 
             // ── HTML blocks (skip) ──
-            MdEvent::Start(Tag::HtmlBlock) => { in_html_block = true; }
-            MdEvent::End(TagEnd::HtmlBlock) => { in_html_block = false; }
+            MdEvent::Start(Tag::HtmlBlock) => {
+                in_html_block = true;
+            }
+            MdEvent::End(TagEnd::HtmlBlock) => {
+                in_html_block = false;
+            }
             MdEvent::Html(_) => { /* skip inline HTML */ }
 
             // ── Metadata blocks (skip) ──
-            MdEvent::Start(Tag::MetadataBlock(_)) => { in_metadata_block = true; }
-            MdEvent::End(TagEnd::MetadataBlock(_)) => { in_metadata_block = false; }
+            MdEvent::Start(Tag::MetadataBlock(_)) => {
+                in_metadata_block = true;
+            }
+            MdEvent::End(TagEnd::MetadataBlock(_)) => {
+                in_metadata_block = false;
+            }
 
             // ── Text ──
             MdEvent::Text(text) => {
@@ -508,17 +615,35 @@ pub fn render_markdown<'a>(md: &str, width: usize) -> Vec<Line<'a>> {
                     image_alt_buf.push_str(&text);
                 } else {
                     let mut style = Style::default().fg(text_primary());
-                    if bold { style = style.add_modifier(Modifier::BOLD); }
-                    if italic { style = style.add_modifier(Modifier::ITALIC); }
-                    if strikethrough { style = style.fg(md_strikethrough()).add_modifier(Modifier::CROSSED_OUT); }
-                    if superscript { style = style.fg(md_superscript()); }
-                    if subscript { style = style.fg(md_subscript()); }
-                    if in_link { style = style.fg(md_link()).add_modifier(Modifier::UNDERLINED); }
+                    if bold {
+                        style = style.add_modifier(Modifier::BOLD);
+                    }
+                    if italic {
+                        style = style.add_modifier(Modifier::ITALIC);
+                    }
+                    if strikethrough {
+                        style = style
+                            .fg(md_strikethrough())
+                            .add_modifier(Modifier::CROSSED_OUT);
+                    }
+                    if superscript {
+                        style = style.fg(md_superscript());
+                    }
+                    if subscript {
+                        style = style.fg(md_subscript());
+                    }
+                    if in_link {
+                        style = style.fg(md_link()).add_modifier(Modifier::UNDERLINED);
+                    }
                     if in_blockquote {
-                        let bq_color = blockquote_kind.as_ref().map_or(md_blockquote(), |k| blockquote_kind_info(k).2);
+                        let bq_color = blockquote_kind
+                            .as_ref()
+                            .map_or(md_blockquote(), |k| blockquote_kind_info(k).2);
                         style = style.fg(bq_color).add_modifier(Modifier::ITALIC);
                         // Preserve other modifiers
-                        if bold { style = style.add_modifier(Modifier::BOLD); }
+                        if bold {
+                            style = style.add_modifier(Modifier::BOLD);
+                        }
                     }
                     if heading_level.is_some() {
                         style = style.fg(md_heading()).add_modifier(Modifier::BOLD);

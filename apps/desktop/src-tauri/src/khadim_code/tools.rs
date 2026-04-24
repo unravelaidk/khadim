@@ -347,17 +347,27 @@ impl MemorySaveTool {
     }
 }
 
+/// Default max entries per memory store before consolidation is recommended.
+const MEMORY_STORE_MAX_ENTRIES: usize = 80;
+/// Warn threshold — when exceeded, nudge the agent to consolidate.
+const MEMORY_STORE_WARN_ENTRIES: usize = 60;
+
 #[async_trait]
 impl Tool for MemorySaveTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "memory_save".to_string(),
-            description: "Save a durable fact, preference, workflow, or project detail to memory when it will likely matter again later.".to_string(),
+            description: format!(
+                "Save a durable fact, preference, workflow, or project detail to memory when it will likely matter again later. \
+                 Each memory store has a soft limit of {} entries. When the store is near capacity, \
+                 the tool returns a warning with current entries so you can consolidate related facts before adding new ones.",
+                MEMORY_STORE_MAX_ENTRIES
+            ),
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "key": {"type": "string", "description": "Short stable label for the memory, like 'preferred_answer_style'"},
-                    "content": {"type": "string", "description": "The durable fact to save"},
+                    "content": {"type": "string", "description": "The durable fact to save. Keep it compact and information-dense."},
                     "kind": {"type": "string", "description": "One of fact, preference, workflow, task, project, contact"},
                     "confidence": {"type": "number", "description": "Confidence from 0 to 1 (default: 0.9)"}
                 },
@@ -398,7 +408,9 @@ impl Tool for MemorySaveTool {
         let now = chrono::Utc::now().to_rfc3339();
 
         let existing = self.db.list_memory_entries(&store.id)?;
-        if let Some(entry) = existing.into_iter().find(|entry| entry.key == key) {
+
+        // Duplicate prevention
+        if let Some(entry) = existing.iter().find(|entry| entry.key == key) {
             let mut updated = entry.clone();
             updated.content = content.to_string();
             updated.kind = kind.clone();
@@ -407,15 +419,20 @@ impl Tool for MemorySaveTool {
             updated.updated_at = now;
             self.db.update_memory_entry(&updated)?;
             return Ok(ToolResult {
-                content: format!("Updated memory '{}' in {} store", key, store.scope_type),
+                content: format!("Updated memory '{}' in {} store ({} entries)", key, store.scope_type, existing.len()),
                 metadata: Some(json!({
                     "id": updated.id,
                     "store_id": store.id,
                     "store_scope": store.scope_type,
                     "action": "updated",
+                    "entry_count": existing.len(),
                 })),
             });
         }
+
+        // Capacity check
+        let at_capacity = existing.len() >= MEMORY_STORE_MAX_ENTRIES;
+        let near_capacity = existing.len() >= MEMORY_STORE_WARN_ENTRIES;
 
         let entry = MemoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
@@ -435,14 +452,107 @@ impl Tool for MemorySaveTool {
         };
         self.db.create_memory_entry(&entry)?;
 
+        let mut content_lines = vec![
+            format!("Saved memory '{}' in {} store", key, store.scope_type),
+        ];
+
+        if at_capacity {
+            content_lines.push(format!(
+                "\nWARNING: Memory store is at capacity ({}/{} entries). \
+                 You MUST consolidate before adding more: use memory_search to list entries, \
+                 then merge related entries by updating them with broader, denser facts, \
+                 or remove outdated ones.",
+                existing.len() + 1,
+                MEMORY_STORE_MAX_ENTRIES
+            ));
+        } else if near_capacity {
+            content_lines.push(format!(
+                "\nNOTE: Memory store is {}% full ({}/{} entries). \
+                 Consider consolidating related entries into fewer, denser facts.",
+                (existing.len() + 1) * 100 / MEMORY_STORE_MAX_ENTRIES,
+                existing.len() + 1,
+                MEMORY_STORE_MAX_ENTRIES
+            ));
+        }
+
         Ok(ToolResult {
-            content: format!("Saved memory '{}' in {} store", key, store.scope_type),
+            content: content_lines.join(""),
             metadata: Some(json!({
                 "id": entry.id,
                 "store_id": store.id,
                 "store_scope": store.scope_type,
                 "action": "created",
+                "entry_count": existing.len() + 1,
+                "at_capacity": at_capacity,
+                "near_capacity": near_capacity,
             })),
+        })
+    }
+}
+
+// ── Memory Delete Tool ───────────────────────────────────────────────
+
+pub struct MemoryDeleteTool {
+    db: Database,
+    workspace_id: String,
+    conversation_id: Option<String>,
+    agent_id: Option<String>,
+}
+
+impl MemoryDeleteTool {
+    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
+        Self { db, workspace_id, conversation_id, agent_id }
+    }
+}
+
+#[async_trait]
+impl Tool for MemoryDeleteTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_delete".to_string(),
+            description: "Remove a memory entry by id. Use this to clean up outdated, duplicated, or incorrect memories during consolidation.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "The memory entry id to delete"}
+                },
+                "required": ["id"]
+            }),
+            prompt_snippet: "- memory_delete: Remove outdated or duplicate memory entries during consolidation".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let id = input
+            .get("id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("memory_delete requires an id"))?;
+
+        // Verify the entry is in an accessible store before deleting
+        let memory_scope_id = self.agent_id.as_deref().or(self.conversation_id.as_deref());
+        let (_, stores) = resolve_memory_stores(&self.db, &self.workspace_id, memory_scope_id)?;
+
+        let mut found = false;
+        for store in &stores {
+            for entry in self.db.list_memory_entries(&store.id)? {
+                if entry.id == id {
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+
+        if !found {
+            return Err(AppError::not_found(format!("Memory entry {id} not found or not accessible in current scope")));
+        }
+
+        self.db.delete_memory_entry(id)?;
+        Ok(ToolResult {
+            content: format!("Deleted memory entry {id}"),
+            metadata: Some(json!({"id": id, "action": "deleted"})),
         })
     }
 }
@@ -515,6 +625,100 @@ impl Tool for MemoryGetTool {
         }
 
         Err(AppError::not_found(format!("Memory entry not found or not accessible: {id}")))
+    }
+}
+
+// ── Session Search Tool ──────────────────────────────────────────────
+
+pub struct SessionSearchTool {
+    db: Database,
+    workspace_id: String,
+}
+
+impl SessionSearchTool {
+    pub fn new(db: Database, workspace_id: String) -> Self {
+        Self { db, workspace_id }
+    }
+}
+
+#[async_trait]
+impl Tool for SessionSearchTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "session_search".to_string(),
+            description: "Search past conversations across all sessions to recall specific discussions, decisions, or facts. \
+                          Use this when the user references something from a prior conversation or when you suspect relevant cross-session context exists. \
+                          Returns matching message snippets with conversation IDs and dates.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Keywords or phrase to search for in past conversations"},
+                    "limit": {"type": "integer", "description": "Maximum results to return (default: 5, max: 20)"}
+                },
+                "required": ["query"]
+            }),
+            prompt_snippet: "- session_search: Search past conversations when the user references something from before or you need cross-session recall".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let query = input
+            .get("query")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim();
+        let limit = input
+            .get("limit")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(5)
+            .clamp(1, 20) as usize;
+
+        if query.is_empty() {
+            return Ok(ToolResult {
+                content: "Please provide a search query.".to_string(),
+                metadata: Some(json!({"results": []})),
+            });
+        }
+
+        let workspace_scope = maybe_workspace_scope(&self.workspace_id);
+        let results = self.db.search_messages(query, workspace_scope, limit)?;
+
+        if results.is_empty() {
+            return Ok(ToolResult {
+                content: format!("No past conversations found matching: {query}"),
+                metadata: Some(json!({"results": [], "query": query})),
+            });
+        }
+
+        let mut lines = Vec::new();
+        let mut json_results = Vec::new();
+
+        for result in results {
+            lines.push(format!(
+                "- [{}] {} ({}): {}",
+                result.conversation_id,
+                result.role,
+                result.created_at,
+                result.content_snippet.replace('\n', " ")
+            ));
+            json_results.push(json!({
+                "message_id": result.message_id,
+                "conversation_id": result.conversation_id,
+                "role": result.role,
+                "snippet": result.content_snippet,
+                "created_at": result.created_at,
+            }));
+        }
+
+        Ok(ToolResult {
+            content: format!(
+                "Past conversation matches for '{}' ({} results):\n{}",
+                query,
+                json_results.len(),
+                lines.join("\n")
+            ),
+            metadata: Some(json!({"results": json_results, "query": query})),
+        })
     }
 }
 

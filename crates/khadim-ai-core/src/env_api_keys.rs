@@ -31,6 +31,14 @@ fn has_bedrock_credentials() -> bool {
         || std::env::var("AWS_WEB_IDENTITY_TOKEN_FILE").is_ok()
 }
 
+fn get_openai_codex_env_key() -> Option<String> {
+    std::env::var("OPENAI_CODEX_TOKEN")
+        .ok()
+        .or_else(|| std::env::var("OPENAI_CODEX_API_KEY").ok())
+        .or_else(|| std::env::var("CHATGPT_TOKEN").ok())
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+}
+
 pub fn get_env_api_key(provider: &str) -> Option<String> {
     match provider {
         "openai" => std::env::var("OPENAI_API_KEY")
@@ -40,10 +48,7 @@ pub fn get_env_api_key(provider: &str) -> Option<String> {
             .ok()
             .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok())
             .or_else(|| std::env::var("KHADIM_API_KEY").ok()),
-        "openai-codex" => std::env::var("OPENAI_CODEX_TOKEN")
-            .ok()
-            .or_else(|| std::env::var("CHATGPT_TOKEN").ok())
-            .or_else(|| std::env::var("OPENAI_API_KEY").ok()),
+        "openai-codex" => get_openai_codex_env_key(),
         "github-copilot" => std::env::var("COPILOT_GITHUB_TOKEN")
             .ok()
             .or_else(|| std::env::var("GH_TOKEN").ok())
@@ -80,6 +85,7 @@ pub fn get_env_api_key(provider: &str) -> Option<String> {
         "minimax" => std::env::var("MINIMAX_API_KEY").ok(),
         "minimax-cn" => std::env::var("MINIMAX_CN_API_KEY").ok(),
         "zai" => std::env::var("ZAI_API_KEY").ok(),
+        "nvidia" => std::env::var("NVIDIA_API_KEY").ok(),
         _ => None,
     }
 }
@@ -115,6 +121,7 @@ pub fn get_env_base_url(provider: &str) -> Option<String> {
         "minimax" => Some("https://api.minimax.io/anthropic".to_string()),
         "minimax-cn" => Some("https://api.minimaxi.com/anthropic".to_string()),
         "zai" => Some("https://api.z.ai/api/coding/paas/v4".to_string()),
+        "nvidia" => Some("https://integrate.api.nvidia.com/v1".to_string()),
         _ => None,
     }
 }
@@ -144,6 +151,7 @@ pub fn get_default_model(provider: &str) -> String {
         "minimax" => "MiniMax-M2.7".to_string(),
         "minimax-cn" => "MiniMax-M2.7".to_string(),
         "zai" => "glm-4.7".to_string(),
+        "nvidia" => "z-ai/glm-5.1".to_string(),
         _ => "gpt-4.1-mini".to_string(),
     })
 }

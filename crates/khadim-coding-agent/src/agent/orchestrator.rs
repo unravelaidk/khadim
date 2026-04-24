@@ -1,3 +1,4 @@
+use crate::agent::goal_tracker::GoalTracker;
 use crate::agent::mode_planner;
 use crate::agent::modes::{build_mode, chat_mode, explore_mode, plan_mode, sub_general_mode, sub_explore_mode, sub_review_mode};
 use crate::agent::session::KhadimSession;
@@ -6,7 +7,7 @@ use khadim_ai_core::error::AppError;
 use crate::events::AgentStreamEvent;
 use crate::helpers::try_repair_json;
 use khadim_ai_core::types::{
-    AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolMessage,
+    AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolCall, ToolMessage,
 };
 use khadim_ai_core::ModelClient;
 use crate::runtime::AgentRuntime;
@@ -219,6 +220,212 @@ pub fn auto_select_mode(prompt: &str) -> (AgentModeDefinition, String) {
     (mode, reasoning)
 }
 
+/// Tools that are safe to execute in parallel (read-only, no side effects between each other).
+const PARALLEL_SAFE_TOOLS: &[&str] = &[
+    "read", "ls", "grep", "glob", "web_search",
+];
+
+/// Result of executing a single tool call.
+#[allow(dead_code)]
+struct ToolExecResult {
+    tool_call_id: String,
+    tool_name: String,
+    content: String,
+    is_error: bool,
+    metadata: Option<Value>,
+}
+
+/// Execute a single tool call: resolve → run → emit events → return result.
+async fn execute_single_tool(
+    tool_call: &ToolCall,
+    runtime: &AgentRuntime,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    workspace_id: &str,
+    session_id: &str,
+) -> ToolExecResult {
+    let step_id = tool_call.id.clone();
+    let tool_name = tool_call.function.name.clone();
+    let raw_args = &tool_call.function.arguments;
+    let args = serde_json::from_str::<Value>(raw_args)
+        .unwrap_or_else(|_| try_repair_json(raw_args).unwrap_or_else(|| json!({})));
+
+    let make_ev = |etype: &str| -> AgentStreamEvent {
+        if workspace_id.is_empty() {
+            AgentStreamEvent::new(etype)
+        } else {
+            AgentStreamEvent::scoped(workspace_id, session_id, etype)
+        }
+    };
+
+    let _ = tx.send(
+        make_ev("step_start")
+            .with_content(format!("Running {}", tool_name))
+            .with_metadata(json!({
+                "id": step_id,
+                "title": format!("Running {}", tool_name),
+                "tool": tool_name,
+            })),
+    );
+
+    let tool = match runtime.get(&tool_name) {
+        Some(tool) => tool,
+        None => {
+            let msg = format!("Requested tool is not available: {}", tool_name);
+            let _ = tx.send(
+                make_ev("step_complete")
+                    .with_content(msg.clone())
+                    .with_metadata(json!({
+                        "id": step_id,
+                        "title": format!("Completed {}", tool_name),
+                        "tool": tool_name,
+                        "result": msg,
+                        "is_error": true,
+                    })),
+            );
+            return ToolExecResult {
+                tool_call_id: step_id,
+                tool_name,
+                content: "Tool not available".to_string(),
+                is_error: true,
+                metadata: None,
+            };
+        }
+    };
+
+    match tool.execute(args).await {
+        Ok(result) => {
+            let mut step_meta = json!({
+                "id": step_id,
+                "title": format!("Completed {}", tool_name),
+                "tool": tool_name,
+                "result": result.content,
+                "is_error": false,
+            });
+            if let Some(meta) = &result.metadata {
+                if let Some(object) = meta.as_object() {
+                    for (key, value) in object {
+                        step_meta[key] = value.clone();
+                    }
+                }
+            }
+            let _ = tx.send(
+                make_ev("step_complete")
+                    .with_content(result.content.clone())
+                    .with_metadata(step_meta),
+            );
+            ToolExecResult {
+                tool_call_id: step_id,
+                tool_name,
+                content: result.content,
+                is_error: false,
+                metadata: result.metadata,
+            }
+        }
+        Err(error) => {
+            let _ = tx.send(
+                make_ev("step_complete")
+                    .with_content(error.message.clone())
+                    .with_metadata(json!({
+                        "id": step_id,
+                        "title": format!("Completed {}", tool_name),
+                        "tool": tool_name,
+                        "result": error.message,
+                        "is_error": true,
+                    })),
+            );
+            ToolExecResult {
+                tool_call_id: step_id,
+                tool_name,
+                content: format!("Error: {}", error.message),
+                is_error: true,
+                metadata: None,
+            }
+        }
+    }
+}
+
+/// Execute a batch of tool calls with parallelism where safe.
+///
+/// Strategy:
+/// - Consecutive read-only tools (read, ls, grep, glob, web_search) are batched
+///   and executed concurrently via `join_all`.
+/// - Mutating tools (bash, write, edit, memory, delegate_to_agent) are executed
+///   one at a time, flushing any pending parallel batch first.
+/// - Results are always appended to session messages in the original order.
+async fn execute_tool_calls(
+    tool_calls: Vec<ToolCall>,
+    runtime: &AgentRuntime,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    session: &mut KhadimSession,
+    mut goal_tracker: Option<&mut GoalTracker>,
+) {
+    // Split tool calls into runs of parallel-safe and sequential tools.
+    // We process them in order, batching adjacent parallel-safe calls.
+    let mut i = 0;
+    while i < tool_calls.len() {
+        // Collect a run of parallel-safe tools
+        let batch_start = i;
+        while i < tool_calls.len()
+            && PARALLEL_SAFE_TOOLS.contains(&tool_calls[i].function.name.as_str())
+        {
+            i += 1;
+        }
+
+        // Execute the parallel batch
+        if i > batch_start {
+            let batch = &tool_calls[batch_start..i];
+            let futures: Vec<_> = batch
+                .iter()
+                .map(|tc| {
+                    execute_single_tool(
+                        tc,
+                        runtime,
+                        tx,
+                        &session.workspace_id,
+                        &session.id,
+                    )
+                })
+                .collect();
+
+            let results = futures::future::join_all(futures).await;
+
+            for (idx, result) in results.into_iter().enumerate() {
+                if let Some(ref mut gt) = goal_tracker {
+                    let tc = &batch[idx];
+                    gt.update_from_tool_json(&tc.function.name, &tc.function.arguments, &result.content);
+                }
+                session.messages.push(ChatMessage::Tool(ToolMessage {
+                    content: result.content,
+                    tool_call_id: result.tool_call_id,
+                }));
+            }
+        }
+
+        // Execute sequential tool (if we stopped on one)
+        if i < tool_calls.len() {
+            let tc = &tool_calls[i];
+            let result = execute_single_tool(
+                tc,
+                runtime,
+                tx,
+                &session.workspace_id,
+                &session.id,
+            )
+            .await;
+
+            if let Some(ref mut gt) = goal_tracker {
+                gt.update_from_tool_json(&tc.function.name, &tc.function.arguments, &result.content);
+            }
+
+            session.messages.push(ChatMessage::Tool(ToolMessage {
+                content: result.content,
+                tool_call_id: result.tool_call_id,
+            }));
+            i += 1;
+        }
+    }
+}
+
 /// Configuration for the orchestrator loop.
 pub struct RunConfig {
     /// Maximum number of tool-call turns before stopping (default: 200).
@@ -227,6 +434,8 @@ pub struct RunConfig {
     pub nudge_interval: usize,
     /// Whether to inject contract summaries from the prompt (default: true).
     pub extract_contracts: bool,
+    /// Whether to extract goals from the prompt and inject goal-count heuristic nudges (default: true).
+    pub goal_tracking: bool,
 }
 
 impl Default for RunConfig {
@@ -235,6 +444,7 @@ impl Default for RunConfig {
             max_turns: 200,
             nudge_interval: 6,
             extract_contracts: true,
+            goal_tracking: true,
         }
     }
 }
@@ -297,6 +507,26 @@ pub async fn run_prompt_with_runtime(
 
     session.messages.push(ChatMessage::User { content: prompt.to_string() });
 
+    let mut goal_tracker = if config.goal_tracking {
+        let gt = GoalTracker::from_prompt(prompt);
+        if gt.has_goals() {
+            let _ = tx.send(
+                make_event(session, "goal_heuristic")
+                    .with_content(format!("Extracted {} goals", gt.total()))
+                    .with_metadata(json!({
+                        "total_goals": gt.total(),
+                        "goals": gt.goals.iter().map(|g| json!({
+                            "kind": g.kind.label(),
+                            "description": g.description,
+                        })).collect::<Vec<_>>(),
+                    })),
+            );
+        }
+        Some(gt)
+    } else {
+        None
+    };
+
     let max_turns = config.max_turns;
     let mut turn_index: usize = 0;
     loop {
@@ -309,8 +539,12 @@ pub async fn run_prompt_with_runtime(
             return Ok("Reached max turn limit".to_string());
         }
         if config.nudge_interval > 0 && turn_index > 0 && turn_index % config.nudge_interval == 0 {
+            let nudge = goal_tracker
+                .as_ref()
+                .and_then(|gt| gt.nudge())
+                .unwrap_or_else(|| progress_nudge(turn_index));
             session.messages.push(ChatMessage::System {
-                content: progress_nudge(turn_index),
+                content: nudge,
             });
         }
 
@@ -464,99 +698,7 @@ pub async fn run_prompt_with_runtime(
                 reasoning_content: reply.reasoning_content.clone(),
             });
 
-            for tool_call in reply.tool_calls {
-                let step_id = tool_call.id.clone();
-                let raw_args = &tool_call.function.arguments;
-                let args = serde_json::from_str::<Value>(raw_args)
-                    .unwrap_or_else(|_| try_repair_json(raw_args).unwrap_or_else(|| json!({})));
-
-                let _ = tx.send(
-                    make_event(session, "step_start")
-                        .with_content(format!("Running {}", tool_call.function.name))
-                        .with_metadata(json!({
-                            "id": step_id,
-                            "title": format!("Running {}", tool_call.function.name),
-                            "tool": tool_call.function.name,
-                        })),
-                );
-
-                let tool = runtime.get(&tool_call.function.name).ok_or_else(|| {
-                    AppError::invalid_input(format!(
-                        "Requested tool is not available: {}",
-                        tool_call.function.name
-                    ))
-                });
-
-                let tool = match tool {
-                    Ok(tool) => tool,
-                    Err(error) => {
-                        let _ = tx.send(
-                            make_event(session, "step_complete")
-                                .with_content(error.message.clone())
-                                .with_metadata(json!({
-                                    "id": tool_call.id,
-                                    "title": format!("Completed {}", tool_call.function.name),
-                                    "tool": tool_call.function.name,
-                                    "result": error.message,
-                                    "is_error": true,
-                                })),
-                        );
-                        session.messages.push(ChatMessage::Tool(ToolMessage {
-                            content: "Tool not available".to_string(),
-                            tool_call_id: step_id,
-                        }));
-                        continue;
-                    }
-                };
-
-                let result = match tool.execute(args).await {
-                    Ok(result) => result,
-                    Err(error) => {
-                        let _ = tx.send(
-                            make_event(session, "step_complete")
-                                .with_content(error.message.clone())
-                                .with_metadata(json!({
-                                    "id": tool_call.id,
-                                    "title": format!("Completed {}", tool_call.function.name),
-                                    "tool": tool_call.function.name,
-                                    "result": error.message,
-                                    "is_error": true,
-                                })),
-                        );
-                        session.messages.push(ChatMessage::Tool(ToolMessage {
-                            content: format!("Error: {}", error.message),
-                            tool_call_id: step_id,
-                        }));
-                        continue;
-                    }
-                };
-
-                let mut step_meta = json!({
-                    "id": tool_call.id,
-                    "title": format!("Completed {}", tool_call.function.name),
-                    "tool": tool_call.function.name,
-                    "result": result.content,
-                    "is_error": false,
-                });
-                if let Some(meta) = &result.metadata {
-                    if let Some(object) = meta.as_object() {
-                        for (key, value) in object {
-                            step_meta[key] = value.clone();
-                        }
-                    }
-                }
-
-                let _ = tx.send(
-                    make_event(session, "step_complete")
-                        .with_content(result.content.clone())
-                        .with_metadata(step_meta),
-                );
-
-                session.messages.push(ChatMessage::Tool(ToolMessage {
-                    content: result.content,
-                    tool_call_id: step_id,
-                }));
-            }
+            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut()).await;
 
             turn_index += 1;
             continue;
@@ -626,6 +768,26 @@ async fn run_prompt_inner(
 
     session.messages.push(ChatMessage::User { content: prompt.to_string() });
 
+    let mut goal_tracker = if config.goal_tracking {
+        let gt = GoalTracker::from_prompt(prompt);
+        if gt.has_goals() {
+            let _ = tx.send(
+                make_event(session, "goal_heuristic")
+                    .with_content(format!("Extracted {} goals", gt.total()))
+                    .with_metadata(json!({
+                        "total_goals": gt.total(),
+                        "goals": gt.goals.iter().map(|g| json!({
+                            "kind": g.kind.label(),
+                            "description": g.description,
+                        })).collect::<Vec<_>>(),
+                    })),
+            );
+        }
+        Some(gt)
+    } else {
+        None
+    };
+
     let max_turns = config.max_turns;
     let mut turn_index: usize = 0;
     loop {
@@ -638,8 +800,12 @@ async fn run_prompt_inner(
             return Ok("Reached max turn limit".to_string());
         }
         if config.nudge_interval > 0 && turn_index > 0 && turn_index % config.nudge_interval == 0 {
+            let nudge = goal_tracker
+                .as_ref()
+                .and_then(|gt| gt.nudge())
+                .unwrap_or_else(|| progress_nudge(turn_index));
             session.messages.push(ChatMessage::System {
-                content: progress_nudge(turn_index),
+                content: nudge,
             });
         }
 
@@ -790,99 +956,7 @@ async fn run_prompt_inner(
                 reasoning_content: reply.reasoning_content.clone(),
             });
 
-            for tool_call in reply.tool_calls {
-                let step_id = tool_call.id.clone();
-                let raw_args = &tool_call.function.arguments;
-                let args = serde_json::from_str::<Value>(raw_args)
-                    .unwrap_or_else(|_| try_repair_json(raw_args).unwrap_or_else(|| json!({})));
-
-                let _ = tx.send(
-                    make_event(session, "step_start")
-                        .with_content(format!("Running {}", tool_call.function.name))
-                        .with_metadata(json!({
-                            "id": step_id,
-                            "title": format!("Running {}", tool_call.function.name),
-                            "tool": tool_call.function.name,
-                        })),
-                );
-
-                let tool = runtime.get(&tool_call.function.name).ok_or_else(|| {
-                    AppError::invalid_input(format!(
-                        "Requested tool is not available: {}",
-                        tool_call.function.name
-                    ))
-                });
-
-                let tool = match tool {
-                    Ok(tool) => tool,
-                    Err(error) => {
-                        let _ = tx.send(
-                            make_event(session, "step_complete")
-                                .with_content(error.message.clone())
-                                .with_metadata(json!({
-                                    "id": tool_call.id,
-                                    "title": format!("Completed {}", tool_call.function.name),
-                                    "tool": tool_call.function.name,
-                                    "result": error.message,
-                                    "is_error": true,
-                                })),
-                        );
-                        session.messages.push(ChatMessage::Tool(ToolMessage {
-                            content: "Tool not available".to_string(),
-                            tool_call_id: step_id,
-                        }));
-                        continue;
-                    }
-                };
-
-                let result = match tool.execute(args).await {
-                    Ok(result) => result,
-                    Err(error) => {
-                        let _ = tx.send(
-                            make_event(session, "step_complete")
-                                .with_content(error.message.clone())
-                                .with_metadata(json!({
-                                    "id": tool_call.id,
-                                    "title": format!("Completed {}", tool_call.function.name),
-                                    "tool": tool_call.function.name,
-                                    "result": error.message,
-                                    "is_error": true,
-                                })),
-                        );
-                        session.messages.push(ChatMessage::Tool(ToolMessage {
-                            content: format!("Error: {}", error.message),
-                            tool_call_id: step_id,
-                        }));
-                        continue;
-                    }
-                };
-
-                let mut step_meta = json!({
-                    "id": tool_call.id,
-                    "title": format!("Completed {}", tool_call.function.name),
-                    "tool": tool_call.function.name,
-                    "result": result.content,
-                    "is_error": false,
-                });
-                if let Some(meta) = &result.metadata {
-                    if let Some(object) = meta.as_object() {
-                        for (key, value) in object {
-                            step_meta[key] = value.clone();
-                        }
-                    }
-                }
-
-                let _ = tx.send(
-                    make_event(session, "step_complete")
-                        .with_content(result.content.clone())
-                        .with_metadata(step_meta),
-                );
-
-                session.messages.push(ChatMessage::Tool(ToolMessage {
-                    content: result.content,
-                    tool_call_id: step_id,
-                }));
-            }
+            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut()).await;
 
             turn_index += 1;
             continue;

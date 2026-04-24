@@ -26,6 +26,7 @@ PROVIDER_ENV_KEYS = {
     "minimax": "MINIMAX_API_KEY",
     "minimax-cn": "MINIMAX_CN_API_KEY",
     "zai": "ZAI_API_KEY",
+    "nvidia": "NVIDIA_API_KEY",
 }
 
 # Single bootstrap script that handles both Debian and Ubuntu containers,

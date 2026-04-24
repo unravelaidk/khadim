@@ -49,6 +49,10 @@ interface ChatViewProps {
   onSend: () => void;
   onStop: () => void;
   onNewChat: () => void;
+  /** When provided, shows a back button in the header (e.g. for drafts → list). */
+  onBack?: () => void;
+  /** Label for the back button. Defaults to "Back". */
+  backLabel?: string;
   isProcessing: boolean;
   streamingContent: string;
   streamingSteps: ThinkingStepData[];
@@ -97,6 +101,8 @@ export const ChatView = memo(function ChatView({
   onSend,
   onStop,
   onNewChat,
+  onBack,
+  backLabel = "Back",
   isProcessing,
   streamingContent,
   streamingSteps,
@@ -158,6 +164,17 @@ export const ChatView = memo(function ChatView({
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="shrink-0 px-6 py-4 border-b border-[var(--glass-border)] flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 -ml-1 rounded-lg text-[12px] font-medium text-[var(--text-muted)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)] transition-colors"
+              title={backLabel}
+            >
+              <i className="ri-arrow-left-line text-base leading-none" />
+              <span>{backLabel}</span>
+            </button>
+          )}
           {statusDot}
           {!agent && (
             <i className="ri-chat-1-line text-[20px] leading-none text-[var(--text-muted)]" />

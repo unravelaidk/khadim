@@ -68,7 +68,11 @@ pub fn remove_char_before(s: &mut String, char_idx: usize) -> usize {
         return 0;
     }
     let byte_idx = char_idx_to_byte_idx(s, char_idx - 1);
-    let ch_len = s[byte_idx..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+    let ch_len = s[byte_idx..]
+        .chars()
+        .next()
+        .map(|c| c.len_utf8())
+        .unwrap_or(1);
     s.drain(byte_idx..byte_idx + ch_len);
     char_idx - 1
 }
@@ -79,7 +83,11 @@ pub fn remove_char_at(s: &mut String, char_idx: usize) {
         return;
     }
     let byte_idx = char_idx_to_byte_idx(s, char_idx);
-    let ch_len = s[byte_idx..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+    let ch_len = s[byte_idx..]
+        .chars()
+        .next()
+        .map(|c| c.len_utf8())
+        .unwrap_or(1);
     s.drain(byte_idx..byte_idx + ch_len);
 }
 
@@ -88,7 +96,8 @@ pub fn truncate_str(s: &str, max: usize) -> &str {
     if s.chars().count() <= max {
         s
     } else {
-        let end = s.char_indices()
+        let end = s
+            .char_indices()
             .take_while(|(i, _)| *i < max.saturating_sub(1))
             .last()
             .map(|(i, c)| i + c.len_utf8())
@@ -99,7 +108,9 @@ pub fn truncate_str(s: &str, max: usize) -> &str {
 
 /// Word-wrap text to a maximum width (character-aware).
 pub fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
-    if max_width == 0 || text.is_empty() { return vec![text.to_string()]; }
+    if max_width == 0 || text.is_empty() {
+        return vec![text.to_string()];
+    }
     let mut lines = Vec::new();
     let mut current = String::new();
     let mut col = 0;
@@ -110,10 +121,101 @@ pub fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
             current = String::new();
             col = 0;
         }
-        if col > 0 { current.push(' '); col += 1; }
+        if col > 0 {
+            current.push(' ');
+            col += 1;
+        }
         current.push_str(word);
         col += wlen;
     }
-    if !current.is_empty() || lines.is_empty() { lines.push(current); }
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(current);
+    }
     lines
+}
+
+/// Wrap text to an exact character width, breaking at word boundaries when possible.
+/// Long words are hard-broken at the width limit.
+pub fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![text.to_string()];
+    }
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+    let mut lines = Vec::new();
+    for raw_line in text.lines() {
+        if raw_line.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut current = String::new();
+        let mut col = 0;
+        for word in raw_line.split_whitespace() {
+            let wlen = word.chars().count();
+            // If a single word is longer than max_width, hard-break it
+            if wlen > max_width {
+                if !current.is_empty() {
+                    lines.push(current);
+                    current = String::new();
+                    col = 0;
+                }
+                let chars: Vec<char> = word.chars().collect();
+                for chunk in chars.chunks(max_width) {
+                    lines.push(chunk.iter().collect());
+                }
+                continue;
+            }
+            if col > 0 && col + 1 + wlen > max_width {
+                lines.push(current);
+                current = String::new();
+                col = 0;
+            }
+            if col > 0 {
+                current.push(' ');
+                col += 1;
+            }
+            current.push_str(word);
+            col += wlen;
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wrap_text_to_width_basic() {
+        let text = "hello world foo bar";
+        let result = wrap_text_to_width(text, 10);
+        assert_eq!(result, vec!["hello", "world foo", "bar"]);
+    }
+
+    #[test]
+    fn test_wrap_text_to_width_long_word() {
+        let text = "supercalifragilistic";
+        let result = wrap_text_to_width(text, 8);
+        assert_eq!(result, vec!["supercal", "ifragili", "stic"]);
+    }
+
+    #[test]
+    fn test_wrap_text_to_width_empty() {
+        let result = wrap_text_to_width("", 10);
+        assert_eq!(result, vec![""]);
+    }
+
+    #[test]
+    fn test_wrap_text_to_width_multiline() {
+        let text = "line one\nline two";
+        let result = wrap_text_to_width(text, 20);
+        assert_eq!(result, vec!["line one", "line two"]);
+    }
 }

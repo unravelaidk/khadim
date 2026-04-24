@@ -117,30 +117,30 @@ impl Default for ThemeColors {
     fn default() -> Self {
         // Default dark theme colors
         ThemeColors {
-            accent: Color::Rgb(139, 92, 246),       // violet-500
-            accent_dim: Color::Rgb(109, 70, 196),    // violet-600
-            text_primary: Color::Rgb(229, 231, 235), // gray-200
-            text_dim: Color::Rgb(156, 163, 175),    // gray-400
-            text_muted: Color::Rgb(107, 114, 128),  // gray-500
-            user_bg: Color::Rgb(30, 30, 46),      // dark surface
-            tool_label: Color::Rgb(34, 197, 94),  // green-500
-            tool_text: Color::Rgb(156, 163, 175), // gray-400
-            error: Color::Rgb(239, 68, 68),      // red-500
-            thinking: Color::Rgb(250, 204, 21),   // yellow-400
-            border_idle: Color::Rgb(55, 65, 81),  // gray-700
-            border_active: Color::Rgb(139, 92, 246), // violet-500
-            border_error: Color::Rgb(239, 68, 68), // red-500
-            footer_bg: Color::Rgb(17, 17, 27),     // deep dark
-            footer_text: Color::Rgb(107, 114, 128), // gray-500
-            system_text: Color::Rgb(96, 165, 250), // blue-400
-            md_heading: Color::Rgb(139, 92, 246), // violet-500
-            md_code_fg: Color::Rgb(250, 204, 21), // yellow-400
-            md_code_bg: Color::Rgb(30, 30, 46),   // dark surface
-            md_link: Color::Rgb(96, 165, 250),    // blue-400
-            md_list_bullet: Color::Rgb(139, 92, 246), // violet-500
-            md_blockquote: Color::Rgb(107, 114, 128), // gray-500
-            md_hr: Color::Rgb(55, 65, 81),     // gray-700
-            md_table_border: Color::Rgb(75, 85, 99), // gray-600
+            accent: Color::Rgb(139, 92, 246),          // violet-500
+            accent_dim: Color::Rgb(109, 70, 196),      // violet-600
+            text_primary: Color::Rgb(229, 231, 235),   // gray-200
+            text_dim: Color::Rgb(156, 163, 175),       // gray-400
+            text_muted: Color::Rgb(107, 114, 128),     // gray-500
+            user_bg: Color::Rgb(30, 30, 46),           // dark surface
+            tool_label: Color::Rgb(34, 197, 94),       // green-500
+            tool_text: Color::Rgb(156, 163, 175),      // gray-400
+            error: Color::Rgb(239, 68, 68),            // red-500
+            thinking: Color::Rgb(250, 204, 21),        // yellow-400
+            border_idle: Color::Rgb(55, 65, 81),       // gray-700
+            border_active: Color::Rgb(139, 92, 246),   // violet-500
+            border_error: Color::Rgb(239, 68, 68),     // red-500
+            footer_bg: Color::Rgb(17, 17, 27),         // deep dark
+            footer_text: Color::Rgb(107, 114, 128),    // gray-500
+            system_text: Color::Rgb(96, 165, 250),     // blue-400
+            md_heading: Color::Rgb(139, 92, 246),      // violet-500
+            md_code_fg: Color::Rgb(250, 204, 21),      // yellow-400
+            md_code_bg: Color::Rgb(30, 30, 46),        // dark surface
+            md_link: Color::Rgb(96, 165, 250),         // blue-400
+            md_list_bullet: Color::Rgb(139, 92, 246),  // violet-500
+            md_blockquote: Color::Rgb(107, 114, 128),  // gray-500
+            md_hr: Color::Rgb(55, 65, 81),             // gray-700
+            md_table_border: Color::Rgb(75, 85, 99),   // gray-600
             md_table_header: Color::Rgb(139, 92, 246), // violet-500
         }
     }
@@ -152,7 +152,7 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
     match (family, variant) {
         // Default Dark
         (ThemeFamily::Default, ThemeVariant::Dark) => ThemeColors {
-            accent: Color::Rgb(224, 224, 236),        // near-white
+            accent: Color::Rgb(224, 224, 236), // near-white
             accent_dim: Color::Rgb(180, 180, 200),
             text_primary: Color::Rgb(229, 231, 235),
             text_dim: Color::Rgb(156, 163, 175),
@@ -180,16 +180,16 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // Catppuccin Mocha
         (ThemeFamily::Catppuccin, ThemeVariant::Mocha) => ThemeColors {
-            accent: Color::Rgb(137, 180, 250),     // blue
+            accent: Color::Rgb(137, 180, 250), // blue
             accent_dim: Color::Rgb(116, 166, 236),
             text_primary: Color::Rgb(205, 214, 244),
             text_dim: Color::Rgb(186, 194, 222),
             text_muted: Color::Rgb(127, 132, 156),
             user_bg: Color::Rgb(30, 30, 46),
-            tool_label: Color::Rgb(166, 227, 161),  // green
+            tool_label: Color::Rgb(166, 227, 161), // green
             tool_text: Color::Rgb(186, 194, 222),
-            error: Color::Rgb(243, 139, 168),      // red
-            thinking: Color::Rgb(249, 226, 175),  // yellow
+            error: Color::Rgb(243, 139, 168),    // red
+            thinking: Color::Rgb(249, 226, 175), // yellow
             border_idle: Color::Rgb(82, 85, 118),
             border_active: Color::Rgb(137, 180, 250),
             border_error: Color::Rgb(243, 139, 168),
@@ -208,7 +208,7 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // Catppuccin Latte
         (ThemeFamily::Catppuccin, ThemeVariant::Latte) => ThemeColors {
-            accent: Color::Rgb(30, 102, 175),       // blue
+            accent: Color::Rgb(30, 102, 175), // blue
             accent_dim: Color::Rgb(56, 123, 178),
             text_primary: Color::Rgb(76, 79, 89),
             text_dim: Color::Rgb(102, 106, 117),
@@ -236,16 +236,16 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // Nord
         (ThemeFamily::Nord, ThemeVariant::Dark) => ThemeColors {
-            accent: Color::Rgb(136, 192, 208),      // nord4
+            accent: Color::Rgb(136, 192, 208), // nord4
             accent_dim: Color::Rgb(129, 161, 176),
             text_primary: Color::Rgb(216, 222, 233),
             text_dim: Color::Rgb(169, 177, 191),
             text_muted: Color::Rgb(143, 151, 166),
             user_bg: Color::Rgb(46, 52, 64),
-            tool_label: Color::Rgb(163, 190, 140),  // nord7
+            tool_label: Color::Rgb(163, 190, 140), // nord7
             tool_text: Color::Rgb(169, 177, 191),
-            error: Color::Rgb(191, 97, 106),       // nord11
-            thinking: Color::Rgb(235, 203, 115),  // nord13
+            error: Color::Rgb(191, 97, 106),     // nord11
+            thinking: Color::Rgb(235, 203, 115), // nord13
             border_idle: Color::Rgb(94, 104, 118),
             border_active: Color::Rgb(136, 192, 208),
             border_error: Color::Rgb(191, 97, 106),
@@ -264,7 +264,7 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // Tokyo Night
         (ThemeFamily::TokyoNight, ThemeVariant::Dark) => ThemeColors {
-            accent: Color::Rgb(138, 173, 244),     // blue
+            accent: Color::Rgb(138, 173, 244), // blue
             accent_dim: Color::Rgb(118, 153, 218),
             text_primary: Color::Rgb(192, 202, 237),
             text_dim: Color::Rgb(165, 175, 210),
@@ -272,8 +272,8 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
             user_bg: Color::Rgb(26, 27, 38),
             tool_label: Color::Rgb(121, 192, 129), // green
             tool_text: Color::Rgb(165, 175, 210),
-            error: Color::Rgb(242, 92, 119),       // red
-            thinking: Color::Rgb(255, 208, 115),   // yellow
+            error: Color::Rgb(242, 92, 119),     // red
+            thinking: Color::Rgb(255, 208, 115), // yellow
             border_idle: Color::Rgb(68, 76, 97),
             border_active: Color::Rgb(138, 173, 244),
             border_error: Color::Rgb(242, 92, 119),
@@ -292,7 +292,7 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // Gruvbox Dark
         (ThemeFamily::Gruvbox, ThemeVariant::Dark) => ThemeColors {
-            accent: Color::Rgb(184, 187, 38),       // green
+            accent: Color::Rgb(184, 187, 38), // green
             accent_dim: Color::Rgb(156, 160, 32),
             text_primary: Color::Rgb(235, 219, 178),
             text_dim: Color::Rgb(189, 174, 147),
@@ -300,8 +300,8 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
             user_bg: Color::Rgb(40, 40, 40),
             tool_label: Color::Rgb(104, 157, 100), // green
             tool_text: Color::Rgb(189, 174, 147),
-            error: Color::Rgb(204, 102, 102),      // red
-            thinking: Color::Rgb(214, 158, 46),   // yellow
+            error: Color::Rgb(204, 102, 102),   // red
+            thinking: Color::Rgb(214, 158, 46), // yellow
             border_idle: Color::Rgb(90, 80, 70),
             border_active: Color::Rgb(184, 187, 38),
             border_error: Color::Rgb(204, 102, 102),
@@ -320,7 +320,7 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // One Dark
         (ThemeFamily::OneDark, ThemeVariant::Dark) => ThemeColors {
-            accent: Color::Rgb(97, 175, 239),    // blue
+            accent: Color::Rgb(97, 175, 239), // blue
             accent_dim: Color::Rgb(86, 156, 214),
             text_primary: Color::Rgb(171, 178, 191),
             text_dim: Color::Rgb(152, 159, 174),
@@ -328,7 +328,7 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
             user_bg: Color::Rgb(40, 44, 52),
             tool_label: Color::Rgb(152, 195, 121), // green
             tool_text: Color::Rgb(152, 159, 174),
-            error: Color::Rgb(224, 108, 117),   // red
+            error: Color::Rgb(224, 108, 117),    // red
             thinking: Color::Rgb(229, 192, 123), // yellow
             border_idle: Color::Rgb(86, 89, 101),
             border_active: Color::Rgb(97, 175, 239),
@@ -348,13 +348,13 @@ pub fn get_theme_colors(family: ThemeFamily, variant: ThemeVariant) -> ThemeColo
         },
         // Dracula
         (ThemeFamily::Dracula, ThemeVariant::Dark) => ThemeColors {
-            accent: Color::Rgb(139, 233, 253),     // cyan
+            accent: Color::Rgb(139, 233, 253), // cyan
             accent_dim: Color::Rgb(119, 207, 227),
             text_primary: Color::Rgb(248, 248, 242),
             text_dim: Color::Rgb(210, 210, 200),
             text_muted: Color::Rgb(175, 175, 170),
             user_bg: Color::Rgb(40, 42, 54),
-            tool_label: Color::Rgb(80, 250, 123),  // green
+            tool_label: Color::Rgb(80, 250, 123), // green
             tool_text: Color::Rgb(210, 210, 200),
             error: Color::Rgb(255, 85, 85),      // red
             thinking: Color::Rgb(255, 241, 118), // yellow
@@ -395,7 +395,12 @@ pub fn all_themes() -> Vec<ThemeCatalog> {
         },
         ThemeCatalog {
             family: ThemeFamily::Catppuccin,
-            variants: vec![ThemeVariant::Mocha, ThemeVariant::Macchiato, ThemeVariant::Frappe, ThemeVariant::Latte],
+            variants: vec![
+                ThemeVariant::Mocha,
+                ThemeVariant::Macchiato,
+                ThemeVariant::Frappe,
+                ThemeVariant::Latte,
+            ],
         },
         ThemeCatalog {
             family: ThemeFamily::Nord,

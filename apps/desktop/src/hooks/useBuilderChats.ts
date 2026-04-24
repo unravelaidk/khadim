@@ -141,6 +141,27 @@ function restoreChat(value: unknown): BuilderChat | null {
         .filter((m): m is LocalChatMessage => m !== null)
     : [];
 
+  // If the app closed mid-stream, persist whatever partial content we had
+  // captured as an "interrupted" assistant message so the user keeps it.
+  const partialContent =
+    typeof chat.streamingContent === "string" ? chat.streamingContent.trim() : "";
+  const partialSteps = Array.isArray(chat.streamingSteps)
+    ? finalizePersistedSteps(
+        chat.streamingSteps.filter(
+          (step): step is ThinkingStepData => Boolean(step && typeof step === "object"),
+        ),
+      )
+    : [];
+  if (partialContent || partialSteps.length > 0) {
+    messages.push({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: partialContent ? `${partialContent}\n\n⏸ Interrupted.` : "⏸ Interrupted.",
+      createdAt: new Date().toISOString(),
+      thinkingSteps: partialSteps.length > 0 ? partialSteps : undefined,
+    });
+  }
+
   const now = new Date().toISOString();
   return {
     id: chat.id,
@@ -230,6 +251,8 @@ export interface BuilderChatsController {
   getPendingQuestion: (id: string) => PendingQuestion | null;
   answerQuestion: (id: string, answers: string[][]) => Promise<void>;
   dismissQuestion: (id: string) => Promise<void>;
+  /** Abort the active in-flight stream for a draft and finalize its state. */
+  abortChat: (id: string) => Promise<void>;
 }
 
 export function useBuilderChats(): BuilderChatsController {
@@ -270,15 +293,14 @@ export function useBuilderChats(): BuilderChatsController {
     hydratedRef.current = true;
     const restored = restoreBuilderState(stateQuery.data);
     setChats(restored.chats);
-    setActiveId(restored.activeId);
     setStaleIds(new Set(restored.staleIds));
     setHydrated(true);
   }, [stateQuery.data, stateQuery.isLoading]);
 
   // ── Debounced persistence ─────────────────────────────────────────
   const serialized = useMemo(
-    () => serializeBuilderState(chats, activeId),
-    [chats, activeId],
+    () => serializeBuilderState(chats),
+    [chats],
   );
 
   useEffect(() => {
@@ -457,6 +479,34 @@ export function useBuilderChats(): BuilderChatsController {
       );
     };
 
+    /** Mirror the in-memory stream into the chat so partial progress survives
+     *  an app restart. Called after each text_delta / step event. */
+    const syncStreamIntoChat = (
+      chatId: string,
+      streamingContent: string,
+      streamingSteps: ThinkingStepData[],
+    ) => {
+      const now = new Date().toISOString();
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === chatId
+            ? { ...c, streamingContent, streamingSteps, updatedAt: now }
+            : c,
+        ),
+      );
+    };
+
+    /** Clear the persisted partial stream — call on done/error/abort. */
+    const clearChatStream = (chatId: string) => {
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === chatId && (c.streamingContent || c.streamingSteps)
+            ? { ...c, streamingContent: undefined, streamingSteps: undefined }
+            : c,
+        ),
+      );
+    };
+
     void events
       .onAgentStream((evt: AgentStreamEvent) => {
         if (!alive) return;
@@ -466,14 +516,17 @@ export function useBuilderChats(): BuilderChatsController {
         if (!chatId) return;
 
         if (evt.event_type === "text_delta" && evt.content) {
-          touchChat(chatId);
-          applyToStream(chatId, (prev) => ({
-            ...prev,
-            isProcessing: true,
-            streamingContent: stripInternalReminderBlocks(
-              prev.streamingContent + evt.content,
-            ),
-          }));
+          applyToStream(chatId, (prev) => {
+            const next = {
+              ...prev,
+              isProcessing: true,
+              streamingContent: stripInternalReminderBlocks(
+                prev.streamingContent + evt.content,
+              ),
+            };
+            syncStreamIntoChat(chatId, next.streamingContent, next.streamingSteps);
+            return next;
+          });
           return;
         }
 
@@ -482,12 +535,15 @@ export function useBuilderChats(): BuilderChatsController {
           evt.event_type === "step_update" ||
           evt.event_type === "step_complete"
         ) {
-          touchChat(chatId);
-          applyToStream(chatId, (prev) => ({
-            ...prev,
-            isProcessing: true,
-            streamingSteps: applyStreamingStepEvent(prev.streamingSteps, evt),
-          }));
+          applyToStream(chatId, (prev) => {
+            const next = {
+              ...prev,
+              isProcessing: true,
+              streamingSteps: applyStreamingStepEvent(prev.streamingSteps, evt),
+            };
+            syncStreamIntoChat(chatId, next.streamingContent, next.streamingSteps);
+            return next;
+          });
           return;
         }
 
@@ -515,6 +571,7 @@ export function useBuilderChats(): BuilderChatsController {
           const finalText = stripInternalReminderBlocks(live.streamingContent);
           const finalSteps = finalizeSteps(live.streamingSteps);
           finalizeAssistantMessage(chatId, finalText, finalSteps);
+          clearChatStream(chatId);
           setPendingQuestions((prev) => {
             if (!(chatId in prev)) return prev;
             const next = { ...prev };
@@ -533,6 +590,7 @@ export function useBuilderChats(): BuilderChatsController {
           const finalText = stripInternalReminderBlocks(live.streamingContent) + tail;
           const finalSteps = finalizeSteps(live.streamingSteps);
           finalizeAssistantMessage(chatId, finalText, finalSteps);
+          clearChatStream(chatId);
           setPendingQuestions((prev) => {
             if (!(chatId in prev)) return prev;
             const next = { ...prev };
@@ -572,6 +630,56 @@ export function useBuilderChats(): BuilderChatsController {
     await answerQuestion(id, [["(skipped)"]]);
   }, [answerQuestion]);
 
+  const abortChat = useCallback(async (id: string) => {
+    const chat = chatsRef.current.find((c) => c.id === id);
+    const sessionId = chat?.sessionId ?? null;
+    if (sessionId) {
+      await commands.khadimAbort(sessionId).catch(() => undefined);
+    }
+
+    // Finalize whatever streamed so far into a message, then reset state.
+    // The backend task is killed, so no "done" event will arrive.
+    const live = streamsRef.current[id] ?? EMPTY_STREAM;
+    const partialText = stripInternalReminderBlocks(live.streamingContent).trim();
+    const finalSteps = finalizeSteps(live.streamingSteps);
+    const tail = partialText ? "\n\n⏹ Stopped." : "⏹ Stopped.";
+    const content = partialText ? `${partialText}${tail}` : tail;
+    const assistantMessage: LocalChatMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content,
+      createdAt: new Date().toISOString(),
+      thinkingSteps: finalSteps.length > 0 ? finalSteps : undefined,
+    };
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              messages: [...c.messages, assistantMessage],
+              sessionId: null,
+              streamingContent: undefined,
+              streamingSteps: undefined,
+              updatedAt: new Date().toISOString(),
+            }
+          : c,
+      ),
+    );
+    if (sessionId) sessionToChatRef.current.delete(sessionId);
+    setStreams((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      next[id] = { ...EMPTY_STREAM };
+      return next;
+    });
+    setPendingQuestions((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
   return {
     chats,
     activeId,
@@ -588,5 +696,6 @@ export function useBuilderChats(): BuilderChatsController {
     getPendingQuestion,
     answerQuestion,
     dismissQuestion,
+    abortChat,
   };
 }

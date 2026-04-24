@@ -106,6 +106,17 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface BudgetPolicy {
+  max_tokens_per_run: number | null;
+  max_cost_usd_per_day: number | null;
+  max_runs_per_day: number | null;
+}
+
+export interface ArtifactPolicy {
+  retention_days: number;
+  max_artifacts_per_run: number;
+}
+
 export interface ManagedAgentRecord {
   id: string;
   name: string;
@@ -122,6 +133,8 @@ export interface ManagedAgentRecord {
   environment_id: string | null;
   max_turns: number;
   max_tokens: number;
+  budget_policy: BudgetPolicy;
+  artifact_policy: ArtifactPolicy;
   variables: Record<string, string>;
   version: number;
   total_sessions: number;
@@ -147,6 +160,8 @@ export interface UpsertManagedAgentInput {
   max_turns: number;
   max_tokens: number;
   variables?: Record<string, string> | null;
+  budget_policy?: BudgetPolicy | null;
+  artifact_policy?: ArtifactPolicy | null;
 }
 
 export interface EnvironmentProfile {
@@ -352,6 +367,7 @@ export interface AgentRunRecord {
   error_message: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  work_dir: string | null;
 }
 
 export interface AgentRunTurnRecord {
@@ -365,6 +381,127 @@ export interface AgentRunTurnRecord {
   token_output: number | null;
   duration_ms: number | null;
   created_at: string;
+}
+
+export interface RunEventRecord {
+  id: string;
+  run_id: string;
+  sequence_number: number;
+  event_type: string;
+  source: string;
+  title: string | null;
+  content: string | null;
+  status: string | null;
+  tool_name: string | null;
+  metadata_json: string;
+  created_at: string;
+}
+
+export interface ArtifactRecord {
+  id: string;
+  run_id: string;
+  agent_id: string | null;
+  kind: string;
+  label: string;
+  path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  storage_type: string;
+  metadata_json: string;
+  created_at: string;
+}
+
+export interface BudgetLedgerEntry {
+  id: string;
+  agent_id: string | null;
+  run_id: string | null;
+  scope: string;
+  metric: "run_started" | "tokens_total" | "estimated_cost_usd" | "runtime_seconds" | string;
+  delta: number;
+  window_key: string;
+  metadata_json: string;
+  created_at: string;
+}
+
+export interface AgentScheduleRecord {
+  id: string;
+  agent_id: string;
+  kind: "cron" | "event_queue" | string;
+  cron_expr: string | null;
+  is_paused: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_outcome: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QueueDefinitionRecord {
+  id: string;
+  name: string;
+  kind: string;
+  source_config_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QueueItemRecord {
+  id: string;
+  queue_id: string;
+  status: "ready" | "claimed" | "completed" | "dead_letter" | string;
+  payload_json: string;
+  priority: number;
+  visible_at: string;
+  claimed_by_run_id: string | null;
+  claimed_at: string | null;
+  attempt_count: number;
+  max_attempts: number;
+  last_error: string | null;
+  dead_lettered_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentHealthSnapshotRecord {
+  id: string;
+  agent_id: string;
+  status: "healthy" | "degraded" | "blocked" | "failing" | "paused" | "unknown" | string;
+  reason: string | null;
+  metrics_json: string;
+  created_at: string;
+}
+
+export interface ApprovalRequestRecord {
+  id: string;
+  run_id: string;
+  scope: string;
+  action_title: string;
+  risk_level: "low" | "medium" | "high" | string;
+  status: "pending" | "approved" | "denied" | string;
+  requested_at: string;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  metadata_json: string;
+}
+
+export interface EnsureQueueInput {
+  name: string;
+  kind: string;
+  source_config_json?: string | null;
+}
+
+export interface EnqueueQueueItemInput {
+  queue_id: string;
+  payload_json: string;
+  priority?: number | null;
+}
+
+export interface DecideApprovalInput {
+  approval_id: string;
+  decision: "approve" | "deny";
+  note?: string | null;
 }
 
 export interface ThinkingStepData {
@@ -540,9 +677,23 @@ export interface KhadimModelConfigInput {
   is_active?: boolean | null;
 }
 
+export interface KhadimModelCost {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+}
+
 export interface KhadimDiscoveredModel {
   id: string;
   name: string;
+  provider: string;
+  api: string;
+  reasoning: boolean;
+  input: string[];
+  context_window: number;
+  max_tokens: number;
+  cost: KhadimModelCost;
 }
 
 export interface KhadimBulkModelEntry {
@@ -1051,6 +1202,52 @@ export const commands = {
 
   checkDockerAvailable: () =>
     invoke<boolean>("check_docker_available"),
+
+  // Automation: events, artifacts, health, approvals, budgets, schedules, queues
+  listRunEvents: (runId: string) =>
+    invoke<RunEventRecord[]>("list_run_events", { runId }),
+
+  listRunArtifacts: (runId: string) =>
+    invoke<ArtifactRecord[]>("list_run_artifacts", { runId }),
+
+  listAgentArtifacts: (agentId: string) =>
+    invoke<ArtifactRecord[]>("list_agent_artifacts", { agentId }),
+
+  listAgentHealthSnapshots: (agentId: string) =>
+    invoke<AgentHealthSnapshotRecord[]>("list_agent_health_snapshots", { agentId }),
+
+  refreshAgentHealth: (agentId: string) =>
+    invoke<AgentHealthSnapshotRecord>("refresh_agent_health", { agentId }),
+
+  listApprovalRequests: (runId: string) =>
+    invoke<ApprovalRequestRecord[]>("list_approval_requests", { runId }),
+
+  decideApprovalRequest: (input: DecideApprovalInput) =>
+    invoke<ApprovalRequestRecord>("decide_approval_request", { input }),
+
+  listBudgetLedger: (agentId?: string | null, windowKey?: string | null) =>
+    invoke<BudgetLedgerEntry[]>("list_budget_ledger", {
+      agentId: agentId ?? null,
+      windowKey: windowKey ?? null,
+    }),
+
+  listAgentSchedules: () =>
+    invoke<AgentScheduleRecord[]>("list_agent_schedules"),
+
+  setAgentSchedulePaused: (agentId: string, isPaused: boolean) =>
+    invoke<AgentScheduleRecord | null>("set_agent_schedule_paused", { agentId, isPaused }),
+
+  listQueues: () =>
+    invoke<QueueDefinitionRecord[]>("list_queues"),
+
+  listQueueItems: (queueId: string) =>
+    invoke<QueueItemRecord[]>("list_queue_items", { queueId }),
+
+  ensureQueue: (input: EnsureQueueInput) =>
+    invoke<QueueDefinitionRecord>("ensure_queue", { input }),
+
+  enqueueQueueItem: (input: EnqueueQueueItemInput) =>
+    invoke<QueueItemRecord>("enqueue_queue_item", { input }),
 
   // Terminal
   terminalCreate: (

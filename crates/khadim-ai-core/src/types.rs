@@ -27,6 +27,20 @@ pub struct ModelSelection {
     pub base_url: Option<String>,
 }
 
+/// Per-million-token pricing for a model, in USD. Mirrors pi-mono's
+/// `model.cost = { input, output, cacheRead, cacheWrite }` shape.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct Cost {
+    /// USD per 1M input (prompt) tokens.
+    pub input: f64,
+    /// USD per 1M output (completion) tokens.
+    pub output: f64,
+    /// USD per 1M cache-read tokens.
+    pub cache_read: f64,
+    /// USD per 1M cache-write (cache-creation) tokens.
+    pub cache_write: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub id: String,
@@ -40,6 +54,8 @@ pub struct Model {
     pub max_tokens: u64,
     pub headers: HashMap<String, String>,
     pub openai_compat: Option<OpenAiCompat>,
+    /// Per-million-token pricing. Zero when unknown.
+    pub cost: Cost,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

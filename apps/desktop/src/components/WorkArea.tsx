@@ -28,6 +28,7 @@ import {
   AnalyticsDashboard,
   IntegrationsList,
   Quickstart,
+  SessionInsightsPanel,
 } from "./work";
 import { QuestionOverlay } from "./QuestionOverlay";
 import type {
@@ -63,12 +64,16 @@ import {
   useRunManagedAgentMutation,
   useStopAgentRunMutation,
   useAgentEditorModelsQuery,
+  useRunEventsQuery,
+  useRunArtifactsQuery,
+  useRunApprovalsQuery,
+  useDecideApprovalMutation,
   desktopQueryKeys,
 } from "../lib/queries";
 import { events, commands } from "../lib/bindings";
-import type { AgentStreamEvent, DesktopWorkspaceContext, ThinkingStepData, UpsertManagedAgentInput, UpsertEnvironmentInput, UpsertCredentialInput } from "../lib/bindings";
+import type { AgentStreamEvent, DesktopWorkspaceContext, PendingQuestion, ThinkingStepData, UpsertManagedAgentInput, UpsertEnvironmentInput, UpsertCredentialInput } from "../lib/bindings";
 import { FileFinder } from "./FileFinder";
-import { applyStreamingStepEvent, finalizeSteps, formatStreamingError } from "../lib/streaming";
+import { applyStreamingStepEvent, finalizeSteps, flattenQuestionAnswers, formatStreamingError, normalizeQuestionPayload } from "../lib/streaming";
 import { useBuilderChats } from "../hooks/useBuilderChats";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -202,14 +207,21 @@ export function WorkArea({
     if (sessionFilesOpen) setSessionFilesOpen(false);
   }
 
-  // ── Resolve the active session's env working directory ───────────
+  // ── Resolve the active session's working directory ───────────────
+  // Prefer the actual run work_dir (recorded by the runner at start) and
+  // fall back to the environment's declared workingDir for runs that
+  // predate per-run tracking or use docker/cloud runners.
   const activeSessionEnv = useMemo(() => {
     if (!selectedSessionId) return null;
     const session = sessions.find((s) => s.id === selectedSessionId);
     if (!session?.environmentId) return null;
     return environments.find((e) => e.id === session.environmentId) ?? null;
   }, [selectedSessionId, sessions, environments]);
-  const activeSessionWorkingDir = activeSessionEnv?.workingDir ?? null;
+  const activeSessionWorkingDir = useMemo(() => {
+    if (!selectedSessionId) return null;
+    const session = sessions.find((s) => s.id === selectedSessionId);
+    return session?.workDir ?? activeSessionEnv?.workingDir ?? null;
+  }, [selectedSessionId, sessions, activeSessionEnv]);
 
   // ── Model list for agent editor ───────────────────────────────────
   const availableModels = (modelsQ.data ?? []).map((m) => ({
@@ -436,7 +448,7 @@ export function WorkArea({
         harness: templateData.harness,
         status: "inactive" as const,
         modelId: templateData.modelId || null,
-        environmentId: null,
+        environmentId: templateData.environmentId || null,
         maxTurns: templateData.maxTurns,
         maxTokens: templateData.maxTokens,
         variables: templateData.variables ?? {},
@@ -596,6 +608,8 @@ export function WorkArea({
               onUpdate={(partial) => builderChats.updateChat(active.id, partial)}
               onMarkSending={(sessionId) => builderChats.markSending(active.id, sessionId)}
               onExit={() => builderChats.setActiveId(null)}
+              onNewDraft={() => builderChats.newChat(null)}
+              onAbort={() => builderChats.abortChat(active.id)}
               onAgentCreated={() => {
                 // Keep the draft around (now "saved"); return to the list.
                 builderChats.setActiveId(null);
@@ -772,14 +786,20 @@ function SessionDetailWired({
   const turnsQ = useAgentRunTurnsQuery(session.id);
   const turns = turnsQ.data ?? [];
   const stopRun = useStopAgentRunMutation();
+  const eventsQ = useRunEventsQuery(session.id);
+  const artifactsQ = useRunArtifactsQuery(session.id);
+  const approvalsQ = useRunApprovalsQuery(session.id);
+  const decideApproval = useDecideApprovalMutation();
   const [liveStreamingContent, setLiveStreamingContent] = useState("");
   const [liveStreamingSteps, setLiveStreamingSteps] = useState<ThinkingStepData[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
 
   useEffect(() => {
     setLiveStreamingContent("");
     setLiveStreamingSteps([]);
     setLiveError(null);
+    setPendingQuestion(null);
   }, [session.id]);
 
   useEffect(() => {
@@ -828,9 +848,27 @@ function SessionDetailWired({
         return;
       }
 
+      if (evt.event_type === "question" && evt.metadata) {
+        const meta = evt.metadata as Record<string, unknown>;
+        const id = typeof meta.id === "string" ? meta.id : "";
+        const questions = normalizeQuestionPayload(meta.questions);
+        if (id && questions.length > 0) {
+          setPendingQuestion({
+            id,
+            sessionId: evt.session_id,
+            workspaceId: evt.workspace_id,
+            conversationId: null,
+            backend: "khadim",
+            questions,
+          });
+        }
+        return;
+      }
+
       if (evt.event_type === "error") {
         setLiveError(formatStreamingError(evt.content));
         setLiveStreamingSteps((prev) => finalizeSteps(prev));
+        setPendingQuestion(null);
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentRuns }),
           queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentRunTurns(session.id) }),
@@ -840,6 +878,7 @@ function SessionDetailWired({
 
       if (evt.event_type === "done") {
         setLiveStreamingSteps((prev) => finalizeSteps(prev));
+        setPendingQuestion(null);
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentRuns }),
           queryClient.invalidateQueries({ queryKey: desktopQueryKeys.agentRunTurns(session.id) }),
@@ -857,26 +896,71 @@ function SessionDetailWired({
 
   const showLiveState = session.status === "running" || session.status === "pending";
 
+  const submitQuestionAnswer = useCallback(async (answers: string[][]) => {
+    const current = pendingQuestion;
+    if (!current) return;
+    const reply = flattenQuestionAnswers(answers);
+    if (!reply) return;
+    try {
+      await commands.khadimAnswerQuestion(current.sessionId, reply);
+      setPendingQuestion(null);
+    } catch (err) {
+      setLiveError(formatStreamingError(err instanceof Error ? err.message : String(err)));
+    }
+  }, [pendingQuestion]);
+
+  const dismissQuestion = useCallback(() => {
+    void submitQuestionAnswer([["(skipped)"]]);
+  }, [submitQuestionAnswer]);
+
   return (
-    <SessionDetail
-      session={session}
-      turns={turns}
-      liveStreamingContent={showLiveState ? liveStreamingContent : ""}
-      liveStreamingSteps={showLiveState ? liveStreamingSteps : []}
-      liveError={liveError}
-      envWorkingDir={envWorkingDir}
-      onBack={onBack}
-      onOpenFiles={onOpenFiles}
-      onAbort={() => {
-        stopRun.mutate(session.id);
-      }}
-      onRetry={() => {
-        console.log("[WorkArea] Retry session:", session.id);
-      }}
-      onSendMessage={(msg) => {
-        console.log("[WorkArea] Send to session:", session.id, msg);
-      }}
-    />
+    <>
+      <SessionDetail
+        session={session}
+        turns={turns}
+        events={eventsQ.data ?? []}
+        liveStreamingContent={showLiveState ? liveStreamingContent : ""}
+        liveStreamingSteps={showLiveState ? liveStreamingSteps : []}
+        liveError={liveError}
+        envWorkingDir={envWorkingDir}
+        onBack={onBack}
+        onOpenFiles={onOpenFiles}
+        onAbort={() => {
+          stopRun.mutate(session.id);
+        }}
+        onRetry={() => {
+          console.log("[WorkArea] Retry session:", session.id);
+        }}
+        onSendMessage={(msg) => {
+          console.log("[WorkArea] Send to session:", session.id, msg);
+        }}
+        rightPanel={
+          <SessionInsightsPanel
+            session={session}
+            events={eventsQ.data ?? []}
+            artifacts={artifactsQ.data ?? []}
+            approvals={approvalsQ.data ?? []}
+            runWorkDir={session.workDir ?? envWorkingDir}
+            isDecidingApproval={decideApproval.isPending}
+            onDecideApproval={(approvalId, decision) => {
+              decideApproval.mutate({
+                approvalId,
+                decision,
+                runId: session.id,
+              });
+            }}
+          />
+        }
+      />
+      {pendingQuestion && createPortal(
+        <QuestionOverlay
+          question={pendingQuestion}
+          onAnswer={(answers) => { void submitQuestionAnswer(answers); }}
+          onDismiss={dismissQuestion}
+        />,
+        document.body,
+      )}
+    </>
   );
 }
 

@@ -41,6 +41,8 @@ interface AgentBuilderPanelProps {
   onUpdate: (partial: Partial<BuilderChat>) => void;
   onMarkSending: (sessionId: string) => void;
   onExit: () => void;
+  onNewDraft?: () => void;
+  onAbort: () => void | Promise<void>;
   onAgentCreated: (agentId: string, agentName: string) => void;
   /** Set when this draft was restored with a dropped in-flight session. */
   stale?: boolean;
@@ -53,6 +55,8 @@ export function AgentBuilderPanel({
   onUpdate,
   onMarkSending,
   onExit,
+  onNewDraft,
+  onAbort,
   onAgentCreated,
   stale = false,
   onDismissStale,
@@ -287,10 +291,8 @@ export function AgentBuilderPanel({
   }, [chat.seedMessage, sendToModel]);
 
   const handleStop = useCallback(() => {
-    if (sessionIdRef.current) {
-      void commands.khadimAbort(sessionIdRef.current).catch(() => undefined);
-    }
-  }, []);
+    void Promise.resolve(onAbort()).catch(() => undefined);
+  }, [onAbort]);
 
   /* ── Build LocalChatConversation for ChatView ───────────────── */
   const conversation: LocalChatConversation = useMemo(
@@ -341,7 +343,9 @@ export function AgentBuilderPanel({
       onInputChange={setInput}
       onSend={handleSend}
       onStop={handleStop}
-      onNewChat={onExit}
+      onNewChat={onNewDraft ?? onExit}
+      onBack={onExit}
+      backLabel="Drafts"
       isProcessing={stream.isProcessing}
       streamingContent={stream.streamingContent}
       streamingSteps={stream.streamingSteps}

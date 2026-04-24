@@ -7,12 +7,14 @@ pub mod docker;
 pub mod helpers;
 pub mod local;
 
-use crate::db::{AgentRun, AgentRunTurn, Database, ManagedAgent};
+use crate::db::{AgentRun, AgentRunTurn, Database, ManagedAgent, RunEvent};
 use crate::error::AppError;
 use crate::opencode::AgentStreamEvent;
 use helpers::credential_env_key;
+use serde_json::Value;
 use std::collections::HashMap;
-use tauri::{AppHandle, Emitter};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Merged environment that a runner receives.
 #[derive(Debug, Clone)]
@@ -53,10 +55,12 @@ pub fn create_run_record(
         started_at: Some(now),
         finished_at: None,
         duration_ms: None,
+        ended_reason: None,
         result_summary: None,
         error_message: None,
         input_tokens: None,
         output_tokens: None,
+        work_dir: None,
     };
     db.create_agent_run(&run)?;
     Ok(run)
@@ -156,6 +160,7 @@ pub fn complete_run(
         "completed",
         Some(&now.to_rfc3339()),
         Some(duration_ms),
+        Some("completed"),
         result_summary,
         None,
         input_tokens,
@@ -181,6 +186,7 @@ pub fn fail_run(
         "failed",
         Some(&now.to_rfc3339()),
         Some(duration_ms),
+        Some("failed"),
         None,
         Some(error_message),
         None,
@@ -229,8 +235,43 @@ pub fn emit_run_event(
     run_id: &str,
     event_type: &str,
     content: Option<String>,
-    metadata: Option<serde_json::Value>,
+    metadata: Option<Value>,
 ) {
+    if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
+        let db: Arc<Database> = state.db.clone();
+        let metadata_json = metadata.clone().unwrap_or(Value::Object(Default::default())).to_string();
+        let sequence_number = db.list_run_events(run_id).map(|events| events.len() as i64 + 1).unwrap_or(1);
+        let title = metadata
+            .as_ref()
+            .and_then(|value| value.get("title"))
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned);
+        let status = metadata
+            .as_ref()
+            .and_then(|value| value.get("status"))
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned);
+        let tool_name = metadata
+            .as_ref()
+            .and_then(|value| value.get("tool"))
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned);
+        let event = RunEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: run_id.to_string(),
+            sequence_number,
+            event_type: event_type.to_string(),
+            source: "runner".to_string(),
+            title,
+            content: content.clone(),
+            status,
+            tool_name,
+            metadata_json,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let _ = db.create_run_event(&event);
+    }
+
     let _ = app.emit(
         "agent-stream",
         &AgentStreamEvent {

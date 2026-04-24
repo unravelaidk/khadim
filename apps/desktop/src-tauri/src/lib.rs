@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod automation;
 mod agent_runner;
 mod claude_code;
 mod commands;
@@ -24,6 +25,13 @@ mod terminal;
 mod workspace_context;
 
 use claude_code::ClaudeCodeManager;
+use automation::RunService;
+use automation::ApprovalService;
+use automation::ArtifactService;
+use automation::BudgetService;
+use automation::HealthService;
+use automation::QueueService;
+use automation::SchedulerService;
 use db::Database;
 use file_index::FileIndexManager;
 use integrations::IntegrationRegistry;
@@ -50,6 +58,13 @@ pub struct AppState {
     file_index: Arc<FileIndexManager>,
     lsp: Arc<LspManager>,
     integrations: Arc<IntegrationRegistry>,
+    run_service: Arc<RunService>,
+    scheduler_service: Arc<SchedulerService>,
+    artifact_service: Arc<ArtifactService>,
+    budget_service: Arc<BudgetService>,
+    queue_service: Arc<QueueService>,
+    health_service: Arc<HealthService>,
+    approval_service: Arc<ApprovalService>,
 }
 
 fn build_app_state() -> Arc<AppState> {
@@ -94,11 +109,33 @@ fn build_app_state() -> Arc<AppState> {
         log::info!("Integrations registry initialized");
     }
 
+    let khadim = Arc::new(KhadimManager::new());
+    let artifact_service = Arc::new(ArtifactService::new(Arc::clone(&db)));
+    let budget_service = Arc::new(BudgetService::new(Arc::clone(&db)));
+    let queue_service = Arc::new(QueueService::new(Arc::clone(&db)));
+    let health_service = Arc::new(HealthService::new(Arc::clone(&db)));
+    let approval_service = Arc::new(ApprovalService::new(Arc::clone(&db)));
+    let run_service = Arc::new(RunService::new(
+        Arc::clone(&db),
+        Arc::clone(&khadim),
+        Arc::clone(&plugin_manager),
+        Arc::clone(&skill_manager),
+        Arc::clone(&integration_registry),
+        Arc::clone(&budget_service),
+        Arc::clone(&queue_service),
+        Arc::clone(&health_service),
+        Arc::clone(&approval_service),
+    ));
+    let scheduler_service = Arc::new(SchedulerService::new(
+        Arc::clone(&db),
+        Arc::clone(&run_service),
+    ));
+
     Arc::new(AppState {
         db,
         process_runner: ProcessRunner::new(),
         opencode: OpenCodeManager::new(),
-        khadim: Arc::new(KhadimManager::new()),
+        khadim,
         claude_code: Arc::new(ClaudeCodeManager::new()),
         github: github::GitHubClient::new(),
         plugins: plugin_manager,
@@ -107,6 +144,13 @@ fn build_app_state() -> Arc<AppState> {
         file_index: Arc::new(FileIndexManager::new()),
         lsp: Arc::new(LspManager::new()),
         integrations: integration_registry,
+        run_service,
+        scheduler_service,
+        artifact_service,
+        budget_service,
+        queue_service,
+        health_service,
+        approval_service,
     })
 }
 
@@ -180,6 +224,14 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(true);
             }
+            let app_state = app.state::<Arc<AppState>>().inner().clone();
+            let scheduler = app_state.scheduler_service.clone();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = scheduler.start(app_handle).await {
+                    log::error!("Failed to start scheduler service: {}", error.message);
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -221,6 +273,20 @@ pub fn run() {
             commands::rpa::run_managed_agent,
             commands::rpa::stop_agent_run,
             commands::rpa::check_docker_available,
+            commands::automation::list_run_events,
+            commands::automation::list_run_artifacts,
+            commands::automation::list_agent_artifacts,
+            commands::automation::list_agent_health_snapshots,
+            commands::automation::refresh_agent_health,
+            commands::automation::list_approval_requests,
+            commands::automation::decide_approval_request,
+            commands::automation::list_budget_ledger,
+            commands::automation::list_agent_schedules,
+            commands::automation::set_agent_schedule_paused,
+            commands::automation::list_queues,
+            commands::automation::list_queue_items,
+            commands::automation::ensure_queue,
+            commands::automation::enqueue_queue_item,
             commands::terminal::terminal_create,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,

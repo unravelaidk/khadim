@@ -19,7 +19,7 @@ use bollard::Docker;
 use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 // Keep the default sandbox image small, but still glibc-based so a future
 // native Khadim runtime can run inside the container without an Alpine/musl fork.
@@ -54,7 +54,7 @@ pub async fn execute_docker_run(
 
     // Mark running
     let _ = db.update_agent_run_status(
-        &run_id, "running", None, None, None, None, None, None,
+        &run_id, "running", None, None, None, None, None, None, None,
     );
 
     emit_run_event(&app, &run_id, "step_start", None, Some(json!({
@@ -297,6 +297,15 @@ echo "=== Agent Run Completed ==="
     } else {
         let msg = format!("Container exited with code {exit_code}");
         fail_run_with_events(&app, &db, &run_id, msg, &started_at);
+    }
+
+    if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
+        if let Err(error) = state
+            .artifact_service
+            .persist_text_artifact(&run_id, Some(&agent.id), "log", "docker-output", "log", &output, &agent.artifact_policy)
+        {
+            log::warn!("Failed to persist docker output artifact for run {}: {}", run_id, error.message);
+        }
     }
 
     // Cleanup

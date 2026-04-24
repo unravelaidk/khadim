@@ -1,5 +1,7 @@
 use crate::error::AppError;
+use crate::providers::request_headers::build_copilot_dynamic_headers;
 use crate::providers::transform_messages::{finalize_tool_call, to_openai_messages, to_openai_tools};
+use crate::providers::usage::openai_completions_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{
     AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage,
@@ -8,6 +10,35 @@ use futures_util::future::BoxFuture;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+/// Build the header map for an OpenAI-completions request.
+/// When the provider is `github-copilot`, injects the dynamic headers
+/// (`X-Initiator`, `Openai-Intent`, `Copilot-Vision-Request`) that Copilot
+/// requires on every request.
+fn build_openai_headers(model: &Model, messages: &[crate::types::ChatMessage]) -> reqwest::header::HeaderMap {
+    let mut headers = model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
+        if let (Ok(name), Ok(val)) = (
+            reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+            reqwest::header::HeaderValue::from_str(value),
+        ) {
+            acc.insert(name, val);
+        }
+        acc
+    });
+
+    if model.provider == "github-copilot" {
+        for (key, value) in build_copilot_dynamic_headers(messages) {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                reqwest::header::HeaderValue::from_str(&value),
+            ) {
+                headers.insert(name, val);
+            }
+        }
+    }
+
+    headers
+}
 
 fn extract_reasoning_text(message: &serde_json::Value) -> Option<String> {
     ["reasoning_content", "reasoning", "reasoning_text"]
@@ -51,6 +82,7 @@ pub fn complete(
     let model = model.clone();
     let messages = to_openai_messages(&context.messages);
     let tools = to_openai_tools(context);
+    let headers = build_openai_headers(&model, &context.messages);
     let api_key = api_key.to_string();
 
     Box::pin(async move {
@@ -73,15 +105,7 @@ pub fn complete(
         let response = client
             .post(format!("{}/chat/completions", model.base_url.trim_end_matches('/')))
             .bearer_auth(api_key)
-            .headers(model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(value),
-                ) {
-                    acc.insert(name, val);
-                }
-                acc
-            }))
+            .headers(headers)
             .json(&payload)
             .send()
             .await?;
@@ -126,21 +150,7 @@ pub fn complete(
 
         let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
 
-        Ok(CompletionResponse {
-            content,
-            tool_calls,
-            usage: Usage {
-                input: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                output: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                cache_read: usage
-                    .get("prompt_tokens_details")
-                    .and_then(|v| v.get("cached_tokens"))
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0),
-                cache_write: 0,
-            },
-            reasoning_content,
-        })
+        Ok(CompletionResponse { content, tool_calls, usage: openai_completions_usage(&usage), reasoning_content })
     })
 }
 
@@ -154,6 +164,7 @@ pub fn stream(
     let model = model.clone();
     let messages = to_openai_messages(&context.messages);
     let tools = to_openai_tools(context);
+    let headers = build_openai_headers(&model, &context.messages);
     let api_key = api_key.to_string();
 
     Box::pin(async move {
@@ -177,15 +188,7 @@ pub fn stream(
         let response = client
             .post(format!("{}/chat/completions", model.base_url.trim_end_matches('/')))
             .bearer_auth(api_key)
-            .headers(model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(value),
-                ) {
-                    acc.insert(name, val);
-                }
-                acc
-            }))
+            .headers(headers)
             .json(&payload)
             .send()
             .await?;
@@ -216,16 +219,7 @@ pub fn stream(
             })?;
 
             if let Some(raw_usage) = payload.get("usage").cloned().or_else(|| choice_usage(&payload)) {
-                usage.input = raw_usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.input);
-                usage.output = raw_usage
-                    .get("completion_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(usage.output);
-                usage.cache_read = raw_usage
-                    .get("prompt_tokens_details")
-                    .and_then(|v| v.get("cached_tokens"))
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(usage.cache_read);
+                usage = openai_completions_usage(&raw_usage);
                 on_event(AssistantStreamEvent::Usage(usage.clone()));
             }
 

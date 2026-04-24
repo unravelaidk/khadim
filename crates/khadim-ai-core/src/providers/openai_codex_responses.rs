@@ -1,6 +1,8 @@
 use crate::error::AppError;
 use crate::providers::request_headers::build_codex_request_headers;
-use crate::providers::transform_messages::{finalize_tool_call, to_openai_responses_input};
+use crate::providers::transform_messages::{finalize_tool_call, normalize_tool_call_id};
+use crate::providers::usage::openai_responses_usage;
+use crate::types::ChatMessage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use base64::Engine;
@@ -32,7 +34,7 @@ fn extract_account_id(token: &str) -> Option<String> {
     json.get("https://api.openai.com/auth")?.get("chatgpt_account_id")?.as_str().map(ToOwned::to_owned)
 }
 
-fn headers(model: &Model, token: &str, session_id: Option<&str>) -> reqwest::header::HeaderMap {
+fn headers(model: &Model, token: &str, session_id: Option<&str>, websocket: bool) -> reqwest::header::HeaderMap {
     let mut headers = model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
         if let (Ok(name), Ok(val)) = (
             reqwest::header::HeaderName::from_bytes(key.as_bytes()),
@@ -48,7 +50,14 @@ fn headers(model: &Model, token: &str, session_id: Option<&str>) -> reqwest::hea
             headers.insert("chatgpt-account-id", val);
         }
     }
-    headers.insert("OpenAI-Beta", reqwest::header::HeaderValue::from_static("responses=experimental"));
+    headers.insert(
+        "OpenAI-Beta",
+        reqwest::header::HeaderValue::from_static(if websocket {
+            "responses_websockets=2026-02-06"
+        } else {
+            "responses=experimental"
+        }),
+    );
     for (key, value) in build_codex_request_headers(session_id) {
         if let (Ok(name), Ok(val)) = (
             reqwest::header::HeaderName::from_bytes(key.as_bytes()),
@@ -58,6 +67,45 @@ fn headers(model: &Model, token: &str, session_id: Option<&str>) -> reqwest::hea
         }
     }
     headers
+}
+
+fn request_payload(
+    model: &Model,
+    instructions: String,
+    input: Vec<serde_json::Value>,
+    tools: Vec<serde_json::Value>,
+    stream: bool,
+    session_id: Option<&str>,
+) -> serde_json::Value {
+    let mut payload = json!({
+        "model": model.id,
+        "instructions": instructions,
+        "input": input,
+        "stream": stream,
+        "store": false,
+        "text": { "verbosity": "medium" },
+        "include": ["reasoning.encrypted_content"],
+        "tool_choice": "auto",
+        "parallel_tool_calls": true,
+    });
+
+    if !tools.is_empty() {
+        payload["tools"] = json!(tools);
+    }
+
+    if let Some(session_id) = session_id {
+        payload["prompt_cache_key"] = json!(session_id);
+    }
+
+    payload
+}
+
+fn websocket_request_payload(payload: serde_json::Value) -> serde_json::Value {
+    let mut request = payload;
+    if let Some(object) = request.as_object_mut() {
+        object.insert("type".to_string(), json!("response.create"));
+    }
+    request
 }
 
 fn endpoint(base_url: &str) -> String {
@@ -79,41 +127,93 @@ fn websocket_endpoint(base_url: &str) -> String {
 }
 
 fn convert_input(context: &Context) -> Vec<serde_json::Value> {
-    to_openai_responses_input(&context.messages, false)
+    let mut converted = Vec::new();
+    let mut pending_tool_calls = Vec::<String>::new();
+    let mut existing_tool_results = std::collections::HashSet::<String>::new();
+    let mut message_index = 0usize;
+
+    let flush_orphaned_tool_results = |
+        converted: &mut Vec<serde_json::Value>,
+        pending_tool_calls: &[String],
+        existing_tool_results: &std::collections::HashSet<String>,
+    | {
+        for tool_call_id in pending_tool_calls {
+            if existing_tool_results.contains(tool_call_id) {
+                continue;
+            }
+            converted.push(json!({
+                "type": "function_call_output",
+                "call_id": tool_call_id,
+                "output": "No result provided",
+            }));
+        }
+    };
+
+    for message in &context.messages {
+        match message {
+            ChatMessage::System { .. } => {}
+            ChatMessage::User { content } => {
+                flush_orphaned_tool_results(&mut converted, &pending_tool_calls, &existing_tool_results);
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+                converted.push(json!({
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": content }],
+                }));
+            }
+            ChatMessage::Assistant { content, tool_calls, .. } => {
+                flush_orphaned_tool_results(&mut converted, &pending_tool_calls, &existing_tool_results);
+                pending_tool_calls.clear();
+                existing_tool_results.clear();
+
+                if let Some(content) = content {
+                    if !content.trim().is_empty() {
+                        converted.push(json!({
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{ "type": "output_text", "text": content }],
+                            "status": "completed",
+                            "id": format!("msg_{message_index}"),
+                        }));
+                    }
+                }
+
+                for tool_call in tool_calls {
+                    let call_id = normalize_tool_call_id(&tool_call.id, 64);
+                    pending_tool_calls.push(call_id.clone());
+                    converted.push(json!({
+                        "type": "function_call",
+                        "call_id": call_id,
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments,
+                    }));
+                }
+            }
+            ChatMessage::Tool(tool) => {
+                let call_id = normalize_tool_call_id(&tool.tool_call_id, 64);
+                existing_tool_results.insert(call_id.clone());
+                converted.push(json!({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": tool.content,
+                }));
+            }
+        }
+
+        message_index += 1;
+    }
+
+    flush_orphaned_tool_results(&mut converted, &pending_tool_calls, &existing_tool_results);
+    converted
 }
 
-/// Build a tool-use prompt block that describes all available tools so the model
-/// can invoke them via structured text output.  The chatgpt.com Codex backend
-/// does NOT support custom `"type":"function"` tools — only built-in tools are
-/// accepted.  We embed tool definitions in the instructions instead and parse
-/// tool calls from the model's text response.
-fn build_tool_instructions(context: &Context) -> String {
-    if context.tools.is_empty() {
-        return String::new();
-    }
-
-    let mut prompt = String::from(
-        "\n\n# Available Tools\n\
-         You have access to the following tools. To call a tool, output a JSON block \
-         wrapped in <tool_call> tags on its own line. You may call multiple tools in \
-         sequence. After each tool call the user will provide the result.\n\n\
-         Format:\n\
-         <tool_call>\n\
-         {\"name\": \"tool_name\", \"arguments\": { ... }}\n\
-         </tool_call>\n\n\
-         Tools:\n",
-    );
-
-    for tool in &context.tools {
-        prompt.push_str(&format!(
-            "\n## {}\n{}\nParameters: {}\n",
-            tool.name,
-            tool.description,
-            serde_json::to_string_pretty(&tool.parameters).unwrap_or_else(|_| "{}".to_string()),
-        ));
-    }
-
-    prompt
+fn convert_tools(context: &Context) -> Vec<serde_json::Value> {
+    context.tools.iter().map(|tool| json!({
+        "type": "function",
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.parameters,
+    })).collect()
 }
 
 /// Parse `<tool_call>...</tool_call>` blocks from the model's text response and
@@ -153,25 +253,182 @@ fn parse_tool_calls_from_text(text: &str) -> (String, Vec<ToolCall>) {
     (clean_text, tool_calls)
 }
 
+#[derive(Default)]
+struct StreamState {
+    content: String,
+    tool_calls: Vec<ToolCall>,
+    usage: Usage,
+    current_tool: Option<InFlightToolCall>,
+    text_started: bool,
+}
+
+struct InFlightToolCall {
+    item_id: String,
+    tool_call: ToolCall,
+}
+
+fn start_text_if_needed(state: &mut StreamState, on_event: &Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>) {
+    if !state.text_started {
+        on_event(AssistantStreamEvent::TextStart);
+        state.text_started = true;
+    }
+}
+
+fn finish_text_if_started(state: &mut StreamState, on_event: &Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>) {
+    if state.text_started {
+        on_event(AssistantStreamEvent::TextEnd(state.content.clone()));
+        state.text_started = false;
+    }
+}
+
+fn finish_current_tool(state: &mut StreamState, on_event: &Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>) {
+    if let Some(current) = state.current_tool.take() {
+        on_event(AssistantStreamEvent::ToolCallEnd(current.tool_call.clone()));
+        state.tool_calls.push(current.tool_call);
+    }
+}
+
+fn handle_tool_delta(
+    state: &mut StreamState,
+    item_id: String,
+    call_id: Option<String>,
+    name: String,
+    delta: &str,
+    on_event: &Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>,
+) {
+    let needs_new_tool = state.current_tool.as_ref().map(|current| current.item_id.as_str()) != Some(item_id.as_str());
+    if needs_new_tool {
+        finish_current_tool(state, on_event);
+        let id = call_id.unwrap_or_else(|| item_id.clone());
+        let tool_call = finalize_tool_call(id.clone(), name.clone(), String::new());
+        on_event(AssistantStreamEvent::ToolCallStart { id, name });
+        state.current_tool = Some(InFlightToolCall { item_id, tool_call });
+    }
+
+    if let Some(current) = state.current_tool.as_mut() {
+        current.tool_call.function.arguments.push_str(delta);
+        on_event(AssistantStreamEvent::ToolCallDelta {
+            id: current.tool_call.id.clone(),
+            name: current.tool_call.function.name.clone(),
+            arguments: delta.to_string(),
+        });
+    }
+}
+
+fn handle_stream_event(
+    payload: &serde_json::Value,
+    state: &mut StreamState,
+    on_event: &Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>,
+) -> Result<Option<CompletionResponse>, AppError> {
+    match payload.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+        "response.output_item.added" => {
+            if let Some(item) = payload.get("item") {
+                match item.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+                    "message" => start_text_if_needed(state, on_event),
+                    "function_call" => {
+                        let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let call_id = item.get("call_id").and_then(|v| v.as_str()).map(ToOwned::to_owned);
+                        let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        handle_tool_delta(state, item_id, call_id, name, "", on_event);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        "response.output_text.delta" => {
+            let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
+            start_text_if_needed(state, on_event);
+            state.content.push_str(delta);
+            on_event(AssistantStreamEvent::TextDelta(delta.to_string()));
+        }
+        "response.function_call_arguments.delta" => {
+            let item_id = payload.get("item_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let call_id = payload.get("call_id").and_then(|v| v.as_str()).map(ToOwned::to_owned);
+            let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
+            handle_tool_delta(state, item_id, call_id, name, delta, on_event);
+        }
+        "response.function_call_arguments.done" => {
+            let item_id = payload.get("item_id").and_then(|v| v.as_str()).unwrap_or_default();
+            let arguments = payload.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+            if let Some(current) = state.current_tool.as_mut() {
+                if current.item_id == item_id {
+                    current.tool_call.function.arguments = arguments.to_string();
+                }
+            }
+        }
+        "response.output_item.done" => {
+            if let Some(item) = payload.get("item") {
+                match item.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+                    "message" => finish_text_if_started(state, on_event),
+                    "function_call" => {
+                        let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+                        let arguments = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                        if let Some(current) = state.current_tool.as_mut() {
+                            if current.item_id == item_id {
+                                current.tool_call.function.arguments = arguments.to_string();
+                            }
+                        }
+                        finish_current_tool(state, on_event);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        "response.completed" | "response.done" | "response.incomplete" => {
+            finish_text_if_started(state, on_event);
+            finish_current_tool(state, on_event);
+            if let Some(raw_usage) = payload.get("response").and_then(|v| v.get("usage")) {
+                state.usage = openai_responses_usage(raw_usage);
+                on_event(AssistantStreamEvent::Usage(state.usage.clone()));
+            }
+            on_event(AssistantStreamEvent::Done);
+
+            let (clean_text, text_tool_calls) = parse_tool_calls_from_text(&state.content);
+            if !text_tool_calls.is_empty() {
+                state.tool_calls.extend(text_tool_calls);
+                state.content = clean_text;
+            }
+
+            return Ok(Some(CompletionResponse {
+                content: state.content.clone(),
+                tool_calls: state.tool_calls.clone(),
+                usage: state.usage.clone(),
+                reasoning_content: None,
+            }));
+        }
+        "error" | "response.failed" => {
+            let message = payload
+                .get("message")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("response").and_then(|v| v.get("error")).and_then(|v| v.get("message")).and_then(|v| v.as_str()))
+                .unwrap_or("Codex request failed");
+            return Err(AppError::health(message));
+        }
+        _ => {}
+    }
+
+    Ok(None)
+}
+
 pub fn complete(model: &Model, context: &Context, temperature: f32, token: &str) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
     let input = convert_input(context);
+    let tools = convert_tools(context);
     let token = token.to_string();
-    let tool_prompt = build_tool_instructions(context);
-    let instructions = format!("{}{}", context_to_system_prompt(context), tool_prompt);
+    let instructions = context_to_system_prompt(context);
     let session_id = context.session_id.clone();
     Box::pin(async move {
         let _ = temperature;
         let response = reqwest::Client::new()
             .post(endpoint(&model.base_url))
             .bearer_auth(&token)
-            .headers(headers(&model, &token, session_id.as_deref()))
-            .json(&json!({"model":model.id,"instructions":instructions,"input":input,"stream":false,"store":false}))
+            .headers(headers(&model, &token, session_id.as_deref(), false))
+            .json(&request_payload(&model, instructions, input, tools, false, session_id.as_deref()))
             .send()
             .await?;
         if !response.status().is_success() { let status=response.status(); let body=response.text().await.unwrap_or_default(); return Err(AppError::health(format!("Khadim OpenAI Codex request failed: HTTP {status} - {body}"))); }
         let mut result = parse_response(response.json().await.map_err(|err| AppError::health(format!("Failed to parse OpenAI Codex response: {err}")))?)?;
-        // Parse tool calls from the text content since we embed tools in instructions
         let (clean_text, text_tool_calls) = parse_tool_calls_from_text(&result.content);
         if !text_tool_calls.is_empty() {
             result.content = clean_text;
@@ -191,7 +448,7 @@ async fn get_or_connect_websocket(
         return Ok(entry.socket.clone());
     }
 
-    let headers = headers(model, token, Some(session_id));
+    let headers = headers(model, token, Some(session_id), true);
     let mut builder = http::Request::builder().uri(websocket_endpoint(&model.base_url));
     for (key, value) in headers.iter() {
         builder = builder.header(key, value);
@@ -207,18 +464,15 @@ async fn get_or_connect_websocket(
 
 async fn process_websocket(
     socket: Arc<Mutex<CodexSocket>>,
-    session_id: &str,
+    _session_id: &str,
     model: &Model,
     payload: serde_json::Value,
     on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>,
 ) -> Result<CompletionResponse, AppError> {
-    let mut content = String::new();
-    let mut tool_calls = Vec::new();
-    let mut usage = Usage::default();
-    let mut current_tool: Option<ToolCall> = None;
+    let mut state = StreamState::default();
     let mut ws = socket.lock().await;
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
-        serde_json::to_string(&json!({"type": "response.create", "session_id": session_id, "payload": payload}))
+        serde_json::to_string(&websocket_request_payload(payload))
             .map_err(|err| AppError::health(format!("Failed to encode Codex websocket payload: {err}")))?
             .into(),
     ))
@@ -239,61 +493,8 @@ async fn process_websocket(
 
         let payload = serde_json::from_str::<serde_json::Value>(&text)
             .map_err(|err| AppError::health(format!("Failed to parse Codex websocket event: {err}")))?;
-        match payload.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
-            "response.output_text.delta" => {
-                let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
-                if content.is_empty() { on_event(AssistantStreamEvent::TextStart); }
-                content.push_str(delta);
-                on_event(AssistantStreamEvent::TextDelta(delta.to_string()));
-            }
-            "response.function_call_arguments.delta" => {
-                let id = payload.get("item_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                if current_tool.as_ref().map(|t| &t.id) != Some(&id) {
-                    if let Some(existing) = current_tool.take() {
-                        on_event(AssistantStreamEvent::ToolCallEnd(existing.clone()));
-                        tool_calls.push(existing);
-                    }
-                    current_tool = Some(finalize_tool_call(id.clone(), name.clone(), String::new()));
-                    on_event(AssistantStreamEvent::ToolCallStart { id, name });
-                }
-                let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
-                if let Some(current) = current_tool.as_mut() {
-                    current.function.arguments.push_str(delta);
-                    on_event(AssistantStreamEvent::ToolCallDelta { id: current.id.clone(), name: current.function.name.clone(), arguments: delta.to_string() });
-                }
-            }
-            "response.completed" | "response.done" | "response.incomplete" => {
-                if !content.is_empty() { on_event(AssistantStreamEvent::TextEnd(content.clone())); }
-                if let Some(existing) = current_tool.take() {
-                    on_event(AssistantStreamEvent::ToolCallEnd(existing.clone()));
-                    tool_calls.push(existing);
-                }
-                if let Some(raw_usage) = payload.get("response").and_then(|v| v.get("usage")) {
-                    usage.input = raw_usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.input);
-                    usage.output = raw_usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.output);
-                    usage.cache_read = raw_usage.get("input_tokens_details").and_then(|v| v.get("cached_tokens")).and_then(|v| v.as_u64()).unwrap_or(usage.cache_read);
-                    on_event(AssistantStreamEvent::Usage(usage.clone()));
-                }
-                on_event(AssistantStreamEvent::Done);
-                // Parse tool calls from text content
-                let (clean_text, text_tool_calls) = parse_tool_calls_from_text(&content);
-                if !text_tool_calls.is_empty() {
-                    for tc in &text_tool_calls {
-                        on_event(AssistantStreamEvent::ToolCallStart { id: tc.id.clone(), name: tc.function.name.clone() });
-                        on_event(AssistantStreamEvent::ToolCallDelta { id: tc.id.clone(), name: tc.function.name.clone(), arguments: tc.function.arguments.clone() });
-                        on_event(AssistantStreamEvent::ToolCallEnd(tc.clone()));
-                    }
-                    tool_calls.extend(text_tool_calls);
-                    content = clean_text;
-                }
-                return Ok(CompletionResponse { content, tool_calls, usage, reasoning_content: None });
-            }
-            "error" | "response.failed" => {
-                let message = payload.get("message").and_then(|v| v.as_str()).unwrap_or("Codex websocket request failed");
-                return Err(AppError::health(message));
-            }
-            _ => {}
+        if let Some(result) = handle_stream_event(&payload, &mut state, &on_event)? {
+            return Ok(result);
         }
     }
 
@@ -336,24 +537,19 @@ fn parse_response(body: serde_json::Value) -> Result<CompletionResponse, AppErro
         }
     }
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
-    Ok(CompletionResponse { content, tool_calls, usage: Usage {
-        input: usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        output: usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        cache_read: usage.get("input_tokens_details").and_then(|v| v.get("cached_tokens")).and_then(|v| v.as_u64()).unwrap_or(0),
-        cache_write: 0,
-    }, reasoning_content: None})
+    Ok(CompletionResponse { content, tool_calls, usage: openai_responses_usage(&usage), reasoning_content: None})
 }
 
 pub fn stream(model: &Model, context: &Context, temperature: f32, token: &str, on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
     let input = convert_input(context);
+    let tools = convert_tools(context);
     let token = token.to_string();
-    let tool_prompt = build_tool_instructions(context);
-    let instructions = format!("{}{}", context_to_system_prompt(context), tool_prompt);
+    let instructions = context_to_system_prompt(context);
     let session_id = context.session_id.clone();
     Box::pin(async move {
         let _ = temperature;
-        let request_payload = json!({"model":model.id,"instructions":instructions,"input":input,"stream":true,"store":false});
+        let request_payload = request_payload(&model, instructions, input, tools, true, session_id.as_deref());
 
         if let Some(session_id) = session_id.as_deref() {
             match get_or_connect_websocket(&model, &token, session_id).await {
@@ -370,67 +566,26 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, token: &str, o
         let response = reqwest::Client::new()
             .post(endpoint(&model.base_url))
             .bearer_auth(&token)
-            .headers(headers(&model, &token, session_id.as_deref()))
+            .headers(headers(&model, &token, session_id.as_deref(), false))
             .json(&request_payload)
             .send()
             .await?;
         if !response.status().is_success() { let status=response.status(); let body=response.text().await.unwrap_or_default(); return Err(AppError::health(format!("Khadim OpenAI Codex streaming request failed: HTTP {status} - {body}"))); }
-        let mut content = String::new();
-        let mut tool_calls = Vec::new();
-        let mut usage = Usage::default();
-        let mut current_tool: Option<ToolCall> = None;
+        let mut state = StreamState::default();
         on_event(AssistantStreamEvent::Start);
         for_each_sse_event(response, |data| {
             if data == "[DONE]" { return Ok(()); }
             let payload = serde_json::from_str::<serde_json::Value>(&data).map_err(|err| AppError::health(format!("Failed to parse OpenAI Codex SSE: {err}")))?;
-            match payload.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
-                "response.output_text.delta" => {
-                    let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
-                    if content.is_empty() { on_event(AssistantStreamEvent::TextStart); }
-                    content.push_str(delta);
-                    on_event(AssistantStreamEvent::TextDelta(delta.to_string()));
-                }
-                "response.function_call_arguments.delta" => {
-                    let id = payload.get("item_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                    if current_tool.as_ref().map(|t| &t.id) != Some(&id) {
-                        if let Some(existing) = current_tool.take() { on_event(AssistantStreamEvent::ToolCallEnd(existing.clone())); tool_calls.push(existing); }
-                        current_tool = Some(finalize_tool_call(id.clone(), name.clone(), String::new()));
-                        on_event(AssistantStreamEvent::ToolCallStart { id, name });
-                    }
-                    let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
-                    if let Some(current) = current_tool.as_mut() {
-                        current.function.arguments.push_str(delta);
-                        on_event(AssistantStreamEvent::ToolCallDelta { id: current.id.clone(), name: current.function.name.clone(), arguments: delta.to_string() });
-                    }
-                }
-                "response.completed" | "response.done" => {
-                    if !content.is_empty() { on_event(AssistantStreamEvent::TextEnd(content.clone())); }
-                    if let Some(existing) = current_tool.take() { on_event(AssistantStreamEvent::ToolCallEnd(existing.clone())); tool_calls.push(existing); }
-                    if let Some(raw_usage) = payload.get("response").and_then(|v| v.get("usage")) {
-                        usage.input = raw_usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.input);
-                        usage.output = raw_usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.output);
-                        usage.cache_read = raw_usage.get("input_tokens_details").and_then(|v| v.get("cached_tokens")).and_then(|v| v.as_u64()).unwrap_or(usage.cache_read);
-                        on_event(AssistantStreamEvent::Usage(usage.clone()));
-                    }
-                    on_event(AssistantStreamEvent::Done);
-                }
-                _ => {}
-            }
+            let _ = handle_stream_event(&payload, &mut state, &on_event)?;
             Ok(())
         }).await?;
-        // Parse tool calls embedded in the text content
-        let (clean_text, text_tool_calls) = parse_tool_calls_from_text(&content);
+        finish_text_if_started(&mut state, &on_event);
+        finish_current_tool(&mut state, &on_event);
+        let (clean_text, text_tool_calls) = parse_tool_calls_from_text(&state.content);
         if !text_tool_calls.is_empty() {
-            // Re-emit events for the parsed tool calls so the agent loop picks them up
-            for tc in &text_tool_calls {
-                on_event(AssistantStreamEvent::ToolCallStart { id: tc.id.clone(), name: tc.function.name.clone() });
-                on_event(AssistantStreamEvent::ToolCallDelta { id: tc.id.clone(), name: tc.function.name.clone(), arguments: tc.function.arguments.clone() });
-                on_event(AssistantStreamEvent::ToolCallEnd(tc.clone()));
-            }
-            tool_calls.extend(text_tool_calls);
-            content = clean_text;
+            state.tool_calls.extend(text_tool_calls);
+            state.content = clean_text;
         }
-        Ok(CompletionResponse { content, tool_calls, usage, reasoning_content: None })
+        Ok(CompletionResponse { content: state.content, tool_calls: state.tool_calls, usage: state.usage, reasoning_content: None })
     })
 }

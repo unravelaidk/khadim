@@ -312,9 +312,11 @@ pub fn has_openai_codex_auth_sync() -> Result<bool, AppError> {
 }
 
 pub async fn get_openai_codex_api_key() -> Result<String, AppError> {
-    if let Ok(api_key) = std::env::var("OPENAI_CODEX_TOKEN") {
-        if !api_key.trim().is_empty() {
-            return Ok(api_key);
+    for env_name in ["OPENAI_CODEX_TOKEN", "OPENAI_CODEX_API_KEY"] {
+        if let Ok(api_key) = std::env::var(env_name) {
+            if !api_key.trim().is_empty() {
+                return Ok(api_key);
+            }
         }
     }
     let mut auth = read_auth_file()?;

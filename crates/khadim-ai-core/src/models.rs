@@ -1,4 +1,5 @@
 use crate::env_api_keys::{get_default_model, get_default_provider, get_env_base_url};
+use crate::pricing::default_cost_for;
 use crate::types::{InputKind, Model, ModelSelection, OpenAiCompat};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -10,6 +11,98 @@ pub struct CatalogModelOption {
     pub model_id: String,
     pub model_name: String,
     pub is_default: bool,
+}
+
+// ── NVIDIA model autodiscovery cache ─────────────────────────────────
+
+use std::sync::Mutex;
+use std::sync::OnceLock;
+
+static NVIDIA_MODELS_CACHE: OnceLock<Mutex<Vec<Model>>> = OnceLock::new();
+
+fn nvidia_cache() -> &'static Mutex<Vec<Model>> {
+    NVIDIA_MODELS_CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Return cached NVIDIA models (empty if never refreshed).
+pub fn get_nvidia_models() -> Vec<Model> {
+    nvidia_cache().lock().unwrap().clone()
+}
+
+/// Fetch available models from the NVIDIA `/models` endpoint and populate
+/// the static cache.  The cache can be refreshed multiple times.
+pub async fn refresh_nvidia_models(api_key: Option<&str>) -> Result<(), crate::error::AppError> {
+    use crate::env_api_keys::{get_env_api_key, get_env_base_url};
+
+    let base_url = get_env_base_url("nvidia")
+        .unwrap_or_else(|| "https://integrate.api.nvidia.com/v1".to_string());
+    let api_key = api_key
+        .map(|s| s.to_string())
+        .or_else(|| get_env_api_key("nvidia"))
+        .ok_or_else(|| {
+            crate::error::AppError::invalid_input(
+                "NVIDIA API key required to fetch models. Set NVIDIA_API_KEY.",
+            )
+        })?;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("{}/models", base_url.trim_end_matches('/')))
+        .bearer_auth(&api_key)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(crate::error::AppError::health(format!(
+            "NVIDIA models fetch failed: HTTP {status} - {body}"
+        )));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|err| {
+        crate::error::AppError::health(format!(
+            "Failed to parse NVIDIA models response: {err}"
+        ))
+    })?;
+
+    let mut models = Vec::new();
+    if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+        for item in data {
+            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                let name = item
+                    .get("object")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("owned_by").and_then(|v| v.as_str()))
+                    .map(|s| format!("{} ({})", id, s))
+                    .unwrap_or_else(|| id.to_string());
+                models.push(base_model("nvidia", id, &name, "openai-completions", true));
+            }
+        }
+    }
+
+    let mut cache = nvidia_cache().lock().unwrap();
+    *cache = models;
+    Ok(())
+}
+
+/// Return all builtin models merged with any cached autodiscovered models.
+/// Hard-coded NVIDIA models are replaced by the cached set when available.
+pub fn all_models() -> Vec<Model> {
+    let mut models: Vec<Model> = builtin_models()
+        .into_iter()
+        .filter(|m| m.provider != "nvidia")
+        .collect();
+
+    let nvidia_cached = get_nvidia_models();
+    if nvidia_cached.is_empty() {
+        // fallback to hard-coded NVIDIA models
+        models.extend(builtin_models().into_iter().filter(|m| m.provider == "nvidia"));
+    } else {
+        models.extend(nvidia_cached);
+    }
+
+    models
 }
 
 fn base_model(provider: &str, id: &str, name: &str, api: &str, is_reasoning: bool) -> Model {
@@ -34,6 +127,7 @@ fn base_model(provider: &str, id: &str, name: &str, api: &str, is_reasoning: boo
         } else {
             None
         },
+        cost: default_cost_for(provider, id),
     }
 }
 
@@ -81,6 +175,7 @@ fn provider_label(provider: &str) -> String {
         "minimax" => "MiniMax",
         "minimax-cn" => "MiniMax CN",
         "zai" => "Z.AI",
+        "nvidia" => "NVIDIA",
         "azure-openai-responses" => "Azure OpenAI",
         "google" => "Google",
         "google-vertex" => "Google Vertex",
@@ -1111,13 +1206,7 @@ pub fn builtin_models() -> Vec<Model> {
             "openai-codex-responses",
             true,
         ),
-        base_model(
-            "openai-codex",
-            "o3",
-            "o3",
-            "openai-codex-responses",
-            true,
-        ),
+        base_model("openai-codex", "o3", "o3", "openai-codex-responses", true),
         base_model(
             "openai-codex",
             "o3-pro",
@@ -1233,7 +1322,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5",
             "GPT-5",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1241,7 +1330,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5-mini",
             "GPT-5-mini",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1249,7 +1338,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.1",
             "GPT-5.1",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1257,7 +1346,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.1-codex",
             "GPT-5.1-Codex",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1265,7 +1354,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.1-codex-max",
             "GPT-5.1-Codex-max",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1273,7 +1362,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.1-codex-mini",
             "GPT-5.1-Codex-mini",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1281,7 +1370,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.2",
             "GPT-5.2",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1289,7 +1378,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.2-codex",
             "GPT-5.2-Codex",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1297,7 +1386,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.3-codex",
             "GPT-5.3-Codex",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1305,7 +1394,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.4",
             "GPT-5.4",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1313,7 +1402,7 @@ pub fn builtin_models() -> Vec<Model> {
             "github-copilot",
             "gpt-5.4-mini",
             "GPT-5.4 mini",
-            "openai-responses",
+            "openai-completions",
             true,
             copilot.clone(),
         ),
@@ -1609,6 +1698,14 @@ pub fn builtin_models() -> Vec<Model> {
         ),
         model_with_base_url(
             "opencode-go",
+            "kimi-k2.6",
+            "Kimi K2.6",
+            "openai-completions",
+            true,
+            "https://opencode.ai/zen/go/v1",
+        ),
+        model_with_base_url(
+            "opencode-go",
             "mimo-v2-pro",
             "MiMo-V2-Pro",
             "openai-completions",
@@ -1723,6 +1820,57 @@ pub fn builtin_models() -> Vec<Model> {
             "zai",
             "glm-5-turbo",
             "GLM-5-Turbo",
+            "openai-completions",
+            true,
+        ),
+        // ── NVIDIA ──────────────────────────────────────────────────
+        base_model(
+            "nvidia",
+            "z-ai/glm-5.1",
+            "GLM-5.1",
+            "openai-completions",
+            true,
+        ),
+        base_model("nvidia", "z-ai/glm-5", "GLM-5", "openai-completions", true),
+        base_model(
+            "nvidia",
+            "meta/llama-3.3-70b-instruct",
+            "Llama 3.3 70B Instruct",
+            "openai-completions",
+            false,
+        ),
+        base_model(
+            "nvidia",
+            "deepseek-ai/deepseek-r1",
+            "DeepSeek-R1",
+            "openai-completions",
+            true,
+        ),
+        base_model(
+            "nvidia",
+            "nvidia/llama-3.1-nemotron-70b-instruct",
+            "Llama 3.1 Nemotron 70B",
+            "openai-completions",
+            false,
+        ),
+        base_model(
+            "nvidia",
+            "mistralai/mistral-large-2-instruct",
+            "Mistral Large 2",
+            "openai-completions",
+            false,
+        ),
+        base_model(
+            "nvidia",
+            "qwen/qwen2.5-72b-instruct",
+            "Qwen2.5 72B Instruct",
+            "openai-completions",
+            false,
+        ),
+        base_model(
+            "nvidia",
+            "minimaxai/minimax-m2.7",
+            "MiniMax 2.7",
             "openai-completions",
             true,
         ),
@@ -2387,14 +2535,15 @@ pub fn resolve_model(selection: Option<&ModelSelection>) -> Model {
         .map(|value| value.model_id.clone())
         .unwrap_or_else(|| get_default_model(&provider));
 
-    builtin_models()
+    all_models()
         .into_iter()
         .find(|model| model.provider == provider && model.id == model_id)
         .unwrap_or_else(|| {
             let api = match provider.as_str() {
-                "anthropic" | "opencode" | "kimi-coding" | "minimax"
-                | "minimax-cn" => "anthropic-messages",
-                "github-copilot" => "openai-completions",
+                "anthropic" | "opencode" | "kimi-coding" | "minimax" | "minimax-cn" => {
+                    "anthropic-messages"
+                }
+                "github-copilot" => "github-copilot",
                 "openai" => "openai-responses",
                 "openai-codex" => "openai-codex-responses",
                 "mistral" => "mistral-conversations",
@@ -2411,7 +2560,7 @@ pub fn resolve_model(selection: Option<&ModelSelection>) -> Model {
 pub fn list_model_options() -> Vec<CatalogModelOption> {
     let default_provider = get_default_provider();
     let default_model = get_default_model(&default_provider);
-    builtin_models()
+    all_models()
         .into_iter()
         .map(|model| CatalogModelOption {
             provider_id: model.provider.clone(),
@@ -2421,4 +2570,37 @@ pub fn list_model_options() -> Vec<CatalogModelOption> {
             is_default: model.provider == default_provider && model.id == default_model,
         })
         .collect()
+}
+
+/// Look up a builtin model by `(provider, model_id)`. Falls back to a
+/// synthetic model populated via [`default_cost_for`] so callers that only
+/// care about pricing still get sensible numbers for catalog-synced or
+/// user-discovered models.
+pub fn find_model(provider: &str, model_id: &str) -> Option<Model> {
+    all_models()
+        .into_iter()
+        .find(|model| model.provider == provider && model.id == model_id)
+}
+
+/// Like [`find_model`] but always returns a `Model`, synthesizing one with
+/// default pricing and a best-effort API when the id is unknown. Intended
+/// for CLI/desktop cost and metadata surfaces that must not fail on
+/// unrecognised ids.
+pub fn find_or_synth_model(provider: &str, model_id: &str) -> Model {
+    if let Some(model) = find_model(provider, model_id) {
+        return model;
+    }
+    let api = match provider {
+        "anthropic" | "opencode" | "kimi-coding" | "minimax" | "minimax-cn" => "anthropic-messages",
+        "nvidia" | "github-copilot" => "github-copilot",
+        "openai" => "openai-responses",
+        "openai-codex" => "openai-codex-responses",
+        "mistral" => "mistral-conversations",
+        "azure-openai-responses" => "azure-openai-responses",
+        "google" => "google-generative-ai",
+        "google-vertex" => "google-vertex",
+        "amazon-bedrock" => "bedrock-converse-stream",
+        _ => "openai-completions",
+    };
+    base_model(provider, model_id, model_id, api, true)
 }

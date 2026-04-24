@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::providers::transform_messages::{finalize_tool_call, to_openai_messages, to_openai_tools};
+use crate::providers::usage::simple_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
@@ -36,12 +37,10 @@ fn parse_response(body: serde_json::Value) -> Result<CompletionResponse, AppErro
     Ok(CompletionResponse {
         content,
         tool_calls,
-        usage: Usage {
-            input: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            output: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_read: 0,
-            cache_write: 0,
-        },
+        usage: simple_usage(
+            usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        ),
         reasoning_content: None,
     })
 }

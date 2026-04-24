@@ -9,7 +9,7 @@ mod repositories;
 
 use context::DbContext;
 use repositories::{
-    automation::AutomationRepository, chat::ChatRepository, integration::IntegrationRepository,
+    automation::AutomationRepository, chat::{ChatRepository, SessionSearchResult}, integration::IntegrationRepository,
     run::RunRepository, settings::SettingsRepository, workspace::WorkspaceRepository,
 };
 
@@ -79,11 +79,49 @@ pub struct ManagedAgent {
     pub environment_id: Option<String>,
     pub max_turns: i64,
     pub max_tokens: i64,
+    pub budget_policy: BudgetPolicy,
+    pub artifact_policy: ArtifactPolicy,
     pub variables: HashMap<String, String>,
     pub version: i64,
     pub total_sessions: i64,
     pub success_rate: f64,
     pub last_run_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BudgetPolicy {
+    pub max_tokens_per_run: Option<i64>,
+    pub max_cost_usd_per_day: Option<f64>,
+    pub max_runs_per_day: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactPolicy {
+    pub retention_days: i64,
+    pub max_artifacts_per_run: i64,
+}
+
+impl Default for ArtifactPolicy {
+    fn default() -> Self {
+        Self {
+            retention_days: 14,
+            max_artifacts_per_run: 50,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSchedule {
+    pub id: String,
+    pub agent_id: String,
+    pub kind: String,
+    pub cron_expr: Option<String>,
+    pub is_paused: bool,
+    pub next_run_at: Option<String>,
+    pub last_run_at: Option<String>,
+    pub last_outcome: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -164,10 +202,12 @@ pub struct AgentRun {
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
     pub duration_ms: Option<i64>,
+    pub ended_reason: Option<String>,
     pub result_summary: Option<String>,
     pub error_message: Option<String>,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
+    pub work_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,6 +222,103 @@ pub struct AgentRunTurn {
     pub token_output: Option<i64>,
     pub duration_ms: Option<i64>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunEvent {
+    pub id: String,
+    pub run_id: String,
+    pub sequence_number: i64,
+    pub event_type: String,
+    pub source: String,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub status: Option<String>,
+    pub tool_name: Option<String>,
+    pub metadata_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactRecord {
+    pub id: String,
+    pub run_id: String,
+    pub agent_id: Option<String>,
+    pub kind: String,
+    pub label: String,
+    pub path: Option<String>,
+    pub mime_type: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub sha256: Option<String>,
+    pub storage_type: String,
+    pub metadata_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetLedgerEntry {
+    pub id: String,
+    pub agent_id: Option<String>,
+    pub run_id: Option<String>,
+    pub scope: String,
+    pub metric: String,
+    pub delta: f64,
+    pub window_key: String,
+    pub metadata_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueueDefinition {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub source_config_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueueItem {
+    pub id: String,
+    pub queue_id: String,
+    pub status: String,
+    pub payload_json: String,
+    pub priority: i64,
+    pub visible_at: String,
+    pub claimed_by_run_id: Option<String>,
+    pub claimed_at: Option<String>,
+    pub attempt_count: i64,
+    pub max_attempts: i64,
+    pub last_error: Option<String>,
+    pub dead_lettered_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentHealthSnapshot {
+    pub id: String,
+    pub agent_id: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub metrics_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalRequestRecord {
+    pub id: String,
+    pub run_id: String,
+    pub scope: String,
+    pub action_title: String,
+    pub risk_level: String,
+    pub status: String,
+    pub requested_at: String,
+    pub resolved_at: Option<String>,
+    pub resolution_note: Option<String>,
+    pub metadata_json: String,
 }
 
 #[derive(Clone)]
@@ -233,11 +370,16 @@ impl Database {
     pub fn set_conversation_backend_session(&self, id: &str, backend_session_id: &str, backend_session_cwd: Option<&str>, branch: Option<&str>, worktree_path: Option<&str>) -> Result<(), AppError> { self.chat_repo.set_backend_session(id, backend_session_id, backend_session_cwd, branch, worktree_path) }
     pub fn insert_message(&self, msg: &ChatMessage) -> Result<(), AppError> { self.chat_repo.insert_message(msg) }
     pub fn list_messages(&self, conversation_id: &str) -> Result<Vec<ChatMessage>, AppError> { self.chat_repo.list_messages(conversation_id) }
+    pub fn search_messages(&self, query: &str, workspace_id: Option<&str>, limit: usize) -> Result<Vec<SessionSearchResult>, AppError> { self.chat_repo.search_messages(query, workspace_id, limit) }
 
     pub fn list_managed_agents(&self) -> Result<Vec<ManagedAgent>, AppError> { self.automation_repo.list_managed_agents() }
     pub fn create_managed_agent(&self, agent: &ManagedAgent) -> Result<(), AppError> { self.automation_repo.create_managed_agent(agent) }
     pub fn update_managed_agent(&self, agent: &ManagedAgent) -> Result<(), AppError> { self.automation_repo.update_managed_agent(agent) }
     pub fn delete_managed_agent(&self, id: &str) -> Result<(), AppError> { self.automation_repo.delete_managed_agent(id) }
+    pub fn list_agent_schedules(&self) -> Result<Vec<AgentSchedule>, AppError> { self.automation_repo.list_agent_schedules() }
+    pub fn upsert_agent_schedule(&self, schedule: &AgentSchedule) -> Result<(), AppError> { self.automation_repo.upsert_agent_schedule(schedule) }
+    pub fn delete_agent_schedule_by_agent_id(&self, agent_id: &str) -> Result<(), AppError> { self.automation_repo.delete_agent_schedule_by_agent_id(agent_id) }
+    pub fn update_agent_schedule_runtime(&self, schedule_id: &str, next_run_at: Option<&str>, last_run_at: Option<&str>, last_outcome: Option<&str>, updated_at: &str) -> Result<(), AppError> { self.automation_repo.update_agent_schedule_runtime(schedule_id, next_run_at, last_run_at, last_outcome, updated_at) }
     pub fn list_environments(&self) -> Result<Vec<EnvironmentProfile>, AppError> { self.automation_repo.list_environments() }
     pub fn create_environment(&self, environment: &EnvironmentProfile) -> Result<(), AppError> { self.automation_repo.create_environment(environment) }
     pub fn update_environment(&self, environment: &EnvironmentProfile) -> Result<(), AppError> { self.automation_repo.update_environment(environment) }
@@ -265,9 +407,32 @@ impl Database {
     pub fn list_agent_runs(&self) -> Result<Vec<AgentRun>, AppError> { self.run_repo.list_agent_runs() }
     pub fn list_agent_run_turns(&self, run_id: &str) -> Result<Vec<AgentRunTurn>, AppError> { self.run_repo.list_agent_run_turns(run_id) }
     pub fn create_agent_run(&self, run: &AgentRun) -> Result<(), AppError> { self.run_repo.create_agent_run(run) }
-    pub fn update_agent_run_status(&self, id: &str, status: &str, finished_at: Option<&str>, duration_ms: Option<i64>, result_summary: Option<&str>, error_message: Option<&str>, input_tokens: Option<i64>, output_tokens: Option<i64>) -> Result<(), AppError> { self.run_repo.update_agent_run_status(id, status, finished_at, duration_ms, result_summary, error_message, input_tokens, output_tokens) }
+    pub fn update_agent_run_status(&self, id: &str, status: &str, finished_at: Option<&str>, duration_ms: Option<i64>, ended_reason: Option<&str>, result_summary: Option<&str>, error_message: Option<&str>, input_tokens: Option<i64>, output_tokens: Option<i64>) -> Result<(), AppError> { self.run_repo.update_agent_run_status(id, status, finished_at, duration_ms, ended_reason, result_summary, error_message, input_tokens, output_tokens) }
+    pub fn update_agent_run_work_dir(&self, id: &str, work_dir: &str) -> Result<(), AppError> { self.run_repo.update_agent_run_work_dir(id, work_dir) }
     pub fn create_agent_run_turn(&self, turn: &AgentRunTurn) -> Result<(), AppError> { self.run_repo.create_agent_run_turn(turn) }
     pub fn get_agent_run(&self, id: &str) -> Result<AgentRun, AppError> { self.run_repo.get_agent_run(id) }
+    pub fn list_run_events(&self, run_id: &str) -> Result<Vec<RunEvent>, AppError> { self.run_repo.list_run_events(run_id) }
+    pub fn create_run_event(&self, event: &RunEvent) -> Result<(), AppError> { self.run_repo.create_run_event(event) }
+    pub fn list_artifacts(&self, run_id: &str) -> Result<Vec<ArtifactRecord>, AppError> { self.run_repo.list_artifacts(run_id) }
+    pub fn list_agent_artifacts(&self, agent_id: &str) -> Result<Vec<ArtifactRecord>, AppError> { self.run_repo.list_agent_artifacts(agent_id) }
+    pub fn create_artifact(&self, artifact: &ArtifactRecord) -> Result<(), AppError> { self.run_repo.create_artifact(artifact) }
+    pub fn delete_artifact(&self, artifact_id: &str) -> Result<(), AppError> { self.run_repo.delete_artifact(artifact_id) }
+    pub fn list_budget_ledger(&self, agent_id: Option<&str>, window_key: Option<&str>) -> Result<Vec<BudgetLedgerEntry>, AppError> { self.run_repo.list_budget_ledger(agent_id, window_key) }
+    pub fn create_budget_ledger_entry(&self, entry: &BudgetLedgerEntry) -> Result<(), AppError> { self.run_repo.create_budget_ledger_entry(entry) }
+    pub fn list_queues(&self) -> Result<Vec<QueueDefinition>, AppError> { self.automation_repo.list_queues() }
+    pub fn create_queue(&self, queue: &QueueDefinition) -> Result<(), AppError> { self.automation_repo.create_queue(queue) }
+    pub fn get_queue(&self, id: &str) -> Result<QueueDefinition, AppError> { self.automation_repo.get_queue(id) }
+    pub fn list_queue_items(&self, queue_id: &str) -> Result<Vec<QueueItem>, AppError> { self.automation_repo.list_queue_items(queue_id) }
+    pub fn get_queue_item(&self, item_id: &str) -> Result<QueueItem, AppError> { self.automation_repo.get_queue_item(item_id) }
+    pub fn find_next_ready_queue_item(&self, queue_id: &str, visible_before: &str) -> Result<Option<QueueItem>, AppError> { self.automation_repo.find_next_ready_queue_item(queue_id, visible_before) }
+    pub fn create_queue_item(&self, item: &QueueItem) -> Result<(), AppError> { self.automation_repo.create_queue_item(item) }
+    pub fn update_queue_item(&self, item: &QueueItem) -> Result<(), AppError> { self.automation_repo.update_queue_item(item) }
+    pub fn list_agent_health_snapshots(&self, agent_id: &str) -> Result<Vec<AgentHealthSnapshot>, AppError> { self.automation_repo.list_agent_health_snapshots(agent_id) }
+    pub fn create_agent_health_snapshot(&self, snapshot: &AgentHealthSnapshot) -> Result<(), AppError> { self.automation_repo.create_agent_health_snapshot(snapshot) }
+    pub fn list_approval_requests(&self, run_id: &str) -> Result<Vec<ApprovalRequestRecord>, AppError> { self.automation_repo.list_approval_requests(run_id) }
+    pub fn create_approval_request(&self, request: &ApprovalRequestRecord) -> Result<(), AppError> { self.automation_repo.create_approval_request(request) }
+    pub fn update_approval_request_status(&self, id: &str, status: &str, resolution_note: Option<&str>, resolved_at: &str) -> Result<ApprovalRequestRecord, AppError> { self.automation_repo.update_approval_request_status(id, status, resolution_note, resolved_at) }
+    pub fn set_agent_schedule_paused(&self, agent_id: &str, is_paused: bool) -> Result<Option<AgentSchedule>, AppError> { self.automation_repo.set_agent_schedule_paused(agent_id, is_paused) }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, AppError> { self.settings_repo.get(key) }
     pub fn set_setting(&self, key: &str, value: &str) -> Result<(), AppError> { self.settings_repo.set(key, value) }

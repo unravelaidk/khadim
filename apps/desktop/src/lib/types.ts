@@ -46,6 +46,10 @@ export interface BuilderChat {
   /** Set once the user saves the draft as a managed agent. */
   savedAgentId: string | null;
   savedAgentName: string | null;
+  /** Partial streamed content mirrored from the live stream, so mid-flight
+   *  progress survives an app restart as an "interrupted" message. */
+  streamingContent?: string;
+  streamingSteps?: ThinkingStepData[];
   createdAt: string;
   updatedAt: string;
 }
@@ -135,6 +139,9 @@ export interface SessionRecord {
     inputTokens: number;
     outputTokens: number;
   } | null;
+  /** Absolute path to the directory the run actually worked in. Populated by
+   *  the local runner at run start; null for docker/cloud runners. */
+  workDir: string | null;
 }
 
 /** A turn within a session transcript */

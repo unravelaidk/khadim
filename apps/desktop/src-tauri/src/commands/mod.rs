@@ -1,3 +1,4 @@
+pub(crate) mod automation;
 pub(crate) mod claude_code;
 pub(crate) mod conversation;
 pub(crate) mod editor;

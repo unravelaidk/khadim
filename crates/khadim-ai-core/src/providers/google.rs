@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::providers::usage::google_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
@@ -76,17 +77,7 @@ fn parse_response(body: serde_json::Value) -> Result<CompletionResponse, AppErro
         }
     }
     let usage = body.get("usageMetadata").cloned().unwrap_or_else(|| json!({}));
-    Ok(CompletionResponse {
-        content,
-        tool_calls,
-        usage: Usage {
-            input: usage.get("promptTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
-            output: usage.get("candidatesTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_read: usage.get("cachedContentTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_write: 0,
-        },
-        reasoning_content: None,
-    })
+    Ok(CompletionResponse { content, tool_calls, usage: google_usage(&usage), reasoning_content: None })
 }
 
 pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &str) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {

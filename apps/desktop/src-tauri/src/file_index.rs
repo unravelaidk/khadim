@@ -123,11 +123,17 @@ impl FileIndexManager {
 
         let mut files = Vec::with_capacity(8192);
 
+        // Walk every file under `root_path`, regardless of gitignore rules.
+        // Agent working directories are often nested inside larger repos whose
+        // .gitignore excludes the sandbox — that made the finder appear empty.
+        // The explicit `filter_entry` below still skips heavy directories.
         let walker = WalkBuilder::new(root_path)
-            .hidden(false) // show dotfiles (but still respect .gitignore)
-            .git_ignore(true)
-            .git_global(true)
-            .git_exclude(true)
+            .hidden(false)
+            .standard_filters(false)
+            .parents(false)
+            .git_ignore(false)
+            .git_global(false)
+            .git_exclude(false)
             .filter_entry(|entry| {
                 let name = entry.file_name().to_string_lossy();
                 // Skip heavy / uninteresting directories

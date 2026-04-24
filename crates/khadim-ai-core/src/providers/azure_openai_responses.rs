@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::providers::transform_messages::{finalize_tool_call, to_openai_responses_input};
+use crate::providers::usage::openai_responses_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
@@ -89,16 +90,7 @@ fn parse_response(body: serde_json::Value) -> CompletionResponse {
     CompletionResponse {
         content,
         tool_calls,
-        usage: Usage {
-            input: usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            output: usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_read: usage
-                .get("input_tokens_details")
-                .and_then(|v| v.get("cached_tokens"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-            cache_write: 0,
-        },
+        usage: openai_responses_usage(&usage),
         reasoning_content: None,
     }
 }
@@ -198,9 +190,7 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
                         tool_calls.push(existing);
                     }
                     if let Some(raw_usage) = payload.get("response").and_then(|v| v.get("usage")) {
-                        usage.input = raw_usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.input);
-                        usage.output = raw_usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.output);
-                        usage.cache_read = raw_usage.get("input_tokens_details").and_then(|v| v.get("cached_tokens")).and_then(|v| v.as_u64()).unwrap_or(usage.cache_read);
+                        usage = openai_responses_usage(raw_usage);
                         on_event(AssistantStreamEvent::Usage(usage.clone()));
                     }
                     on_event(AssistantStreamEvent::Done);

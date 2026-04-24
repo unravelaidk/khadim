@@ -6,173 +6,417 @@ pub mod theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 use ratatui::Frame;
 
-use crate::app::{SettingsFocus, StoredSettings, TuiApp, TranscriptEntry, LoginPhase,
-    clamp_index, effective_settings, estimate_cost, format_cost, format_tokens,
-    models_for_provider, provider_catalog, ProviderCatalog, SettingsMode, spinner_frame,
-    CommandPickerKind};
+use crate::app::{spinner_frame, CachedTranscriptEntryRender, TranscriptEntryStamp, TuiApp};
 use crate::args::CliConfig;
+use crate::domain::commands::CommandPickerKind;
+use crate::domain::login::LoginPhase;
+use crate::domain::models::ProviderCatalog;
+use crate::domain::settings::{SettingsFocus, SettingsMode, StoredSettings};
+use crate::domain::transcript::TranscriptEntry;
+use crate::services::catalog_service::{
+    clamp_index, estimate_cost, format_cost, format_tokens, models_for_provider, provider_catalog,
+};
+use crate::services::settings_service::effective_settings;
+use crate::ui::helpers::{
+    count_wrapped_lines, cursor_to_row_col, truncate_str, wrap_text_to_width,
+};
 use crate::ui::theme::*;
-use crate::ui::helpers::{count_wrapped_lines, cursor_to_row_col, truncate_str};
 
-pub fn render_transcript_lines(app: &TuiApp, width: u16) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line<'static>> = Vec::new();
+/// Fast plain-text renderer for the currently-streaming assistant entry.
+/// Avoids expensive markdown parsing on every frame.
+fn render_streaming_text(text: &str, content_width: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let indent = "  ";
+    let max_width = content_width.saturating_sub(2);
+
+    for line in text.split('\n') {
+        if line.is_empty() {
+            lines.push(Line::from(indent.to_string()));
+            continue;
+        }
+        if line.chars().count() <= max_width {
+            lines.push(Line::from(vec![
+                Span::raw(indent.to_string()),
+                Span::raw(line.to_string()),
+            ]));
+            continue;
+        }
+        // Simple character-wrap for long lines
+        let mut chunk = String::new();
+        let mut col = 0;
+        for ch in line.chars() {
+            if col >= max_width {
+                lines.push(Line::from(vec![
+                    Span::raw(indent.to_string()),
+                    Span::raw(chunk),
+                ]));
+                chunk = String::new();
+                col = 0;
+            }
+            chunk.push(ch);
+            col += 1;
+        }
+        if !chunk.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw(indent.to_string()),
+                Span::raw(chunk),
+            ]));
+        }
+    }
+    lines
+}
+
+/// Render only the visible portion of the transcript (plus a small buffer).
+/// Returns (visible_lines, total_line_count, effective_scroll, buffer).
+pub fn render_transcript_viewport(
+    app: &TuiApp,
+    width: u16,
+    visible_height: usize,
+) -> (Vec<Line<'static>>, usize, usize, usize) {
     let content_width = width.saturating_sub(2) as usize;
+    let mut cache = app.transcript_render_cache.borrow_mut();
 
-    for entry in &app.entries {
-        match entry {
-            TranscriptEntry::System { text } => {
-                // System messages: subtle with a prefix icon
-                lines.push(Line::from(vec![
-                    Span::styled("  ℹ ", Style::default().fg(system_text()).add_modifier(Modifier::DIM)),
-                    Span::styled(text.clone(), Style::default().fg(system_text())),
-                ]));
-            }
-            TranscriptEntry::User { text } => {
-                lines.push(Line::from(""));
-                for (i, line) in text.lines().enumerate() {
-                    if i == 0 {
-                        lines.push(Line::from(vec![
-                            Span::styled(" ▸ ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)),
-                            Span::styled(line.to_string(), Style::default().fg(text_primary()).bg(user_bg()).add_modifier(Modifier::BOLD)),
-                        ]));
-                    } else {
-                        lines.push(Line::from(vec![
-                            Span::styled("   ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)),
-                            Span::styled(line.to_string(), Style::default().fg(text_primary()).bg(user_bg()).add_modifier(Modifier::BOLD)),
-                        ]));
-                    }
-                }
-                if text.ends_with('\n') {
-                    lines.push(Line::from(vec![
-                        Span::styled("   ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)),
-                        Span::styled(" ", Style::default().fg(text_primary()).bg(user_bg()).add_modifier(Modifier::BOLD)),
-                    ]));
-                }
-            }
-            TranscriptEntry::AssistantText { text } => {
-                lines.push(Line::from(""));
-                let md_lines = markdown::render_markdown(text, content_width.saturating_sub(2));
-                lines.extend(md_lines);
-            }
-            TranscriptEntry::Thinking { text } => {
-                lines.push(Line::from(vec![
-                    Span::styled("  ", Style::default()),
-                    Span::styled(
-                        if text.is_empty() { "💭 Thinking...".to_string() } else { format!("💭 Thinking: {}", truncate_str(text, 60)) },
-                        Style::default().fg(thinking()).add_modifier(Modifier::ITALIC),
-                    ),
-                ]));
-            }
-            TranscriptEntry::ToolStart { .. } => {}
-            TranscriptEntry::ToolComplete { tool, content, is_error, collapsed } => {
-                let (icon, status_color) = if *is_error {
-                    ("✗", error())
-                } else {
-                    ("✓", tool_label())
-                };
+    if cache.len() > app.entries.len() {
+        cache.truncate(app.entries.len());
+    }
 
-                let tool_display = friendly_tool_display(tool);
+    let last_index = app.entries.len().saturating_sub(1);
+    let streaming_last = app.streaming_text
+        && app
+            .entries
+            .last()
+            .is_some_and(|e| matches!(e, TranscriptEntry::AssistantText { .. }));
 
-                if *collapsed {
-                    let preview = content.lines().next().unwrap_or("").to_string();
-                    let line_count = content.lines().count();
-                    let preview_text = if line_count > 1 {
-                        format!("{} ({} more lines, ctrl+o to expand)", truncate_str(&preview, 50), line_count - 1)
-                    } else {
-                        truncate_str(&preview, 60).to_string()
-                    };
-                    lines.push(Line::from(vec![
-                        Span::styled("  ", Style::default()),
-                        Span::styled(
-                            format!("{icon} "),
-                            Style::default().fg(status_color).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            format!("{tool_display} "),
-                            Style::default().fg(status_color).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            preview_text,
-                            Style::default().fg(tool_text()),
-                        ),
-                    ]));
-                } else {
-                    // Expanded: show header + content
-                    lines.push(Line::from(vec![
-                        Span::styled("  ", Style::default()),
-                        Span::styled(
-                            format!("{icon} {tool_display}"),
-                            Style::default().fg(status_color).add_modifier(Modifier::BOLD),
-                        ),
-                    ]));
+    // ── First pass: update cache and compute per-entry heights ──
+    let mut entry_heights = Vec::with_capacity(app.entries.len());
+    let mut streaming_lines: Option<Vec<Line<'static>>> = None;
 
-                    let max_lines = 20;
-                    let total_lines = content.lines().count();
-                    for (i, line) in content.lines().enumerate() {
-                        if i >= max_lines {
-                            lines.push(Line::from(vec![
-                                Span::styled("    ", Style::default()),
-                                Span::styled(
-                                    format!("⋯ {} more lines (ctrl+o to collapse)", total_lines - max_lines),
-                                    Style::default().fg(text_muted()).add_modifier(Modifier::ITALIC),
-                                ),
-                            ]));
-                            break;
-                        }
-                        lines.push(Line::from(vec![
-                            Span::styled("    ", Style::default()),
-                            Span::styled(
-                                truncate_str(line, content_width.saturating_sub(4)).to_string(),
-                                Style::default().fg(tool_text()),
-                            ),
-                        ]));
-                    }
-                }
+    for (index, entry) in app.entries.iter().enumerate() {
+        if streaming_last && index == last_index {
+            let text = match entry {
+                TranscriptEntry::AssistantText { text } => text,
+                _ => "",
+            };
+            let lines = render_streaming_text(text, content_width.saturating_sub(2));
+            entry_heights.push(lines.len());
+            streaming_lines = Some(lines);
+        } else {
+            let stamp = TranscriptEntryStamp::from_entry(entry);
+            if cache.len() <= index {
+                cache.push(CachedTranscriptEntryRender::default());
             }
-            TranscriptEntry::Error { text } => {
-                lines.push(Line::from(""));
-                lines.push(Line::from(vec![
-                    Span::styled("  ⚠ ", Style::default().fg(error()).add_modifier(Modifier::BOLD)),
-                    Span::styled(
-                        text.clone(),
-                        Style::default().fg(error()),
-                    ),
-                ]));
-                lines.push(Line::from(""));
+            let cached = &mut cache[index];
+            if cached.width != width || cached.stamp != stamp {
+                cached.width = width;
+                cached.stamp = stamp;
+                cached.lines = render_transcript_entry(entry, content_width);
             }
-            TranscriptEntry::Separator => {
-                // Subtle horizontal rule instead of blank line
-                let width = content_width.min(60);
-                lines.push(Line::from(vec![
-                    Span::styled("  ", Style::default()),
-                    Span::styled(
-                        "─".repeat(width),
-                        Style::default().fg(border_idle()),
-                    ),
-                ]));
-            }
+            entry_heights.push(cached.lines.len());
         }
     }
 
-    // Show animated spinner when pending
-    if app.pending {
-        let is_step = app.entries.last().map_or(false, |e| matches!(e, TranscriptEntry::ToolComplete { .. }));
+    // Spinner height
+    let spinner_height = if app.pending {
+        let is_step = app
+            .entries
+            .last()
+            .is_some_and(|e| matches!(e, TranscriptEntry::ToolComplete { .. }));
         if !is_step && !app.streaming_text {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    let total_lines: usize = entry_heights.iter().sum::<usize>() + spinner_height;
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    let scroll = if app.auto_scroll {
+        max_scroll
+    } else {
+        app.scroll_offset.min(max_scroll)
+    };
+
+    // ── Second pass: collect only visible lines ──
+    let buffer = visible_height; // one screenful buffer on each side for smoothness
+    let viewport_start = scroll.saturating_sub(buffer);
+    let viewport_end = (scroll + visible_height + buffer).min(total_lines);
+
+    let mut lines = Vec::with_capacity(viewport_end.saturating_sub(viewport_start));
+    let mut current_offset = 0usize;
+
+    for (index, _entry) in app.entries.iter().enumerate() {
+        let entry_height = entry_heights[index];
+        let entry_start = current_offset;
+        let entry_end = current_offset + entry_height;
+
+        if entry_end <= viewport_start || entry_start >= viewport_end {
+            current_offset = entry_end;
+            continue;
+        }
+
+        let skip = viewport_start.saturating_sub(entry_start);
+        let take = (entry_end.min(viewport_end) - entry_start).min(entry_height);
+
+        if streaming_last && index == last_index {
+            if let Some(ref streaming) = streaming_lines {
+                for line in streaming.iter().take(take).skip(skip) {
+                    lines.push(line.clone());
+                }
+            }
+        } else {
+            let cached = &cache[index];
+            for line in cached.lines.iter().take(take).skip(skip) {
+                lines.push(line.clone());
+            }
+        }
+
+        current_offset = entry_end;
+    }
+
+    // Spinner
+    if spinner_height > 0 {
+        let spinner_offset = current_offset;
+        if spinner_offset < viewport_end && spinner_offset + 1 > viewport_start {
             let spinner = spinner_frame(app.tick_count);
             let status = &app.status;
             lines.push(Line::from(vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(
-                    format!("{spinner} "),
-                    Style::default().fg(accent()),
-                ),
+                Span::styled(format!("{spinner} "), Style::default().fg(accent())),
                 Span::styled(
                     status.clone(),
-                    Style::default().fg(thinking()).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(thinking())
+                        .add_modifier(Modifier::ITALIC),
                 ),
+            ]));
+        }
+    }
+
+    (lines, total_lines, scroll, buffer)
+}
+
+fn render_transcript_entry(entry: &TranscriptEntry, content_width: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    match entry {
+        TranscriptEntry::System { text } => {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    "  ℹ ",
+                    Style::default()
+                        .fg(system_text())
+                        .add_modifier(Modifier::DIM),
+                ),
+                Span::styled(text.clone(), Style::default().fg(system_text())),
+            ]));
+        }
+        TranscriptEntry::User { text } => {
+            lines.push(Line::from(""));
+            for (i, line) in text.lines().enumerate() {
+                if i == 0 {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            " ▸ ",
+                            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            line.to_string(),
+                            Style::default()
+                                .fg(text_primary())
+                                .bg(user_bg())
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]));
+                } else {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            "   ",
+                            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            line.to_string(),
+                            Style::default()
+                                .fg(text_primary())
+                                .bg(user_bg())
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]));
+                }
+            }
+            if text.ends_with('\n') {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "   ",
+                        Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        " ",
+                        Style::default()
+                            .fg(text_primary())
+                            .bg(user_bg())
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+            }
+        }
+        TranscriptEntry::AssistantText { text } => {
+            lines.push(Line::from(""));
+            lines.extend(markdown::render_markdown(
+                text,
+                content_width.saturating_sub(2),
+            ));
+        }
+        TranscriptEntry::Thinking { text } => {
+            lines.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    if text.is_empty() {
+                        "💭 Thinking...".to_string()
+                    } else {
+                        format!("💭 Thinking: {}", truncate_str(text, 60))
+                    },
+                    Style::default()
+                        .fg(thinking())
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ]));
+        }
+        TranscriptEntry::ToolStart { .. } => {}
+        TranscriptEntry::ToolComplete {
+            tool,
+            content,
+            is_error,
+            collapsed,
+        } => {
+            let (icon, status_color) = if *is_error {
+                ("✗", error())
+            } else {
+                ("✓", tool_label())
+            };
+
+            let tool_display = friendly_tool_display(tool);
+
+            if *collapsed {
+                let preview = content.lines().next().unwrap_or("").to_string();
+                let line_count = content.lines().count();
+                let preview_text = if line_count > 1 {
+                    format!(
+                        "{}  [+{} more]  ctrl+o to expand",
+                        truncate_str(&preview, 45),
+                        line_count - 1
+                    )
+                } else {
+                    truncate_str(&preview, 60).to_string()
+                };
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(
+                        format!("{icon} "),
+                        Style::default()
+                            .fg(status_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("{tool_display} "),
+                        Style::default()
+                            .fg(status_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(preview_text, Style::default().fg(tool_text())),
+                ]));
+                lines.push(Line::from(""));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(
+                        format!("{icon} {tool_display}"),
+                        Style::default()
+                            .fg(status_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+
+                let max_lines = 20;
+                let total_lines = content.lines().count();
+                for (i, line) in content.lines().enumerate() {
+                    if i >= max_lines {
+                        lines.push(Line::from(vec![
+                            Span::styled("    ", Style::default()),
+                            Span::styled(
+                                format!("⋯ {} more  ctrl+o to collapse", total_lines - max_lines),
+                                Style::default()
+                                    .fg(text_muted())
+                                    .add_modifier(Modifier::ITALIC),
+                            ),
+                        ]));
+                        break;
+                    }
+                    lines.push(Line::from(vec![
+                        Span::styled("    ", Style::default()),
+                        Span::styled(
+                            truncate_str(line, content_width.saturating_sub(4)).to_string(),
+                            Style::default().fg(tool_text()),
+                        ),
+                    ]));
+                }
+                lines.push(Line::from(""));
+            }
+        }
+        TranscriptEntry::Error { text } => {
+            let box_width = content_width.min(76);
+            let inner_width = box_width.saturating_sub(4);
+
+            // Top border: ┌─ ERROR ─────────────────────────┐
+            let label = " ERROR ";
+            let border_len = box_width.saturating_sub(label.len() + 2);
+            let left_border = "─".repeat(border_len / 2);
+            let right_border = "─".repeat(border_len - border_len / 2);
+            lines.push(Line::from(vec![
+                Span::styled("  ┌", Style::default().fg(error())),
+                Span::styled(left_border, Style::default().fg(error())),
+                Span::styled(
+                    label.to_string(),
+                    Style::default().fg(error()).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(right_border, Style::default().fg(error())),
+                Span::styled("┐", Style::default().fg(error())),
+            ]));
+
+            // Wrapped error text
+            let wrapped = wrap_text_to_width(text, inner_width);
+            for line in wrapped {
+                let padding = inner_width.saturating_sub(line.chars().count());
+                lines.push(Line::from(vec![
+                    Span::styled("  │ ", Style::default().fg(error())),
+                    Span::styled(line, Style::default().fg(error())),
+                    Span::styled(" ".repeat(padding), Style::default()),
+                    Span::styled(" │", Style::default().fg(error())),
+                ]));
+            }
+
+            // Bottom border
+            lines.push(Line::from(vec![
+                Span::styled("  └", Style::default().fg(error())),
+                Span::styled(
+                    "─".repeat(box_width.saturating_sub(2)),
+                    Style::default().fg(error()),
+                ),
+                Span::styled("┘", Style::default().fg(error())),
+            ]));
+            lines.push(Line::from(""));
+        }
+        TranscriptEntry::Separator => {
+            let width = content_width.min(60);
+            lines.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled("─".repeat(width), Style::default().fg(border_idle())),
             ]));
         }
     }
@@ -196,19 +440,32 @@ fn friendly_tool_display(tool: &str) -> String {
     }
 }
 
-pub fn render_footer(frame: &mut Frame, area: Rect, app: &TuiApp, config: &CliConfig, settings: &StoredSettings) {
+pub fn render_footer(
+    frame: &mut Frame,
+    area: Rect,
+    app: &TuiApp,
+    config: &CliConfig,
+    settings: &StoredSettings,
+    session_name: Option<&str>,
+) {
     let eff = effective_settings(config, settings);
     let provider = eff.provider.unwrap_or_else(|| "?".into());
     let model = eff.model_id.unwrap_or_else(|| "?".into());
     let mode = &app.current_mode;
 
-    let cost = estimate_cost(&provider, &model, app.tokens_in, app.tokens_out, app.tokens_cache_read, app.tokens_cache_write);
+    let cost = estimate_cost(
+        &provider,
+        &model,
+        app.tokens_in,
+        app.tokens_out,
+        app.tokens_cache_read,
+        app.tokens_cache_write,
+    );
     let cost_str = format_cost(cost);
 
-    // Left side: cwd and mode
+    // Left side: cwd, session name, and mode
     let cwd_display = {
         let path = config.cwd.display().to_string();
-        // Show just the last 2 components of the path for brevity
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         if parts.len() > 2 {
             format!("…/{}", parts[parts.len() - 2..].join("/"))
@@ -217,12 +474,23 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &TuiApp, config: &CliCo
         }
     };
 
-    let left = format!(" {} │ {}", cwd_display, mode);
+    let session_tag = session_name
+        .map(|n| format!(" [{}]", n))
+        .unwrap_or_default();
+    let mode_label = if mode == "auto" {
+        "auto".to_string()
+    } else {
+        mode.clone()
+    };
+    let left = format!(" {} │{}{} │ {}", cwd_display, session_tag, "", mode_label);
 
     // Right side: model, tokens, cost
     let in_str = format_tokens(app.tokens_in);
     let out_str = format_tokens(app.tokens_out);
-    let right = format!("{} │ in:{} out:{} │ {} ", provider, in_str, out_str, cost_str);
+    let right = format!(
+        "{} │ in:{} out:{} │ {} ",
+        provider, in_str, out_str, cost_str
+    );
 
     // Truncate model name if needed
     let model_tag = format!(" {} ", model);
@@ -236,11 +504,15 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &TuiApp, config: &CliCo
         Span::styled(left, Style::default().fg(footer_text())),
         Span::styled(" ".repeat(padding), Style::default().bg(footer_bg())),
         Span::styled(right, Style::default().fg(footer_text())),
-        Span::styled(model_tag, Style::default().fg(accent_dim()).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            model_tag,
+            Style::default()
+                .fg(accent_dim())
+                .add_modifier(Modifier::BOLD),
+        ),
     ]);
 
-    let footer = Paragraph::new(footer_line)
-        .style(Style::default().bg(footer_bg()));
+    let footer = Paragraph::new(footer_line).style(Style::default().bg(footer_bg()));
     frame.render_widget(footer, area);
 }
 
@@ -254,7 +526,9 @@ pub fn render_settings_overlay(frame: &mut Frame, app: &TuiApp) {
     let model = models.get(clamp_index(app.settings.model_index, models.len()));
 
     match app.settings.mode {
-        SettingsMode::Browsing => render_settings_browsing(frame, area, app, &providers, &models, provider, model),
+        SettingsMode::Browsing => {
+            render_settings_browsing(frame, area, app, &providers, &models, provider, model)
+        }
         SettingsMode::Choosing => render_settings_choosing(frame, area, app, &providers, &models),
         SettingsMode::EditingKey => render_settings_editing_key(frame, area, app, provider, model),
     }
@@ -282,22 +556,33 @@ fn render_settings_browsing(
     let focus = app.settings.focus;
 
     let focus_style = |active: bool| {
-        if active { Style::default().fg(accent()).add_modifier(Modifier::BOLD) }
-        else { Style::default().fg(text_dim()) }
+        if active {
+            Style::default().fg(accent()).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(text_dim())
+        }
     };
 
     let field_icon = |active: bool| -> &'static str {
-        if active { "▸ " } else { "  " }
+        if active {
+            "▸ "
+        } else {
+            "  "
+        }
     };
 
-    let provider_val = provider.map(|p| p.name.clone()).unwrap_or_else(|| "(none)".into());
-    let model_val = model.map(|(_, name)| name.clone()).unwrap_or_else(|| "(none)".into());
+    let provider_val = provider
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "(none)".into());
+    let model_val = model
+        .map(|(_, name)| name.clone())
+        .unwrap_or_else(|| "(none)".into());
     let key_display = if app.settings.api_key.is_empty() {
         "(not set)".to_string()
     } else {
         let key = &app.settings.api_key;
         if key.len() > 8 {
-            format!("{}••••{}", &key[..3], &key[key.len()-3..])
+            format!("{}••••{}", &key[..3], &key[key.len() - 3..])
         } else {
             "••••".to_string()
         }
@@ -306,7 +591,10 @@ fn render_settings_browsing(
     let lines = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled(field_icon(focus == SettingsFocus::Provider), Style::default().fg(accent())),
+            Span::styled(
+                field_icon(focus == SettingsFocus::Provider),
+                Style::default().fg(accent()),
+            ),
             Span::styled("Provider ", focus_style(focus == SettingsFocus::Provider)),
             Span::styled(provider_val, Style::default().fg(text_primary())),
             if focus == SettingsFocus::Provider {
@@ -317,7 +605,10 @@ fn render_settings_browsing(
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled(field_icon(focus == SettingsFocus::Model), Style::default().fg(accent())),
+            Span::styled(
+                field_icon(focus == SettingsFocus::Model),
+                Style::default().fg(accent()),
+            ),
             Span::styled("Model    ", focus_style(focus == SettingsFocus::Model)),
             Span::styled(model_val, Style::default().fg(text_primary())),
             if focus == SettingsFocus::Model {
@@ -328,7 +619,10 @@ fn render_settings_browsing(
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled(field_icon(focus == SettingsFocus::ApiKey), Style::default().fg(accent())),
+            Span::styled(
+                field_icon(focus == SettingsFocus::ApiKey),
+                Style::default().fg(accent()),
+            ),
             Span::styled("API key  ", focus_style(focus == SettingsFocus::ApiKey)),
             Span::styled(key_display, Style::default().fg(text_primary())),
             if focus == SettingsFocus::ApiKey {
@@ -349,13 +643,15 @@ fn render_settings_browsing(
         }),
     ];
 
-    let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title(Span::styled(" ⚙ Settings ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(accent()))
-        );
+    let widget = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(
+                " ⚙ Settings ",
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(accent())),
+    );
     frame.render_widget(widget, rect);
 }
 
@@ -367,8 +663,14 @@ fn render_settings_choosing(
     models: &[(String, String)],
 ) {
     let items: Vec<(String, String)> = match app.settings.focus {
-        SettingsFocus::Provider => providers.iter().map(|p| (p.id.clone(), p.name.clone())).collect(),
-        SettingsFocus::Model => models.iter().map(|(id, name)| (id.clone(), name.clone())).collect(),
+        SettingsFocus::Provider => providers
+            .iter()
+            .map(|p| (p.id.clone(), p.name.clone()))
+            .collect(),
+        SettingsFocus::Model => models
+            .iter()
+            .map(|(id, name)| (id.clone(), name.clone()))
+            .collect(),
         SettingsFocus::ApiKey => vec![],
     };
 
@@ -432,9 +734,18 @@ fn render_settings_choosing(
 
     // Scroll indicator
     if items.len() > max_visible {
-        let pct = if items.is_empty() { 0 } else { (list_scroll * 100) / items.len().saturating_sub(1) };
+        let pct = if items.is_empty() {
+            0
+        } else {
+            (list_scroll * 100) / items.len().saturating_sub(1)
+        };
         lines.push(Line::from(Span::styled(
-            format!("  {} of {}  {}%", list_scroll + 1, items.len(), pct.min(100)),
+            format!(
+                "  {} of {}  {}%",
+                list_scroll + 1,
+                items.len(),
+                pct.min(100)
+            ),
             Style::default().fg(text_muted()),
         )));
     }
@@ -445,13 +756,15 @@ fn render_settings_choosing(
         Style::default().fg(text_muted()),
     )));
 
-    let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title(Span::styled(format!(" ⚙ Choose {} ", title), Style::default().fg(accent()).add_modifier(Modifier::BOLD)))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(accent()))
-        );
+    let widget = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(
+                format!(" ⚙ Choose {} ", title),
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(accent())),
+    );
     frame.render_widget(widget, rect);
 }
 
@@ -472,8 +785,12 @@ fn render_settings_editing_key(
     };
     frame.render_widget(Clear, rect);
 
-    let provider_val = provider.map(|p| p.name.clone()).unwrap_or_else(|| "(none)".into());
-    let model_val = model.map(|(_, name)| name.clone()).unwrap_or_else(|| "(none)".into());
+    let provider_val = provider
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "(none)".into());
+    let model_val = model
+        .map(|(_, name)| name.clone())
+        .unwrap_or_else(|| "(none)".into());
 
     // Show the key — masked with dots except near cursor for security
     let key = &app.settings.api_key;
@@ -486,28 +803,40 @@ fn render_settings_editing_key(
         let char_count = key.chars().count();
         if char_count <= max_show {
             // Show all masked
-            let masked: String = key.chars().enumerate().map(|(i, _)| {
-                if i >= cursor.saturating_sub(2) && i <= cursor + 2 {
-                    key.chars().nth(i).unwrap_or('•')
-                } else {
-                    '•'
-                }
-            }).collect();
+            let masked: String = key
+                .chars()
+                .enumerate()
+                .map(|(i, _)| {
+                    if i >= cursor.saturating_sub(2) && i <= cursor + 2 {
+                        key.chars().nth(i).unwrap_or('•')
+                    } else {
+                        '•'
+                    }
+                })
+                .collect();
             (masked, cursor)
         } else {
             // Window around cursor
             let start = cursor.saturating_sub(max_show / 2);
             let end = (start + max_show).min(char_count);
-            let actual_start = if end < char_count { start } else { char_count.saturating_sub(max_show) };
+            let actual_start = if end < char_count {
+                start
+            } else {
+                char_count.saturating_sub(max_show)
+            };
             let visible: String = key.chars().skip(actual_start).take(max_show).collect();
-            let masked: String = visible.chars().enumerate().map(|(i, _)| {
-                let global_i = actual_start + i;
-                if global_i >= cursor.saturating_sub(2) && global_i <= cursor + 2 {
-                    key.chars().nth(global_i).unwrap_or('•')
-                } else {
-                    '•'
-                }
-            }).collect();
+            let masked: String = visible
+                .chars()
+                .enumerate()
+                .map(|(i, _)| {
+                    let global_i = actual_start + i;
+                    if global_i >= cursor.saturating_sub(2) && global_i <= cursor + 2 {
+                        key.chars().nth(global_i).unwrap_or('•')
+                    } else {
+                        '•'
+                    }
+                })
+                .collect();
             (masked, cursor.saturating_sub(actual_start))
         }
     };
@@ -529,12 +858,18 @@ fn render_settings_editing_key(
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  API key: ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  API key: ",
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(key_display, key_style),
         ]),
         Line::from(vec![
             Span::styled("           ", Style::default()),
-            Span::styled(format!("{}▲", " ".repeat(cursor_offset)), Style::default().fg(accent())),
+            Span::styled(
+                format!("{}▲", " ".repeat(cursor_offset)),
+                Style::default().fg(accent()),
+            ),
         ]),
         Line::from(""),
         Line::from(Span::styled(
@@ -543,13 +878,15 @@ fn render_settings_editing_key(
         )),
     ];
 
-    let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title(Span::styled(" ⚙ Edit API Key ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(accent()))
-        );
+    let widget = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(
+                " ⚙ Edit API Key ",
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(accent())),
+    );
     frame.render_widget(widget, rect);
 }
 
@@ -586,8 +923,14 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
 
                 if is_selected {
                     lines.push(Line::from(vec![
-                        Span::styled("  → ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)),
-                        Span::styled(provider.name.clone(), Style::default().fg(accent()).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            "  → ",
+                            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            provider.name.clone(),
+                            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                        ),
                         status,
                     ]));
                 } else {
@@ -612,13 +955,15 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
                 Style::default().fg(text_muted()),
             )));
 
-            let widget = Paragraph::new(lines)
-                .block(
-                    Block::default()
-                        .title(Span::styled(" 🔑 Login ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)))
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(accent()))
-                );
+            let widget = Paragraph::new(lines).block(
+                Block::default()
+                    .title(Span::styled(
+                        " 🔑 Login ",
+                        Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                    ))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(accent())),
+            );
             frame.render_widget(widget, rect);
         }
         LoginPhase::InProgress => {
@@ -652,7 +997,9 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
                 };
                 lines.push(Line::from(Span::styled(
                     format!("     {click_hint}"),
-                    Style::default().fg(text_muted()).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(text_muted())
+                        .add_modifier(Modifier::ITALIC),
                 )));
                 lines.push(Line::from(""));
             }
@@ -663,7 +1010,9 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
                     Span::styled("  📋 Code: ", Style::default().fg(text_dim())),
                     Span::styled(
                         code.clone(),
-                        Style::default().fg(text_primary()).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(text_primary())
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]));
                 lines.push(Line::from(""));
@@ -682,17 +1031,24 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
                 Span::styled(format!("  {spinner} "), Style::default().fg(accent())),
-                Span::styled("Waiting...", Style::default().fg(thinking()).add_modifier(Modifier::ITALIC)),
+                Span::styled(
+                    "Waiting...",
+                    Style::default()
+                        .fg(thinking())
+                        .add_modifier(Modifier::ITALIC),
+                ),
                 Span::styled("  (Esc to cancel)", Style::default().fg(text_muted())),
             ]));
 
-            let widget = Paragraph::new(lines)
-                .block(
-                    Block::default()
-                        .title(Span::styled(" 🔑 Login ", Style::default().fg(accent()).add_modifier(Modifier::BOLD)))
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(accent()))
-                );
+            let widget = Paragraph::new(lines).block(
+                Block::default()
+                    .title(Span::styled(
+                        " 🔑 Login ",
+                        Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+                    ))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(accent())),
+            );
             frame.render_widget(widget, rect);
         }
     }
@@ -704,22 +1060,54 @@ pub fn render_command_preview(frame: &mut Frame, app: &TuiApp, input_area: Rect)
         return;
     }
 
-    let count = commands.len().min(9);
-    let height = count as u16 + 2; // border
-    let width = input_area.width.min(50);
+    let item_count = commands.len();
+    let max_visible = 12usize;
+    let visible_count = item_count.min(max_visible);
+    // Title row + items + border = visible_count + 3
+    let height = (visible_count + 3).clamp(4, 15) as u16;
+    // Don't let it extend above the screen
+    let available_above = input_area.y;
+    let actual_height = height.min(available_above);
+    let width = input_area.width.min(52);
 
-    // Position above the input box
     let rect = Rect {
         x: input_area.x,
-        y: input_area.y.saturating_sub(height),
+        y: input_area.y.saturating_sub(actual_height),
         width,
-        height,
+        height: actual_height,
     };
     frame.render_widget(Clear, rect);
 
+    // Calculate scroll window
+    let selected = app.command_preview_index;
+    let half = max_visible / 2;
+    let start = if item_count <= max_visible || selected < half {
+        0
+    } else if selected + half >= item_count {
+        item_count.saturating_sub(max_visible)
+    } else {
+        selected - half
+    };
+    let end = (start + max_visible).min(item_count);
+
     let mut lines: Vec<Line<'static>> = Vec::new();
-    for (i, cmd) in commands.iter().enumerate().take(count) {
-        let is_selected = i == app.command_preview_index;
+
+    // Title line showing match count
+    let title = if item_count == 1 {
+        " 1 command ".to_string()
+    } else {
+        format!(" {} commands ", item_count)
+    };
+    lines.push(Line::from(Span::styled(
+        title,
+        Style::default()
+            .fg(text_muted())
+            .add_modifier(Modifier::ITALIC),
+    )));
+
+    for i in start..end {
+        let cmd = &commands[i];
+        let is_selected = i == selected;
         let style = if is_selected {
             Style::default().fg(accent()).add_modifier(Modifier::BOLD)
         } else {
@@ -729,17 +1117,32 @@ pub fn render_command_preview(frame: &mut Frame, app: &TuiApp, input_area: Rect)
         lines.push(Line::from(vec![
             Span::styled(arrow, Style::default().fg(accent())),
             Span::styled(format!("{} ", cmd.icon), style),
-            Span::styled(format!("{:12} ", cmd.name), style),
-            Span::styled(cmd.description.to_string(), Style::default().fg(text_muted())),
+            Span::styled(format!("{:14} ", cmd.name), style),
+            Span::styled(
+                cmd.description.to_string(),
+                Style::default().fg(text_muted()),
+            ),
         ]));
     }
 
-    let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(accent_dim()))
-        );
+    // Scroll indicator
+    if item_count > max_visible {
+        let pct = (selected * 100) / item_count.saturating_sub(1);
+        lines.push(Line::from(Span::styled(
+            format!("  {} of {}  {}%", selected + 1, item_count, pct.min(100)),
+            Style::default().fg(text_muted()),
+        )));
+    }
+
+    let widget = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(
+                " Commands ",
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(accent_dim())),
+    );
     frame.render_widget(widget, rect);
 }
 
@@ -754,6 +1157,7 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
         CommandPickerKind::Provider => " 🔌 Switch Provider ",
         CommandPickerKind::Model => " 🧠 Switch Model ",
         CommandPickerKind::Theme => " 🎨 Switch Theme ",
+        CommandPickerKind::Session => " 🗂 Switch Session ",
     };
 
     let max_visible = 10usize;
@@ -807,7 +1211,10 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
             Span::styled(name.clone(), style),
         ];
         if !status.is_empty() {
-            spans.push(Span::styled(format!("  {}", status), Style::default().fg(text_muted())));
+            spans.push(Span::styled(
+                format!("  {}", status),
+                Style::default().fg(text_muted()),
+            ));
         }
         lines.push(Line::from(spans));
     }
@@ -818,17 +1225,25 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
         Style::default().fg(text_muted()),
     )));
 
-    let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title(Span::styled(title, Style::default().fg(accent()).add_modifier(Modifier::BOLD)))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(accent()))
-        );
+    let widget = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(
+                title,
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(accent())),
+    );
     frame.render_widget(widget, rect);
 }
 
-pub fn render(frame: &mut Frame, app: &TuiApp, config: &CliConfig, settings: &StoredSettings) {
+pub fn render(
+    frame: &mut Frame,
+    app: &TuiApp,
+    config: &CliConfig,
+    settings: &StoredSettings,
+    session_name: Option<&str>,
+) {
     let area = frame.area();
 
     // Calculate input box height based on wrapped text
@@ -860,20 +1275,12 @@ pub fn render(frame: &mut Frame, app: &TuiApp, config: &CliConfig, settings: &St
     let footer_area = chunks[2];
 
     // ── Transcript ───────────────────────────────────────────────
-    let all_lines = render_transcript_lines(app, transcript_area.width);
-    let total_lines = all_lines.len() as u16;
-    let visible_height = transcript_area.height.saturating_sub(2);
+    let visible_height = transcript_area.height.saturating_sub(2) as usize;
+    let (visible_lines, total_lines, scroll, buffer) =
+        render_transcript_viewport(app, transcript_area.width, visible_height);
 
     app.content_lines.set(total_lines);
     app.visible_height.set(visible_height);
-
-    // Clamp scroll_offset to valid range
-    let max_scroll = total_lines.saturating_sub(visible_height);
-    let scroll = if app.auto_scroll {
-        max_scroll
-    } else {
-        app.scroll_offset.min(max_scroll)
-    };
 
     let border_color = if app.pending {
         accent_dim()
@@ -883,26 +1290,39 @@ pub fn render(frame: &mut Frame, app: &TuiApp, config: &CliConfig, settings: &St
         border_idle()
     };
 
-    let transcript = Paragraph::new(all_lines)
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(border_color)))
+    let paragraph_scroll_y = if scroll >= buffer {
+        buffer as u16
+    } else {
+        scroll as u16
+    };
+
+    let transcript = Paragraph::new(visible_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color)),
+        )
         .wrap(Wrap { trim: false })
-        .scroll((scroll, 0));
+        .scroll((paragraph_scroll_y, 0));
 
     frame.render_widget(transcript, transcript_area);
 
     // Scrollbar
     if total_lines > visible_height {
-        let mut scrollbar_state = ScrollbarState::new(max_scroll as usize).position(scroll as usize);
+        let max_scroll = total_lines.saturating_sub(visible_height);
+        let mut scrollbar_state = ScrollbarState::new(max_scroll).position(scroll);
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None).end_symbol(None)
-            .track_symbol(Some(" ")).thumb_symbol("┃")
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some(" "))
+            .thumb_symbol("┃")
             .track_style(Style::default().fg(border_idle()))
             .thumb_style(Style::default().fg(accent_dim()));
         let scrollbar_area = Rect {
             x: transcript_area.x + transcript_area.width - 1,
             y: transcript_area.y + 1,
             width: 1,
-            height: visible_height,
+            height: visible_height as u16,
         };
         frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
     }
@@ -920,10 +1340,21 @@ pub fn render(frame: &mut Frame, app: &TuiApp, config: &CliConfig, settings: &St
         let spinner = spinner_frame(app.tick_count);
         Span::styled(
             format!(" {} waiting (Esc to abort) ", spinner),
-            Style::default().fg(thinking()).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(thinking())
+                .add_modifier(Modifier::ITALIC),
         )
     } else {
-        Span::styled(" ▸ ", Style::default().fg(accent()).add_modifier(Modifier::BOLD))
+        let multi_line = app.input.contains('\n');
+        let label = if multi_line {
+            format!(" ▸ multiline ({} lines) ", app.input.lines().count())
+        } else {
+            " ▸ ".to_string()
+        };
+        Span::styled(
+            label,
+            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+        )
     };
 
     let input_block = Block::default()
@@ -947,7 +1378,7 @@ pub fn render(frame: &mut Frame, app: &TuiApp, config: &CliConfig, settings: &St
     }
 
     // ── Footer ───────────────────────────────────────────────────
-    render_footer(frame, footer_area, app, config, settings);
+    render_footer(frame, footer_area, app, config, settings, session_name);
 
     // ── Settings overlay ─────────────────────────────────────────
     if app.settings_open {

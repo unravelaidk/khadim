@@ -8,6 +8,12 @@ pub fn infer_copilot_initiator(messages: &[ChatMessage]) -> &'static str {
     }
 }
 
+/// Detect whether the conversation includes image content that requires
+/// the `Copilot-Vision-Request` header.
+///
+/// TODO: expand once `ChatMessage` supports content blocks (text + image).
+/// For now, pi-mono checks `msg.content.some(c => c.type === "image")` on
+/// both user messages and tool-result messages.
 pub fn has_copilot_vision_input(_messages: &[ChatMessage]) -> bool {
     false
 }

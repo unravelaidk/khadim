@@ -1,8 +1,8 @@
 use crate::error::AppError;
-use crate::providers::request_headers::build_copilot_dynamic_headers;
 use crate::providers::transform_messages::{
     finalize_tool_call, to_anthropic_messages, to_anthropic_tools,
 };
+use crate::providers::usage::anthropic_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{
     AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage,
@@ -34,11 +34,6 @@ pub fn complete(
     api_key: &str,
 ) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
-    let copilot_headers = if model.provider == "github-copilot" {
-        Some(build_copilot_dynamic_headers(&context.messages))
-    } else {
-        None
-    };
     let (system, messages) = to_anthropic_messages(&context.messages);
     let tools = to_anthropic_tools(context);
     let api_key = api_key.to_string();
@@ -69,28 +64,15 @@ pub fn complete(
 
         let request = client
             .post(format!("{base_url}/messages"))
-            .headers({
-                let mut headers = model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-                    if let (Ok(name), Ok(val)) = (
-                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                        reqwest::header::HeaderValue::from_str(value),
-                    ) {
-                        acc.insert(name, val);
-                    }
-                    acc
-                });
-                if let Some(dynamic) = &copilot_headers {
-                    for (key, value) in dynamic {
-                        if let (Ok(name), Ok(val)) = (
-                            reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                            reqwest::header::HeaderValue::from_str(value),
-                        ) {
-                            headers.insert(name, val);
-                        }
-                    }
+            .headers(model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(value),
+                ) {
+                    acc.insert(name, val);
                 }
-                headers
-            })
+                acc
+            }))
             .header("anthropic-version", api_version);
 
         let response = if model.provider == "anthropic" {
@@ -101,7 +83,7 @@ pub fn complete(
                 .send()
                 .await?
         } else {
-            // Third-party providers (opencode, kimi-coding, minimax, github-copilot, etc.)
+            // Third-party providers (opencode, kimi-coding, minimax, etc.)
             // use Bearer token authentication
             request
                 .bearer_auth(api_key)
@@ -152,23 +134,7 @@ pub fn complete(
 
         let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
 
-        Ok(CompletionResponse {
-            content,
-            tool_calls,
-            usage: Usage {
-                input: usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                output: usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                cache_read: usage
-                    .get("cache_read_input_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0),
-                cache_write: usage
-                    .get("cache_creation_input_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0),
-            },
-            reasoning_content: None,
-        })
+        Ok(CompletionResponse { content, tool_calls, usage: anthropic_usage(&usage), reasoning_content: None })
     })
 }
 
@@ -180,11 +146,6 @@ pub fn stream(
     on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>,
 ) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
-    let copilot_headers = if model.provider == "github-copilot" {
-        Some(build_copilot_dynamic_headers(&context.messages))
-    } else {
-        None
-    };
     let (system, messages) = to_anthropic_messages(&context.messages);
     let tools = to_anthropic_tools(context);
     let api_key = api_key.to_string();
@@ -216,28 +177,15 @@ pub fn stream(
 
         let request = client
             .post(format!("{base_url}/messages"))
-            .headers({
-                let mut headers = model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-                    if let (Ok(name), Ok(val)) = (
-                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                        reqwest::header::HeaderValue::from_str(value),
-                    ) {
-                        acc.insert(name, val);
-                    }
-                    acc
-                });
-                if let Some(dynamic) = &copilot_headers {
-                    for (key, value) in dynamic {
-                        if let (Ok(name), Ok(val)) = (
-                            reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                            reqwest::header::HeaderValue::from_str(value),
-                        ) {
-                            headers.insert(name, val);
-                        }
-                    }
+            .headers(model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(value),
+                ) {
+                    acc.insert(name, val);
                 }
-                headers
-            })
+                acc
+            }))
             .header("anthropic-version", api_version);
 
         let response = if model.provider == "anthropic" {
@@ -248,7 +196,7 @@ pub fn stream(
                 .send()
                 .await?
         } else {
-            // Third-party providers (opencode, kimi-coding, minimax, github-copilot, etc.)
+            // Third-party providers (opencode, kimi-coding, minimax, etc.)
             // use Bearer token authentication
             request
                 .bearer_auth(api_key)
@@ -279,16 +227,7 @@ pub fn stream(
             match payload.get("type").and_then(|value| value.as_str()).unwrap_or_default() {
                 "message_start" => {
                     if let Some(raw_usage) = payload.get("message").and_then(|v| v.get("usage")) {
-                        usage.input = raw_usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                        usage.output = raw_usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                        usage.cache_read = raw_usage
-                            .get("cache_read_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        usage.cache_write = raw_usage
-                            .get("cache_creation_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
+                        usage = anthropic_usage(raw_usage);
                         on_event(AssistantStreamEvent::Usage(usage.clone()));
                     }
                 }
@@ -347,16 +286,7 @@ pub fn stream(
                 }
                 "message_delta" => {
                     if let Some(raw_usage) = payload.get("usage") {
-                        usage.input = raw_usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.input);
-                        usage.output = raw_usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.output);
-                        usage.cache_read = raw_usage
-                            .get("cache_read_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(usage.cache_read);
-                        usage.cache_write = raw_usage
-                            .get("cache_creation_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(usage.cache_write);
+                        usage = anthropic_usage(raw_usage);
                         on_event(AssistantStreamEvent::Usage(usage.clone()));
                     }
                 }

@@ -10,7 +10,7 @@ use crate::khadim_ai::types::{
 use crate::khadim_ai::ModelClient;
 use crate::khadim_code::AgentRuntime;
 use crate::integrations::IntegrationRegistry;
-use crate::khadim_code::tools::{MemoryGetTool, MemorySaveTool, MemorySearchTool, QuestionTool, Tool};
+use crate::khadim_code::tools::{MemoryDeleteTool, MemoryGetTool, MemorySaveTool, MemorySearchTool, QuestionTool, SessionSearchTool, Tool};
 use crate::opencode::AgentStreamEvent;
 use crate::plugins::PluginManager;
 use serde_json::{json, Value};
@@ -166,10 +166,20 @@ pub async fn run_prompt_with_plugins(
             session.active_agent_id.clone(),
         )));
         plugin_tools.push(Arc::new(MemorySaveTool::new(
-            db,
+            db.clone(),
             session.workspace_id.clone(),
             session.active_conversation_id.clone(),
             session.active_agent_id.clone(),
+        )));
+        plugin_tools.push(Arc::new(MemoryDeleteTool::new(
+            db.clone(),
+            session.workspace_id.clone(),
+            session.active_conversation_id.clone(),
+            session.active_agent_id.clone(),
+        )));
+        plugin_tools.push(Arc::new(SessionSearchTool::new(
+            db,
+            session.workspace_id.clone(),
         )));
     }
 

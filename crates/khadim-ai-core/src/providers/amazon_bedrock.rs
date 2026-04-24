@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::env_api_keys::is_authenticated_placeholder;
+use crate::providers::usage::bedrock_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
@@ -81,17 +82,7 @@ fn parse_converse_output(body: serde_json::Value) -> CompletionResponse {
         }
     }
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
-    CompletionResponse {
-        content,
-        tool_calls,
-        usage: Usage {
-            input: usage.get("inputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            output: usage.get("outputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_read: usage.get("cacheReadInputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_write: usage.get("cacheWriteInputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        },
-        reasoning_content: None,
-    }
+    CompletionResponse { content, tool_calls, usage: bedrock_usage(&usage), reasoning_content: None }
 }
 
 pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &str) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
@@ -136,10 +127,7 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
                 on_event(AssistantStreamEvent::TextDelta(text.to_string()));
             }
             if let Some(meta) = payload.get("metadata").and_then(|v| v.get("usage")) {
-                usage.input = meta.get("inputTokens").and_then(|v| v.as_u64()).unwrap_or(usage.input);
-                usage.output = meta.get("outputTokens").and_then(|v| v.as_u64()).unwrap_or(usage.output);
-                usage.cache_read = meta.get("cacheReadInputTokens").and_then(|v| v.as_u64()).unwrap_or(usage.cache_read);
-                usage.cache_write = meta.get("cacheWriteInputTokens").and_then(|v| v.as_u64()).unwrap_or(usage.cache_write);
+                usage = bedrock_usage(meta);
                 on_event(AssistantStreamEvent::Usage(usage.clone()));
             }
             Ok(())
