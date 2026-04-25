@@ -4,6 +4,7 @@ use khadim_ai_core::error::AppError;
 use khadim_ai_core::tools::{Tool, ToolDefinition, ToolResult};
 use khadim_ai_core::types::{ChatMessage, Context, ToolMessage};
 use khadim_ai_core::ModelClient;
+use regex::Regex;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -250,17 +251,22 @@ impl Tool for GrepTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "grep".to_string(),
-            description: "Search for a pattern in files. Uses grep -rn. Returns matching lines with file paths and line numbers.".to_string(),
+            description: "Search for a pattern in files. Uses ripgrep (rg) for fast, .gitignore-aware search with automatic common directory exclusion. Falls back to system grep if rg is unavailable. Returns matching lines with file paths and line numbers.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "pattern": {"type": "string", "description": "Search pattern (basic regex)"},
+                    "pattern": {"type": "string", "description": "Search pattern (regex by default, literal with --fixed-strings)"},
                     "path": {"type": "string", "description": "Directory or file to search in (default: workspace root)"},
-                    "include": {"type": "string", "description": "Glob pattern for files to include, e.g. '*.rs' or '*.py'"}
+                    "include": {"type": "string", "description": "Glob pattern for files to include, e.g. '*.rs' or '*.py'"},
+                    "exclude": {"type": "string", "description": "Glob pattern for files to exclude"},
+                    "case_sensitive": {"type": "boolean", "description": "Case-sensitive search (default: false)"},
+                    "fixed_strings": {"type": "boolean", "description": "Treat the pattern as a literal string, not a regex (default: false)"},
+                    "max_count": {"type": "integer", "description": "Maximum total matches to return (default: 500)"},
+                    "head_limit": {"type": "integer", "description": "Maximum output bytes before truncation (default: 50000)"}
                 },
                 "required": ["pattern"]
             }),
-            prompt_snippet: "- grep: Search for patterns in files".to_string(),
+            prompt_snippet: "- grep: Search for patterns in files (uses ripgrep with .gitignore awareness)".to_string(),
         }
     }
 
@@ -271,33 +277,73 @@ impl Tool for GrepTool {
             .ok_or_else(|| AppError::invalid_input("grep requires a pattern"))?;
         let path = input.get("path").and_then(|value| value.as_str()).unwrap_or(".");
         let include = input.get("include").and_then(|value| value.as_str());
+        let exclude = input.get("exclude").and_then(|value| value.as_str());
+        let case_sensitive = input.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(false);
+        let fixed_strings = input.get("fixed_strings").and_then(|v| v.as_bool()).unwrap_or(false);
+        let max_count = input.get("max_count").and_then(|v| v.as_u64()).unwrap_or(500);
+        let head_limit = input.get("head_limit").and_then(|v| v.as_u64()).unwrap_or(50_000) as usize;
 
         let target = normalize_path(&self.root, path)?;
-        let mut cmd = Command::new("grep");
-        cmd.kill_on_drop(true)
-            .arg("-rIn")
-            .arg("-i")
-            .arg("--binary-files=without-match")
-            .arg("--devices=skip")
-            .arg("--exclude-dir=.git")
-            .arg("--exclude-dir=node_modules")
-            .arg("--exclude-dir=target")
-            .arg("--exclude-dir=dist")
-            .arg("--exclude-dir=build")
-            .arg("--exclude-dir=.next")
-            .arg("--exclude-dir=coverage")
-            .arg("--color=never")
-            .arg("-m").arg("100"); // limit matches per file
 
-        if target.is_file() {
-            // When searching a single file, --include is irrelevant and can
-            // cause grep to skip the file. Pass the file directly.
-            cmd.arg("--").arg(pattern).arg(&target);
-        } else {
-            if let Some(glob) = include {
-                cmd.arg("--include").arg(glob);
+        // Try ripgrep first, fall back to grep
+        let rg_path = which_in_path("rg");
+        let use_rg = rg_path.is_some();
+        let binary = rg_path.unwrap_or_else(|| "grep".to_string());
+
+        let mut cmd = Command::new(&binary);
+        cmd.kill_on_drop(true);
+
+        if use_rg {
+            // ripgrep automatically respects .gitignore and skips binary files
+            cmd.arg("--line-number")
+               .arg("--no-heading")
+               .arg("--color=never")
+               .arg("--no-ignore-parent")
+               .arg("--no-messages");
+
+            if !case_sensitive {
+                cmd.arg("--ignore-case");
+            }
+            if fixed_strings {
+                cmd.arg("--fixed-strings");
+            }
+            if let Some(g) = include {
+                cmd.arg("--glob").arg(g);
+            }
+            if let Some(g) = exclude {
+                cmd.arg("--glob").arg(format!("!{}", g));
             }
             cmd.arg("--").arg(pattern).arg(&target);
+        } else {
+            // Fallback to system grep
+            cmd.arg("-rIn")
+               .arg("--binary-files=without-match")
+               .arg("--devices=skip")
+               .arg("--exclude-dir=.git")
+               .arg("--exclude-dir=node_modules")
+               .arg("--exclude-dir=target")
+               .arg("--exclude-dir=dist")
+               .arg("--exclude-dir=build")
+               .arg("--exclude-dir=.next")
+               .arg("--exclude-dir=coverage")
+               .arg("--color=never");
+            if !case_sensitive {
+                cmd.arg("-i");
+            }
+            if fixed_strings {
+                cmd.arg("-F");
+            }
+            if target.is_file() {
+                cmd.arg("--").arg(pattern).arg(&target);
+            } else {
+                if let Some(g) = include {
+                    cmd.arg("--include").arg(g);
+                }
+                if let Some(g) = exclude {
+                    cmd.arg("--exclude").arg(g);
+                }
+                cmd.arg("--").arg(pattern).arg(&target);
+            }
         }
 
         let output = tokio::time::timeout(
@@ -327,11 +373,33 @@ impl Tool for GrepTool {
         let result = if stdout.is_empty() {
             format!("No matches found in {}.", target.display())
         } else {
-            truncate_output(&stdout, 50_000)
+            // Apply max_count if needed
+            let lines: Vec<&str> = stdout.lines().collect();
+            let total = lines.len();
+            let limited: Vec<&str> = lines.into_iter().take(max_count as usize).collect();
+            let mut out = limited.join("\n");
+            if (total as u64) > max_count {
+                out.push_str(&format!("\n\n[{} matches total, showing first {}]", total, max_count));
+            }
+            truncate_output(&out, head_limit)
         };
 
         Ok(ToolResult::text(result))
     }
+}
+
+/// Find a binary in PATH. Returns the full path if found.
+fn which_in_path(name: &str) -> Option<String> {
+    std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path).find_map(|dir| {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                Some(candidate.to_string_lossy().to_string())
+            } else {
+                None
+            }
+        })
+    })
 }
 
 pub struct BashTool {
@@ -635,16 +703,20 @@ impl Tool for GlobTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "glob".to_string(),
-            description: "Find files matching a glob pattern. Returns matching file paths relative to the workspace root.".to_string(),
+            description: "Find files matching a glob pattern. Returns matching file paths relative to the workspace root. Supports *, **, ?, [...], and {a,b} patterns. Respects .gitignore by default.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "pattern": {"type": "string", "description": "Glob pattern to match, e.g. '**/*.rs' or 'src/**/*.ts'"},
-                    "path": {"type": "string", "description": "Base directory to search in (default: workspace root)"}
+                    "pattern": {"type": "string", "description": "Glob pattern to match, e.g. '**/*.rs' or 'src/**/*.ts'. Supports *, **, ?, [abc], {a,b}"},
+                    "path": {"type": "string", "description": "Base directory to search in (default: workspace root)"},
+                    "exclude": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns to exclude from results, e.g. ['**/target/**', '**/node_modules/**']"},
+                    "case_sensitive": {"type": "boolean", "description": "Case-sensitive matching (default: true on Linux, false otherwise)"},
+                    "max_results": {"type": "integer", "description": "Maximum number of results to return (default: 1000)"},
+                    "max_depth": {"type": "integer", "description": "Maximum directory depth to traverse (default: unlimited)"}
                 },
                 "required": ["pattern"]
             }),
-            prompt_snippet: "- glob: Find files matching a glob pattern".to_string(),
+            prompt_snippet: "- glob: Find files matching a glob pattern (*, **, ?, [...], {a,b})".to_string(),
         }
     }
 
@@ -655,15 +727,111 @@ impl Tool for GlobTool {
             .ok_or_else(|| AppError::invalid_input("glob requires a pattern"))?;
         let base_path = input.get("path").and_then(|value| value.as_str()).unwrap_or(".");
         let base = normalize_path(&self.root, base_path)?;
+        let case_sensitive = input.get("case_sensitive").and_then(|v| v.as_bool());
+        let max_results = input.get("max_results").and_then(|v| v.as_u64()).unwrap_or(1_000) as usize;
+        let max_depth = input.get("max_depth").and_then(|v| v.as_u64());
 
-        const MAX_RESULTS: usize = 1_000;
-        let mut found = Vec::new();
-        collect_files_filtered(&base, &base, pattern, &mut found, MAX_RESULTS)?;
+        // Parse exclude patterns from input
+        let exclude_patterns: Vec<String> = input
+            .get("exclude")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Build the walker using the `ignore` crate (respects .gitignore)
+        let mut builder = ignore::WalkBuilder::new(&base);
+        builder.standard_filters(true);  // respect .gitignore, .ignore, etc.
+        builder.hidden(false);            // include hidden files
+        builder.follow_links(false);
+        builder.require_git(false);       // don't require a git repo
+        builder.sort_by_file_path(|a, b| a.cmp(b));
+
+        if let Some(depth) = max_depth {
+            builder.max_depth(Some(depth as usize));
+        }
+
+        // Add additional exclude patterns (single filter checking all patterns)
+        if !exclude_patterns.is_empty() {
+            let exclusions = exclude_patterns.clone();
+            builder.filter_entry(move |entry| {
+                let path = entry.path();
+                let path_str = path.to_string_lossy();
+                !exclusions.iter().any(|pat| {
+                    if let Ok(glob_pat) = glob::Pattern::new(pat) {
+                        glob_pat.matches(&path_str)
+                    } else {
+                        false
+                    }
+                })
+            });
+        }
+
+        // Compile the glob pattern
+        let glob_pattern = glob::Pattern::new(pattern)
+            .map_err(|e| AppError::invalid_input(format!("Invalid glob pattern: {e}")))?;
+
+        let mut found: Vec<String> = Vec::new();
+
+        for result in builder.build() {
+            if found.len() >= max_results {
+                break;
+            }
+            match result {
+                Ok(entry) => {
+                    if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                        let path = entry.path();
+                        let relative = path
+                            .strip_prefix(&base)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .to_string();
+
+                        let matches = if let Some(cs) = case_sensitive {
+                            if cs {
+                                glob_pattern.matches(&relative)
+                            } else {
+                                glob_pattern.matches_with(
+                                    &relative,
+                                    glob::MatchOptions {
+                                        case_sensitive: false,
+                                        require_literal_separator: false,
+                                        require_literal_leading_dot: false,
+                                    },
+                                )
+                            }
+                        } else {
+                            glob_pattern.matches(&relative)
+                        };
+
+                        if matches {
+                            found.push(relative);
+                        }
+                    }
+                }
+                Err(err) => {
+                    // Log but continue — permission errors etc.
+                    eprintln!("glob: walk error: {}", err);
+                }
+            }
+        }
 
         if found.is_empty() {
-            Ok(ToolResult::text("No files matched the pattern."))
+            Ok(ToolResult::text(format!(
+                "No files matched the pattern '{}' in {}.",
+                pattern,
+                base.display()
+            )))
         } else {
             let mut result = found.join("\n");
+            if found.len() >= max_results {
+                result.push_str(&format!(
+                    "\n\n[Result limit reached: showing first {max_results} matches]"
+                ));
+            }
             if result.len() > 50_000 {
                 result = truncate_output(&result, 50_000);
             }
@@ -672,77 +840,7 @@ impl Tool for GlobTool {
     }
 }
 
-const EXCLUDED_DIRS: &[&str] = &[
-    ".git",
-    "node_modules",
-    "target",
-    "dist",
-    "build",
-    ".next",
-    "coverage",
-];
 
-fn collect_files_filtered(
-    dir: &Path,
-    base: &Path,
-    pattern: &str,
-    found: &mut Vec<String>,
-    max_results: usize,
-) -> Result<(), AppError> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = entry.file_name();
-        let file_name_str = file_name.to_string_lossy();
-
-        if path.is_dir() {
-            // Skip common noise directories
-            if EXCLUDED_DIRS.contains(&file_name_str.as_ref()) {
-                continue;
-            }
-            collect_files_filtered(&path, base, pattern, found, max_results)?;
-        } else {
-            let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
-            if matches_glob(&relative, pattern) {
-                found.push(relative);
-                if found.len() >= max_results {
-                    return Ok(());
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Simple glob matching that supports `*` (any single segment) and `**` (zero or more segments).
-fn matches_glob(path: &str, pattern: &str) -> bool {
-    let path_parts: Vec<&str> = path.split('/').collect();
-    let pattern_parts: Vec<&str> = pattern.split('/').collect();
-
-    fn match_parts(path: &[&str], pattern: &[&str]) -> bool {
-        match (path.first(), pattern.first()) {
-            (None, None) => true,
-            (None, Some(&p)) => {
-                // Remaining pattern parts must all be ** which can match nothing
-                p == "**" && match_parts(&[], &pattern[1..])
-            }
-            (Some(_), None) => false,
-            (Some(_), Some(&"**")) => {
-                // ** matches zero or more path segments
-                match_parts(path, &pattern[1..]) || match_parts(&path[1..], pattern)
-            }
-            (Some(&s), Some(&p)) => {
-                if p == "*" || s == p {
-                    match_parts(&path[1..], &pattern[1..])
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    match_parts(&path_parts, &pattern_parts)
-}
 
 pub struct WebSearchTool;
 
@@ -940,6 +1038,268 @@ fn extract_ddg_url(redirect_url: &str) -> Option<String> {
         Some(redirect_url.to_string())
     } else {
         None
+    }
+}
+
+// ── Web Fetch tool ─────────────────────────────────────────────────────
+
+pub struct WebFetchTool;
+
+impl WebFetchTool {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for WebFetchTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "web_fetch".to_string(),
+            description: "Fetch and extract text content from a URL. Strips HTML tags and returns plain text. Useful for reading documentation pages, API references, and blog posts.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to fetch content from"},
+                    "max_bytes": {"type": "integer", "description": "Maximum bytes to return after text extraction (default: 50000)"}
+                },
+                "required": ["url"]
+            }),
+            prompt_snippet: "- web_fetch: Fetch and extract text content from a URL".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let url = input
+            .get("url")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("web_fetch requires a url"))?;
+        let max_bytes = input
+            .get("max_bytes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50_000) as usize;
+
+        let client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .map_err(|e| AppError::io(format!("Failed to build HTTP client: {e}")))?;
+
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            client.get(url).send(),
+        )
+        .await
+        .map_err(|_| AppError::process_kill("web_fetch timed out after 20s".to_string()))?
+        .map_err(|e| AppError::io(format!("Web fetch request failed: {e}")))?;
+
+        if !response.status().is_success() {
+            return Err(AppError::io(format!(
+                "Web fetch returned HTTP {} for {}",
+                response.status(),
+                url
+            )));
+        }
+
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        // Only handle text/html or text/plain content
+        if !content_type.contains("text/html")
+            && !content_type.contains("text/plain")
+            && !content_type.is_empty()
+        {
+            return Err(AppError::io(format!(
+                "web_fetch cannot handle content type '{}'. Use for HTML or plain text pages only.",
+                content_type
+            )));
+        }
+
+        let html = response
+            .text()
+            .await
+            .map_err(|e| AppError::io(format!("Failed to read response body: {e}")))?;
+
+        let text = extract_text_from_html(&html);
+        let result = truncate_output(&text, max_bytes);
+
+        Ok(ToolResult::text(format!(
+            "Content from {} ({} bytes extracted):\n\n{}",
+            url,
+            text.len(),
+            result
+        )))
+    }
+}
+
+/// Simple HTML-to-text extraction: removes scripts, styles, and tags.
+fn extract_text_from_html(html: &str) -> String {
+    // Remove script and style blocks with their content
+    let re_script = Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
+    let re_style = Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
+    let re_tag = Regex::new(r"<[^>]*>").unwrap();
+    let re_entity = Regex::new(r"&[a-zA-Z]+;").unwrap();
+    let re_ws = Regex::new(r"\s{2,}").unwrap();
+
+    let text = re_script.replace_all(html, "");
+    let text = re_style.replace_all(&text, "");
+    let text = re_tag.replace_all(&text, " ");
+
+    // Decode common HTML entities
+    let text = text.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ");
+    let text = re_entity.replace_all(&text, "");
+
+    // Collapse whitespace and trim lines
+    let text = re_ws.replace_all(&text, " ");
+    let lines: Vec<&str> = text.lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    lines.join("\n")
+}
+
+// ── Append tool ─────────────────────────────────────────────────────────
+
+pub struct AppendTool {
+    root: PathBuf,
+}
+
+impl AppendTool {
+    pub fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for AppendTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "append".to_string(),
+            description: "Append content to the end of a file. Creates the file and parent directories if they don't exist. More efficient than reading + writing for simple additions.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path (relative to workspace root, or absolute)"},
+                    "content": {"type": "string", "description": "Content to append to the file"}
+                },
+                "required": ["path", "content"]
+            }),
+            prompt_snippet: "- append: Append to the end of a file without reading it first".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let path = input
+            .get("path")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("append requires a path"))?;
+        let content = input
+            .get("content")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("append requires content"))?;
+
+        let target = normalize_path(&self.root, path)?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&target)
+            .map_err(|e| AppError::io(format!("Failed to open {}: {e}", target.display())))?;
+
+        // Ensure newline before appended content if file is not empty
+        let metadata = file.metadata().ok();
+        if metadata.map_or(false, |m| m.len() > 0) && !content.starts_with('\n') {
+            file.write_all(b"\n")
+                .map_err(|e| AppError::io(format!("Failed to write to {}: {e}", target.display())))?;
+        }
+
+        file.write_all(content.as_bytes())
+            .map_err(|e| AppError::io(format!("Failed to write to {}: {e}", target.display())))?;
+
+        Ok(ToolResult::text(format!(
+            "Appended {} bytes to {}",
+            content.len(),
+            target.display()
+        )))
+    }
+}
+
+// ── Delete tool ─────────────────────────────────────────────────────────
+
+pub struct DeleteTool {
+    root: PathBuf,
+}
+
+impl DeleteTool {
+    pub fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for DeleteTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "delete".to_string(),
+            description: "Delete a file or empty directory. Use with caution — this operation is irreversible. For non-empty directories, use bash rm -rf instead.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File or directory path to delete (relative to workspace root, or absolute)"}
+                },
+                "required": ["path"]
+            }),
+            prompt_snippet: "- delete: Delete a file or empty directory".to_string(),
+        }
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let path = input
+            .get("path")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| AppError::invalid_input("delete requires a path"))?;
+
+        let target = normalize_path(&self.root, path)?;
+
+        if !target.exists() {
+            return Ok(ToolResult::text(format!(
+                "Path does not exist: {}",
+                target.display()
+            )));
+        }
+
+        if target.is_dir() {
+            std::fs::remove_dir(&target)
+                .map_err(|e| {
+                    if e.to_string().contains("not empty") || e.to_string().contains("Directory not empty") {
+                        AppError::io(format!(
+                            "Directory not empty: {}. Use bash rm -rf for non-empty directories.",
+                            target.display()
+                        ))
+                    } else {
+                        AppError::io(format!("Failed to delete directory {}: {e}", target.display()))
+                    }
+                })?;
+            Ok(ToolResult::text(format!("Deleted directory: {}", target.display())))
+        } else {
+            std::fs::remove_file(&target)
+                .map_err(|e| AppError::io(format!("Failed to delete file {}: {e}", target.display())))?;
+            Ok(ToolResult::text(format!("Deleted file: {}", target.display())))
+        }
     }
 }
 
@@ -1195,17 +1555,20 @@ pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
         Arc::new(ReadTool::new(root.to_path_buf())),
         Arc::new(WriteTool::new(root.to_path_buf())),
         Arc::new(EditTool::new(root.to_path_buf())),
+        Arc::new(AppendTool::new(root.to_path_buf())),
+        Arc::new(DeleteTool::new(root.to_path_buf())),
         Arc::new(ListFilesTool::new(root.to_path_buf())),
         Arc::new(GrepTool::new(root.to_path_buf())),
         Arc::new(BashTool::new(root.to_path_buf())),
         Arc::new(GlobTool::new(root.to_path_buf())),
         Arc::new(WebSearchTool::new()),
+        Arc::new(WebFetchTool::new()),
         Arc::new(MemoryTool::new(root.to_path_buf())),
         Arc::new(DelegateTool::new(root.to_path_buf())),
     ]
 }
 
-/// Read-only tool set for subagents (no write, edit, or bash).
+/// Read-only tool set for subagents (no write, edit, append, delete, or bash).
 pub fn read_only_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
     vec![
         Arc::new(ReadTool::new(root.to_path_buf())),
@@ -1213,5 +1576,6 @@ pub fn read_only_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
         Arc::new(GrepTool::new(root.to_path_buf())),
         Arc::new(GlobTool::new(root.to_path_buf())),
         Arc::new(WebSearchTool::new()),
+        Arc::new(WebFetchTool::new()),
     ]
 }
