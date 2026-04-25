@@ -7,7 +7,7 @@
     },
     "apps/desktop": {
       "name": "@khadim/desktop",
-      "version": "0.5.3",
+      "version": "0.5.6",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.2.92",
         "@tanstack/react-query": "^5.96.2",
@@ -80,8 +80,12 @@
       "name": "@khadim/firecracker-sandbox",
     },
     "apps/khadim-cli": {
-      "name": "@khadim/cli",
-      "version": "0.1.0",
+      "name": "@unravelai/khadim",
+      "version": "0.2.3",
+      "bin": {
+        "khadim": "bin/khadim.js",
+        "khadim-cli": "bin/khadim.js",
+      },
     },
     "apps/web": {
       "name": "@khadim/web",
@@ -523,8 +527,6 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
-
-    "@khadim/cli": ["@khadim/cli@workspace:apps/khadim-cli"],
 
     "@khadim/codeexecution-client": ["@khadim/codeexecution-client@workspace:packages/codeexecution-client"],
 
@@ -1139,6 +1141,8 @@
     "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.3.0", "", {}, "sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g=="],
+
+    "@unravelai/khadim": ["@unravelai/khadim@workspace:apps/khadim-cli"],
 
     "@vitejs/plugin-react": ["@vitejs/plugin-react@5.2.0", "", { "dependencies": { "@babel/core": "^7.29.0", "@babel/plugin-transform-react-jsx-self": "^7.27.1", "@babel/plugin-transform-react-jsx-source": "^7.27.1", "@rolldown/pluginutils": "1.0.0-rc.3", "@types/babel__core": "^7.20.5", "react-refresh": "^0.18.0" }, "peerDependencies": { "vite": "^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0" } }, "sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw=="],
 
