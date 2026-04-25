@@ -1,6 +1,6 @@
 {
   "name": "@unravelai/khadim",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Khadim CLI coding agent",
   "license": "AGPL-3.0-only",
   "type": "module",
