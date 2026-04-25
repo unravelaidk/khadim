@@ -480,6 +480,13 @@ pub fn builtin_models() -> Vec<Model> {
         base_model("openai", "gpt-5.5", "GPT-5.5", "openai-responses", true),
         base_model(
             "openai",
+            "gpt-5.5-codex",
+            "GPT-5.5 Codex",
+            "openai-responses",
+            true,
+        ),
+        base_model(
+            "openai",
             "gpt-5.5-mini",
             "GPT-5.5 mini",
             "openai-responses",
