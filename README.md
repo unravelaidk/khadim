@@ -9,13 +9,15 @@
 <h1 align="center">Khadim</h1>
 
 <p align="center">
-  <strong>Open-source, local-first CLI coding agent.</strong>
+  <strong>Open-source, local-first agentic automation platform — starting with a CLI coding agent.</strong>
 </p>
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 Khadim CLI is an AI coding agent that runs in your terminal. It reads your codebase, writes and executes code, understands what broke, rewrites, and retries — all locally on your machine.
+
+> **Vision:** Khadim is evolving into a full agentic automation platform with a desktop app (Tauri), web control plane, and domain-agnostic agent engine. The CLI is the first working piece — proving the core agent loop, tool system, and multi-provider AI integration.
 
 ---
 
@@ -104,9 +106,9 @@ The agent discovers `AGENTS.md` files in the workspace and injects scoped instru
 
 ```
 apps/
-  khadim-cli/       # CLI coding agent (Rust) ← primary working product
-  web/              # Web application (React Router + Express)
-  desktop/          # Desktop app (Tauri + React)
+  khadim-cli/       # ✅ CLI coding agent (Rust) — working today
+  web/              # 🚧 Web application (React Router + Express)
+  desktop/          # 🚧 Desktop app (Tauri + React)
 crates/
   khadim-ai-core/   # AI provider integrations and model registry
   khadim-coding-agent/  # Agent loop, tools, and orchestration
