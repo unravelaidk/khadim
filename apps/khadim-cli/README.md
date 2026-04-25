@@ -1,124 +1,101 @@
 # khadim-cli
 
-CLI coding agent for Khadim.
+CLI coding agent for Khadim. An AI agent that runs in your terminal — reads your code, writes and runs scripts, understands failures, and retries.
 
-## Installation
-
-### Quick Install (Unix/Linux/macOS)
-
-Run the install script:
+## Quick Install
 
 ```bash
+# npm (recommended)
+npm install -g @unravelai/khadim
+
+# Or use the install script
 curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
 ```
 
-Or with `wget`:
+The package exposes both `khadim` and `khadim-cli` commands.
+
+### Other Install Methods
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-```
+# Prebuilt binary from GitHub Releases
+KHADIM_CLI_INSTALL_METHOD=prebuilt curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
 
-The installer will:
-1. Install `@unravelai/khadim` globally with npm or bun by default
-2. Expose both `khadim` and `khadim-cli` commands
-3. Fall back to a Rust source build only if npm/bun is unavailable
-4. Update your shell configuration to add `~/.local/bin` to `PATH` when using source/prebuilt installs
-
-### Install Method
-
-The default method is npm:
-
-```bash
-KHADIM_CLI_INSTALL_METHOD=npm curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-```
-
-Use the source builder when developing locally or before the npm package is published:
-
-```bash
+# Build from source
 KHADIM_CLI_INSTALL_METHOD=source curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-```
 
-### Custom Install Directory
-
-`INSTALL_DIR` applies to source/prebuilt installs. npm installs use your npm global prefix.
-
-```bash
+# Custom install directory (source/prebuilt only)
 KHADIM_CLI_INSTALL_METHOD=source INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
 ```
 
-### Build from Source Manually
+### Manual Build
 
 ```bash
 git clone https://github.com/unravelaidk/khadim.git
 cd khadim
 cargo build --release --manifest-path apps/khadim-cli/Cargo.toml
+# Binary: apps/khadim-cli/target/release/khadim-cli
 ```
-
-The binary will be available at `apps/khadim-cli/target/release/khadim-cli`.
-
-### npm
-
-Khadim CLI can also be distributed as a Codex-style npm package: a small JavaScript launcher plus platform-specific native binary packages.
-
-```bash
-npm install -g @unravelai/khadim
-khadim --help
-```
-
-The npm package exposes both `khadim` and `khadim-cli` commands.
 
 ### Prebuilt Binaries
 
 Prebuilt binaries are available on the [releases page](https://github.com/unravelaidk/khadim/releases) for tags matching `cli-v*`.
 
-To attempt installing a prebuilt binary instead of using npm:
-
-```bash
-KHADIM_CLI_INSTALL_METHOD=prebuilt curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-```
-
-### Local dist binaries
-
-Build a directly runnable local distribution binary with:
-
-```bash
-cd apps/khadim-cli
-npm run dist:bin
-./dist/bin/khadim --help
-```
-
-This creates both `dist/bin/khadim` and `dist/bin/khadim-cli`.
-
-### Staging npm tarballs
-
-After release binaries have been downloaded into an artifact directory, stage npm tarballs with:
-
-```bash
-python3 apps/khadim-cli/scripts/stage_npm_package.py \
-  --version 0.1.0 \
-  --package all \
-  --artifact-dir ./artifacts
-```
-
-This produces one main `@unravelai/khadim` launcher tarball and one native tarball per supported platform in `apps/khadim-cli/dist/npm`.
-
-For local development, `npm run dist` creates both the runnable `dist/bin` binaries and the main npm tarball.
+---
 
 ## Usage
 
 ```bash
-cargo run --manifest-path apps/khadim-cli/Cargo.toml -- --prompt "summarize this repo"
-cargo run --manifest-path apps/khadim-cli/Cargo.toml -- exec "summarize this repo"
-printf 'build log...' | cargo run --manifest-path apps/khadim-cli/Cargo.toml -- exec "summarize failures"
-cargo run --manifest-path apps/khadim-cli/Cargo.toml -- --cwd /path/to/project
+# Prompt mode
+khadim --prompt "summarize this repo"
+
+# Headless exec mode
+khadim exec "summarize failures" < build.log
+
+# Pipe stdin as context
+echo "error: timeout on line 42" | khadim --prompt "fix this"
+
+# Run in a specific directory
+khadim --cwd /path/to/project
 ```
 
-Headless `exec` mode follows Codex-style stdin behavior: when both a prompt and piped stdin are provided, stdin is appended as a `<stdin>` block. `--prompt -` reads the entire prompt from stdin.
+`--prompt -` reads the entire prompt from stdin.
 
-The agent also discovers `AGENTS.md` files in the workspace and injects their scoped repository instructions into the system prompt. Nested `AGENTS.md` files override broader ones for files under their scope.
+The agent discovers `AGENTS.md` files in the workspace and injects scoped repository instructions into the system prompt. Nested `AGENTS.md` files override broader ones for files under their scope.
 
-Environment defaults:
+---
 
-- `KHADIM_PROVIDER`
-- `KHADIM_MODEL`
-- provider-specific API keys like `OPENAI_API_KEY`
+## Configuration
+
+Environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `KHADIM_PROVIDER` | Default provider (default: `openai`) |
+| `KHADIM_MODEL` | Default model for the provider |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `GROQ_API_KEY` | Groq API key |
+| `XAI_API_KEY` | xAI Grok API key |
+| ... | See [root README](../../README.md#supported-providers) for all providers |
+
+---
+
+## Development
+
+```bash
+cd apps/khadim-cli
+
+# Run in dev mode
+npm run dev -- --prompt "hello"
+
+# Build release binary
+npm run build:release
+
+# Build distributable bin
+npm run dist:bin
+./dist/bin/khadim --help
+
+# Stage npm tarballs (requires built artifacts)
+python3 scripts/stage_npm_package.py --version 0.2.1 --package all --artifact-dir ./artifacts
+```
