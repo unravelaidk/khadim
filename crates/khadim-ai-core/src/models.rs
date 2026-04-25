@@ -1888,14 +1888,6 @@ pub fn builtin_models() -> Vec<Model> {
         ),
         model_with_base_url(
             "opencode-go",
-            "deepseek-v4",
-            "DeepSeek V4",
-            "openai-completions",
-            true,
-            "https://opencode.ai/zen/go/v1",
-        ),
-        model_with_base_url(
-            "opencode-go",
             "deepseek-v4-pro",
             "DeepSeek V4 Pro",
             "openai-completions",
