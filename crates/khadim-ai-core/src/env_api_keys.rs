@@ -133,7 +133,7 @@ pub fn get_default_provider() -> String {
 pub fn get_default_model(provider: &str) -> String {
     std::env::var("KHADIM_MODEL").unwrap_or_else(|_| match provider {
         "anthropic" => "claude-3-7-sonnet-latest".to_string(),
-        "openai-codex" => "5.5".to_string(),
+        "openai-codex" => "gpt-5.5".to_string(),
         "github-copilot" => "claude-sonnet-4.5".to_string(),
         "groq" => "llama-3.3-70b-versatile".to_string(),
         "xai" => "grok-3-mini".to_string(),

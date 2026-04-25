@@ -1351,13 +1351,6 @@ pub fn builtin_models() -> Vec<Model> {
         ),
         base_model(
             "openai-codex",
-            "5.5",
-            "5.5",
-            "openai-codex-responses",
-            true,
-        ),
-        base_model(
-            "openai-codex",
             "gpt-5.5",
             "GPT-5.5",
             "openai-codex-responses",
