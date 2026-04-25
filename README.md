@@ -70,15 +70,18 @@ Bring your own API key for any of these providers. Khadim auto-detects keys from
 
 | Model | Provider | Tier |
 |-------|----------|------|
-| Claude Sonnet 4 | Anthropic | 💎 Premium |
-| GPT-4.1 | OpenAI | ⭐ Standard |
-| Grok 3 Mini | xAI | ⭐ Standard |
+| Claude Opus 4.7 | Anthropic | 💎 Premium |
+| GPT-5.5 | OpenAI | 💎 Premium |
+| Claude Sonnet 4.6 | Anthropic | 💎 Premium |
 | Gemini 2.5 Pro | Google | ⭐ Standard |
+| Grok 4 | xAI | ⭐ Standard |
+| Codestral | Mistral | ⭐ Standard |
+| DeepSeek V4 Pro | OpenCode Go | 🆓 Open Source |
+| Kimi K2.6 | OpenCode Go | 🆓 Open Source |
+| GLM-4.7 | Z.ai | 🆓 Open Source |
+| Llama 3.3 70B | Groq | ⚡ Fast |
 | DevStral Free | OpenRouter | 🆓 Free |
 | DeepSeek Chat Free | OpenRouter | 🆓 Free |
-| Qwen 3 Coder | HuggingFace | 🆓 Free |
-| Llama 3.3 70B | Groq | ⚡ Fast |
-| Codestral | Mistral | ⭐ Standard |
 
 ---
 
