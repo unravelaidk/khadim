@@ -41,7 +41,7 @@ fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
 
     for message in messages.drain(..) {
         match &message {
-            ChatMessage::System { .. } | ChatMessage::User { .. } => {
+            ChatMessage::System { .. } | ChatMessage::User { .. } | ChatMessage::UserWithImages { .. } => {
                 flush_missing_tool_results(&mut repaired, &pending_tool_calls, &existing_tool_results);
                 pending_tool_calls.clear();
                 existing_tool_results.clear();

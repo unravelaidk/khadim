@@ -23,7 +23,7 @@ use pulldown_cmark::{
     Alignment, BlockQuoteKind, CodeBlockKind, CowStr, Event, HeadingLevel, Options, Parser, Tag,
     TagEnd,
 };
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use textwrap::{Options as WrapOptions, WordSplitter};
 use unicode_width::UnicodeWidthStr;
