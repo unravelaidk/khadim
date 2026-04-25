@@ -1,6 +1,6 @@
 [package]
 name = "khadim-desktop"
-version = "0.1.0"
+version = "0.5.6"
 description = "Khadim desktop app"
 authors = ["Khadim"]
 edition = "2021"
