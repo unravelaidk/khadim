@@ -8,6 +8,7 @@ use crate::domain::transcript::TranscriptEntry;
 use crate::services::catalog_service::provider_auth_status;
 use crate::services::settings_service::effective_settings;
 use khadim_ai_core::env_api_keys::get_env_api_key;
+use khadim_coding_agent::events::AgentStreamEvent;
 use ratatui::text::Line;
 use std::cell::{Cell, RefCell};
 
@@ -50,6 +51,7 @@ pub struct TranscriptEntryStamp {
     pub len_b: usize,
     pub flag_a: bool,
     pub flag_b: bool,
+    pub flag_c: bool,
 }
 
 impl TranscriptEntryStamp {
@@ -67,12 +69,14 @@ impl TranscriptEntryStamp {
                 len_b: title.len(),
                 flag_a: false,
                 flag_b: false,
+                flag_c: false,
             },
             TranscriptEntry::ToolComplete {
                 tool,
                 content,
                 is_error,
                 collapsed,
+                running,
                 ..
             } => Self {
                 kind: 5,
@@ -82,6 +86,7 @@ impl TranscriptEntryStamp {
                 len_b: content.len(),
                 flag_a: *is_error,
                 flag_b: *collapsed,
+                flag_c: *running,
             },
             TranscriptEntry::Error { text } => Self::single_text(6, text),
             TranscriptEntry::Separator => Self::default(),
@@ -97,6 +102,7 @@ impl TranscriptEntryStamp {
             len_b: 0,
             flag_a: false,
             flag_b: false,
+            flag_c: false,
         }
     }
 }
@@ -106,6 +112,54 @@ pub struct CachedTranscriptEntryRender {
     pub width: u16,
     pub stamp: TranscriptEntryStamp,
     pub lines: Vec<Line<'static>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct UsageSnapshot {
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_write: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UsageEventKind {
+    Delta,
+    Snapshot,
+}
+
+impl UsageSnapshot {
+    fn from_metadata(metadata: &serde_json::Value) -> Self {
+        Self {
+            input: metadata
+                .get("input")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+            output: metadata
+                .get("output")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+            cache_read: metadata
+                .get("cache_read")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+            cache_write: metadata
+                .get("cache_write")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+        }
+    }
+
+    const fn is_zero(self) -> bool {
+        self.input == 0 && self.output == 0 && self.cache_read == 0 && self.cache_write == 0
+    }
+
+    fn event_kind(metadata: &serde_json::Value) -> UsageEventKind {
+        match metadata.get("kind").and_then(|v| v.as_str()) {
+            Some("delta") => UsageEventKind::Delta,
+            _ => UsageEventKind::Snapshot,
+        }
+    }
 }
 
 // ── TuiApp ───────────────────────────────────────────────────────────
@@ -129,6 +183,11 @@ pub struct TuiApp {
     pub turn_tokens_out: u64,
     pub turn_tokens_cache_read: u64,
     pub turn_tokens_cache_write: u64,
+    pub context_tokens_in: u64,
+    pub context_tokens_out: u64,
+    pub context_tokens_cache_read: u64,
+    pub context_tokens_cache_write: u64,
+    usage_current_call: Option<UsageSnapshot>,
     pub content_lines: Cell<usize>,
     pub visible_height: Cell<usize>,
     pub current_mode: String,
@@ -140,6 +199,11 @@ pub struct TuiApp {
     pub command_preview_index: usize,
     pub command_picker: Option<CommandPickerState>,
     pub transcript_render_cache: RefCell<Vec<CachedTranscriptEntryRender>>,
+    /// Lazily-populated cache of recent saved sessions, used by the
+    /// empty-state welcome screen so we don't hit the filesystem every
+    /// frame. Populated on first welcome render; cleared (set to None)
+    /// when sessions change so the next welcome render refreshes it.
+    pub recent_sessions_cache: RefCell<Option<Vec<crate::domain::session::SessionMeta>>>,
     // ── New features ──
     pub history: Vec<String>,
     pub history_index: Option<usize>,
@@ -167,17 +231,15 @@ impl TuiApp {
         }
 
         let version = env!("CARGO_PKG_VERSION");
-        let mut entries = vec![
-            TranscriptEntry::System {
-                text: format!(
-                    "✦ khadim-cli v{}  ·  {}/{}  ·  auth: {}",
-                    version,
-                    provider_id,
-                    eff.model_id.as_deref().unwrap_or("(not set)"),
-                    key_status,
-                ),
-            },
-        ];
+        let mut entries = vec![TranscriptEntry::System {
+            text: format!(
+                "✦ khadim-cli v{}  ·  {}/{}  ·  auth: {}",
+                version,
+                provider_id,
+                eff.model_id.as_deref().unwrap_or("(not set)"),
+                key_status,
+            ),
+        }];
 
         if !auto_detected.is_empty() {
             entries.push(TranscriptEntry::System {
@@ -211,6 +273,11 @@ impl TuiApp {
             turn_tokens_out: 0,
             turn_tokens_cache_read: 0,
             turn_tokens_cache_write: 0,
+            context_tokens_in: 0,
+            context_tokens_out: 0,
+            context_tokens_cache_read: 0,
+            context_tokens_cache_write: 0,
+            usage_current_call: None,
             content_lines: Cell::new(0),
             visible_height: Cell::new(0),
             current_mode: "auto".into(),
@@ -222,6 +289,7 @@ impl TuiApp {
             command_preview_index: 0,
             command_picker: None,
             transcript_render_cache: RefCell::new(Vec::new()),
+            recent_sessions_cache: RefCell::new(None),
             history,
             history_index: None,
             saved_input: String::new(),
@@ -238,7 +306,7 @@ impl TuiApp {
         self.history = history;
     }
 
-    pub fn tick(&mut self) {
+    pub const fn tick(&mut self) {
         self.tick_count = self.tick_count.wrapping_add(1);
     }
 
@@ -254,10 +322,10 @@ impl TuiApp {
         let label = if next == "auto" {
             "auto-detect".to_string()
         } else {
-            format!("{}", next)
+            next.to_string()
         };
         self.entries.push(TranscriptEntry::System {
-            text: format!("🔀 Mode: {}", label),
+            text: format!("🔀 Mode: {label}"),
         });
         self.entries.push(TranscriptEntry::Separator);
     }
@@ -273,6 +341,7 @@ impl TuiApp {
         self.turn_tokens_out = 0;
         self.turn_tokens_cache_read = 0;
         self.turn_tokens_cache_write = 0;
+        self.usage_current_call = None;
         self.status = "running".into();
         self.auto_scroll = true;
         // Reset scroll and cache so the new turn starts from the bottom
@@ -289,9 +358,10 @@ impl TuiApp {
     }
 
     pub fn ensure_assistant_entry(&mut self) {
-        let is_assistant = self.entries.last().map_or(false, |e| {
-            matches!(e, TranscriptEntry::AssistantText { .. })
-        });
+        let is_assistant = self
+            .entries
+            .last()
+            .is_some_and(|e| matches!(e, TranscriptEntry::AssistantText { .. }));
         if !self.streaming_text || !is_assistant {
             self.entries.push(TranscriptEntry::AssistantText {
                 text: String::new(),
@@ -303,15 +373,28 @@ impl TuiApp {
     pub fn finish_turn(&mut self) {
         self.pending = false;
         self.streaming_text = false;
-        self.turn_tokens_in = 0;
-        self.turn_tokens_out = 0;
-        self.turn_tokens_cache_read = 0;
-        self.turn_tokens_cache_write = 0;
+        // Keep the latest turn's token counters after completion so the
+        // footer and /tokens can continue to show context usage instead of
+        // appearing to reset to zero as soon as a message finishes. They are
+        // reset at the start of the next submitted prompt.
+        self.usage_current_call = None;
         self.status = "idle".into();
         self.entries.push(TranscriptEntry::Separator);
     }
 
-    pub fn apply_event(&mut self, event: khadim_coding_agent::events::AgentStreamEvent) {
+    pub fn apply_event(&mut self, event: AgentStreamEvent) {
+        match event.event_type.as_str() {
+            "llm_call_start" => {
+                self.usage_current_call = Some(UsageSnapshot::default());
+                return;
+            }
+            "llm_call_end" => {
+                self.usage_current_call = None;
+                return;
+            }
+            _ => {}
+        }
+
         let tool_name = event
             .metadata
             .as_ref()
@@ -339,11 +422,84 @@ impl TuiApp {
                     let display_name =
                         crate::services::catalog_service::friendly_tool_name(&tool_name);
                     self.status = format!("{} {}", display_name, truncate_status(&title, 40));
+
+                    // The orchestrator emits two step_start events per tool
+                    // call: one when the LLM begins streaming the tool call
+                    // ("Preparing X") and another when the tool is actually
+                    // dispatched ("Running X"). Both carry the same call id
+                    // in metadata, so dedupe by id: if a running entry with
+                    // this id already exists, refresh its subtitle in place;
+                    // otherwise push a fresh one. The same entry is then
+                    // promoted on step_complete so the tool name appears
+                    // exactly once in the transcript.
+                    let step_id = event
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let existing = self.entries.iter_mut().rev().find_map(|e| match e {
+                        TranscriptEntry::ToolComplete {
+                            running: true,
+                            step_id: sid,
+                            content: c,
+                            ..
+                        } if !step_id.is_empty() && sid == &step_id => Some(c),
+                        _ => None,
+                    });
+                    if let Some(c) = existing {
+                        *c = truncate_status(&title, 60);
+                    } else {
+                        self.entries.push(TranscriptEntry::ToolComplete {
+                            tool: tool_name,
+                            content: truncate_status(&title, 60),
+                            is_error: false,
+                            collapsed: self.tools_collapsed,
+                            diff_meta: None,
+                            running: true,
+                            step_id: step_id.clone(),
+                        });
+                    }
                 }
             }
             "step_update" => {
                 if let Some(content) = event.content {
                     self.status = truncate_status(&content, 60);
+                    let step_id = event
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    // Sync the running entry's subtitle with progress events.
+                    // Match by step_id when available so multiple in-flight
+                    // tool calls don't trample each other.
+                    let target = self.entries.iter_mut().rev().find_map(|e| match e {
+                        TranscriptEntry::ToolComplete {
+                            running: true,
+                            step_id: sid,
+                            tool: t,
+                            content: c,
+                            ..
+                        } => {
+                            let matches = if !step_id.is_empty() && !sid.is_empty() {
+                                sid == &step_id
+                            } else {
+                                t == &tool_name
+                            };
+                            if matches {
+                                Some(c)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    });
+                    if let Some(c) = target {
+                        *c = truncate_status(&content, 60);
+                    }
                 }
             }
             "step_complete" => {
@@ -352,7 +508,7 @@ impl TuiApp {
                     .metadata
                     .as_ref()
                     .and_then(|m| m.get("is_error"))
-                    .and_then(|v| v.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     .unwrap_or(false);
 
                 if tool_name == "model" {
@@ -371,44 +527,122 @@ impl TuiApp {
                         let path = m.get("path")?.as_str()?.to_string();
                         let before = m.get("before")?.as_str()?.to_string();
                         let after = m.get("after")?.as_str()?.to_string();
-                        Some(crate::domain::transcript::DiffMeta { path, before, after })
+                        Some(crate::domain::transcript::DiffMeta {
+                            path,
+                            before,
+                            after,
+                        })
                     });
-                    self.entries.push(TranscriptEntry::ToolComplete {
-                        tool: tool_name,
-                        content,
-                        is_error,
-                        collapsed: self.tools_collapsed,
-                        diff_meta,
+
+                    // Promote the running entry for this call into its
+                    // completed state — same row, same header, just populated
+                    // with the result. Match by `step_id` (orchestrator's
+                    // tool_call.id) when available so concurrent or repeated
+                    // calls to the same tool stay distinct; fall back to
+                    // tool-name match for snapshot back-compat. Falls back
+                    // to a fresh push if no running entry is found.
+                    let step_id = event
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let promoted_idx = self.entries.iter().rposition(|e| match e {
+                        TranscriptEntry::ToolComplete {
+                            running: true,
+                            step_id: sid,
+                            tool: t,
+                            ..
+                        } => {
+                            if !step_id.is_empty() && !sid.is_empty() {
+                                sid == &step_id
+                            } else {
+                                t == &tool_name
+                            }
+                        }
+                        _ => false,
                     });
+                    if let Some(idx) = promoted_idx {
+                        if let TranscriptEntry::ToolComplete {
+                            content: c,
+                            is_error: e,
+                            diff_meta: dm,
+                            running: r,
+                            ..
+                        } = &mut self.entries[idx]
+                        {
+                            *c = content;
+                            *e = is_error;
+                            *dm = diff_meta;
+                            *r = false;
+                        }
+                    } else {
+                        self.entries.push(TranscriptEntry::ToolComplete {
+                            tool: tool_name,
+                            content,
+                            is_error,
+                            collapsed: self.tools_collapsed,
+                            diff_meta,
+                            running: false,
+                            step_id,
+                        });
+                    }
                 }
             }
             "usage" => {
                 if let Some(metadata) = &event.metadata {
-                    if let Some(input) = metadata.get("input").and_then(|v| v.as_u64()) {
-                        self.tokens_in = self
-                            .tokens_in
-                            .saturating_add(input.saturating_sub(self.turn_tokens_in));
-                        self.turn_tokens_in = input;
+                    let current = UsageSnapshot::from_metadata(metadata);
+                    if current.is_zero() {
+                        return;
                     }
-                    if let Some(output) = metadata.get("output").and_then(|v| v.as_u64()) {
-                        self.tokens_out = self
-                            .tokens_out
-                            .saturating_add(output.saturating_sub(self.turn_tokens_out));
-                        self.turn_tokens_out = output;
-                    }
-                    if let Some(cache_read) = metadata.get("cache_read").and_then(|v| v.as_u64()) {
-                        self.tokens_cache_read = self
-                            .tokens_cache_read
-                            .saturating_add(cache_read.saturating_sub(self.turn_tokens_cache_read));
-                        self.turn_tokens_cache_read = cache_read;
-                    }
-                    if let Some(cache_write) = metadata.get("cache_write").and_then(|v| v.as_u64())
-                    {
-                        self.tokens_cache_write = self.tokens_cache_write.saturating_add(
-                            cache_write.saturating_sub(self.turn_tokens_cache_write),
-                        );
-                        self.turn_tokens_cache_write = cache_write;
-                    }
+
+                    let delta = match UsageSnapshot::event_kind(metadata) {
+                        UsageEventKind::Delta => {
+                            self.context_tokens_in =
+                                self.context_tokens_in.saturating_add(current.input);
+                            self.context_tokens_out =
+                                self.context_tokens_out.saturating_add(current.output);
+                            self.context_tokens_cache_read = self
+                                .context_tokens_cache_read
+                                .saturating_add(current.cache_read);
+                            self.context_tokens_cache_write = self
+                                .context_tokens_cache_write
+                                .saturating_add(current.cache_write);
+                            current
+                        }
+                        UsageEventKind::Snapshot => {
+                            let previous = self.usage_current_call.unwrap_or_default();
+                            self.usage_current_call = Some(current);
+                            self.context_tokens_in = current.input;
+                            self.context_tokens_out = current.output;
+                            self.context_tokens_cache_read = current.cache_read;
+                            self.context_tokens_cache_write = current.cache_write;
+                            UsageSnapshot {
+                                input: current.input.saturating_sub(previous.input),
+                                output: current.output.saturating_sub(previous.output),
+                                cache_read: current.cache_read.saturating_sub(previous.cache_read),
+                                cache_write: current
+                                    .cache_write
+                                    .saturating_sub(previous.cache_write),
+                            }
+                        }
+                    };
+
+                    self.tokens_in = self.tokens_in.saturating_add(delta.input);
+                    self.tokens_out = self.tokens_out.saturating_add(delta.output);
+                    self.tokens_cache_read =
+                        self.tokens_cache_read.saturating_add(delta.cache_read);
+                    self.tokens_cache_write =
+                        self.tokens_cache_write.saturating_add(delta.cache_write);
+
+                    self.turn_tokens_in = self.turn_tokens_in.saturating_add(delta.input);
+                    self.turn_tokens_out = self.turn_tokens_out.saturating_add(delta.output);
+                    self.turn_tokens_cache_read =
+                        self.turn_tokens_cache_read.saturating_add(delta.cache_read);
+                    self.turn_tokens_cache_write = self
+                        .turn_tokens_cache_write
+                        .saturating_add(delta.cache_write);
                 }
             }
             "error" => {
@@ -436,6 +670,33 @@ impl TuiApp {
             }
             _ => {}
         }
+    }
+
+    /// Primary count for billing-ish display: non-cached input + output.
+    ///
+    /// Provider usage normalizers store `tokens_in` as fresh/non-cached input
+    /// already, with cached input tracked separately in `tokens_cache_read`.
+    /// So do NOT subtract cache again here.
+    pub const fn blended_token_total(&self) -> u64 {
+        self.tokens_in.saturating_add(self.tokens_out)
+    }
+
+    pub const fn non_cached_tokens_in(&self) -> u64 {
+        self.tokens_in
+    }
+
+    pub const fn raw_tokens_in(&self) -> u64 {
+        self.tokens_in.saturating_add(self.tokens_cache_read)
+    }
+
+    pub const fn latest_context_tokens(&self) -> u64 {
+        self.context_tokens_in
+            .saturating_add(self.context_tokens_cache_read)
+            .saturating_add(self.context_tokens_out)
+    }
+
+    pub fn context_percent_remaining(&self, context_window: u64) -> Option<u64> {
+        percent_context_remaining(self.latest_context_tokens(), context_window)
     }
 
     pub fn finish_result(&mut self, result: Result<String, khadim_ai_core::error::AppError>) {
@@ -498,8 +759,7 @@ impl TuiApp {
                 .providers
                 .iter()
                 .find(|p| p.id == provider_id)
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| provider_id.to_string());
+                .map_or_else(|| provider_id.to_string(), |p| p.name.clone());
             login.phase = LoginPhase::InProgress;
             login.messages = vec![format!("signing in to {}…", name)];
         }
@@ -584,7 +844,7 @@ impl TuiApp {
         self.command_picker = Some(picker);
     }
 
-    pub fn picker_move_up(&mut self) {
+    pub const fn picker_move_up(&mut self) {
         if let Some(ref mut picker) = self.command_picker {
             if picker.selected_index > 0 {
                 picker.selected_index -= 1;
@@ -592,7 +852,7 @@ impl TuiApp {
         }
     }
 
-    pub fn picker_move_down(&mut self) {
+    pub const fn picker_move_down(&mut self) {
         if let Some(ref mut picker) = self.command_picker {
             if picker.selected_index + 1 < picker.items.len() {
                 picker.selected_index += 1;
@@ -612,7 +872,7 @@ impl TuiApp {
         self.command_picker = None;
     }
 
-    pub fn login_move_up(&mut self) {
+    pub const fn login_move_up(&mut self) {
         if let Some(ref mut login) = self.login_state {
             if login.selected_index > 0 {
                 login.selected_index -= 1;
@@ -620,7 +880,7 @@ impl TuiApp {
         }
     }
 
-    pub fn login_move_down(&mut self) {
+    pub const fn login_move_down(&mut self) {
         if let Some(ref mut login) = self.login_state {
             if login.selected_index + 1 < login.providers.len() {
                 login.selected_index += 1;
@@ -686,7 +946,7 @@ impl TuiApp {
         }
     }
 
-    fn blur_auth_if_leaving(&mut self, _settings: &StoredSettings) {
+    const fn blur_auth_if_leaving(&mut self, _settings: &StoredSettings) {
         // Intentionally a no-op hook: the caller is expected to flush the
         // staged key via app_service before calling move_focus_*. This keeps
         // the persistence step out of the pure-state helper.
@@ -707,8 +967,7 @@ impl TuiApp {
             }
             SettingsFocus::Model => {
                 let provider_id = settings.provider.clone().unwrap_or_default();
-                let models =
-                    crate::services::catalog_service::models_for_provider(&provider_id);
+                let models = crate::services::catalog_service::models_for_provider(&provider_id);
                 let current = models
                     .iter()
                     .position(|(id, _)| settings.model_id.as_deref() == Some(id.as_str()))
@@ -720,16 +979,16 @@ impl TuiApp {
         }
     }
 
-    pub fn close_settings_picker(&mut self) {
+    pub const fn close_settings_picker(&mut self) {
         self.settings.picker = None;
     }
 
     pub fn settings_picker_move(&mut self, delta: isize, settings: &StoredSettings) {
-        let Some(kind) = self.settings.picker else { return; };
+        let Some(kind) = self.settings.picker else {
+            return;
+        };
         let len = match kind {
-            SettingsPicker::Provider => {
-                crate::services::catalog_service::provider_catalog().len()
-            }
+            SettingsPicker::Provider => crate::services::catalog_service::provider_catalog().len(),
             SettingsPicker::Model => {
                 let pid = settings.provider.as_deref().unwrap_or("");
                 crate::services::catalog_service::models_for_provider(pid).len()
@@ -884,8 +1143,7 @@ impl TuiApp {
         }
         let bol = self.input[..crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor)]
             .rfind('\n')
-            .map(|i| i + 1)
-            .unwrap_or(0);
+            .map_or(0, |i| i + 1);
         let byte_bol = bol;
         let byte_cur = crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor);
         self.kill_buffer = self.input[byte_bol..byte_cur].to_string();
@@ -901,8 +1159,7 @@ impl TuiApp {
         let byte_cur = crate::ui::helpers::char_idx_to_byte_idx(&self.input, self.cursor);
         let eol = self.input[byte_cur..]
             .find('\n')
-            .map(|i| byte_cur + i)
-            .unwrap_or(self.input.len());
+            .map_or(self.input.len(), |i| byte_cur + i);
         self.kill_buffer = self.input[byte_cur..eol].to_string();
         self.input.drain(byte_cur..eol);
     }
@@ -916,7 +1173,7 @@ impl TuiApp {
         self.cursor += self.kill_buffer.chars().count();
     }
 
-    pub fn move_to_beginning(&mut self) {
+    pub const fn move_to_beginning(&mut self) {
         self.cursor = 0;
     }
 
@@ -934,7 +1191,7 @@ impl TuiApp {
 
     // ── Question tool helpers ────────────────────────────────────────
 
-    pub fn has_pending_question(&self) -> bool {
+    pub const fn has_pending_question(&self) -> bool {
         self.pending_question.is_some()
     }
 
@@ -964,17 +1221,13 @@ impl TuiApp {
         // Map numeric answers to option labels when options are present
         let answer_vec = if raw_answer.is_empty() {
             vec![]
-        } else {
-            if let Some(q) = state.current_question() {
-                if let Some(ref options) = q.options {
-                    if let Ok(num) = raw_answer.parse::<usize>() {
-                        if num == 0 && q.allow_other {
-                            vec!["Other".to_string()]
-                        } else if num > 0 && num <= options.len() {
-                            vec![options[num - 1].label.clone()]
-                        } else {
-                            vec![raw_answer.clone()]
-                        }
+        } else if let Some(q) = state.current_question() {
+            if let Some(ref options) = q.options {
+                if let Ok(num) = raw_answer.parse::<usize>() {
+                    if num == 0 && q.allow_other {
+                        vec!["Other".to_string()]
+                    } else if num > 0 && num <= options.len() {
+                        vec![options[num - 1].label.clone()]
                     } else {
                         vec![raw_answer.clone()]
                     }
@@ -982,8 +1235,10 @@ impl TuiApp {
                     vec![raw_answer.clone()]
                 }
             } else {
-                vec![raw_answer.clone()]
+                vec![raw_answer]
             }
+        } else {
+            vec![raw_answer]
         };
 
         let display_answer = answer_vec.join(", ");
@@ -994,7 +1249,14 @@ impl TuiApp {
                 let opts = options
                     .iter()
                     .enumerate()
-                    .map(|(i, o)| format!("  {}. {} — {}", i + 1, o.label, o.description.as_deref().unwrap_or("")))
+                    .map(|(i, o)| {
+                        format!(
+                            "  {}. {} — {}",
+                            i + 1,
+                            o.label,
+                            o.description.as_deref().unwrap_or("")
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 format!("{}\n{}", q.question, opts)
@@ -1003,10 +1265,12 @@ impl TuiApp {
             };
             self.entries.push(TranscriptEntry::ToolComplete {
                 tool: "question".to_string(),
-                content: format!("Q: {}\nA: {}", question_text, display_answer),
+                content: format!("Q: {question_text}\nA: {display_answer}"),
                 is_error: false,
                 collapsed: false,
                 diff_meta: None,
+                running: false,
+                step_id: String::new(),
             });
         }
 
@@ -1032,16 +1296,33 @@ impl TuiApp {
                     is_error: false,
                     collapsed: false,
                     diff_meta: None,
+                    running: false,
+                    step_id: String::new(),
                 });
             }
-            let _ = state.response_tx.send(crate::tools::question_tool::QuestionResponse {
-                answers: state.answers,
-            });
+            let _ = state
+                .response_tx
+                .send(crate::tools::question_tool::QuestionResponse {
+                    answers: state.answers,
+                });
         }
     }
 }
 
 // ── Helper functions ─────────────────────────────────────────────────
+
+const USER_CONTEXT_BASELINE_TOKENS: u64 = 12_000;
+
+pub fn percent_context_remaining(tokens_in_context: u64, context_window: u64) -> Option<u64> {
+    if context_window <= USER_CONTEXT_BASELINE_TOKENS {
+        return None;
+    }
+
+    let effective_window = context_window - USER_CONTEXT_BASELINE_TOKENS;
+    let used = tokens_in_context.saturating_sub(USER_CONTEXT_BASELINE_TOKENS);
+    let remaining = effective_window.saturating_sub(used);
+    Some(((remaining as f64 / effective_window as f64) * 100.0).round() as u64)
+}
 
 fn truncate_status(s: &str, max: usize) -> String {
     if s.len() <= max {
@@ -1051,8 +1332,250 @@ fn truncate_status(s: &str, max: usize) -> String {
             .char_indices()
             .take_while(|(i, _)| *i < max.saturating_sub(1))
             .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(0);
+            .map_or(0, |(i, c)| i + c.len_utf8());
         format!("{}…", &s[..end])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn usage_event(input: u64, output: u64, cache_read: u64, cache_write: u64) -> AgentStreamEvent {
+        AgentStreamEvent::new("usage").with_metadata(json!({
+            "input": input,
+            "output": output,
+            "cache_read": cache_read,
+            "cache_write": cache_write,
+        }))
+    }
+
+    fn usage_delta_event(
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        cache_write: u64,
+    ) -> AgentStreamEvent {
+        AgentStreamEvent::new("usage").with_metadata(json!({
+            "kind": "delta",
+            "input": input,
+            "output": output,
+            "cache_read": cache_read,
+            "cache_write": cache_write,
+        }))
+    }
+
+    fn test_app() -> TuiApp {
+        let config = CliConfig {
+            cwd: std::env::current_dir().unwrap(),
+            prompt: None,
+            provider: None,
+            model: None,
+            session: None,
+            verbose: false,
+        };
+        TuiApp::new(&config, &StoredSettings::default())
+    }
+
+    #[test]
+    fn usage_accumulates_each_llm_call_instead_of_only_largest_turn_total() {
+        let mut app = test_app();
+        app.submit_user_prompt("fix it");
+
+        app.apply_event(AgentStreamEvent::new("llm_call_start"));
+        app.apply_event(usage_event(100, 10, 5, 0));
+        app.apply_event(AgentStreamEvent::new("llm_call_end"));
+
+        app.apply_event(AgentStreamEvent::new("llm_call_start"));
+        app.apply_event(usage_event(80, 20, 2, 1));
+        app.apply_event(AgentStreamEvent::new("llm_call_end"));
+
+        assert_eq!(app.tokens_in, 180);
+        assert_eq!(app.tokens_out, 30);
+        assert_eq!(app.tokens_cache_read, 7);
+        assert_eq!(app.tokens_cache_write, 1);
+        assert_eq!(app.turn_tokens_in, 180);
+        assert_eq!(app.turn_tokens_out, 30);
+        assert_eq!(app.non_cached_tokens_in(), 180);
+        assert_eq!(app.raw_tokens_in(), 187);
+        assert_eq!(app.blended_token_total(), 210);
+        assert_eq!(app.latest_context_tokens(), 102);
+    }
+
+    #[test]
+    fn usage_stream_updates_are_deltaed_within_one_llm_call() {
+        let mut app = test_app();
+        app.submit_user_prompt("fix it");
+
+        app.apply_event(AgentStreamEvent::new("llm_call_start"));
+        app.apply_event(usage_event(100, 10, 0, 0));
+        app.apply_event(usage_event(120, 15, 3, 0));
+        app.apply_event(AgentStreamEvent::new("llm_call_end"));
+
+        assert_eq!(app.tokens_in, 120);
+        assert_eq!(app.tokens_out, 15);
+        assert_eq!(app.tokens_cache_read, 3);
+    }
+
+    #[test]
+    fn submitting_next_message_preserves_visible_usage_until_new_usage_arrives() {
+        let mut app = test_app();
+        app.submit_user_prompt("first");
+        app.apply_event(AgentStreamEvent::new("llm_call_start"));
+        app.apply_event(usage_event(100, 10, 5, 0));
+        app.apply_event(AgentStreamEvent::new("llm_call_end"));
+        app.apply_event(AgentStreamEvent::new("done"));
+
+        assert_eq!(app.blended_token_total(), 110);
+        assert_eq!(app.latest_context_tokens(), 115);
+        assert_eq!(app.context_percent_remaining(128_000), Some(100));
+
+        app.submit_user_prompt("second");
+
+        assert_eq!(app.blended_token_total(), 110);
+        assert_eq!(app.tokens_in, 100);
+        assert_eq!(app.tokens_out, 10);
+        assert_eq!(app.latest_context_tokens(), 115);
+        assert_eq!(app.context_percent_remaining(128_000), Some(100));
+
+        app.apply_event(AgentStreamEvent::new("llm_call_start"));
+        app.apply_event(usage_event(150, 20, 5, 0));
+
+        assert_eq!(app.blended_token_total(), 280);
+        assert_eq!(app.latest_context_tokens(), 175);
+    }
+
+    #[test]
+    fn usage_delta_events_are_added_directly() {
+        let mut app = test_app();
+        app.submit_user_prompt("fix it");
+
+        app.apply_event(usage_delta_event(100, 10, 5, 0));
+        app.apply_event(usage_delta_event(80, 20, 2, 1));
+
+        assert_eq!(app.tokens_in, 180);
+        assert_eq!(app.tokens_out, 30);
+        assert_eq!(app.tokens_cache_read, 7);
+        assert_eq!(app.tokens_cache_write, 1);
+        assert_eq!(app.latest_context_tokens(), 217);
+    }
+
+    #[test]
+    fn context_percent_remaining_uses_codex_style_baseline() {
+        assert_eq!(percent_context_remaining(1_000, 128_000), Some(100));
+        assert_eq!(percent_context_remaining(70_000, 128_000), Some(50));
+        assert_eq!(percent_context_remaining(128_000, 128_000), Some(0));
+        assert_eq!(percent_context_remaining(1_000, 8_000), None);
+    }
+
+    /// Helpers to build the exact event shapes the orchestrator emits.
+    fn step_start_ev(id: &str, tool: &str, title: &str) -> AgentStreamEvent {
+        AgentStreamEvent::new("step_start")
+            .with_content(title.to_string())
+            .with_metadata(json!({ "id": id, "title": title, "tool": tool }))
+    }
+    fn step_update_ev(id: &str, tool: &str, content: &str) -> AgentStreamEvent {
+        AgentStreamEvent::new("step_update")
+            .with_content(content.to_string())
+            .with_metadata(json!({ "id": id, "tool": tool }))
+    }
+    fn step_complete_ev(id: &str, tool: &str, result: &str) -> AgentStreamEvent {
+        AgentStreamEvent::new("step_complete")
+            .with_content(result.to_string())
+            .with_metadata(json!({
+                "id": id,
+                "tool": tool,
+                "result": result,
+                "is_error": false,
+            }))
+    }
+    fn text_delta_ev(s: &str) -> AgentStreamEvent {
+        AgentStreamEvent::new("text_delta").with_content(s.to_string())
+    }
+
+    fn count_tool_entries(app: &TuiApp, tool: &str) -> (usize, usize) {
+        let mut running = 0;
+        let mut done = 0;
+        for e in &app.entries {
+            if let TranscriptEntry::ToolComplete {
+                tool: t,
+                running: r,
+                ..
+            } = e
+            {
+                if t == tool {
+                    if *r {
+                        running += 1;
+                    } else {
+                        done += 1;
+                    }
+                }
+            }
+        }
+        (running, done)
+    }
+
+    /// Reproduces the bug where two `step_start` events (Preparing/Running)
+    /// per tool call produced two transcript rows — one stuck shimmering and
+    /// a second one that completed. After the fix, the same call id should
+    /// resolve to a single completed entry.
+    #[test]
+    fn double_step_start_collapses_to_single_entry() {
+        let mut app = test_app();
+        app.submit_user_prompt("what's in this dir");
+
+        // Phase 1: LLM streams the tool call.
+        app.apply_event(step_start_ev("call_1", "ls", "Preparing ls"));
+        app.apply_event(step_update_ev("call_1", "ls", "{\"path\":"));
+        app.apply_event(step_update_ev("call_1", "ls", "{\"path\":\".\"}"));
+        // Phase 2: orchestrator dispatches the tool — second step_start.
+        app.apply_event(step_start_ev("call_1", "ls", "Running ls"));
+        // Phase 3: tool finishes.
+        app.apply_event(step_complete_ev("call_1", "ls", "Cargo.toml\nsrc\n"));
+
+        let (running, done) = count_tool_entries(&app, "ls");
+        assert_eq!(running, 0, "no shimmer should be left over");
+        assert_eq!(done, 1, "exactly one completed ls entry expected");
+    }
+
+    /// Same as above, but the model emits assistant text between the two
+    /// `step_start` events. Reproduces the case where the running entry was
+    /// buried under a fresh `AssistantText`, causing the old `entries.last()`
+    /// match to miss and push a duplicate.
+    #[test]
+    fn interleaved_text_does_not_create_duplicate_tool_row() {
+        let mut app = test_app();
+        app.submit_user_prompt("what's in this dir");
+
+        app.apply_event(text_delta_ev("Let me check"));
+        app.apply_event(step_start_ev("call_1", "ls", "Preparing ls"));
+        app.apply_event(text_delta_ev(" the directory."));
+        app.apply_event(step_start_ev("call_1", "ls", "Running ls"));
+        app.apply_event(step_complete_ev("call_1", "ls", "src\nCargo.toml\n"));
+
+        let (running, done) = count_tool_entries(&app, "ls");
+        assert_eq!(running, 0);
+        assert_eq!(done, 1);
+    }
+
+    /// Two distinct ls calls in the same turn must remain two separate
+    /// entries (dedup is keyed on `step_id`, not tool name).
+    #[test]
+    fn two_distinct_calls_to_same_tool_stay_separate() {
+        let mut app = test_app();
+        app.submit_user_prompt("list both dirs");
+
+        app.apply_event(step_start_ev("call_1", "ls", "Preparing ls"));
+        app.apply_event(step_start_ev("call_1", "ls", "Running ls"));
+        app.apply_event(step_complete_ev("call_1", "ls", "a\n"));
+
+        app.apply_event(step_start_ev("call_2", "ls", "Preparing ls"));
+        app.apply_event(step_start_ev("call_2", "ls", "Running ls"));
+        app.apply_event(step_complete_ev("call_2", "ls", "b\n"));
+
+        let (running, done) = count_tool_entries(&app, "ls");
+        assert_eq!(running, 0);
+        assert_eq!(done, 2, "each distinct call id should yield its own row");
     }
 }

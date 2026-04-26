@@ -1,16 +1,19 @@
 //! Simple unified-diff renderer for tool outputs.
 //!
-//! Inspired by Codex CLI's diff rendering: line numbers, gutter signs,
-//! and optional syntax highlighting.
+//! Inspired by Codex CLI's diff rendering: gutter signs and theme-aware
+//! colors. Returned lines have NO outer indent — the transcript renderer
+//! prefixes them with the tool body's left bar.
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+
+use crate::ui::theme::{error, text_muted, tool_label, tool_text};
 
 /// Render a simple before/after diff as transcript lines.
 ///
 /// `old_lines` and `new_lines` are the file content before and after the edit,
 /// split by `\n`.  The diff is computed line-by-line (not a full Myers diff).
-/// This is intentionally simple: it highlights changed lines in red/green
+/// This is intentionally simple: it highlights changed lines via theme tokens
 /// and shows context lines around them.
 pub fn render_simple_diff(
     old_lines: &[&str],
@@ -18,9 +21,9 @@ pub fn render_simple_diff(
     content_width: usize,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    let max_width = content_width.saturating_sub(8); // gutter for line nums + sign
+    // Caller prepends a 4-col bar prefix; reserve that plus our 3-col sign gutter.
+    let max_width = content_width.saturating_sub(7);
 
-    // Use a simple LCS-like approach to find changed regions.
     let mut old_idx = 0usize;
     let mut new_idx = 0usize;
 
@@ -61,12 +64,10 @@ pub fn render_simple_diff(
                 new_run = new_lines.len().saturating_sub(new_idx).min(3);
             }
 
-            // Emit deleted lines
             for i in 0..old_run {
                 let text = truncate(old_lines[old_idx + i], max_width);
                 lines.push(del_line(&text));
             }
-            // Emit inserted lines
             for i in 0..new_run {
                 let text = truncate(new_lines[new_idx + i], max_width);
                 lines.push(ins_line(&text));
@@ -76,7 +77,6 @@ pub fn render_simple_diff(
             new_idx += new_run;
 
             if found_match && (old_idx < old_lines.len() || new_idx < new_lines.len()) {
-                // Emit the matching context line
                 let text = truncate(old_lines[old_idx], max_width);
                 lines.push(context_line(&text));
                 old_idx += 1;
@@ -90,28 +90,38 @@ pub fn render_simple_diff(
 
 fn context_line(text: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled("     ", Style::default().fg(Color::DarkGray)),
-        Span::styled(text.to_string(), Style::default().fg(Color::Gray)),
+        Span::styled(
+            "   ",
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
+        ),
+        Span::styled(text.to_string(), Style::default().fg(tool_text())),
     ])
 }
 
 fn del_line(text: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled("  -  ", Style::default().fg(Color::Red)),
+        Span::styled(
+            " - ",
+            Style::default().fg(error()).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             text.to_string(),
-            Style::default().fg(Color::Red).add_modifier(Modifier::CROSSED_OUT),
+            Style::default().fg(error()).add_modifier(Modifier::DIM),
         ),
     ])
 }
 
 fn ins_line(text: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled("  +  ", Style::default().fg(Color::Green)),
         Span::styled(
-            text.to_string(),
-            Style::default().fg(Color::Green),
+            " + ",
+            Style::default()
+                .fg(tool_label())
+                .add_modifier(Modifier::BOLD),
         ),
+        Span::styled(text.to_string(), Style::default().fg(tool_label())),
     ])
 }
 
@@ -123,8 +133,7 @@ fn truncate(s: &str, max: usize) -> String {
             .char_indices()
             .take_while(|(i, _)| *i < max.saturating_sub(1))
             .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(0);
+            .map_or(0, |(i, c)| i + c.len_utf8());
         format!("{}…", &s[..end])
     }
 }

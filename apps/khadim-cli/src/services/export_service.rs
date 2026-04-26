@@ -14,7 +14,7 @@ pub fn export_to_markdown(
     let mut md = String::new();
     md.push_str("# Khadim Conversation\n\n");
     if let Some(name) = session_name {
-        md.push_str(&format!("**Session:** {}\n\n", name));
+        md.push_str(&format!("**Session:** {name}\n\n"));
     }
     md.push_str(&format!(
         "**Exported:** {}\n\n",
@@ -31,7 +31,7 @@ pub fn export_to_markdown(
                 md.push_str(&format!("## User\n\n{}\n\n", escape_md(text)));
             }
             TranscriptEntry::AssistantText { text } => {
-                md.push_str(&format!("## Assistant\n\n{}\n\n", text));
+                md.push_str(&format!("## Assistant\n\n{text}\n\n"));
             }
             TranscriptEntry::Thinking { text } => {
                 md.push_str(&format!("> 💭 **Thinking:** {}\n\n", escape_md(text)));
@@ -40,13 +40,18 @@ pub fn export_to_markdown(
                 tool,
                 content,
                 is_error,
+                running,
                 ..
             } => {
+                if *running {
+                    // Don't export in-flight entries — wait for the completed
+                    // result.
+                    continue;
+                }
                 let icon = if *is_error { "✗" } else { "✓" };
                 let lang = tool_to_lang(tool);
                 md.push_str(&format!(
-                    "<details>\n<summary>{} {}</summary>\n\n```{lang}\n{}\n```\n\n</details>\n\n",
-                    icon, tool, content
+                    "<details>\n<summary>{icon} {tool}</summary>\n\n```{lang}\n{content}\n```\n\n</details>\n\n"
                 ));
             }
             TranscriptEntry::Error { text } => {
@@ -87,7 +92,7 @@ pub fn copy_last_assistant_response(entries: &[TranscriptEntry]) -> Result<Strin
 
 fn copy_to_clipboard(text: &str) -> Result<String, AppError> {
     // Try arboard first on all platforms – it handles clipboard without blocking.
-    if let Ok(()) = try_arboard(text) {
+    if try_arboard(text) == Ok(()) {
         return Ok(text.to_string());
     }
 
@@ -271,7 +276,7 @@ fn format_timestamp(unix: u64) -> String {
     let hh = rem / 3600;
     let mm = (rem % 3600) / 60;
     let ss = rem % 60;
-    format!("{}d {:02}:{:02}:{:02}", days, hh, mm, ss)
+    format!("{days}d {hh:02}:{mm:02}:{ss:02}")
 }
 
 fn sanitize_filename(name: &str) -> String {

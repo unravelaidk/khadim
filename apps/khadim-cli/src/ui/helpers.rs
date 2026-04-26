@@ -25,9 +25,8 @@ pub fn cursor_to_row_col(text: &str, cursor: usize, width: usize) -> (u16, u16) 
     }
     let mut row: u16 = 0;
     let mut col: u16 = 0;
-    let mut char_idx: usize = 0;
 
-    for ch in text.chars() {
+    for (char_idx, ch) in text.chars().enumerate() {
         if char_idx == cursor {
             return (row, col);
         }
@@ -43,7 +42,6 @@ pub fn cursor_to_row_col(text: &str, cursor: usize, width: usize) -> (u16, u16) 
             }
             col += 1;
         }
-        char_idx += 1;
     }
 
     // Cursor at end
@@ -78,10 +76,7 @@ pub fn hard_wrap_lines(text: &str, width: usize) -> Vec<String> {
 
 /// Convert a character index to a byte index in a string.
 pub fn char_idx_to_byte_idx(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map(|(i, _)| i)
-        .unwrap_or(s.len())
+    s.char_indices().nth(char_idx).map_or(s.len(), |(i, _)| i)
 }
 
 /// Insert a character at a character index in a string.
@@ -96,11 +91,7 @@ pub fn remove_char_before(s: &mut String, char_idx: usize) -> usize {
         return 0;
     }
     let byte_idx = char_idx_to_byte_idx(s, char_idx - 1);
-    let ch_len = s[byte_idx..]
-        .chars()
-        .next()
-        .map(|c| c.len_utf8())
-        .unwrap_or(1);
+    let ch_len = s[byte_idx..].chars().next().map_or(1, char::len_utf8);
     s.drain(byte_idx..byte_idx + ch_len);
     char_idx - 1
 }
@@ -111,11 +102,7 @@ pub fn remove_char_at(s: &mut String, char_idx: usize) {
         return;
     }
     let byte_idx = char_idx_to_byte_idx(s, char_idx);
-    let ch_len = s[byte_idx..]
-        .chars()
-        .next()
-        .map(|c| c.len_utf8())
-        .unwrap_or(1);
+    let ch_len = s[byte_idx..].chars().next().map_or(1, char::len_utf8);
     s.drain(byte_idx..byte_idx + ch_len);
 }
 
@@ -141,7 +128,7 @@ pub fn shimmer_spans(
     let period = chars.len() + padding * 2;
     // Advance ~4 columns per tick; tick granularity is fine enough that this
     // reads as smooth motion at the usual 8fps UI redraw rate.
-    let head = (tick as usize / 1).wrapping_mul(1) % period;
+    let head = (tick as usize).wrapping_mul(1) % period;
     let band_half: isize = 3;
 
     let mut spans = Vec::with_capacity(chars.len());
@@ -169,8 +156,7 @@ pub fn truncate_str(s: &str, max: usize) -> &str {
             .char_indices()
             .take_while(|(i, _)| *i < max.saturating_sub(1))
             .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(0);
+            .map_or(0, |(i, c)| i + c.len_utf8());
         &s[..end]
     }
 }
@@ -271,14 +257,8 @@ mod tests {
 
     #[test]
     fn test_hard_wrap_lines_with_newlines() {
-        assert_eq!(
-            hard_wrap_lines("hello\nworld", 10),
-            vec!["hello", "world"]
-        );
-        assert_eq!(
-            hard_wrap_lines("hello\n", 10),
-            vec!["hello", ""]
-        );
+        assert_eq!(hard_wrap_lines("hello\nworld", 10), vec!["hello", "world"]);
+        assert_eq!(hard_wrap_lines("hello\n", 10), vec!["hello", ""]);
         assert_eq!(
             hard_wrap_lines("hello\n\nworld", 10),
             vec!["hello", "", "world"]
@@ -320,7 +300,11 @@ mod tests {
         let width = 8;
         let lines = hard_wrap_lines(text, width);
         assert_eq!(lines.len() as u16, count_wrapped_lines(text, width));
-        for (cursor, _) in text.chars().enumerate().chain(std::iter::once((text.chars().count(), ' '))) {
+        for (cursor, _) in text
+            .chars()
+            .enumerate()
+            .chain(std::iter::once((text.chars().count(), ' ')))
+        {
             let (row, col) = cursor_to_row_col(text, cursor, width);
             assert!(
                 row < lines.len() as u16 || (row == lines.len() as u16 && col == 0),

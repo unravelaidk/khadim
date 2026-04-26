@@ -41,8 +41,16 @@ fn highlight_line(line: &str, highlighter: &mut HighlightLines) -> Vec<Span<'sta
 /// Convert a syntect `HighlightStyle` to a ratatui `Style`.
 fn convert_style(fg: syntect::highlighting::Style) -> Style {
     Style::default()
-        .fg(Color::Rgb(fg.foreground.r, fg.foreground.g, fg.foreground.b))
-        .bg(Color::Rgb(fg.background.r, fg.background.g, fg.background.b))
+        .fg(Color::Rgb(
+            fg.foreground.r,
+            fg.foreground.g,
+            fg.foreground.b,
+        ))
+        .bg(Color::Rgb(
+            fg.background.r,
+            fg.background.g,
+            fg.background.b,
+        ))
 }
 
 /// Highlight a code block given its language identifier and raw text.
@@ -66,7 +74,10 @@ pub fn highlight_code_block(lang: &str, text: &str) -> Option<Vec<(usize, Vec<Sp
 }
 
 /// Try to resolve a language identifier to a syntect `SyntaxReference`.
-fn resolve_syntax<'a>(lang: &str, ss: &'a SyntaxSet) -> Option<&'a syntect::parsing::SyntaxReference> {
+fn resolve_syntax<'a>(
+    lang: &str,
+    ss: &'a SyntaxSet,
+) -> Option<&'a syntect::parsing::SyntaxReference> {
     if lang.is_empty() {
         return None;
     }

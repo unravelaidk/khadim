@@ -286,7 +286,26 @@ pub fn stream(
                 }
                 "message_delta" => {
                     if let Some(raw_usage) = payload.get("usage") {
-                        usage = anthropic_usage(raw_usage);
+                        // Anthropic deltas are partial: preserve fields from
+                        // message_start unless the delta explicitly updates them.
+                        if let Some(input) = raw_usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                            usage.input = input;
+                        }
+                        if let Some(output) = raw_usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                            usage.output = output;
+                        }
+                        if let Some(cache_read) = raw_usage
+                            .get("cache_read_input_tokens")
+                            .and_then(|v| v.as_u64())
+                        {
+                            usage.cache_read = cache_read;
+                        }
+                        if let Some(cache_write) = raw_usage
+                            .get("cache_creation_input_tokens")
+                            .and_then(|v| v.as_u64())
+                        {
+                            usage.cache_write = cache_write;
+                        }
                         on_event(AssistantStreamEvent::Usage(usage.clone()));
                     }
                 }

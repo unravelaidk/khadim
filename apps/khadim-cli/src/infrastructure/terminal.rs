@@ -16,7 +16,7 @@ impl TerminalGuard {
         Ok(Self { terminal })
     }
 
-    pub fn terminal(&mut self) -> &mut ratatui::DefaultTerminal {
+    pub const fn terminal(&mut self) -> &mut ratatui::DefaultTerminal {
         &mut self.terminal
     }
 }

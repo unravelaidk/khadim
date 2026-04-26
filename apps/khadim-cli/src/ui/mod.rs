@@ -7,20 +7,16 @@ pub mod table;
 pub mod theme;
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
-};
+use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
 use ratatui::Frame;
 
 use crate::app::{spinner_frame, CachedTranscriptEntryRender, TranscriptEntryStamp, TuiApp};
 use crate::args::CliConfig;
 use crate::domain::commands::CommandPickerKind;
 use crate::domain::login::LoginPhase;
-use crate::domain::settings::{
-    is_oauth_provider, SettingsFocus, SettingsPicker, StoredSettings,
-};
+use crate::domain::settings::{is_oauth_provider, SettingsFocus, SettingsPicker, StoredSettings};
 use crate::domain::transcript::TranscriptEntry;
 use crate::services::catalog_service::{
     context_window_for, estimate_cost, format_cost, format_tokens, models_for_provider,
@@ -32,7 +28,10 @@ use crate::ui::helpers::{
     wrap_text_to_width,
 };
 use crate::ui::highlight::highlight_code_block;
-use crate::ui::theme::*;
+use crate::ui::theme::{
+    accent, accent_dim, border_error, border_idle, error, footer_text, md_heading, md_link,
+    system_text, text_dim, text_muted, text_primary, thinking, tool_label, tool_text, user_bg,
+};
 
 /// Fast plain-text renderer for the currently-streaming assistant entry.
 /// Avoids expensive markdown parsing on every frame.
@@ -79,7 +78,7 @@ fn render_streaming_text(text: &str, content_width: usize) -> Vec<Line<'static>>
 }
 
 /// Render only the visible portion of the transcript (plus a small buffer).
-/// Returns (visible_lines, total_line_count, effective_scroll, buffer).
+/// Returns (`visible_lines`, `total_line_count`, `effective_scroll`, buffer).
 pub fn render_transcript_viewport(
     app: &TuiApp,
     width: u16,
@@ -112,6 +111,17 @@ pub fn render_transcript_viewport(
             let lines = render_streaming_text(text, content_width.saturating_sub(2));
             entry_heights.push(lines.len());
             streaming_lines = Some(lines);
+        } else if matches!(entry, TranscriptEntry::ToolComplete { running: true, .. }) {
+            // Running tool entries shimmer per tick — render fresh every frame
+            // and skip the cache so the animation actually animates.
+            let lines = render_transcript_entry(entry, content_width, app.tick_count);
+            entry_heights.push(lines.len());
+            if cache.len() <= index {
+                cache.push(CachedTranscriptEntryRender::default());
+            }
+            cache[index].width = width;
+            cache[index].stamp = TranscriptEntryStamp::from_entry(entry);
+            cache[index].lines = lines;
         } else {
             let stamp = TranscriptEntryStamp::from_entry(entry);
             if cache.len() <= index {
@@ -121,7 +131,7 @@ pub fn render_transcript_viewport(
             if cached.width != width || cached.stamp != stamp {
                 cached.width = width;
                 cached.stamp = stamp;
-                cached.lines = render_transcript_entry(entry, content_width);
+                cached.lines = render_transcript_entry(entry, content_width, app.tick_count);
             }
             entry_heights.push(cached.lines.len());
         }
@@ -129,15 +139,15 @@ pub fn render_transcript_viewport(
 
     // Spinner height
     let spinner_height = if app.pending {
-        let is_step = app
+        // Hide the bottom spinner when the last entry already conveys the
+        // same information (a tool entry — running or completed). This keeps
+        // the running shimmer in a single place rather than duplicating it
+        // in the footer status row.
+        let suppresses_spinner = app
             .entries
             .last()
             .is_some_and(|e| matches!(e, TranscriptEntry::ToolComplete { .. }));
-        if !is_step && !app.streaming_text {
-            1
-        } else {
-            0
-        }
+        usize::from(!suppresses_spinner && !app.streaming_text)
     } else {
         0
     };
@@ -193,23 +203,38 @@ pub fn render_transcript_viewport(
         if spinner_offset < viewport_end && spinner_offset + 1 > viewport_start {
             let spinner = spinner_frame(app.tick_count);
             let status = &app.status;
-            lines.push(Line::from(vec![
+            // Shimmer the status text whenever a tool/model is actively
+            // running (i.e. anything other than the idle/error states). The
+            // shimmer reuses the global tick so it stays in sync with the
+            // in-transcript running entry.
+            let is_active =
+                status != "idle" && status != "error" && status != "aborted" && !status.is_empty();
+            let mut spinner_spans: Vec<Span<'static>> = vec![
                 Span::styled("  ", Style::default()),
                 Span::styled(format!("{spinner} "), Style::default().fg(accent())),
-                Span::styled(
+            ];
+            if is_active {
+                spinner_spans.extend(shimmer_spans(status, app.tick_count, thinking()));
+            } else {
+                spinner_spans.push(Span::styled(
                     status.clone(),
                     Style::default()
                         .fg(thinking())
                         .add_modifier(Modifier::ITALIC),
-                ),
-            ]));
+                ));
+            }
+            lines.push(Line::from(spinner_spans));
         }
     }
 
     (lines, total_lines, scroll, buffer)
 }
 
-fn render_transcript_entry(entry: &TranscriptEntry, content_width: usize) -> Vec<Line<'static>> {
+fn render_transcript_entry(
+    entry: &TranscriptEntry,
+    content_width: usize,
+    tick: u64,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     match entry {
@@ -311,124 +336,192 @@ fn render_transcript_entry(entry: &TranscriptEntry, content_width: usize) -> Vec
                 ]));
             }
         }
-        TranscriptEntry::ToolStart { .. } => {}
+        TranscriptEntry::ToolStart { .. } => {
+            // Running state is now folded into ToolComplete (with `running:
+            // true`), so the same row can shimmer and then settle in place.
+            // ToolStart is kept as a variant for snapshot back-compat only.
+        }
         TranscriptEntry::ToolComplete {
             tool,
             content,
             is_error,
             collapsed,
             diff_meta,
+            running,
+            step_id: _,
         } => {
-            let (icon, status_color) = if *is_error {
-                ("✗", error())
+            let accent_col = tool_accent(tool, *is_error);
+            // Hollow pip while running, solid pip when done.
+            let (pip, pip_col) = if *running {
+                ("◌", text_muted())
+            } else if *is_error {
+                ("●", error())
             } else {
-                ("✓", tool_label())
+                ("●", tool_label())
             };
-
+            let glyph = tool_glyph(tool);
             let tool_display = friendly_tool_display(tool);
 
-            if *collapsed {
-                let preview = content.lines().next().unwrap_or("").to_string();
+            // Header: `␣␣● ▸ read  src/main.rs`
+            //          ^   ^  ^      ^
+            //          pip glyph name subtitle (optional)
+            // While running, the tool name shimmers; everything else stays solid.
+            let mut header_spans: Vec<Span<'static>> = vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    format!("{pip} "),
+                    Style::default().fg(pip_col).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{glyph} "),
+                    Style::default().fg(accent_col).add_modifier(Modifier::BOLD),
+                ),
+            ];
+            if *running {
+                header_spans.extend(shimmer_spans(&tool_display, tick, accent_col));
+            } else {
+                header_spans.push(Span::styled(
+                    tool_display.clone(),
+                    Style::default().fg(accent_col).add_modifier(Modifier::BOLD),
+                ));
+            }
+
+            if *running {
+                // While running we show: header + optional subtitle (the
+                // current content acts as a live status line). No body, no
+                // collapse hint — the entry will settle into its full form
+                // on completion.
+                let subtitle = content.trim();
+                if !subtitle.is_empty() {
+                    header_spans.push(Span::styled("  ", Style::default()));
+                    header_spans.push(Span::styled(
+                        truncate_str(subtitle, 60).to_string(),
+                        Style::default().fg(tool_text()),
+                    ));
+                }
+                lines.push(Line::from(header_spans));
+                lines.push(Line::from(""));
+            } else if *collapsed {
+                // Collapsed: show subtitle inline, then a dim hint for line count + key.
+                let subtitle = tool_subtitle(tool, content).unwrap_or_else(|| {
+                    truncate_str(content.lines().next().unwrap_or(""), 60).to_string()
+                });
                 let line_count = content.lines().count();
-                let preview_text = if line_count > 1 {
-                    format!(
-                        "{}  [+{} more]  ctrl+o to expand",
-                        truncate_str(&preview, 45),
-                        line_count - 1
-                    )
-                } else {
-                    truncate_str(&preview, 60).to_string()
-                };
-                lines.push(Line::from(vec![
-                    Span::styled("  ", Style::default()),
-                    Span::styled(
-                        format!("{icon} "),
+                if !subtitle.is_empty() {
+                    header_spans.push(Span::styled("  ", Style::default()));
+                    header_spans.push(Span::styled(subtitle, Style::default().fg(tool_text())));
+                }
+                if line_count > 1 {
+                    header_spans.push(Span::styled(
+                        format!("  [+{} lines]", line_count.saturating_sub(1)),
                         Style::default()
-                            .fg(status_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        format!("{tool_display} "),
-                        Style::default()
-                            .fg(status_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(preview_text, Style::default().fg(tool_text())),
-                ]));
+                            .fg(text_muted())
+                            .add_modifier(Modifier::ITALIC),
+                    ));
+                }
+                header_spans.push(Span::styled(
+                    "  ctrl+o to expand",
+                    Style::default()
+                        .fg(text_muted())
+                        .add_modifier(Modifier::DIM),
+                ));
+                lines.push(Line::from(header_spans));
                 lines.push(Line::from(""));
             } else {
-                lines.push(Line::from(vec![
-                    Span::styled("  ", Style::default()),
-                    Span::styled(
-                        format!("{icon} {tool_display}"),
-                        Style::default()
-                            .fg(status_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]));
+                // Expanded header: optionally append subtitle in muted color.
+                if let Some(sub) = tool_subtitle(tool, content) {
+                    header_spans.push(Span::styled("  ", Style::default()));
+                    header_spans.push(Span::styled(sub, Style::default().fg(tool_text())));
+                }
+                lines.push(Line::from(header_spans));
 
                 let max_lines = 20;
                 let total_lines = content.lines().count();
 
+                // Prefix every body line with a faint left bar for visual grouping.
+                let bar_prefix = || -> Vec<Span<'static>> {
+                    vec![
+                        Span::styled("  ", Style::default()),
+                        Span::styled(
+                            "│ ",
+                            Style::default()
+                                .fg(text_muted())
+                                .add_modifier(Modifier::DIM),
+                        ),
+                    ]
+                };
+
                 if let Some(meta) = diff_meta {
-                    // Render a unified diff for edit tool results.
                     let old_lines: Vec<&str> = meta.before.lines().collect();
                     let new_lines: Vec<&str> = meta.after.lines().collect();
-                    let diff_lines = crate::ui::diff::render_simple_diff(&old_lines, &new_lines, content_width);
+                    let diff_lines =
+                        crate::ui::diff::render_simple_diff(&old_lines, &new_lines, content_width);
+                    let diff_total = diff_lines.len();
                     for (i, line) in diff_lines.into_iter().enumerate() {
                         if i >= max_lines {
-                            lines.push(Line::from(vec![
-                                Span::styled("    ", Style::default()),
-                                Span::styled(
-                                    format!("⋯ {} more  ctrl+o to collapse", total_lines.saturating_sub(max_lines)),
-                                    Style::default()
-                                        .fg(text_muted())
-                                        .add_modifier(Modifier::ITALIC),
+                            let mut spans = bar_prefix();
+                            spans.push(Span::styled(
+                                format!(
+                                    "⋯ {} more  ctrl+o to collapse",
+                                    diff_total.saturating_sub(max_lines)
                                 ),
-                            ]));
+                                Style::default()
+                                    .fg(text_muted())
+                                    .add_modifier(Modifier::ITALIC),
+                            ));
+                            lines.push(Line::from(spans));
                             break;
                         }
-                        lines.push(line);
+                        // Splice the bar prefix in front of the diff line's spans.
+                        let mut spans = bar_prefix();
+                        spans.extend(line.spans);
+                        lines.push(Line::from(spans));
                     }
                 } else if tool == "read" && !content.is_empty() {
-                    // Render read tool output with syntax highlighting and line numbers.
                     let rendered = render_read_content(content, content_width);
+                    let rendered_total = rendered.len();
                     for (i, line) in rendered.into_iter().enumerate() {
                         if i >= max_lines {
-                            lines.push(Line::from(vec![
-                                Span::styled("    ", Style::default()),
-                                Span::styled(
-                                    format!("⋯ {} more  ctrl+o to collapse", total_lines - max_lines),
-                                    Style::default()
-                                        .fg(text_muted())
-                                        .add_modifier(Modifier::ITALIC),
+                            let mut spans = bar_prefix();
+                            spans.push(Span::styled(
+                                format!(
+                                    "⋯ {} more  ctrl+o to collapse",
+                                    rendered_total.saturating_sub(max_lines)
                                 ),
-                            ]));
+                                Style::default()
+                                    .fg(text_muted())
+                                    .add_modifier(Modifier::ITALIC),
+                            ));
+                            lines.push(Line::from(spans));
                             break;
                         }
-                        lines.push(line);
+                        let mut spans = bar_prefix();
+                        spans.extend(line.spans);
+                        lines.push(Line::from(spans));
                     }
                 } else {
+                    let body_color = if *is_error { error() } else { tool_text() };
                     for (i, line) in content.lines().enumerate() {
                         if i >= max_lines {
-                            lines.push(Line::from(vec![
-                                Span::styled("    ", Style::default()),
-                                Span::styled(
-                                    format!("⋯ {} more  ctrl+o to collapse", total_lines - max_lines),
-                                    Style::default()
-                                        .fg(text_muted())
-                                        .add_modifier(Modifier::ITALIC),
+                            let mut spans = bar_prefix();
+                            spans.push(Span::styled(
+                                format!(
+                                    "⋯ {} more  ctrl+o to collapse",
+                                    total_lines.saturating_sub(max_lines)
                                 ),
-                            ]));
+                                Style::default()
+                                    .fg(text_muted())
+                                    .add_modifier(Modifier::ITALIC),
+                            ));
+                            lines.push(Line::from(spans));
                             break;
                         }
-                        lines.push(Line::from(vec![
-                            Span::styled("    ", Style::default()),
-                            Span::styled(
-                                truncate_str(line, content_width.saturating_sub(4)).to_string(),
-                                Style::default().fg(tool_text()),
-                            ),
-                        ]));
+                        let mut spans = bar_prefix();
+                        spans.push(Span::styled(
+                            truncate_str(line, content_width.saturating_sub(4)).to_string(),
+                            Style::default().fg(body_color),
+                        ));
+                        lines.push(Line::from(spans));
                     }
                 }
                 lines.push(Line::from(""));
@@ -476,7 +569,64 @@ fn friendly_tool_display(tool: &str) -> String {
         "web_search" => "search".to_string(),
         "ls" => "ls".to_string(),
         "delegate_to_agent" => "agent".to_string(),
+        "question" => "question".to_string(),
         _ => tool.to_string(),
+    }
+}
+
+/// Returns a unique single-char glyph for each known tool. Falls back to a
+/// generic dot for unknown tools so headers always line up visually.
+fn tool_glyph(tool: &str) -> &'static str {
+    match tool {
+        "read" => "▸",
+        "write" => "✎",
+        "edit" => "✎",
+        "bash" => "$",
+        "grep" => "⌕",
+        "glob" => "✱",
+        "ls" => "⌥",
+        "web_search" => "⌘",
+        "delegate_to_agent" => "⚑",
+        "question" => "?",
+        "model" => "✦",
+        _ => "•",
+    }
+}
+
+/// Per-tool accent color. Each accent is sourced from existing theme tokens so
+/// every theme automatically stays consistent — no new theme fields needed.
+fn tool_accent(tool: &str, is_error: bool) -> ratatui::style::Color {
+    if is_error {
+        return error();
+    }
+    match tool {
+        "read" | "ls" | "glob" => accent(),
+        "write" | "edit" => tool_label(),
+        "bash" => thinking(),
+        "grep" | "web_search" => md_link(),
+        "delegate_to_agent" => md_heading(),
+        "question" => system_text(),
+        _ => tool_label(),
+    }
+}
+
+/// Extract a short, scannable subtitle for the tool header (path / command /
+/// query / etc.). Returns None if no meaningful subtitle can be derived.
+fn tool_subtitle(tool: &str, content: &str) -> Option<String> {
+    let first_line = content.lines().next()?.trim();
+    if first_line.is_empty() {
+        return None;
+    }
+    match tool {
+        // For read, the body is "  1: ...". Try to find a path on the first
+        // non-numbered line, otherwise no subtitle (the body itself is enough).
+        "read" => None,
+        // Bash content is the command output; we can't reliably recover the
+        // command, so use the first non-empty line as a hint.
+        "bash" => Some(truncate_str(first_line, 60).to_string()),
+        // Grep/glob/ls/web_search/agent: first line usually carries the
+        // matched path/query/result count.
+        _ => Some(truncate_str(first_line, 60).to_string()),
     }
 }
 
@@ -487,7 +637,10 @@ fn detect_lang_from_content(content: &str) -> Option<&str> {
     if first.starts_with("#!/usr/bin/env python") || first.starts_with("#!/usr/bin/python") {
         return Some("python");
     }
-    if first.starts_with("#!/bin/bash") || first.starts_with("#!/bin/sh") || first.starts_with("#!/usr/bin/env bash") {
+    if first.starts_with("#!/bin/bash")
+        || first.starts_with("#!/bin/sh")
+        || first.starts_with("#!/usr/bin/env bash")
+    {
         return Some("bash");
     }
     if first.starts_with("#!/usr/bin/env node") {
@@ -513,20 +666,19 @@ fn detect_lang_from_content(content: &str) -> Option<&str> {
 }
 
 /// Render a `read` tool's file content with syntax highlighting and styled line numbers.
+/// Returned lines do NOT include any outer indent — callers prefix the body bar.
 fn render_read_content(content: &str, content_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    let max_width = content_width.saturating_sub(6); // 4 indent + line number gutter
+    // Caller adds 4 cols of prefix ("  │ "); reserve them plus 5-col gutter.
+    let max_width = content_width.saturating_sub(9);
 
     // Try to detect language from content.
     let lang = detect_lang_from_content(content);
     let highlighted = lang.and_then(|l| highlight_code_block(l, content));
 
     // Build a map: line index -> Vec<Span> for highlighted content.
-    let highlighted_lines: Option<Vec<Vec<Span<'static>>>> = highlighted.map(|hl| {
-        hl.into_iter()
-            .map(|(_no, spans)| spans)
-            .collect()
-    });
+    let highlighted_lines: Option<Vec<Vec<Span<'static>>>> =
+        highlighted.map(|hl| hl.into_iter().map(|(_no, spans)| spans).collect());
 
     for (i, raw) in content.lines().enumerate() {
         // Parse "123: content" line-number prefix from read tool output.
@@ -541,14 +693,16 @@ fn render_read_content(content: &str, content_width: usize) -> Vec<Line<'static>
             (None, raw)
         };
 
-        let mut spans: Vec<Span<'static>> = vec![Span::styled("    ", Style::default())];
+        let mut spans: Vec<Span<'static>> = Vec::new();
 
         if let Some(num) = num_str {
             // Right-align line numbers in a 5-char gutter.
-            let gutter = format!("{:>4} ", num);
+            let gutter = format!("{num:>4} ");
             spans.push(Span::styled(
                 gutter,
-                Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
             ));
 
             if let Some(ref hl) = highlighted_lines {
@@ -592,6 +746,340 @@ fn render_read_content(content: &str, content_width: usize) -> Vec<Line<'static>
     lines
 }
 
+// ── Welcome / empty-state screen ────────────────────────────────────
+//
+// Rendered into the transcript area when `app.entries` is empty. Goal:
+// give the user something useful (where am I, what model, what to type
+// next) plus a small bit of personality so the screen doesn't feel
+// barren. The composer stays where it is — typing the first message
+// drops a transcript entry and the welcome disappears naturally.
+
+/// Compact lowercase wordmark in the figlet "pagga" style. Three rows
+/// of crisp half-block geometry sharing one baseline and one x-height.
+/// The `░` shading between letters reads as a soft drop-shadow that
+/// binds the wordmark together visually instead of leaving stark gaps.
+/// Each row is gradient-tinted via `welcome_logo_color()` so the
+/// wordmark fades from bright to mid as the eye travels down.
+const WELCOME_LOGO: &[&str] = &[
+    "░█░█░█░█░█▀█░█▀▄░▀█▀░█▄█",
+    "░█▀▄░█▀█░█▀█░█░█░░█░░█░█",
+    "░▀░▀░▀░▀░▀░▀░▀▀░░▀▀▀░▀░▀",
+];
+
+/// Top→bottom gradient picker for the wordmark. Mirrors the splash so
+/// the two screens share a visual language.
+const fn welcome_logo_color(row: usize) -> Color {
+    match row {
+        0 => Color::Indexed(87), // bright cyan
+        1 => Color::Indexed(81), // accent
+        _ => Color::Indexed(75), // mid
+    }
+}
+
+/// Tiny mascot animation. Six frames cycled by tick. The cursor "walks"
+/// along a baseline with a blinking caret, just enough motion to feel
+/// alive without distracting. Width stays constant so the centered
+/// layout never jiggles.
+fn welcome_mascot(tick: u64) -> &'static str {
+    // 6 frames @ ~250ms each (with the app's ~60ms tick that's ~4 ticks
+    // per frame). The cursor moves right then loops; the dot blinks.
+    const FRAMES: &[&str] = &[
+        "  ◌  ·   _",
+        "   ◌ ·   _",
+        "    ◌·   _",
+        "     ◌   _",
+        "      ◌  _",
+        "     ◌·  _",
+    ];
+    FRAMES[((tick / 4) as usize) % FRAMES.len()]
+}
+
+/// Compact relative-time formatter for the recent-sessions list.
+/// Returns short forms like `2m ago`, `3h ago`, `4d ago`, falling back
+/// to `just now` for very recent and `Nw ago` for anything past a week.
+/// Uses unix seconds (matching `SessionMeta::updated_at_unix`).
+fn format_relative_time(then: u64, now: u64) -> String {
+    let delta = now.saturating_sub(then);
+    match delta {
+        0..=30 => "just now".to_string(),
+        31..=3599 => format!("{}m ago", delta / 60),
+        3600..=86_399 => format!("{}h ago", delta / 3600),
+        86_400..=604_799 => format!("{}d ago", delta / 86_400),
+        _ => format!("{}w ago", delta / 604_800),
+    }
+}
+
+pub fn render_welcome(
+    frame: &mut Frame,
+    area: Rect,
+    app: &TuiApp,
+    config: &CliConfig,
+    settings: &StoredSettings,
+    session_name: Option<&str>,
+) {
+    if area.width < 20 || area.height < 8 {
+        // Too cramped — skip the welcome and let the empty transcript
+        // speak for itself rather than rendering a broken layout.
+        return;
+    }
+
+    let eff = effective_settings(config, settings);
+    let provider = eff.provider.unwrap_or_else(|| "—".into());
+    let model = eff.model_id.unwrap_or_else(|| "—".into());
+
+    let cwd_display = {
+        let path = config.cwd.display().to_string();
+        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.len() > 2 {
+            format!("…/{}", parts[parts.len() - 2..].join("/"))
+        } else {
+            path
+        }
+    };
+
+    // ── Build the centered block as a Vec<Line> ─────────────────────
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Logo, gradient-tinted.
+    for (i, raw) in WELCOME_LOGO.iter().enumerate() {
+        lines.push(Line::from(Span::styled(
+            (*raw).to_string(),
+            Style::default()
+                .fg(welcome_logo_color(i))
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+
+    // Tagline rule + tagline.
+    lines.push(Line::from(""));
+    let tagline = "autonomous coding agent";
+    let by = "by unravel ai";
+    lines.push(Line::from(vec![
+        Span::styled(
+            tagline.to_string(),
+            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "  ·  ".to_string(),
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
+        ),
+        Span::styled(by.to_string(), Style::default().fg(text_muted())),
+    ]));
+
+    // Quirky tick-driven mascot. Single line, centered with the rest.
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        welcome_mascot(app.tick_count),
+        Style::default()
+            .fg(accent_dim())
+            .add_modifier(Modifier::DIM),
+    )));
+
+    // ── Context strip ───────────────────────────────────────────────
+    // Two short rows of "key  value" pairs, dim labels + brighter values.
+    // Gives the user instant orientation without crowding the screen.
+    lines.push(Line::from(""));
+
+    let kv = |label: &str, value: String, value_color: Color| -> Line<'static> {
+        Line::from(vec![
+            Span::styled(
+                format!("{label:>8}  "),
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(value, Style::default().fg(value_color)),
+        ])
+    };
+
+    lines.push(kv("project", cwd_display, text_primary()));
+    lines.push(kv("model", format!("{provider}/{model}"), tool_label()));
+    if let Some(name) = session_name {
+        lines.push(kv("session", name.to_string(), system_text()));
+    } else {
+        lines.push(kv(
+            "session",
+            "fresh — /save to keep this one".to_string(),
+            text_muted(),
+        ));
+    }
+
+    // ── Recent sessions ─────────────────────────────────────────────
+    // Pull (lazily, once) the 3 most recent saved sessions and surface
+    // them so the user can resume a conversation in one keystroke.
+    // Cached on `TuiApp` so we don't hit the filesystem every frame.
+    // The cache is refreshed every ~6s (≈100 ticks) while the welcome
+    // is displayed so newly-saved sessions show up without a restart.
+    {
+        let mut cache = app.recent_sessions_cache.borrow_mut();
+        let should_refresh =
+            cache.is_none() || (app.tick_count > 0 && app.tick_count.is_multiple_of(100));
+        if should_refresh {
+            *cache = Some(crate::services::session_service::list_sessions().unwrap_or_default());
+        }
+        if let Some(sessions) = cache.as_ref() {
+            // Skip the active session in the list — no point linking
+            // back to where you already are.
+            let recent: Vec<_> = sessions
+                .iter()
+                .filter(|s| Some(s.name.as_str()) != session_name)
+                .take(3)
+                .collect();
+
+            if !recent.is_empty() {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    "recent sessions".to_string(),
+                    Style::default()
+                        .fg(text_muted())
+                        .add_modifier(Modifier::DIM | Modifier::ITALIC),
+                )));
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                for meta in recent {
+                    let when = format_relative_time(meta.updated_at_unix, now);
+                    let truncated = if meta.name.chars().count() > 28 {
+                        let mut s: String = meta.name.chars().take(27).collect();
+                        s.push('…');
+                        s
+                    } else {
+                        meta.name.clone()
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled("  ".to_string(), Style::default().fg(text_muted())),
+                        Span::styled("▸ ".to_string(), Style::default().fg(accent_dim())),
+                        Span::styled(truncated, Style::default().fg(text_primary())),
+                        Span::styled(
+                            format!("  {when}"),
+                            Style::default()
+                                .fg(text_muted())
+                                .add_modifier(Modifier::DIM),
+                        ),
+                    ]));
+                }
+                lines.push(Line::from(Span::styled(
+                    "/sessions to browse all".to_string(),
+                    Style::default().fg(text_dim()).add_modifier(Modifier::DIM),
+                )));
+            }
+        }
+    }
+
+    // ── Quick-start hints ───────────────────────────────────────────
+    // Three keyed shortcuts in a single line. Dim brackets, brighter
+    // keycap, dim description — same hierarchy as the kv rows above.
+    lines.push(Line::from(""));
+    let hint = |key: &str, desc: &str| -> Vec<Span<'static>> {
+        vec![
+            Span::styled(
+                "[".to_string(),
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                key.to_string(),
+                Style::default().fg(accent()).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "]".to_string(),
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(format!(" {desc}"), Style::default().fg(text_dim())),
+        ]
+    };
+
+    let mut hints_spans: Vec<Span<'static>> = Vec::new();
+    hints_spans.extend(hint("/", "commands"));
+    hints_spans.push(Span::styled(
+        "    ".to_string(),
+        Style::default().fg(text_muted()),
+    ));
+    hints_spans.extend(hint("F2", "settings"));
+    hints_spans.push(Span::styled(
+        "    ".to_string(),
+        Style::default().fg(text_muted()),
+    ));
+    hints_spans.extend(hint("⏎", "send"));
+    lines.push(Line::from(hints_spans));
+
+    // ── Tip of the day ──────────────────────────────────────────────
+    // A small rotating tip that gives the welcome screen a bit of motion
+    // and surface area for power features. Rotates every ~6s (≈100 ticks
+    // at the app's ~60ms tick) so it changes during dwell but doesn't
+    // strobe. The tip text is left-aligned within the centered block by
+    // letting the line-centering pass treat it like any other line.
+    let tips: &[(&str, &str)] = &[
+        ("tip", "/save <name> bookmarks the current conversation"),
+        ("tip", "/theme switches palette · /provider swaps backend"),
+        (
+            "tip",
+            "esc cancels a running task · ctrl-l clears the screen",
+        ),
+        ("tip", "/sessions resumes a saved conversation"),
+        ("tip", "drag a file path into the prompt to attach it"),
+        ("tip", "shift-tab cycles through agent modes"),
+    ];
+    let tip_idx = ((app.tick_count / 100) as usize) % tips.len();
+    let (tip_label, tip_body) = tips[tip_idx];
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("{tip_label} "),
+            Style::default()
+                .fg(accent_dim())
+                .add_modifier(Modifier::BOLD | Modifier::DIM),
+        ),
+        Span::styled(
+            "·".to_string(),
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
+        ),
+        Span::styled(
+            format!(" {tip_body}"),
+            Style::default()
+                .fg(text_dim())
+                .add_modifier(Modifier::ITALIC),
+        ),
+    ]));
+
+    // ── Center the block both horizontally and vertically ───────────
+    // Horizontal centering is per-line because each line has a known
+    // visible width. Vertical centering uses the whole block height.
+    let block_h = lines.len() as u16;
+    let top_pad = area.height.saturating_sub(block_h) / 2;
+    let block_y = area.y + top_pad;
+
+    // For each line, compute its visible width (sum of all span chars)
+    // and render it at a centered x position.
+    for (i, line) in lines.into_iter().enumerate() {
+        let line_w: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+        let x_pad = (area.width as usize).saturating_sub(line_w) / 2;
+        let line_rect = Rect {
+            x: area.x + x_pad as u16,
+            y: block_y + i as u16,
+            width: line_w.min(area.width as usize) as u16,
+            height: 1,
+        };
+        // Skip lines that would render outside the area (e.g. very
+        // short terminals where the block doesn't fit).
+        if line_rect.y >= area.y + area.height {
+            break;
+        }
+        let p = Paragraph::new(line);
+        frame.render_widget(p, line_rect);
+    }
+}
+
 pub fn render_footer(
     frame: &mut Frame,
     area: Rect,
@@ -633,7 +1121,9 @@ pub fn render_footer(
         mode.as_str()
     };
 
-    let dim = Style::default().fg(footer_text()).add_modifier(Modifier::DIM);
+    let dim = Style::default()
+        .fg(footer_text())
+        .add_modifier(Modifier::DIM);
     let sep = Span::styled("  ·  ", dim);
 
     let mut left: Vec<Span<'static>> = vec![
@@ -647,51 +1137,48 @@ pub fn render_footer(
         left.push(Span::styled(name.to_string(), dim));
     }
 
-    let model_label = format!("{}/{}", provider, model);
+    let model_label = format!("{provider}/{model}");
+    let token_total = app.blended_token_total();
+    let non_cached_input = app.non_cached_tokens_in();
     let tokens_label = format!(
-        "in {} · out {}",
-        format_tokens(app.tokens_in),
+        "tokens {} ({} in + {} out)",
+        format_tokens(token_total),
+        format_tokens(non_cached_input),
         format_tokens(app.tokens_out)
     );
-    let cost_label = cost_str.clone();
+    let cost_label = cost_str;
 
-    // Context usage — prompt tokens from the most recent turn against the
-    // model's window. Skip when we don't have a window (unknown model) or
-    // no turn has happened yet.
+    // Context usage follows Codex's wording: show percent LEFT, not percent
+    // used.  The numerator is the latest turn's prompt+response context,
+    // while the headline token total above remains cumulative non-cached
+    // input+output.  Those are deliberately different numbers.
     let window = context_window_for(&provider, &model);
-    let context_label = if window > 0 && app.turn_tokens_in > 0 {
-        let used = app.turn_tokens_in.min(window);
-        let pct = (used as f64 / window as f64 * 100.0).round() as u64;
-        Some(format!(
-            "{}/{} · {}%",
-            format_tokens(used),
+    let context_label = app.context_percent_remaining(window).map(|pct| {
+        format!(
+            "ctx {}% left ({}/{})",
+            pct,
+            format_tokens(app.latest_context_tokens().min(window)),
             format_tokens(window),
-            pct.min(100)
-        ))
-    } else {
-        None
-    };
+        )
+    });
 
     let width = area.width as usize;
     let left_width: usize = left.iter().map(|s| s.content.chars().count()).sum();
 
     // Pick the richest right-side content that still fits.
     let full_right = match &context_label {
-        Some(ctx) => format!(
-            " {}  ·  {}  ·  {}  ·  {} ",
-            model_label, ctx, tokens_label, cost_label
-        ),
-        None => format!(" {}  ·  {}  ·  {} ", model_label, tokens_label, cost_label),
+        Some(ctx) => format!(" {model_label}  ·  {ctx}  ·  {tokens_label}  ·  {cost_label} "),
+        None => format!(" {model_label}  ·  {tokens_label}  ·  {cost_label} "),
     };
     let mid_right = match &context_label {
-        Some(ctx) => format!(" {}  ·  {}  ·  {} ", model_label, ctx, cost_label),
-        None => format!(" {}  ·  {} ", model_label, cost_label),
+        Some(ctx) => format!(" {model_label}  ·  {ctx}  ·  {cost_label} "),
+        None => format!(" {model_label}  ·  {cost_label} "),
     };
     let context_right = match &context_label {
-        Some(ctx) => format!(" {}  ·  {} ", model_label, ctx),
-        None => format!(" {} ", model_label),
+        Some(ctx) => format!(" {model_label}  ·  {ctx} "),
+        None => format!(" {model_label} "),
     };
-    let slim_right = format!(" {} ", model_label);
+    let slim_right = format!(" {model_label} ");
 
     let right_text = if left_width + full_right.chars().count() <= width {
         full_right
@@ -722,30 +1209,26 @@ pub fn render_footer(
 // Rows: provider · model · auth (api key field or login action). When a
 // picker is open, a list panel replaces the content below the rule.
 
-pub fn render_settings_overlay(
-    frame: &mut Frame,
-    app: &TuiApp,
-    settings: &StoredSettings,
-) {
+pub fn render_settings_overlay(frame: &mut Frame, app: &TuiApp, settings: &StoredSettings) {
     let area = frame.area();
 
     let provider_id = settings.provider.clone().unwrap_or_default();
     let provider_name = provider_catalog()
         .iter()
         .find(|p| p.id == provider_id)
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| "(none)".into());
+        .map_or_else(|| "(none)".into(), |p| p.name.clone());
     let model_id = settings.model_id.clone().unwrap_or_default();
     let model_name = models_for_provider(&provider_id)
         .into_iter()
         .find(|(id, _)| id == &model_id)
-        .map(|(_, name)| name)
-        .unwrap_or_else(|| "(none)".into());
+        .map_or_else(|| "(none)".into(), |(_, name)| name);
 
     let is_oauth = is_oauth_provider(&provider_id);
 
     // Lay out content then size the panel to fit it.
-    let dim = Style::default().fg(text_muted()).add_modifier(Modifier::DIM);
+    let dim = Style::default()
+        .fg(text_muted())
+        .add_modifier(Modifier::DIM);
     let bold_accent = Style::default().fg(accent()).add_modifier(Modifier::BOLD);
 
     match app.settings.picker {
@@ -785,7 +1268,9 @@ pub fn render_settings_overlay(
 
             lines.push(Line::from(Span::styled(
                 "─".repeat(rect.width as usize),
-                Style::default().fg(border_idle()).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(border_idle())
+                    .add_modifier(Modifier::DIM),
             )));
             lines.push(Line::from(""));
 
@@ -865,12 +1350,7 @@ pub fn render_settings_overlay(
 
 /// One label/value row in the browsing view. When `active`, the row is
 /// prefixed with `❯ ` and the label is bolded; otherwise it sits dim.
-fn settings_value_row(
-    label: &str,
-    value: &str,
-    active: bool,
-    hint: Option<&str>,
-) -> Line<'static> {
+fn settings_value_row(label: &str, value: &str, active: bool, hint: Option<&str>) -> Line<'static> {
     let marker = if active {
         Span::styled(
             " ❯ ",
@@ -886,14 +1366,16 @@ fn settings_value_row(
     };
     let mut spans = vec![
         marker,
-        Span::styled(format!("{:<9}", label), label_style),
+        Span::styled(format!("{label:<9}"), label_style),
         Span::styled(value.to_string(), Style::default().fg(text_primary())),
     ];
     if active {
         if let Some(h) = hint {
             spans.push(Span::styled(
-                format!("   {}", h),
-                Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+                format!("   {h}"),
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
             ));
         }
     }
@@ -905,9 +1387,7 @@ fn settings_status_line(settings: &StoredSettings, provider_id: &str) -> Line<'s
     let ok_style = Style::default()
         .fg(tool_label())
         .add_modifier(Modifier::BOLD);
-    let warn_style = Style::default()
-        .fg(thinking())
-        .add_modifier(Modifier::BOLD);
+    let warn_style = Style::default().fg(thinking()).add_modifier(Modifier::BOLD);
     let bad_style = Style::default().fg(error()).add_modifier(Modifier::BOLD);
 
     if provider_id.is_empty() {
@@ -929,10 +1409,7 @@ fn settings_status_line(settings: &StoredSettings, provider_id: &str) -> Line<'s
             Line::from(vec![
                 Span::raw("  "),
                 Span::styled("! ", warn_style),
-                Span::styled(
-                    "sign-in required",
-                    Style::default().fg(thinking()),
-                ),
+                Span::styled("sign-in required", Style::default().fg(thinking())),
             ])
         }
     } else if settings.get_api_key_for(provider_id).is_some() {
@@ -945,10 +1422,7 @@ fn settings_status_line(settings: &StoredSettings, provider_id: &str) -> Line<'s
         Line::from(vec![
             Span::raw("  "),
             Span::styled("! ", warn_style),
-            Span::styled(
-                "api key missing",
-                Style::default().fg(thinking()),
-            ),
+            Span::styled("api key missing", Style::default().fg(thinking())),
         ])
     }
 }
@@ -969,17 +1443,13 @@ fn mask_api_key(key: &str) -> String {
 
 fn oauth_signed_in(provider_id: &str) -> bool {
     match provider_id {
-        "github-copilot" => {
-            khadim_ai_core::oauth::has_copilot_auth_sync().unwrap_or(false)
-        }
-        "openai-codex" => {
-            khadim_ai_core::oauth::has_openai_codex_auth_sync().unwrap_or(false)
-        }
+        "github-copilot" => khadim_ai_core::oauth::has_copilot_auth_sync().unwrap_or(false),
+        "openai-codex" => khadim_ai_core::oauth::has_openai_codex_auth_sync().unwrap_or(false),
         _ => false,
     }
 }
 
-/// (display_name, id, status_label) for the provider picker.
+/// (`display_name`, id, `status_label`) for the provider picker.
 fn provider_picker_items(settings: &StoredSettings) -> Vec<(String, String, String)> {
     provider_catalog()
         .into_iter()
@@ -1039,7 +1509,9 @@ fn render_settings_picker(
     };
     let end = (start + max_visible).min(items.len());
 
-    let dim = Style::default().fg(text_muted()).add_modifier(Modifier::DIM);
+    let dim = Style::default()
+        .fg(text_muted())
+        .add_modifier(Modifier::DIM);
     let bold_accent = Style::default().fg(accent()).add_modifier(Modifier::BOLD);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -1049,11 +1521,12 @@ fn render_settings_picker(
     ]));
     lines.push(Line::from(Span::styled(
         "─".repeat(rect.width as usize),
-        Style::default().fg(border_idle()).add_modifier(Modifier::DIM),
+        Style::default()
+            .fg(border_idle())
+            .add_modifier(Modifier::DIM),
     )));
 
-    for i in start..end {
-        let (name, id, status) = &items[i];
+    for (i, (name, id, status)) in items.iter().enumerate().take(end).skip(start) {
         let is_selected = i == selected_index;
         let is_current = id == current_id;
 
@@ -1077,13 +1550,9 @@ fn render_settings_picker(
         } else {
             Style::default().fg(text_primary())
         };
-        let mut spans = vec![
-            marker,
-            current_mark,
-            Span::styled(name.clone(), name_style),
-        ];
+        let mut spans = vec![marker, current_mark, Span::styled(name.clone(), name_style)];
         if !status.is_empty() {
-            spans.push(Span::styled(format!("  {}", status), dim));
+            spans.push(Span::styled(format!("  {status}"), dim));
         }
         lines.push(Line::from(spans));
     }
@@ -1104,7 +1573,9 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
         None => return,
     };
 
-    let dim = Style::default().fg(text_muted()).add_modifier(Modifier::DIM);
+    let dim = Style::default()
+        .fg(text_muted())
+        .add_modifier(Modifier::DIM);
     let bold_accent = Style::default().fg(accent()).add_modifier(Modifier::BOLD);
 
     match login.phase {
@@ -1128,7 +1599,9 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
             ]));
             lines.push(Line::from(Span::styled(
                 "─".repeat(rect.width as usize),
-                Style::default().fg(border_idle()).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(border_idle())
+                    .add_modifier(Modifier::DIM),
             )));
 
             for (i, provider) in login.providers.iter().enumerate() {
@@ -1193,7 +1666,9 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
             ]));
             lines.push(Line::from(Span::styled(
                 "─".repeat(rect.width as usize),
-                Style::default().fg(border_idle()).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(border_idle())
+                    .add_modifier(Modifier::DIM),
             )));
 
             if let Some(ref url) = login.url {
@@ -1206,10 +1681,7 @@ pub fn render_login_overlay(frame: &mut Frame, app: &TuiApp) {
                 } else {
                     "ctrl+click to open (auto-opened)"
                 };
-                lines.push(Line::from(Span::styled(
-                    format!("  {click_hint}"),
-                    dim,
-                )));
+                lines.push(Line::from(Span::styled(format!("  {click_hint}"), dim)));
                 lines.push(Line::from(""));
             }
 
@@ -1259,7 +1731,7 @@ pub fn render_command_preview(frame: &mut Frame, app: &TuiApp, input_area: Rect)
     let visible_count = item_count.min(max_visible);
     // No border. Rows: items + (1 scroll indicator if needed).
     let needs_indicator = item_count > max_visible;
-    let height = (visible_count + if needs_indicator { 1 } else { 0 }).clamp(1, 12) as u16;
+    let height = (visible_count + usize::from(needs_indicator)).clamp(1, 12) as u16;
     let available_above = input_area.y;
     let actual_height = height.min(available_above);
     let width = input_area.width.min(60);
@@ -1285,8 +1757,7 @@ pub fn render_command_preview(frame: &mut Frame, app: &TuiApp, input_area: Rect)
 
     let mut lines: Vec<Line<'static>> = Vec::new();
 
-    for i in start..end {
-        let cmd = &commands[i];
+    for (i, cmd) in commands.iter().enumerate().take(end).skip(start) {
         let is_selected = i == selected;
         let name_style = if is_selected {
             Style::default().fg(accent()).add_modifier(Modifier::BOLD)
@@ -1315,7 +1786,9 @@ pub fn render_command_preview(frame: &mut Frame, app: &TuiApp, input_area: Rect)
     if needs_indicator {
         lines.push(Line::from(Span::styled(
             format!("  {} of {}", selected + 1, item_count),
-            Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
         )));
     }
 
@@ -1370,7 +1843,9 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
     ]));
     lines.push(Line::from(Span::styled(
         "─".repeat(rect.width as usize),
-        Style::default().fg(border_idle()).add_modifier(Modifier::DIM),
+        Style::default()
+            .fg(border_idle())
+            .add_modifier(Modifier::DIM),
     )));
 
     for i in start..end {
@@ -1405,8 +1880,10 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
         let mut spans = vec![marker, current_mark, Span::styled(name.clone(), name_style)];
         if !status.is_empty() {
             spans.push(Span::styled(
-                format!("  {}", status),
-                Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+                format!("  {status}"),
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
             ));
         }
         lines.push(Line::from(spans));
@@ -1415,7 +1892,9 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "  ↑↓ move · enter select · esc cancel",
-        Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+        Style::default()
+            .fg(text_muted())
+            .add_modifier(Modifier::DIM),
     )));
 
     frame.render_widget(Paragraph::new(lines), rect);
@@ -1424,8 +1903,12 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
 /// Render a question overlay at the bottom of the transcript area.
 /// Shows the current question, options (if any), and answer hints.
 pub fn render_question_overlay(frame: &mut Frame, app: &TuiApp, transcript_area: Rect) {
-    let Some(ref state) = app.pending_question else { return };
-    let Some(q) = state.current_question() else { return };
+    let Some(ref state) = app.pending_question else {
+        return;
+    };
+    let Some(q) = state.current_question() else {
+        return;
+    };
 
     let mut lines: Vec<Line<'static>> = Vec::new();
 
@@ -1442,10 +1925,13 @@ pub fn render_question_overlay(frame: &mut Frame, app: &TuiApp, transcript_area:
     lines.push(Line::from(""));
 
     // Question text
-    let question_lines = wrap_text_to_width(&q.question, transcript_area.width.saturating_sub(4) as usize);
+    let question_lines = wrap_text_to_width(
+        &q.question,
+        transcript_area.width.saturating_sub(4) as usize,
+    );
     for line in question_lines {
         lines.push(Line::from(Span::styled(
-            format!("  {}", line),
+            format!("  {line}"),
             Style::default().fg(text_primary()),
         )));
     }
@@ -1458,7 +1944,10 @@ pub fn render_question_overlay(frame: &mut Frame, app: &TuiApp, transcript_area:
                 "  {}. {}{}",
                 i + 1,
                 opt.label,
-                opt.description.as_deref().map(|d| format!(" — {}", d)).unwrap_or_default()
+                opt.description
+                    .as_deref()
+                    .map(|d| format!(" — {d}"))
+                    .unwrap_or_default()
             );
             lines.push(Line::from(Span::styled(
                 opt_text,
@@ -1478,17 +1967,23 @@ pub fn render_question_overlay(frame: &mut Frame, app: &TuiApp, transcript_area:
     if q.secret {
         lines.push(Line::from(Span::styled(
             "  Type your answer (hidden) · enter to submit · esc to skip",
-            Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
         )));
     } else {
         lines.push(Line::from(Span::styled(
             "  Type your answer · enter to submit · esc to skip",
-            Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
         )));
     }
 
     let content_height = lines.len() as u16;
-    let overlay_height = content_height.min(transcript_area.height.saturating_sub(2)).max(6);
+    let overlay_height = content_height
+        .min(transcript_area.height.saturating_sub(2))
+        .max(6);
     let overlay_y = transcript_area.y + transcript_area.height - overlay_height - 1;
 
     let overlay_rect = Rect {
@@ -1581,46 +2076,57 @@ pub fn render(
     // Leave a 1-col right gutter for the scrollbar so text doesn't collide with it.
     let transcript_content_width = transcript_area.width.saturating_sub(1);
     let visible_height = transcript_area.height as usize;
-    let (visible_lines, total_lines, scroll, buffer) =
-        render_transcript_viewport(app, transcript_content_width, visible_height);
 
-    app.content_lines.set(total_lines);
-    app.visible_height.set(visible_height);
+    // Empty-state: render the welcome screen instead of an empty paragraph
+    // so a fresh launch isn't a void. The composer stays where it is, so
+    // typing the first message naturally replaces this view.
+    let show_welcome = app.entries.is_empty() && !app.pending && !app.has_pending_question();
 
-    let paragraph_scroll_y = if scroll >= buffer {
-        buffer as u16
+    if show_welcome {
+        app.content_lines.set(0);
+        app.visible_height.set(visible_height);
+        render_welcome(frame, transcript_area, app, config, settings, session_name);
     } else {
-        scroll as u16
-    };
+        let (visible_lines, total_lines, scroll, buffer) =
+            render_transcript_viewport(app, transcript_content_width, visible_height);
 
-    let transcript_content_area = Rect {
-        x: transcript_area.x,
-        y: transcript_area.y,
-        width: transcript_content_width,
-        height: transcript_area.height,
-    };
-    let transcript = Paragraph::new(visible_lines)
-        .scroll((paragraph_scroll_y, 0));
-    frame.render_widget(transcript, transcript_content_area);
+        app.content_lines.set(total_lines);
+        app.visible_height.set(visible_height);
 
-    // Scrollbar
-    if total_lines > visible_height {
-        let max_scroll = total_lines.saturating_sub(visible_height);
-        let mut scrollbar_state = ScrollbarState::new(max_scroll).position(scroll);
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_symbol(Some(" "))
-            .thumb_symbol("┃")
-            .track_style(Style::default().fg(border_idle()))
-            .thumb_style(Style::default().fg(accent_dim()));
-        let scrollbar_area = Rect {
-            x: transcript_area.x + transcript_area.width - 1,
-            y: transcript_area.y,
-            width: 1,
-            height: visible_height as u16,
+        let paragraph_scroll_y = if scroll >= buffer {
+            buffer as u16
+        } else {
+            scroll as u16
         };
-        frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
+
+        let transcript_content_area = Rect {
+            x: transcript_area.x,
+            y: transcript_area.y,
+            width: transcript_content_width,
+            height: transcript_area.height,
+        };
+        let transcript = Paragraph::new(visible_lines).scroll((paragraph_scroll_y, 0));
+        frame.render_widget(transcript, transcript_content_area);
+
+        // Scrollbar
+        if total_lines > visible_height {
+            let max_scroll = total_lines.saturating_sub(visible_height);
+            let mut scrollbar_state = ScrollbarState::new(max_scroll).position(scroll);
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None)
+                .track_symbol(Some(" "))
+                .thumb_symbol("┃")
+                .track_style(Style::default().fg(border_idle()))
+                .thumb_style(Style::default().fg(accent_dim()));
+            let scrollbar_area = Rect {
+                x: transcript_area.x + transcript_area.width - 1,
+                y: transcript_area.y,
+                width: 1,
+                height: visible_height as u16,
+            };
+            frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
+        }
     }
 
     // ── Composer separator (dim horizontal rule) ─────────────────
@@ -1643,16 +2149,16 @@ pub fn render(
         let mut spans: Vec<Span<'static>> = vec![
             Span::styled("  ", Style::default()),
             Span::styled(
-                format!("{} ", spinner),
-                Style::default()
-                    .fg(thinking())
-                    .add_modifier(Modifier::BOLD),
+                format!("{spinner} "),
+                Style::default().fg(thinking()).add_modifier(Modifier::BOLD),
             ),
         ];
         spans.extend(shimmer_spans("thinking…", app.tick_count, thinking()));
         spans.push(Span::styled(
             "  ·  esc to abort",
-            Style::default().fg(text_muted()).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(text_muted())
+                .add_modifier(Modifier::DIM),
         ));
         let status = Paragraph::new(Line::from(spans));
         frame.render_widget(status, input_area);
@@ -1704,12 +2210,9 @@ pub fn render(
         frame.render_widget(input_widget, text_area);
 
         if !app.settings_open {
-            let (cur_row, cur_col) =
-                cursor_to_row_col(&app.input, app.cursor, input_inner_width);
-            frame.set_cursor_position((
-                text_area.x + cur_col,
-                text_area.y + cur_row - input_scroll,
-            ));
+            let (cur_row, cur_col) = cursor_to_row_col(&app.input, app.cursor, input_inner_width);
+            frame
+                .set_cursor_position((text_area.x + cur_col, text_area.y + cur_row - input_scroll));
         }
     }
 

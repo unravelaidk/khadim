@@ -5,7 +5,7 @@
 //! agent runtime via `AgentRuntime::with_extras`.
 //!
 //! Design inspired by:
-//! - OpenAI Codex `request_user_input` tool (overlay with options + notes)
+//! - `OpenAI` Codex `request_user_input` tool (overlay with options + notes)
 //! - Opencode `question` tool (batch questions, custom answer support)
 
 use khadim_ai_core::error::AppError;
@@ -37,7 +37,7 @@ pub struct Question {
     pub secret: bool,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
@@ -57,7 +57,8 @@ pub struct QuestionResponse {
 /// carries answers back.
 #[derive(Clone, Debug)]
 pub struct QuestionBridge {
-    pub tx: tokio::sync::mpsc::UnboundedSender<(QuestionRequest, oneshot::Sender<QuestionResponse>)>,
+    pub tx:
+        tokio::sync::mpsc::UnboundedSender<(QuestionRequest, oneshot::Sender<QuestionResponse>)>,
 }
 
 /// The interactive question tool.
@@ -66,7 +67,7 @@ pub struct QuestionTool {
 }
 
 impl QuestionTool {
-    pub fn new(bridge: QuestionBridge) -> Self {
+    pub const fn new(bridge: QuestionBridge) -> Self {
         Self { bridge }
     }
 }
@@ -146,12 +147,12 @@ impl Tool for QuestionTool {
             .map_err(|e| AppError::invalid_input(format!("Invalid question parameters: {e}")))?;
 
         if request.questions.is_empty() {
-            return Err(AppError::invalid_input("At least one question is required."));
+            return Err(AppError::invalid_input(
+                "At least one question is required.",
+            ));
         }
         if request.questions.len() > 3 {
-            return Err(AppError::invalid_input(
-                "Too many questions. Maximum is 3.",
-            ));
+            return Err(AppError::invalid_input("Too many questions. Maximum is 3."));
         }
 
         let (tx, rx) = oneshot::channel();

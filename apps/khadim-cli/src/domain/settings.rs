@@ -8,10 +8,10 @@ use std::collections::HashMap;
 pub struct StoredSettings {
     pub provider: Option<String>,
     pub model_id: Option<String>,
-    /// Legacy single key (migrated to api_keys on load)
+    /// Legacy single key (migrated to `api_keys` on load)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    /// Per-provider API keys: provider_id -> key
+    /// Per-provider API keys: `provider_id` -> key
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub api_keys: HashMap<String, String>,
     /// Theme family (default, catppuccin, nord, etc.)
@@ -49,7 +49,7 @@ impl StoredSettings {
         get_env_api_key(provider)
     }
 
-    /// Migrate legacy single api_key into api_keys map
+    /// Migrate legacy single `api_key` into `api_keys` map
     pub fn migrate_legacy_key(&mut self) {
         if let (Some(ref provider), Some(ref key)) = (self.provider.clone(), self.api_key.clone()) {
             if !key.trim().is_empty() && !self.api_keys.contains_key(provider) {

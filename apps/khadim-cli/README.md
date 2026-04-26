@@ -45,6 +45,45 @@ Prebuilt binaries are available on the [releases page](https://github.com/unrave
 ## Usage
 
 ```bash
+# Start the interactive Khadim TUI in the current project
+khadim
+
+# Start Khadim in another project directory
+khadim --cwd /path/to/project
+
+# Inside the TUI, type natural-language requests
+> summarize this repo
+> fix the failing tests
+> add unit tests for the auth service
+
+# Type / to browse built-in commands with live preview
+/help
+/provider
+/model
+/sessions
+/theme
+```
+
+Common interactive commands:
+
+| Command | What it does |
+|---------|--------------|
+| `/help` | Show commands and keyboard shortcuts |
+| `/provider` | Switch AI provider |
+| `/model` | Switch model for the current provider |
+| `/login` | OAuth login for supported providers such as Copilot or Codex |
+| `/sessions` | List saved sessions |
+| `/session NAME` | Switch to a saved session |
+| `/new` | Start a new session |
+| `/save NAME` | Save the current session |
+| `/theme` | Switch the TUI theme |
+| `/settings` | Open the settings panel |
+| `/tokens` | Show token usage |
+| `/export [PATH]` | Export the conversation to markdown |
+
+Batch/headless modes are still available when you want a one-shot command:
+
+```bash
 # Prompt mode
 khadim --prompt "summarize this repo"
 
@@ -53,9 +92,6 @@ khadim exec "summarize failures" < build.log
 
 # Pipe stdin as context
 echo "error: timeout on line 42" | khadim --prompt "fix this"
-
-# Run in a specific directory
-khadim --cwd /path/to/project
 ```
 
 `--prompt -` reads the entire prompt from stdin.

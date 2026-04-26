@@ -23,7 +23,8 @@ use khadim_ai_core::error::AppError;
 use khadim_ai_core::types::ModelSelection;
 use khadim_coding_agent::KhadimSession;
 use khadim_coding_agent::{
-    build_mode, chat_mode, explore_mode, plan_mode, run_prompt_with_runtime, run_prompt_with_runtime_and_explicit_mode, AgentRuntime,
+    build_mode, chat_mode, explore_mode, plan_mode, run_prompt_with_runtime,
+    run_prompt_with_runtime_and_explicit_mode, AgentRuntime,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -115,11 +116,11 @@ impl AppService {
 
     // ── Accessors ──────────────────────────────────────────────────────
 
-    pub fn config(&self) -> &CliConfig {
+    pub const fn config(&self) -> &CliConfig {
         &self.config
     }
 
-    pub fn stored_settings(&self) -> &StoredSettings {
+    pub const fn stored_settings(&self) -> &StoredSettings {
         &self.stored_settings
     }
 
@@ -242,7 +243,9 @@ impl AppService {
             tokio::sync::oneshot::Sender<crate::tools::question_tool::QuestionResponse>,
         )>();
         let question_bridge = crate::tools::question_tool::QuestionBridge { tx: question_tx };
-        let question_tool = Arc::new(crate::tools::question_tool::QuestionTool::new(question_bridge));
+        let question_tool = Arc::new(crate::tools::question_tool::QuestionTool::new(
+            question_bridge,
+        ));
 
         let handle = tokio::spawn(async move {
             // Forward question requests from the agent task to the main UI thread
@@ -275,29 +278,59 @@ impl AppService {
             let result = match explicit_mode.as_deref() {
                 Some("build") => {
                     run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess, &prompt, selection, build_mode(), &tx, runtime,
+                        &mut sess,
+                        &prompt,
+                        selection,
+                        build_mode(),
+                        &tx,
+                        runtime,
                     )
                     .await
                 }
                 Some("plan") => {
                     run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess, &prompt, selection, plan_mode(), &tx, runtime,
+                        &mut sess,
+                        &prompt,
+                        selection,
+                        plan_mode(),
+                        &tx,
+                        runtime,
                     )
                     .await
                 }
                 Some("explore") => {
                     run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess, &prompt, selection, explore_mode(), &tx, runtime,
+                        &mut sess,
+                        &prompt,
+                        selection,
+                        explore_mode(),
+                        &tx,
+                        runtime,
                     )
                     .await
                 }
                 Some("chat") => {
                     run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess, &prompt, selection, chat_mode(), &tx, runtime,
+                        &mut sess,
+                        &prompt,
+                        selection,
+                        chat_mode(),
+                        &tx,
+                        runtime,
                     )
                     .await
                 }
-                _ => run_prompt_with_runtime(&mut sess, &prompt, selection, &tx, runtime, khadim_coding_agent::RunConfig::default()).await,
+                _ => {
+                    run_prompt_with_runtime(
+                        &mut sess,
+                        &prompt,
+                        selection,
+                        &tx,
+                        runtime,
+                        khadim_coding_agent::RunConfig::default(),
+                    )
+                    .await
+                }
             };
             drop(tx);
             let _ = forwarder.await;
@@ -317,20 +350,20 @@ impl AppService {
     }
 
     pub fn is_run_finished(&self) -> bool {
-        self.current_run.as_ref().map_or(true, |h| h.is_finished())
+        self.current_run
+            .as_ref()
+            .is_none_or(tokio::task::JoinHandle::is_finished)
     }
 
     pub fn drain_finished_run(&mut self) -> bool {
-        if self.is_run_finished() {
-            if self.current_run.is_some() {
-                self.current_run = None;
-                return true;
-            }
+        if self.is_run_finished() && self.current_run.is_some() {
+            self.current_run = None;
+            return true;
         }
         false
     }
 
-    pub fn has_active_run(&self) -> bool {
+    pub const fn has_active_run(&self) -> bool {
         self.current_run.is_some()
     }
 
@@ -362,6 +395,7 @@ impl AppService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn save_session_state(
         &self,
         name: &str,
@@ -390,6 +424,7 @@ impl AppService {
         save_session_file(name, &saved)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn save_session_as(
         &mut self,
         name: &str,
@@ -526,7 +561,10 @@ impl AppService {
                     } else {
                         ""
                     };
-                    lines.push(format!("  {:<18}  {}{}  ·  {}", p.name, p.id, oauth_label, status));
+                    lines.push(format!(
+                        "  {:<18}  {}{}  ·  {}",
+                        p.name, p.id, oauth_label, status
+                    ));
                 }
                 CommandResult::ShowProviders(lines)
             }
@@ -561,18 +599,12 @@ impl AppService {
             }
             "/session" => CommandResult::OpenSessionPicker,
             "/new" => CommandResult::NewSession,
-            "/save" => {
-                return CommandResult::ShowSystemMessage("Usage: /save <session-name>".to_string());
-            }
+            "/save" => CommandResult::ShowSystemMessage("Usage: /save <session-name>".to_string()),
             "/delete" => {
-                return CommandResult::ShowSystemMessage(
-                    "Usage: /delete <session-name>".to_string(),
-                );
+                CommandResult::ShowSystemMessage("Usage: /delete <session-name>".to_string())
             }
             "/rename" => {
-                return CommandResult::ShowSystemMessage(
-                    "Usage: /rename <old-name> <new-name>".to_string(),
-                );
+                CommandResult::ShowSystemMessage("Usage: /rename <old-name> <new-name>".to_string())
             }
             "/login" => CommandResult::OpenLoginSelector {
                 preselect_provider: None,
@@ -584,12 +616,8 @@ impl AppService {
                 preselect_provider: Some("openai-codex".to_string()),
             },
             "/copy" => CommandResult::CopyLastResponse,
-            "/export" => {
-                return CommandResult::ShowSystemMessage("Usage: /export [path]".to_string());
-            }
-            "/system" => {
-                return CommandResult::ShowSystemMessage("Usage: /system <prompt>".to_string());
-            }
+            "/export" => CommandResult::ShowSystemMessage("Usage: /export [path]".to_string()),
+            "/system" => CommandResult::ShowSystemMessage("Usage: /system <prompt>".to_string()),
             "/version" => CommandResult::ShowVersion,
             "/history" => {
                 let history = crate::services::history_service::load_history().unwrap_or_default();
@@ -611,8 +639,7 @@ impl AppService {
             "/tokens" => CommandResult::ShowTokens,
             "/config" => {
                 let path = crate::services::settings_service::settings_path()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|_| "(unknown)".to_string());
+                    .map_or_else(|_| "(unknown)".to_string(), |p| p.display().to_string());
                 CommandResult::ShowConfig(path)
             }
             "/refresh-models" => CommandResult::RefreshModels,
@@ -642,7 +669,7 @@ impl AppService {
                     }
                 }
                 if let Some(args) = cmd.strip_prefix("/rename ") {
-                    let parts: Vec<&str> = args.trim().split_whitespace().collect();
+                    let parts: Vec<&str> = args.split_whitespace().collect();
                     if parts.len() == 2 {
                         return CommandResult::RenameSession {
                             old_name: parts[0].to_string(),
@@ -797,8 +824,7 @@ impl AppService {
         if provider_id == "openrouter" && items.is_empty() {
             items.push((
                 String::new(),
-                "(models still loading — close picker and retry in a moment)"
-                    .to_string(),
+                "(models still loading — close picker and retry in a moment)".to_string(),
                 String::new(),
             ));
         }
@@ -835,7 +861,7 @@ impl AppService {
         }
         let current = items
             .iter()
-            .position(|(id, _, _)| *id == format!("{}:{}", current_family, current_variant))
+            .position(|(id, _, _)| *id == format!("{current_family}:{current_variant}"))
             .unwrap_or(0);
 
         CommandPickerState {

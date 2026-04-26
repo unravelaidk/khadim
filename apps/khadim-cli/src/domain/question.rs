@@ -15,7 +15,7 @@ impl PendingQuestionState {
     }
 
     #[allow(dead_code)]
-    pub fn is_last_question(&self) -> bool {
+    pub const fn is_last_question(&self) -> bool {
         self.current_idx + 1 >= self.request.questions.len()
     }
 
@@ -26,7 +26,7 @@ impl PendingQuestionState {
         self.current_idx += 1;
     }
 
-    pub fn all_answered(&self) -> bool {
+    pub const fn all_answered(&self) -> bool {
         self.current_idx >= self.request.questions.len()
     }
 

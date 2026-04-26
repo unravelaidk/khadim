@@ -15,40 +15,40 @@ pub enum ThemeFamily {
 }
 
 impl ThemeFamily {
-    pub fn id(&self) -> &'static str {
+    pub const fn id(&self) -> &'static str {
         match self {
-            ThemeFamily::Default => "default",
-            ThemeFamily::Catppuccin => "catppuccin",
-            ThemeFamily::Nord => "nord",
-            ThemeFamily::TokyoNight => "tokyo-night",
-            ThemeFamily::Gruvbox => "gruvbox",
-            ThemeFamily::OneDark => "one-dark",
-            ThemeFamily::Dracula => "dracula",
+            Self::Default => "default",
+            Self::Catppuccin => "catppuccin",
+            Self::Nord => "nord",
+            Self::TokyoNight => "tokyo-night",
+            Self::Gruvbox => "gruvbox",
+            Self::OneDark => "one-dark",
+            Self::Dracula => "dracula",
         }
     }
 
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            ThemeFamily::Default => "Default",
-            ThemeFamily::Catppuccin => "Catppuccin",
-            ThemeFamily::Nord => "Nord",
-            ThemeFamily::TokyoNight => "Tokyo Night",
-            ThemeFamily::Gruvbox => "Gruvbox",
-            ThemeFamily::OneDark => "One Dark",
-            ThemeFamily::Dracula => "Dracula",
+            Self::Default => "Default",
+            Self::Catppuccin => "Catppuccin",
+            Self::Nord => "Nord",
+            Self::TokyoNight => "Tokyo Night",
+            Self::Gruvbox => "Gruvbox",
+            Self::OneDark => "One Dark",
+            Self::Dracula => "Dracula",
         }
     }
 
     #[allow(dead_code)]
-    pub fn description(&self) -> &'static str {
+    pub const fn description(&self) -> &'static str {
         match self {
-            ThemeFamily::Default => "Neutral ink, monochrome accent",
-            ThemeFamily::Catppuccin => "Soothing pastel theme",
-            ThemeFamily::Nord => "Arctic, north-bluish colors",
-            ThemeFamily::TokyoNight => "Tokyo night darkness",
-            ThemeFamily::Gruvbox => "Retro groove theme",
-            ThemeFamily::OneDark => "Atom's iconic theme",
-            ThemeFamily::Dracula => "Dark purple-tinted theme",
+            Self::Default => "Neutral ink, monochrome accent",
+            Self::Catppuccin => "Soothing pastel theme",
+            Self::Nord => "Arctic, north-bluish colors",
+            Self::TokyoNight => "Tokyo night darkness",
+            Self::Gruvbox => "Retro groove theme",
+            Self::OneDark => "Atom's iconic theme",
+            Self::Dracula => "Dark purple-tinted theme",
         }
     }
 }
@@ -64,20 +64,20 @@ pub enum ThemeVariant {
 }
 
 impl ThemeVariant {
-    pub fn id(&self) -> &'static str {
+    pub const fn id(&self) -> &'static str {
         match self {
-            ThemeVariant::Dark => "dark",
-            ThemeVariant::Light => "light",
-            ThemeVariant::Mocha => "mocha",
-            ThemeVariant::Macchiato => "macchiato",
-            ThemeVariant::Frappe => "frappe",
-            ThemeVariant::Latte => "latte",
+            Self::Dark => "dark",
+            Self::Light => "light",
+            Self::Mocha => "mocha",
+            Self::Macchiato => "macchiato",
+            Self::Frappe => "frappe",
+            Self::Latte => "latte",
         }
     }
 
     #[allow(dead_code)]
-    pub fn is_dark(&self) -> bool {
-        !matches!(self, ThemeVariant::Light | ThemeVariant::Latte)
+    pub const fn is_dark(&self) -> bool {
+        !matches!(self, Self::Light | Self::Latte)
     }
 }
 
@@ -118,7 +118,7 @@ pub struct ThemeColors {
 impl Default for ThemeColors {
     fn default() -> Self {
         // Default dark theme colors
-        ThemeColors {
+        Self {
             accent: Color::Rgb(139, 92, 246),          // violet-500
             accent_dim: Color::Rgb(109, 70, 196),      // violet-600
             text_primary: Color::Rgb(229, 231, 235),   // gray-200
@@ -454,7 +454,7 @@ pub fn parse_theme_variant(s: &str) -> Option<ThemeVariant> {
     }
 }
 
-pub fn get_default_variant(family: ThemeFamily) -> ThemeVariant {
+pub const fn get_default_variant(family: ThemeFamily) -> ThemeVariant {
     match family {
         ThemeFamily::Catppuccin => ThemeVariant::Mocha,
         _ => ThemeVariant::Dark,

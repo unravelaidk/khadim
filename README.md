@@ -30,9 +30,11 @@ npm install -g @unravelai/khadim
 # Or use the install script
 curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
 
-# Start a session
-khadim --prompt "summarize this repo"
+# Start an interactive CLI session in the current project
+khadim
 ```
+
+Inside the interactive TUI, type requests like `summarize this repo`, `fix the failing tests`, or `add unit tests for the auth service`. Type `/` to browse built-in commands such as `/help`, `/provider`, `/model`, `/sessions`, and `/theme`.
 
 **Binary downloads** are available on the [releases page](https://github.com/unravelaidk/khadim/releases) for `cli-v*` tags.
 
@@ -88,6 +90,44 @@ Bring your own API key for any of these providers. Khadim auto-detects keys from
 ## Usage
 
 ```bash
+# Start the interactive Khadim TUI in the current project
+khadim
+
+# Start Khadim in another project directory
+khadim --cwd /path/to/project
+
+# Then type natural-language requests in the TUI
+> fix the lint errors in src/
+> add unit tests
+
+# Type / to browse commands with live preview
+/help
+/provider
+/model
+/sessions
+/theme
+```
+
+Common interactive commands:
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show commands and keyboard shortcuts |
+| `/provider` | Switch AI provider |
+| `/model` | Switch model |
+| `/login` | OAuth login for supported providers such as Copilot or Codex |
+| `/sessions` | List saved sessions |
+| `/session NAME` | Switch to a saved session |
+| `/new` | Start a new session |
+| `/save NAME` | Save the current session |
+| `/theme` | Switch the TUI theme |
+| `/settings` | Open the settings panel |
+| `/tokens` | Show token usage |
+| `/export [PATH]` | Export the conversation to markdown |
+
+For one-shot or scripted runs, use batch/headless mode:
+
+```bash
 # Prompt mode
 khadim --prompt "fix the lint errors in src/"
 
@@ -97,7 +137,7 @@ khadim exec "summarize failures" < build.log
 # Pipe stdin as context
 echo "error: timeout on line 42" | khadim --prompt "fix this"
 
-# Run in a specific directory
+# Run a one-shot prompt in a specific directory
 khadim --cwd /path/to/project --prompt "add unit tests"
 ```
 

@@ -75,7 +75,10 @@ pub fn context_window_for(provider: &str, model_id: &str) -> u64 {
 /// Falls back to `true` when the model is unknown (conservative default).
 pub fn model_supports_images(provider: &str, model_id: &str) -> bool {
     let model = find_or_synth_model(provider, model_id);
-    model.input.iter().any(|k| matches!(k, khadim_ai_core::types::InputKind::Image))
+    model
+        .input
+        .iter()
+        .any(|k| matches!(k, khadim_ai_core::types::InputKind::Image))
 }
 
 // ── Cost estimation ──────────────────────────────────────────────────
@@ -108,7 +111,7 @@ pub fn format_tokens(n: u64) -> String {
     } else if n >= 1_000 {
         format!("{:.1}K", n as f64 / 1_000.0)
     } else {
-        format!("{}", n)
+        format!("{n}")
     }
 }
 

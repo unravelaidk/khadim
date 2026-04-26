@@ -568,6 +568,7 @@ pub async fn run_prompt_with_runtime(
             let sess_id2 = session.id.clone();
             let has_ws2 = !ws_id2.is_empty();
 
+            let _ = tx.send(make_event(session, "llm_call_start"));
             let result = client
             .stream(
                 &context,
@@ -672,6 +673,7 @@ pub async fn run_prompt_with_runtime(
                 }}),
             )
             .await;
+            let _ = tx.send(make_event(session, "llm_call_end"));
 
             match result {
                 Ok(reply) => break reply,
@@ -843,6 +845,7 @@ async fn run_prompt_inner(
             let sess_id = session.id.clone();
             let has_ws = !ws_id.is_empty();
 
+            let _ = tx.send(make_event(session, "llm_call_start"));
             let result = client
             .stream(
                 &context,
@@ -947,6 +950,7 @@ async fn run_prompt_inner(
                 }}),
             )
             .await;
+            let _ = tx.send(make_event(session, "llm_call_end"));
 
             match result {
                 Ok(reply) => break reply,

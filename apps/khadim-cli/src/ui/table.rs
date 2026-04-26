@@ -2,7 +2,7 @@ use pulldown_cmark::Alignment;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use super::theme::*;
+use super::theme::{md_table_border, md_table_header, text_primary};
 use unicode_width::UnicodeWidthStr;
 
 /// Border style for tables
@@ -30,7 +30,7 @@ fn align_cell(text: &str, width: usize, alignment: Alignment) -> String {
         // Truncate with ellipsis
         if width > 1 {
             let truncated = truncate_unicode(text, width - 1);
-            format!("{}…", truncated)
+            format!("{truncated}…")
         } else if width == 1 {
             "…".to_string()
         } else {
@@ -83,14 +83,12 @@ fn wrap_cell_text(text: &str, max_width: usize) -> Vec<String> {
 
         for word in paragraph.split_whitespace() {
             let word_width = UnicodeWidthStr::width(word);
-            let space_width = if current_line.is_empty() { 0 } else { 1 };
+            let space_width = usize::from(!current_line.is_empty());
 
-            if current_width + space_width + word_width > max_width {
-                if !current_line.is_empty() {
-                    lines.push(current_line);
-                    current_line = String::new();
-                    current_width = 0;
-                }
+            if current_width + space_width + word_width > max_width && !current_line.is_empty() {
+                lines.push(current_line);
+                current_line = String::new();
+                current_width = 0;
             }
 
             if !current_line.is_empty() {
@@ -114,7 +112,9 @@ fn wrap_cell_text(text: &str, max_width: usize) -> Vec<String> {
 }
 
 /// Get border characters based on style
-fn get_border_chars(style: TableBorderStyle) -> (&'static str, &'static str, &'static str, char) {
+const fn get_border_chars(
+    style: TableBorderStyle,
+) -> (&'static str, &'static str, &'static str, char) {
     match style {
         TableBorderStyle::Unicode => ("┌", "┬", "┐", '─'),
         TableBorderStyle::Ascii => ("+", "+", "+", '-'),
@@ -126,7 +126,7 @@ fn get_border_chars(style: TableBorderStyle) -> (&'static str, &'static str, &'s
 }
 
 /// Get separator characters based on style
-fn get_separator_chars(
+const fn get_separator_chars(
     style: TableBorderStyle,
 ) -> (&'static str, &'static str, &'static str, char) {
     match style {
@@ -140,7 +140,7 @@ fn get_separator_chars(
 }
 
 /// Get bottom border characters based on style
-fn get_bottom_border_chars(
+const fn get_bottom_border_chars(
     style: TableBorderStyle,
 ) -> (&'static str, &'static str, &'static str, char) {
     match style {
@@ -154,7 +154,7 @@ fn get_bottom_border_chars(
 }
 
 /// Get vertical separator character
-fn get_vert_sep(style: TableBorderStyle) -> &'static str {
+const fn get_vert_sep(style: TableBorderStyle) -> &'static str {
     match style {
         TableBorderStyle::Unicode => " │ ",
         TableBorderStyle::Ascii => " | ",
@@ -166,7 +166,7 @@ fn get_vert_sep(style: TableBorderStyle) -> &'static str {
 }
 
 /// Get left border prefix
-fn get_left_prefix(style: TableBorderStyle) -> &'static str {
+const fn get_left_prefix(style: TableBorderStyle) -> &'static str {
     match style {
         TableBorderStyle::Unicode => "  │ ",
         TableBorderStyle::Ascii => "  | ",
@@ -178,7 +178,7 @@ fn get_left_prefix(style: TableBorderStyle) -> &'static str {
 }
 
 /// Get right border suffix
-fn get_right_suffix(style: TableBorderStyle) -> &'static str {
+const fn get_right_suffix(style: TableBorderStyle) -> &'static str {
     match style {
         TableBorderStyle::Unicode => " │",
         TableBorderStyle::Ascii => " |",
@@ -233,7 +233,7 @@ pub fn render_table_lines_with_options<'a>(
     if rows.is_empty() {
         return Vec::new();
     }
-    let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    let num_cols = rows.iter().map(std::vec::Vec::len).max().unwrap_or(0);
     if num_cols == 0 {
         return Vec::new();
     }
@@ -266,7 +266,7 @@ pub fn render_table_lines_with_options<'a>(
     }
 
     // Ensure minimum column widths
-    for w in col_widths.iter_mut() {
+    for w in &mut col_widths {
         *w = (*w).max(min_width);
     }
 
@@ -288,8 +288,7 @@ pub fn render_table_lines_with_options<'a>(
                 .iter()
                 .enumerate()
                 .max_by_key(|(_, &w)| w)
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+                .map_or(0, |(i, _)| i);
             if new_widths[max_idx] > min_width {
                 new_widths[max_idx] -= 1;
                 current_total -= 1;
@@ -362,7 +361,7 @@ pub fn render_table_lines_with_options<'a>(
         // Find maximum lines in any cell
         let max_cell_lines_count = cell_content
             .iter()
-            .map(|c| c.len())
+            .map(std::vec::Vec::len)
             .max()
             .unwrap_or(1)
             .max(1);
@@ -379,7 +378,9 @@ pub fn render_table_lines_with_options<'a>(
             }
 
             for (i, cell_lines) in cell_content.iter().enumerate() {
-                let content = cell_lines.get(line_idx).map(|s| s.as_str()).unwrap_or("");
+                let content = cell_lines
+                    .get(line_idx)
+                    .map_or("", std::string::String::as_str);
 
                 if i > 0 && style != TableBorderStyle::None {
                     spans.push(Span::styled(sep, Style::default().fg(md_table_border())));
@@ -398,11 +399,7 @@ pub fn render_table_lines_with_options<'a>(
                     Style::default().fg(text_primary())
                 };
 
-                let padding = if style == TableBorderStyle::None {
-                    " ".to_string()
-                } else {
-                    " ".to_string()
-                };
+                let padding = " ".to_string();
 
                 spans.push(Span::styled(format!(" {content}{padding}"), cell_styling));
             }

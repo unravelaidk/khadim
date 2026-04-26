@@ -31,8 +31,8 @@ use unicode_width::UnicodeWidthStr;
 use super::highlight::{highlight_code_block, normalize_lang};
 use super::theme::{
     md_blockquote, md_bq_caution, md_bq_important, md_bq_note, md_bq_tip, md_bq_warning,
-    md_code_bg, md_code_fg, md_heading, md_hr, md_image, md_link, md_list_bullet,
-    md_strikethrough, md_task_checked, md_task_unchecked,
+    md_code_bg, md_code_fg, md_heading, md_hr, md_image, md_link, md_list_bullet, md_strikethrough,
+    md_task_checked, md_task_unchecked,
 };
 
 // ── Public entry point ───────────────────────────────────────────────
@@ -112,7 +112,7 @@ impl Styles {
         }
     }
 
-    fn heading(&self, level: HeadingLevel) -> Style {
+    const fn heading(&self, level: HeadingLevel) -> Style {
         match level {
             HeadingLevel::H1 => self.h1,
             HeadingLevel::H2 => self.h2,
@@ -135,7 +135,7 @@ impl Styles {
     }
 }
 
-fn alert_label(kind: BlockQuoteKind) -> &'static str {
+const fn alert_label(kind: BlockQuoteKind) -> &'static str {
     match kind {
         BlockQuoteKind::Note => "NOTE ",
         BlockQuoteKind::Tip => "TIP ",
@@ -166,8 +166,16 @@ struct IndentCtx {
 }
 
 impl IndentCtx {
-    fn new(prefix: Vec<Span<'static>>, marker: Option<Vec<Span<'static>>>, is_list: bool) -> Self {
-        Self { prefix, marker, is_list }
+    const fn new(
+        prefix: Vec<Span<'static>>,
+        marker: Option<Vec<Span<'static>>>,
+        is_list: bool,
+    ) -> Self {
+        Self {
+            prefix,
+            marker,
+            is_list,
+        }
     }
 }
 
@@ -282,11 +290,11 @@ where
             Event::TaskListMarker(checked) => self.set_task_marker(checked),
             Event::FootnoteReference(_) => {}
             Event::InlineMath(m) => self.push_span(Span::styled(
-                format!("${}$", m),
+                format!("${m}$"),
                 self.current_inline_style().patch(self.styles.code),
             )),
             Event::DisplayMath(m) => self.push_span(Span::styled(
-                format!("$${}$$", m),
+                format!("$${m}$$"),
                 self.current_inline_style().patch(self.styles.code),
             )),
         }
@@ -338,7 +346,9 @@ where
             Tag::Strong => self.push_inline(self.styles.strong),
             Tag::Strikethrough => self.push_inline(self.styles.strikethrough),
             Tag::Link { dest_url, .. } => self.start_link(dest_url),
-            Tag::Image { dest_url, title, .. } => self.image(dest_url, title),
+            Tag::Image {
+                dest_url, title, ..
+            } => self.image(dest_url, title),
             Tag::Table(alignments) => self.start_table(alignments),
             Tag::TableHead | Tag::TableRow => {
                 if let Some(t) = &mut self.table {
@@ -415,7 +425,7 @@ where
         }
     }
 
-    fn end_paragraph(&mut self) {
+    const fn end_paragraph(&mut self) {
         self.needs_newline = true;
         self.in_paragraph = false;
         self.pending_marker_line = false;
@@ -428,10 +438,7 @@ where
         }
         let style = self.styles.heading(level);
         let hashes = "#".repeat(level as usize);
-        self.push_line(Line::from(vec![Span::styled(
-            format!("{hashes} "),
-            style,
-        )]));
+        self.push_line(Line::from(vec![Span::styled(format!("{hashes} "), style)]));
         self.push_inline(style);
         self.needs_newline = false;
     }
@@ -466,7 +473,10 @@ where
         if !self.out.is_empty() {
             self.push_blank_line();
         }
-        self.code_block = Some(CodeBlock { lang, buffer: String::new() });
+        self.code_block = Some(CodeBlock {
+            lang,
+            buffer: String::new(),
+        });
         // Push an indent frame so blocks nested in lists/quotes get the
         // right left margin; the code itself is emitted in `end_code_block`.
         self.indents.push(IndentCtx::new(
@@ -480,7 +490,12 @@ where
     fn end_code_block(&mut self) {
         if let Some(block) = self.code_block.take() {
             // Optional dim language label.
-            let lang = block.lang.split([',', ' ', '\t']).next().unwrap_or("").trim();
+            let lang = block
+                .lang
+                .split([',', ' ', '\t'])
+                .next()
+                .unwrap_or("")
+                .trim();
             let normalized = normalize_lang(lang);
             if !lang.is_empty() {
                 let mut line = Line::default();
@@ -552,8 +567,7 @@ where
         let depth = self.list_indices.len();
         let width = depth.saturating_mul(4).saturating_sub(3).max(1);
 
-        let is_ordered =
-            self.list_indices.last().copied().flatten().is_some();
+        let is_ordered = self.list_indices.last().copied().flatten().is_some();
 
         // Override marker if a task-list marker is pending.
         let marker_spans = if let Some(checked) = self.task_marker.take() {
@@ -666,7 +680,7 @@ where
     }
 
     fn start_link(&mut self, dest: CowStr<'a>) {
-        let label_start = self.current.as_ref().map(|l| l.spans.len()).unwrap_or(0);
+        let label_start = self.current.as_ref().map_or(0, |l| l.spans.len());
         self.link = Some(LinkState {
             url: dest.to_string(),
             label_start,
@@ -700,9 +714,13 @@ where
     }
 
     fn image(&mut self, dest: CowStr<'a>, title: CowStr<'a>) {
-        let alt = if title.is_empty() { "image" } else { title.as_ref() };
+        let alt = if title.is_empty() {
+            "image"
+        } else {
+            title.as_ref()
+        };
         self.push_span(Span::styled(
-            format!("[image: {}] {}", alt, dest),
+            format!("[image: {alt}] {dest}"),
             self.styles.image,
         ));
     }
@@ -724,7 +742,10 @@ where
     fn end_table(&mut self) {
         if let Some(t) = self.table.take() {
             let initial = self.prefix_spans(/*for_marker*/ false);
-            let avail = self.wrap_width.saturating_sub(spans_width(&initial)).max(20);
+            let avail = self
+                .wrap_width
+                .saturating_sub(spans_width(&initial))
+                .max(20);
             let rendered = super::table::render_table_lines(&t.rows, &t.alignments, avail);
             self.out.push(Line::from(""));
             for row in rendered {
@@ -740,12 +761,7 @@ where
     // ── Inline style stack ────────────────────────────────────────────
 
     fn push_inline(&mut self, style: Style) {
-        let merged = self
-            .inline
-            .last()
-            .copied()
-            .unwrap_or_default()
-            .patch(style);
+        let merged = self.inline.last().copied().unwrap_or_default().patch(style);
         self.inline.push(merged);
     }
 
@@ -808,7 +824,9 @@ where
     /// Flush the in-progress line: prepend indent, re-wrap (unless code),
     /// and push to `out`. Style is preserved per-span across wrap points.
     fn flush_current_line(&mut self) {
-        let Some(line) = self.current.take() else { return };
+        let Some(line) = self.current.take() else {
+            return;
+        };
 
         let initial = std::mem::take(&mut self.current_initial);
         let subsequent = std::mem::take(&mut self.current_subsequent);
@@ -836,7 +854,11 @@ where
             return;
         }
         for (i, row_spans) in wrapped.into_iter().enumerate() {
-            let prefix = if i == 0 { initial.clone() } else { subsequent.clone() };
+            let prefix = if i == 0 {
+                initial.clone()
+            } else {
+                subsequent.clone()
+            };
             let mut spans = prefix;
             spans.extend(row_spans);
             self.out.push(Line::from(spans).style(style));
@@ -857,11 +879,13 @@ where
         out.push(Span::raw("  "));
 
         let last_marker_idx = if for_marker {
-            self.indents
-                .iter()
-                .enumerate()
-                .rev()
-                .find_map(|(i, c)| if c.marker.is_some() { Some(i) } else { None })
+            self.indents.iter().enumerate().rev().find_map(|(i, c)| {
+                if c.marker.is_some() {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
         } else {
             None
         };
@@ -903,7 +927,10 @@ where
 // ── Helpers ──────────────────────────────────────────────────────────
 
 fn spans_width(spans: &[Span<'_>]) -> usize {
-    spans.iter().map(|s| UnicodeWidthStr::width(s.content.as_ref())).sum()
+    spans
+        .iter()
+        .map(|s| UnicodeWidthStr::width(s.content.as_ref()))
+        .sum()
 }
 
 /// Wrap the spans of a single `Line` to `inner_initial` cols on the first
@@ -1064,7 +1091,10 @@ mod tests {
         // First line has the bullet, continuations align under the text.
         assert!(strs[0].contains("• first"));
         for cont in &strs[1..] {
-            assert!(cont.starts_with("    "), "continuation should align: {cont:?}");
+            assert!(
+                cont.starts_with("    "),
+                "continuation should align: {cont:?}"
+            );
         }
     }
 
@@ -1105,7 +1135,8 @@ mod tests {
 
     #[test]
     fn code_block_is_not_wrapped() {
-        let md = "```\nfn main() { println!(\"hi from a long line that exceeds the width\"); }\n```";
+        let md =
+            "```\nfn main() { println!(\"hi from a long line that exceeds the width\"); }\n```";
         let out = render_markdown(md, 20);
         let strs = lines_to_strings(&out);
         assert!(strs

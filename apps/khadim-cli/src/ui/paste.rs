@@ -11,13 +11,10 @@ const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"]
 /// Check if a string looks like an image file path.
 pub fn is_image_path(text: &str) -> bool {
     let path = Path::new(text.trim());
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| {
-            let e = e.to_lowercase();
-            IMAGE_EXTS.contains(&e.as_str())
-        })
-        .unwrap_or(false)
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        let e = e.to_lowercase();
+        IMAGE_EXTS.contains(&e.as_str())
+    })
 }
 
 /// Check if a string looks like a regular file path (has a file extension and
@@ -48,7 +45,7 @@ pub fn handle_pasted_image_path(text: &str) -> Option<String> {
         return None;
     }
     // Return a placeholder mention the user can reference.
-    Some(format!("[Image: {}]", trimmed))
+    Some(format!("[Image: {trimmed}]"))
 }
 
 /// If the pasted text is a path to an existing regular file, read its content
@@ -67,16 +64,9 @@ pub fn handle_pasted_file_path(text: &str) -> Option<String> {
         return None;
     }
     let content = std::fs::read_to_string(path).ok()?;
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let lang = if ext.is_empty() { "" } else { ext };
-    Some(format!(
-        "```{}\n{}\n```\n",
-        lang,
-        content.trim_end()
-    ))
+    Some(format!("```{}\n{}\n```\n", lang, content.trim_end()))
 }
 
 /// Process pasted text: detect image/file paths and inline them.
@@ -125,10 +115,8 @@ pub fn paste_clipboard_image_to_temp() -> Option<String> {
             .write_to(&mut cursor, image::ImageFormat::Png)
             .ok()?;
         // Save to a temp file.
-        let tmp_path = std::env::temp_dir().join(format!(
-            "khadim-clipboard-{}.png",
-            std::process::id()
-        ));
+        let tmp_path =
+            std::env::temp_dir().join(format!("khadim-clipboard-{}.png", std::process::id()));
         std::fs::write(&tmp_path, &png).ok()?;
         return Some(tmp_path.to_string_lossy().to_string());
     }

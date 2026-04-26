@@ -124,7 +124,7 @@ pub fn md_table_header() -> Color {
 pub fn md_strikethrough() -> Color {
     text_dim()
 }
-pub fn md_image() -> Color {
+pub const fn md_image() -> Color {
     Color::Rgb(244, 114, 182) // pink-400
 }
 pub fn md_task_checked() -> Color {

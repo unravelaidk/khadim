@@ -92,7 +92,8 @@ fn flush_settings_key(app: &mut app::TuiApp, app_service: &mut services::app_ser
     }
     app_service.update_api_key(&provider, &buffer);
     if let Err(err) = app_service.save_settings() {
-        app.entries.push(TranscriptEntry::Error { text: err.message });
+        app.entries
+            .push(TranscriptEntry::Error { text: err.message });
         app.entries.push(TranscriptEntry::Separator);
     }
 }
@@ -108,7 +109,8 @@ fn apply_settings_picker(
         SettingsPicker::Model => app_service.switch_model(id),
     };
     if let Err(err) = result {
-        app.entries.push(TranscriptEntry::Error { text: err.message });
+        app.entries
+            .push(TranscriptEntry::Error { text: err.message });
         app.entries.push(TranscriptEntry::Separator);
         return;
     }
@@ -142,13 +144,13 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                 app.tokens_cache_write = saved.tokens_cache_write;
                 app.current_mode = saved.current_mode;
                 app.entries.push(TranscriptEntry::System {
-                    text: format!("📂 Loaded session '{}'", session_name),
+                    text: format!("📂 Loaded session '{session_name}'"),
                 });
                 app.entries.push(TranscriptEntry::Separator);
             }
             Ok(None) => {
                 app.entries.push(TranscriptEntry::System {
-                    text: format!("⚠ Session '{}' not found — starting fresh", session_name),
+                    text: format!("⚠ Session '{session_name}' not found — starting fresh"),
                 });
                 app.entries.push(TranscriptEntry::Separator);
             }
@@ -233,67 +235,67 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
         }
 
         // Drain queued worker events
-        loop {
-            match worker_rx.try_recv() {
-                Ok(event) => match event {
-                    WorkerEvent::Stream(stream) => app.apply_event(stream),
-                    WorkerEvent::Finished(result) => {
-                        app.finish_result(result);
-                        app_service.drain_finished_run();
-                        app_service
-                            .auto_save_session(
-                                &app.entries,
-                                app.tokens_in,
-                                app.tokens_out,
-                                app.tokens_cache_read,
-                                app.tokens_cache_write,
-                                &app.current_mode,
-                            )
-                            .await;
+        while let Ok(event) = worker_rx.try_recv() {
+            match event {
+                WorkerEvent::Stream(stream) => app.apply_event(stream),
+                WorkerEvent::Finished(result) => {
+                    app.finish_result(result);
+                    app_service.drain_finished_run();
+                    app_service
+                        .auto_save_session(
+                            &app.entries,
+                            app.tokens_in,
+                            app.tokens_out,
+                            app.tokens_cache_read,
+                            app.tokens_cache_write,
+                            &app.current_mode,
+                        )
+                        .await;
+                }
+                WorkerEvent::LoginProgress {
+                    url,
+                    device_code,
+                    message,
+                } => {
+                    app.login_add_message(message);
+                    if let Some(u) = url {
+                        app.login_set_url(u);
                     }
-                    WorkerEvent::LoginProgress {
-                        url,
-                        device_code,
-                        message,
-                    } => {
-                        app.login_add_message(message);
-                        if let Some(u) = url {
-                            app.login_set_url(u);
-                        }
-                        if let Some(c) = device_code {
-                            app.login_set_device_code(c);
-                        }
+                    if let Some(c) = device_code {
+                        app.login_set_device_code(c);
                     }
-                    WorkerEvent::LoginComplete { success, message } => {
-                        app.close_login();
-                        if success {
-                            app.entries.push(TranscriptEntry::System { text: message });
-                        } else {
-                            app.entries.push(TranscriptEntry::Error { text: message });
-                        }
-                        app.entries.push(TranscriptEntry::Separator);
+                }
+                WorkerEvent::LoginComplete { success, message } => {
+                    app.close_login();
+                    if success {
+                        app.entries.push(TranscriptEntry::System { text: message });
+                    } else {
+                        app.entries.push(TranscriptEntry::Error { text: message });
                     }
-                    WorkerEvent::QuestionRequest { request, response_tx } => {
-                        app.set_pending_question(request, response_tx);
-                    }
-                },
-                Err(_) => break,
+                    app.entries.push(TranscriptEntry::Separator);
+                }
+                WorkerEvent::QuestionRequest {
+                    request,
+                    response_tx,
+                } => {
+                    app.set_pending_question(request, response_tx);
+                }
             }
         }
 
         // Check if running task finished (e.g. panicked)
         if app_service.drain_finished_run() {
-            loop {
-                match worker_rx.try_recv() {
-                    Ok(event) => match event {
-                        WorkerEvent::Stream(stream) => app.apply_event(stream),
-                        WorkerEvent::Finished(result) => app.finish_result(result),
-                        WorkerEvent::LoginProgress { .. } | WorkerEvent::LoginComplete { .. } => {}
-                        WorkerEvent::QuestionRequest { request, response_tx } => {
-                            app.set_pending_question(request, response_tx);
-                        }
-                    },
-                    Err(_) => break,
+            while let Ok(event) = worker_rx.try_recv() {
+                match event {
+                    WorkerEvent::Stream(stream) => app.apply_event(stream),
+                    WorkerEvent::Finished(result) => app.finish_result(result),
+                    WorkerEvent::LoginProgress { .. } | WorkerEvent::LoginComplete { .. } => {}
+                    WorkerEvent::QuestionRequest {
+                        request,
+                        response_tx,
+                    } => {
+                        app.set_pending_question(request, response_tx);
+                    }
                 }
             }
             if app.pending {
@@ -312,7 +314,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     &config,
                     app_service.stored_settings(),
                     app_service.current_session_name(),
-                )
+                );
             })
             .map_err(|err| AppError::io(format!("Failed to draw terminal UI: {err}")))?;
 
@@ -335,7 +337,8 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
 
                 // Ctrl-C: quit (with confirmation if running)
                 if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    let os_signal_already = shutdown_requested.load(std::sync::atomic::Ordering::SeqCst);
+                    let os_signal_already =
+                        shutdown_requested.load(std::sync::atomic::Ordering::SeqCst);
                     if app.pending && !app.confirm_quit && !os_signal_already {
                         app.confirm_quit = true;
                         app.entries.push(TranscriptEntry::System {
@@ -419,7 +422,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 match app_service.delete_session(&id).await {
                                     Ok(()) => {
                                         app.entries.push(TranscriptEntry::System {
-                                            text: format!("deleted session '{}'", id),
+                                            text: format!("deleted session '{id}'"),
                                         });
                                     }
                                     Err(err) => {
@@ -449,7 +452,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                                 app_service.stored_settings(),
                                             );
                                             app.entries.push(TranscriptEntry::System {
-                                                text: format!("✓ Provider switched to {}", name),
+                                                text: format!("✓ Provider switched to {name}"),
                                             });
                                             app.entries.push(TranscriptEntry::Separator);
                                         }
@@ -463,7 +466,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                                 app_service.stored_settings(),
                                             );
                                             app.entries.push(TranscriptEntry::System {
-                                                text: format!("✓ Model switched to {}", name),
+                                                text: format!("✓ Model switched to {name}"),
                                             });
                                             app.entries.push(TranscriptEntry::Separator);
                                         }
@@ -483,7 +486,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                                     Some(variant_str.to_string()),
                                                 );
                                                 app.entries.push(TranscriptEntry::System {
-                                                    text: format!("✓ Theme set to {}", name),
+                                                    text: format!("✓ Theme set to {name}"),
                                                 });
                                                 app.entries.push(TranscriptEntry::Separator);
                                             }
@@ -513,15 +516,14 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                                 app.auto_scroll = true;
                                                 app.entries.push(TranscriptEntry::System {
                                                     text: format!(
-                                                        "📂 Switched to session '{}'",
-                                                        name
+                                                        "📂 Switched to session '{name}'"
                                                     ),
                                                 });
                                                 app.entries.push(TranscriptEntry::Separator);
                                             }
                                             Ok(None) => {
                                                 app.entries.push(TranscriptEntry::Error {
-                                                    text: format!("Session '{}' not found", name),
+                                                    text: format!("Session '{name}' not found"),
                                                 });
                                                 app.entries.push(TranscriptEntry::Separator);
                                             }
@@ -579,8 +581,12 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                 if app.settings_open {
                     if app.settings.picker.is_some() {
                         match key.code {
-                            KeyCode::Up => app.settings_picker_move(-1, app_service.stored_settings()),
-                            KeyCode::Down => app.settings_picker_move(1, app_service.stored_settings()),
+                            KeyCode::Up => {
+                                app.settings_picker_move(-1, app_service.stored_settings());
+                            }
+                            KeyCode::Down => {
+                                app.settings_picker_move(1, app_service.stored_settings());
+                            }
                             KeyCode::Enter | KeyCode::Right => {
                                 if let Some((kind, id)) =
                                     app.settings_picker_selection(app_service.stored_settings())
@@ -596,7 +602,11 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     }
 
                     let is_auth_editable = !is_oauth_provider(
-                        app_service.stored_settings().provider.as_deref().unwrap_or(""),
+                        app_service
+                            .stored_settings()
+                            .provider
+                            .as_deref()
+                            .unwrap_or(""),
                     );
                     let focus = app.settings.focus;
 
@@ -653,9 +663,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                             app.settings.api_key_cursor =
                                 app.settings.api_key_buffer.chars().count();
                         }
-                        KeyCode::Backspace
-                            if focus == SettingsFocus::Auth && is_auth_editable =>
-                        {
+                        KeyCode::Backspace if focus == SettingsFocus::Auth && is_auth_editable => {
                             if app.settings.api_key_cursor > 0 {
                                 app.settings.api_key_cursor = ui::helpers::remove_char_before(
                                     &mut app.settings.api_key_buffer,
@@ -663,9 +671,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 );
                             }
                         }
-                        KeyCode::Delete
-                            if focus == SettingsFocus::Auth && is_auth_editable =>
-                        {
+                        KeyCode::Delete if focus == SettingsFocus::Auth && is_auth_editable => {
                             ui::helpers::remove_char_at(
                                 &mut app.settings.api_key_buffer,
                                 app.settings.api_key_cursor,
@@ -720,9 +726,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     }
                     // Ctrl+J / Ctrl+M are reliable newlines even on terminals that
                     // don't distinguish Shift+Enter from Enter.
-                    KeyCode::Char('j' | 'm')
-                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
+                    KeyCode::Char('j' | 'm') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         ui::helpers::insert_char(&mut app.input, app.cursor, '\n');
                         app.cursor += 1;
                     }
@@ -742,15 +746,14 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         if !supports {
                             app.entries.push(TranscriptEntry::System {
                                 text: format!(
-                                    "⚠ {}/{} does not support image inputs. Switch models to use images.",
-                                    provider, model
+                                    "⚠ {provider}/{model} does not support image inputs. Switch models to use images."
                                 ),
                             });
                             app.entries.push(TranscriptEntry::Separator);
                             continue;
                         }
                         if let Some(path) = ui::paste::paste_clipboard_image_to_temp() {
-                            let placeholder = format!("[Image: {}]", path);
+                            let placeholder = format!("[Image: {path}]");
                             let byte_idx =
                                 ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
                             app.input.insert_str(byte_idx, &placeholder);
@@ -822,10 +825,10 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     KeyCode::Home => {
                         if app.input_focused && !app.input.is_empty() {
                             // Move cursor to beginning of current line in input.
-                            let bol = app.input[..ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor)]
+                            let bol = app.input
+                                [..ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor)]
                                 .rfind('\n')
-                                .map(|i| i + 1)
-                                .unwrap_or(0);
+                                .map_or(0, |i| i + 1);
                             app.cursor = app.input[..bol].chars().count();
                         } else {
                             app.auto_scroll = false;
@@ -835,11 +838,11 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     KeyCode::End => {
                         if app.input_focused && !app.input.is_empty() {
                             // Move cursor to end of current line in input.
-                            let byte_cur = ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
+                            let byte_cur =
+                                ui::helpers::char_idx_to_byte_idx(&app.input, app.cursor);
                             let eol = app.input[byte_cur..]
                                 .find('\n')
-                                .map(|i| byte_cur + i)
-                                .unwrap_or(app.input.len());
+                                .map_or(app.input.len(), |i| byte_cur + i);
                             app.cursor = app.input[..eol].chars().count();
                         } else {
                             app.auto_scroll = true;
@@ -907,9 +910,8 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     continue;
                                 }
                                 CommandResult::OpenSettings => {
-                                    app.settings = app::build_settings_state(
-                                        app_service.stored_settings(),
-                                    );
+                                    app.settings =
+                                        app::build_settings_state(app_service.stored_settings());
                                     app.settings_open = true;
                                     continue;
                                 }
@@ -993,9 +995,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     {
                                         Ok(()) => {
                                             let msg = if existed {
-                                                format!("saved session '{}' (overwritten)", name)
+                                                format!("saved session '{name}' (overwritten)")
                                             } else {
-                                                format!("saved session '{}'", name)
+                                                format!("saved session '{name}'")
                                             };
                                             app.entries.push(TranscriptEntry::System { text: msg });
                                         }
@@ -1015,7 +1017,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     match app_service.delete_session(&name).await {
                                         Ok(()) => {
                                             app.entries.push(TranscriptEntry::System {
-                                                text: format!("deleted session '{}'", name),
+                                                text: format!("deleted session '{name}'"),
                                             });
                                         }
                                         Err(err) => {
@@ -1035,8 +1037,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                         Ok(()) => {
                                             app.entries.push(TranscriptEntry::System {
                                                 text: format!(
-                                                    "renamed session '{}' → '{}'",
-                                                    old_name, new_name
+                                                    "renamed session '{old_name}' → '{new_name}'"
                                                 ),
                                             });
                                         }
@@ -1074,13 +1075,13 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                             app.scroll_offset = 0;
                                             app.auto_scroll = true;
                                             app.entries.push(TranscriptEntry::System {
-                                                text: format!("📂 Switched to session '{}'", name),
+                                                text: format!("📂 Switched to session '{name}'"),
                                             });
                                             app.entries.push(TranscriptEntry::Separator);
                                         }
                                         Ok(None) => {
                                             app.entries.push(TranscriptEntry::Error {
-                                                text: format!("Session '{}' not found", name),
+                                                text: format!("Session '{name}' not found"),
                                             });
                                             app.entries.push(TranscriptEntry::Separator);
                                         }
@@ -1120,7 +1121,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     ) {
                                         Ok(file_path) => {
                                             app.entries.push(TranscriptEntry::System {
-                                                text: format!("📤 Exported to {}", file_path),
+                                                text: format!("📤 Exported to {file_path}"),
                                             });
                                         }
                                         Err(err) => {
@@ -1135,7 +1136,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 CommandResult::SetSystemPrompt { prompt } => {
                                     app_service.set_system_prompt(&prompt);
                                     app.entries.push(TranscriptEntry::System {
-                                        text: format!("📝 System prompt updated: {}", prompt),
+                                        text: format!("📝 System prompt updated: {prompt}"),
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
                                     continue;
@@ -1156,18 +1157,47 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 }
                                 CommandResult::ShowTokens => {
                                     let mut lines = vec!["── Token Usage ──".to_string()];
+                                    let total = app.blended_token_total();
+                                    let non_cached_input = app.non_cached_tokens_in();
                                     lines.push(format!(
-                                        "  Input:        {}",
-                                        app_service.format_tokens(app.tokens_in)
+                                        "  Total:        {} (non-cached input + output)",
+                                        app_service.format_tokens(total)
+                                    ));
+                                    lines.push(format!(
+                                        "  Input:        {} fresh  ·  {} cached  ·  {} raw",
+                                        app_service.format_tokens(non_cached_input),
+                                        app_service.format_tokens(app.tokens_cache_read),
+                                        app_service.format_tokens(app.raw_tokens_in())
                                     ));
                                     lines.push(format!(
                                         "  Output:       {}",
                                         app_service.format_tokens(app.tokens_out)
                                     ));
-                                    lines.push(format!(
-                                        "  Cache Read:   {}",
-                                        app_service.format_tokens(app.tokens_cache_read)
-                                    ));
+                                    let effective = app_service.effective_settings();
+                                    if let Some(window) = effective
+                                        .provider
+                                        .as_deref()
+                                        .zip(effective.model_id.as_deref())
+                                        .map(|(provider, model)| {
+                                            crate::services::catalog_service::context_window_for(
+                                                provider, model,
+                                            )
+                                        })
+                                        .filter(|window| *window > 0)
+                                    {
+                                        if let Some(percent_left) =
+                                            app.context_percent_remaining(window)
+                                        {
+                                            lines.push(format!(
+                                                "  Context:      {}% left ({} / {} in latest turn)",
+                                                percent_left,
+                                                app_service.format_tokens(
+                                                    app.latest_context_tokens().min(window)
+                                                ),
+                                                app_service.format_tokens(window)
+                                            ));
+                                        }
+                                    }
                                     lines.push(format!(
                                         "  Cache Write:  {}",
                                         app_service.format_tokens(app.tokens_cache_write)
@@ -1200,7 +1230,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 }
                                 CommandResult::ShowConfig(path) => {
                                     app.entries.push(TranscriptEntry::System {
-                                        text: format!("config  {}", path),
+                                        text: format!("config  {path}"),
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
                                     continue;
@@ -1211,10 +1241,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                         Ok(p) => {
                                             if let Err(err) = std::fs::remove_file(&p) {
                                                 app.entries.push(TranscriptEntry::Error {
-                                                    text: format!(
-                                                        "Failed to clear history: {}",
-                                                        err
-                                                    ),
+                                                    text: format!("Failed to clear history: {err}"),
                                                 });
                                             } else {
                                                 app.history.clear();
@@ -1241,8 +1268,11 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
                                     tokio::spawn(async move {
-                                        let _ = khadim_ai_core::models::refresh_openrouter_models(None).await;
-                                        let _ = khadim_ai_core::models::refresh_nvidia_models(None).await;
+                                        let _ =
+                                            khadim_ai_core::models::refresh_openrouter_models(None)
+                                                .await;
+                                        let _ = khadim_ai_core::models::refresh_nvidia_models(None)
+                                            .await;
                                     });
                                     continue;
                                 }

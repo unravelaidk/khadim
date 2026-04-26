@@ -137,10 +137,10 @@ fn print_version() {
 
 fn print_help() {
     println!(
-        "khadim-cli — Autonomous Coding Agent\n\n\
+        "khadim — Autonomous Coding Agent\n\n\
          USAGE:\n\
-         \x20 khadim-cli [OPTIONS]\n\
-         \x20 khadim-cli exec [OPTIONS] [PROMPT]\n\n\
+         \x20 khadim [OPTIONS]\n\
+         \x20 khadim exec [OPTIONS] [PROMPT]\n\n\
          OPTIONS:\n\
          \x20 --cwd PATH       Set working directory\n\
          \x20 --prompt TEXT    Run in batch mode with prompt (`-` reads stdin)\n\

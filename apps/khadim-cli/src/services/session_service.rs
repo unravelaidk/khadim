@@ -74,7 +74,7 @@ pub fn generate_session_name() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    format!("session-{}", now)
+    format!("session-{now}")
 }
 
 pub fn delete_session(name: &str) -> Result<(), AppError> {
@@ -94,14 +94,12 @@ pub fn rename_session(old_name: &str, new_name: &str) -> Result<(), AppError> {
     let new_path = session_path(new_name)?;
     if !old_path.exists() {
         return Err(AppError::invalid_input(format!(
-            "Session '{}' does not exist",
-            old_name
+            "Session '{old_name}' does not exist"
         )));
     }
     if new_path.exists() {
         return Err(AppError::invalid_input(format!(
-            "Session '{}' already exists",
-            new_name
+            "Session '{new_name}' already exists"
         )));
     }
     fs::rename(&old_path, &new_path)
@@ -136,7 +134,8 @@ pub fn format_age(unix: u64) -> String {
     }
 }
 
-/// Build a SavedSession from current state.
+/// Build a `SavedSession` from current state.
+#[allow(clippy::too_many_arguments)]
 pub fn build_saved_session(
     name: String,
     cwd: String,
