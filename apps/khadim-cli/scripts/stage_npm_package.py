@@ -128,7 +128,7 @@ def stage_main(staging_dir: Path, version: str) -> None:
         "khadim": "bin/khadim.js",
         "khadim-cli": "bin/khadim.js",
     }
-    package_json["files"] = ["bin"]
+    package_json["files"] = ["bin", "src"]
     package_json["optionalDependencies"] = {
         config["alias"]: f"npm:{NPM_NAME}@{platform_version(version, tag)}"
         for tag, config in PLATFORM_PACKAGES.items()

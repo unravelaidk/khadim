@@ -14,6 +14,7 @@ pub struct CliConfig {
     pub session: Option<String>,
     #[allow(dead_code)]
     pub verbose: bool,
+    pub json: bool,
 }
 
 // ── Arg parsing ──────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
     let mut model = None;
     let mut session = None;
     let mut verbose = false;
+    let mut json = false;
     let mut exec_mode = false;
     let mut positional_prompt = Vec::new();
     let mut args = env::args().skip(1).peekable();
@@ -75,6 +77,9 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
                 print_version();
                 std::process::exit(0);
             }
+            "--json" => {
+                json = true;
+            }
             "--verbose" => {
                 verbose = true;
             }
@@ -120,6 +125,7 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
         model,
         session,
         verbose,
+        json,
     })
 }
 

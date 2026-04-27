@@ -7,7 +7,7 @@ use crate::domain::login::{oauth_provider_list, LoginPhase, LoginState};
 use crate::domain::session::{SavedSession, SessionMeta};
 use crate::domain::settings::StoredSettings;
 use crate::domain::transcript::TranscriptEntry;
-use crate::services::agent_service::run_once;
+use crate::services::agent_service::{run_once, run_once_json};
 use crate::services::catalog_service::{
     estimate_cost, format_cost, format_tokens, friendly_tool_name, has_oauth_credentials,
     models_for_provider, provider_auth_status, provider_catalog,
@@ -368,10 +368,14 @@ impl AppService {
     }
 
     /// Run the agent in batch mode (non-interactive).
-    pub async fn run_batch(&self, prompt: &str) -> Result<(), AppError> {
+    pub async fn run_batch(&self, prompt: &str, json: bool) -> Result<(), AppError> {
         let mut sess = self.session.lock().await;
         sess.system_prompt_override = self.stored_settings.system_prompt.clone();
-        run_once(&mut sess, prompt, self.model_selection()).await
+        if json {
+            run_once_json(&mut sess, prompt, self.model_selection()).await
+        } else {
+            run_once(&mut sess, prompt, self.model_selection()).await
+        }
     }
 
     // ── Sessions ───────────────────────────────────────────────────────

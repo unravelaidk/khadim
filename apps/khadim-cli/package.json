@@ -8,8 +8,17 @@
     "khadim": "bin/khadim.js",
     "khadim-cli": "bin/khadim.js"
   },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
   "files": [
-    "bin"
+    "bin",
+    "src"
   ],
   "engines": {
     "node": ">=18"

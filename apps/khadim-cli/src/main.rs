@@ -42,9 +42,10 @@ async fn main() {
 
         if let Some(prompt) = config.prompt.clone() {
             // Batch mode
+            let json = config.json;
             let (worker_tx, _worker_rx) = tokio::sync::mpsc::unbounded_channel::<WorkerEvent>();
             let app_service = AppService::new(config, settings, worker_tx);
-            match app_service.run_batch(&prompt).await {
+            match app_service.run_batch(&prompt, json).await {
                 Ok(()) => Ok(()),
                 Err(error) => {
                     eprintln!("agent error (non-fatal): {}", error.message);
@@ -787,7 +788,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         }
                     }
                     KeyCode::Up => {
-                        if app.input.is_empty() || !app.input_focused {
+                        if !app.input.starts_with('/') {
+                            app.history_prev();
+                        } else if app.input.is_empty() || !app.input_focused {
                             let max_scroll = app
                                 .content_lines
                                 .get()
@@ -797,14 +800,14 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                             }
                             app.auto_scroll = false;
                             app.scroll_offset = app.scroll_offset.saturating_sub(1);
-                        } else if !app.input.starts_with('/') {
-                            app.history_prev();
                         } else if app.cursor > 0 {
                             app.cursor = app.cursor.saturating_sub(1);
                         }
                     }
                     KeyCode::Down => {
-                        if app.input.is_empty() || !app.input_focused {
+                        if !app.input.starts_with('/') {
+                            app.history_next();
+                        } else if app.input.is_empty() || !app.input_focused {
                             let max_scroll = app
                                 .content_lines
                                 .get()
@@ -816,8 +819,6 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                             if app.scroll_offset >= max_scroll {
                                 app.auto_scroll = true;
                             }
-                        } else if !app.input.starts_with('/') {
-                            app.history_next();
                         } else if app.cursor < app.input.chars().count() {
                             app.cursor += 1;
                         }
