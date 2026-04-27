@@ -1,11 +1,11 @@
 import { registerJobAbortController, unregisterJobAbortController } from "../lib/job-cancel";
-import { runAgentJob, type JobRunnerOptions } from "./job-runner";
+import { runAgentJob, type RunAgentJobOptions } from "./run-agent-job";
 
-export function startJob(jobId: string, runnerOptions: JobRunnerOptions): void {
+export function startJob(jobId: string, runnerOptions: RunAgentJobOptions): void {
   const jobAbortController = new AbortController();
   registerJobAbortController(jobId, jobAbortController);
 
-  const optionsWithSignal = { ...runnerOptions, abortSignal: jobAbortController.signal };
+  const optionsWithSignal: RunAgentJobOptions = { ...runnerOptions, abortSignal: jobAbortController.signal };
 
   runAgentJob(optionsWithSignal)
     .catch((error) => {

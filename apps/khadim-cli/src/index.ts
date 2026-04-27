@@ -10,3 +10,4 @@
 
 export { runAgent } from "./run-agent";
 export type { AgentStreamEvent, AgentResult, RunAgentOptions } from "./run-agent";
+export { resolveBinaryPath } from "./resolve-binary";

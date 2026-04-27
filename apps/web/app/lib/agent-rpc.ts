@@ -1,6 +1,4 @@
 import { createId } from "@paralleldrive/cuid2";
-import { resolveLiveHost, runLiveHostInput } from "../agent/live-session-commands";
-import { getAgentConfig } from "../agent/agents";
 import { getActiveModel } from "../agent/model-manager";
 import { selectAgent, type AgentMode } from "../agent/router";
 import { loadSkills } from "../agent/skills";
@@ -124,12 +122,10 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
 
       const badgeResult = decoratePromptWithBadges(prompt || "", asString(params.badges));
       prompt = badgeResult.prompt;
-      let agentMode: AgentMode = params.agentMode || selectAgent(prompt || "");
+      const agentMode: AgentMode = params.agentMode || selectAgent(prompt || "");
 
-      if (badgeResult.hasPremadeBadge) {
-        agentMode = "build";
-      } else if (badgeResult.hasCategoryBadge) {
-        agentMode = "plan";
+      if (badgeResult.hasPremadeBadge || badgeResult.hasCategoryBadge) {
+        // Mode selection is handled by the binary's built-in router
       }
 
       if (!prompt) {
@@ -148,21 +144,24 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         : "";
       await createJob(jobId, resolvedChatId, sessionId);
 
-      const agentConfig = getAgentConfig(agentMode);
       const skillsContent = await loadSkills();
       const history = params.chatId ? await loadChatHistory(params.chatId) : [];
+
+      // Build context-aware prompt for the native binary
+      const contextParts: string[] = [];
+      if (skillsContent) contextParts.push(skillsContent);
+      if (uploadedDocumentsContext) contextParts.push(uploadedDocumentsContext);
+      const fullPrompt = contextParts.length > 0
+        ? `${contextParts.join("\n\n")}\n\n---\n\nUser request: ${prompt}`
+        : prompt;
 
       startJob(jobId, {
         jobId,
         chatId: resolvedChatId,
         sessionId,
-        prompt,
-        agentMode,
-        agentConfig,
-        skillsContent,
-        history,
-        uploadedDocumentsContext,
-        existingSandboxId: asString(params.sandboxId),
+        prompt: fullPrompt,
+        provider: activeModel.provider,
+        model: activeModel.model,
       });
 
       return success({
@@ -170,7 +169,7 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         chatId: resolvedChatId,
         sessionId,
         agentMode,
-        agentName: agentConfig.name,
+        agentName: agentMode,
       });
     }
 
@@ -179,12 +178,33 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
       const prompt = asString(params.prompt);
       if (!prompt) return failure(400, "prompt is required");
 
-      const record = resolveLiveHost(params);
-      if (!record) {
-        return failure(404, "No live session host found");
-      }
+      // Follow-up: start a new agent run with the follow-up prompt
+      const jobId = asString(params.jobId);
+      const chatId = asString(params.chatId) || "default";
+      const sessionId = asString(params.sessionId) || "default";
 
-      return success(await runLiveHostInput({ method: "job.followUp", prompt, record }));
+      if (!jobId) return failure(400, "jobId is required");
+
+      // Get the existing job's model config, then run
+      const existingJob = await getJob(jobId);
+      if (!existingJob) return failure(404, "No active job found");
+
+      const activeModel = await getActiveModel();
+      if (!activeModel) return failure(400, "No active model configured");
+
+      const newJobId = createId();
+      await createJob(newJobId, chatId, sessionId);
+
+      startJob(newJobId, {
+        jobId: newJobId,
+        chatId,
+        sessionId,
+        prompt: `[Follow-up]\n${prompt}`,
+        provider: activeModel.provider,
+        model: activeModel.model,
+      });
+
+      return success({ jobId: newJobId, chatId, sessionId });
     }
 
     case "job.steer": {
@@ -192,12 +212,28 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
       const prompt = asString(params.prompt);
       if (!prompt) return failure(400, "prompt is required");
 
-      const record = resolveLiveHost(params);
-      if (!record) {
-        return failure(404, "No live session host found");
-      }
+      const jobId = asString(params.jobId);
+      const chatId = asString(params.chatId) || "default";
+      const sessionId = asString(params.sessionId) || "default";
 
-      return success(await runLiveHostInput({ method: "job.steer", prompt, record }));
+      if (!jobId) return failure(400, "jobId is required");
+
+      const activeModel = await getActiveModel();
+      if (!activeModel) return failure(400, "No active model configured");
+
+      const newJobId = createId();
+      await createJob(newJobId, chatId, sessionId);
+
+      startJob(newJobId, {
+        jobId: newJobId,
+        chatId,
+        sessionId,
+        prompt: `[Steer]\n${prompt}`,
+        provider: activeModel.provider,
+        model: activeModel.model,
+      });
+
+      return success({ jobId: newJobId, chatId, sessionId });
     }
 
     case "job.stop": {
