@@ -2,8 +2,16 @@ import { loadEnv } from "./app/lib/load-env";
 import compression from "compression";
 import express, { type Request, type Response, type NextFunction } from "express";
 import morgan from "morgan";
+import { initDbos } from "./app/lib/dbos";
 
 loadEnv();
+
+// Start DBOS durable execution engine (non-blocking)
+if (process.env.KHADIM_USE_DBOS === "true") {
+  initDbos().catch((err) => {
+    console.error("[DBOS] Failed to initialize:", err);
+  });
+}
 
 // Short-circuit the type-checking of the built output.
 const BUILD_PATH = "./build/server/index.js";

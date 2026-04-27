@@ -14,7 +14,7 @@ if (!connectionString) {
 const queryClient = postgres(connectionString);
 export const db = drizzle(queryClient, { schema });
 
-export { chats, messages, uploadedDocuments, artifacts, projects, projectVersions, modelConfigs, workspaces, workspaceFiles } from "./schema";
+export { chats, messages, uploadedDocuments, artifacts, projects, projectVersions, modelConfigs, workspaces, workspaceFiles, sessions } from "./schema";
 export type { 
   Workspace, NewWorkspace,
   WorkspaceFile, NewWorkspaceFile,
@@ -24,5 +24,6 @@ export type {
   Artifact, NewArtifact,
   Project, NewProject,
   ProjectVersion, NewProjectVersion,
-  ModelConfig, NewModelConfig
+  ModelConfig, NewModelConfig,
+  Session, NewSession,
 } from "./schema";
