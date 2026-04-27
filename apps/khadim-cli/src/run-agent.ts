@@ -6,9 +6,10 @@
  *
  * Usage:
  *   import { runAgent } from "@unravelai/khadim";
- *   for await (const event of runAgent({ prompt: "summarize this repo" })) {
- *     console.log(event.event_type, event.content);
- *   }
+ *   const { output, events } = await runAgent({ prompt: "summarize this repo" });
+ *
+ *   // Streaming variant:
+ *   for await (const event of runAgentStream({ prompt: "..." })) { ... }
  */
 
 import { spawn } from "node:child_process";
@@ -37,43 +38,47 @@ export interface RunAgentOptions {
   signal?: AbortSignal;
 }
 
-export async function runAgent(opts: RunAgentOptions): Promise<AgentResult> {
-  const binaryPath = await resolveBinaryPath();
+function buildArgs(opts: RunAgentOptions): string[] {
   const args: string[] = ["--json", "--prompt", opts.prompt];
-
   if (opts.cwd) args.unshift("--cwd", opts.cwd);
   if (opts.provider) args.unshift("--provider", opts.provider);
   if (opts.model) args.unshift("--model", opts.model);
   if (opts.session) args.unshift("--session", opts.session);
+  return args;
+}
 
-  const child = spawn(binaryPath, args, {
+function spawnBinary(opts: RunAgentOptions) {
+  return spawn(resolveBinaryPath, buildArgs(opts), {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env },
+  });
+}
+
+/** Run agent and collect all events. Returns accumulated output + event list. */
+export async function runAgent(opts: RunAgentOptions): Promise<AgentResult> {
+  const events: AgentStreamEvent[] = [];
+  let output = "";
+
+  for await (const event of runAgentStream(opts)) {
+    events.push(event);
+    if (event.event_type === "text_delta" && event.content) {
+      output += event.content;
+    }
+  }
+
+  return { output, events };
+}
+
+/** Run agent as an async generator, yielding events as they arrive from stdout. */
+export async function* runAgentStream(opts: RunAgentOptions): AsyncGenerator<AgentStreamEvent> {
+  const binaryPath = await resolveBinaryPath();
+  const child = spawn(binaryPath, buildArgs(opts), {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env },
   });
 
-  const events: AgentStreamEvent[] = [];
-  let output = "";
-
-  const rl = createInterface({ input: child.stdout!, crlfDelay: Infinity });
-
-  const readPromise = (async () => {
-    for await (const line of rl) {
-      if (!line.trim()) continue;
-      try {
-        const event: AgentStreamEvent = JSON.parse(line);
-        events.push(event);
-
-        if (event.event_type === "text_delta" && event.content) {
-          output += event.content;
-        }
-      } catch {
-        // Skip non-JSON lines (e.g. log output to stdout)
-      }
-    }
-  })();
-
-  // Capture stderr for error reporting
   let stderr = "";
+
   child.stderr!.on("data", (chunk: Buffer) => {
     stderr += chunk.toString();
   });
@@ -82,16 +87,24 @@ export async function runAgent(opts: RunAgentOptions): Promise<AgentResult> {
     opts.signal.addEventListener("abort", () => child.kill(), { once: true });
   }
 
-  const exitCode = await new Promise<number>((resolve, reject) => {
+  const rl = createInterface({ input: child.stdout!, crlfDelay: Infinity });
+  const exitPromise = new Promise<number>((resolve, reject) => {
     child.on("error", reject);
     child.on("exit", (code) => resolve(code ?? 1));
   });
 
-  await readPromise;
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    try {
+      yield JSON.parse(line) as AgentStreamEvent;
+    } catch {
+      // Skip non-JSON lines
+    }
+  }
+
+  const exitCode = await exitPromise;
 
   if (exitCode !== 0) {
     throw new Error(`khadim exited with code ${exitCode}${stderr ? `: ${stderr.trim()}` : ""}`);
   }
-
-  return { output, events };
 }

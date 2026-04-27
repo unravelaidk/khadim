@@ -8,6 +8,6 @@
  *   const { output } = await runAgent({ prompt: "summarize this repo" });
  */
 
-export { runAgent } from "./run-agent";
+export { runAgent, runAgentStream } from "./run-agent";
 export type { AgentStreamEvent, AgentResult, RunAgentOptions } from "./run-agent";
 export { resolveBinaryPath } from "./resolve-binary";
