@@ -2,24 +2,22 @@
  * Khadim headless agent adapter.
  *
  * Calls the native `@unravelai/khadim` binary via `runAgent()`.
- * Use DBOS for durable execution, or call directly for ephemeral runs.
- *
- *   import { runAgent } from "@unravelai/khadim";
  */
 
 import { runAgent as nativeRunAgent } from "@unravelai/khadim";
-import type { AgentStreamEvent as NativeAgentEvent } from "@unravelai/khadim";
+import type { AgentStreamEvent } from "@unravelai/khadim";
 import { loadSkills } from "./skills";
 import { loadChatHistory } from "../lib/chat-history";
 import { buildUploadedDocumentsContext } from "../lib/uploaded-documents";
 import type { AgentMode } from "./router";
-import type { Message } from "@mariozechner/pi-ai";
+
+export type { AgentStreamEvent };
 
 export interface RunConfig {
   prompt: string;
   agentMode: AgentMode;
   skillsContent?: string;
-  history?: Message[];
+  history?: any[];
   uploadedDocumentsContext?: string;
   cwd?: string;
   signal?: AbortSignal;
@@ -27,16 +25,13 @@ export interface RunConfig {
 
 export interface RunResult {
   output: string;
-  events: NativeAgentEvent[];
+  events: AgentStreamEvent[];
 }
 
 export async function runAgent(config: RunConfig): Promise<RunResult> {
-  // Load context (skills, history, documents) into the prompt
   const skills = config.skillsContent ?? await loadSkills().catch(() => "");
-  const history = config.history ?? [];
   const docs = config.uploadedDocumentsContext ?? "";
 
-  // Build context-aware prompt
   const contextParts: string[] = [];
   if (skills) contextParts.push(skills);
   if (docs) contextParts.push(docs);
@@ -51,8 +46,3 @@ export async function runAgent(config: RunConfig): Promise<RunResult> {
     signal: config.signal,
   });
 }
-
-/**
- * Re-export useful types for DBOS workflows and stream consumers.
- */
-export type AgentStreamEvent = NativeAgentEvent;

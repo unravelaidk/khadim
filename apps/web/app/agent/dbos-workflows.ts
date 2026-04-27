@@ -1,53 +1,52 @@
 /**
  * DBOS Durable Workflow — agent session execution.
  *
- * Wraps `runAgent()` from khadim-adapter as a DBOS workflow so every
- * agent session automatically survives crashes and resumes from
- * the last completed step.
+ * Wraps `runAgent()` from @unravelai/khadim as a DBOS workflow.
+ *
+ * Uses DBOS.writeStream / DBOS.readStream for real-time event streaming
+ * instead of an in-memory EventEmitter (which wouldn't survive restarts).
  *
  * Architecture:
- *   DBOS Workflow (this file)
- *       └─► DBOS Step: loadSessionContext()
- *       └─► DBOS Step: runAgent()          ← calls khadim-adapter
- *       └─► DBOS Step: saveSessionResult()
- *
- * When the khadim npm package gets a JS API, swap the import:
- *   from: "./khadim-adapter"
- *   to:   "@unravelai/khadim"  (or "@khadim/core")
+ *   @workflow runAgentSession
+ *     └─ @step loadSessionState()
+ *     └─ @step runAgent()           ← calls @unravelai/khadim --json
+ *     └─ @step saveSessionResult()
  */
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { runAgent, type RunResult } from "./khadim-adapter";
-import { sessionEventBus } from "./dbos-stream";
 import { loadSkills } from "./skills";
 import { loadChatHistory } from "../lib/chat-history";
 import { buildUploadedDocumentsContext } from "../lib/uploaded-documents";
 import { db, sessions, type NewSession } from "../lib/db";
 import { eq } from "drizzle-orm";
 import { type AgentMode } from "./router";
-import type { StreamEvent } from "./core/agent-session";
+import type { AgentStreamEvent } from "@unravelai/khadim";
 
-interface SessionParams {
+export const STREAM_KEY = "events";
+
+export interface SessionParams {
   sessionId: string;
   jobId: string;
   chatId: string;
   prompt: string;
   agentMode: AgentMode;
   documentIds?: string[];
-  maxIterations?: number;
 }
 
 async function runAgentSessionImpl(params: SessionParams): Promise<RunResult & { sessionId: string }> {
-  const { sessionId, jobId, chatId, prompt, agentMode, documentIds, maxIterations } = params;
+  const { sessionId, jobId, chatId, prompt, agentMode, documentIds } = params;
 
-  // Step 1: Load context
+  // Report status as a durable event
+  await DBOS.setEvent("status", { status: "running", step: "context_loading" });
+
   const context = await DBOS.runStep(
-    () => loadSessionState(sessionId, chatId, agentMode, documentIds),
+    () => loadSessionState(sessionId, chatId, documentIds),
     { name: "load_session_state" },
   );
-  DBOS.setEvent(sessionId, "status", { status: "running", step: "context_loaded" });
 
-  // Step 2: Run the agent (the heavy step — LLM calls + tool execution + sandbox)
+  await DBOS.setEvent("status", { status: "running", step: "agent_running" });
+
   const result = await DBOS.runStep(
     () =>
       runAgent({
@@ -56,20 +55,16 @@ async function runAgentSessionImpl(params: SessionParams): Promise<RunResult & {
         skillsContent: context.skillsContent,
         history: context.history,
         uploadedDocumentsContext: context.uploadedDocumentsContext,
-        onEvent: (event: StreamEvent) => {
-          sessionEventBus.emit(jobId, sessionId, {
-            type: event.event,
-            data: event.data ?? {},
-            jobId,
-            chatId,
-            sessionId,
-          });
-        },
       }),
-    { name: "run_agent", retries: 0 },
+    { name: "run_agent" },
   );
 
-  // Step 3: Persist the result
+  // Write collected events to a stream for WebSocket clients
+  for (const event of result.events) {
+    await DBOS.writeStream(STREAM_KEY, event);
+  }
+  await DBOS.closeStream(STREAM_KEY);
+
   await DBOS.runStep(
     () =>
       db
@@ -83,20 +78,21 @@ async function runAgentSessionImpl(params: SessionParams): Promise<RunResult & {
     { name: "save_session_result" },
   );
 
-  DBOS.setEvent(sessionId, "status", { status: "completed" });
+  await DBOS.setEvent("status", { status: "completed" });
   return { ...result, sessionId };
 }
 
 async function loadSessionState(
   sessionId: string,
   chatId: string,
-  _agentMode: AgentMode,
   documentIds?: string[],
 ) {
   const [skillsContent, history, uploadedDocumentsContext] = await Promise.all([
-    loadSkills(),
-    loadChatHistory(chatId),
-    documentIds?.length ? buildUploadedDocumentsContext(chatId, documentIds) : Promise.resolve(""),
+    loadSkills().catch(() => ""),
+    loadChatHistory(chatId).catch(() => []),
+    documentIds?.length
+      ? buildUploadedDocumentsContext(chatId, documentIds).catch(() => "")
+      : Promise.resolve(""),
   ]);
 
   await db
@@ -107,7 +103,6 @@ async function loadSessionState(
   return { skillsContent, history, uploadedDocumentsContext };
 }
 
-/** Create a session record in the database (called by RPC before enqueueing). */
 export async function createSessionRecord(params: {
   sessionId: string;
   agentId?: string;
@@ -127,5 +122,4 @@ export async function createSessionRecord(params: {
   } as NewSession);
 }
 
-// Register with DBOS — discovered at DBOS.launch()
 export const runAgentSessionWorkflow = DBOS.registerWorkflow(runAgentSessionImpl);

@@ -1,21 +1,32 @@
 /**
- * DBOS initialization for Khadim cloud agent execution.
+ * DBOS durable execution for Khadim cloud agent sessions.
  *
- * DBOS provides durable workflows — agent sessions survive crashes,
- * resume from the last completed turn, and are observable via the
- * DBOS Conductor dashboard (optional).
- *
- * DBOS discovers workflows at launch. The workflow module
- * is imported here to register them before DBOS.launch().
+ * CRITICAL: DBOS modules must NOT be loaded through Vite's SSR pipeline.
+ * They're imported dynamically via `dbos-rpc.ts` to avoid double-registration.
  */
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import "../agent/dbos-workflows";
 
 let launched = false;
 
 export async function initDbos(): Promise<void> {
   if (launched) return;
+
+  const dbUrl = process.env.DBOS_SYSTEM_DATABASE_URL || process.env.DATABASE_URL;
+
+  if (!dbUrl) {
+    console.warn("[DBOS] No DBOS_SYSTEM_DATABASE_URL set — skipping DBOS init");
+    return;
+  }
+
+  DBOS.setConfig({
+    name: "khadim-web",
+    systemDatabaseUrl: dbUrl,
+  });
+
+  // Import workflows BEFORE launch so DBOS discovers the registration
+  await import("../agent/dbos-workflows");
+
   await DBOS.launch();
   launched = true;
   console.log("[DBOS] Durable execution engine started");

@@ -3,7 +3,13 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { handleAgentRpc } from "./agent-rpc";
-import { handleDbosRpc, isDbosEnabled } from "../agent/dbos-rpc";
+
+// Lazily import dbos-rpc to avoid Vite SSR double-registration of DBOS workflows.
+// DBOS modules must NOT go through Vite's module runner.
+async function getDbosHandlers() {
+  const { handleDbosRpc, isDbosEnabled } = await import("../agent/dbos-rpc");
+  return { handleDbosRpc, isDbosEnabled };
+}
 
 const optionalString = z.string().min(1).optional();
 const nullableString = z.string().min(1).nullable().optional();
@@ -56,8 +62,9 @@ const sessionReplayQuerySchema = z.object({
 
 async function dispatch(method: string, params: Record<string, unknown>) {
   // Route to DBOS-backed handlers when KHADIM_USE_DBOS=true
+  const { isDbosEnabled, handleDbosRpc } = await getDbosHandlers();
   if (isDbosEnabled()) {
-    const result = await handleDbosRpc({ method: method as any, params });
+    const result = await handleDbosRpc(method, params);
     if (!result.ok) return { body: result, status: result.status as 400 | 404 };
     return { body: result, status: 200 };
   }

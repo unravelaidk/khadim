@@ -1,21 +1,17 @@
 /**
  * DBOS-backed RPC handlers for agent session execution.
  *
- * Replaces the Redis-backed ephemeral job system with DBOS durable workflows.
- * Keeps the same RPC method signatures (job.start, job.stop, job.get, etc.)
- * so the frontend and WebSocket layer require no changes.
- *
- * To switch between legacy (Redis) and DBOS execution, set:
- *   KHADIM_USE_DBOS=true
+ * IMPORTANT: This module is dynamically imported by agent-rpc-hono.ts
+ * to avoid double-registration of DBOS workflows through Vite's SSR pipeline.
  */
 
 import { createId } from "@paralleldrive/cuid2";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { runAgentSessionWorkflow, createSessionRecord } from "./dbos-workflows";
-import { sessionEventBus, type SessionEvent } from "./dbos-stream";
+import { runAgentSessionWorkflow, createSessionRecord, STREAM_KEY } from "./dbos-workflows";
 import { db, sessions } from "../lib/db";
 import { eq } from "drizzle-orm";
 import { type AgentMode } from "./router";
+import type { AgentStreamEvent } from "@unravelai/khadim";
 
 type JsonObject = Record<string, unknown>;
 
@@ -31,30 +27,17 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-export interface DbosRpcRequest {
-  method: "job.start" | "job.stop" | "job.get" | "chat.getActiveJobs" | "session.getSnapshot" | "session.replayEvents";
-  params: JsonObject;
-}
-
-export async function handleDbosRpc(request: DbosRpcRequest) {
-  switch (request.method) {
+export async function handleDbosRpc(method: string, params: JsonObject) {
+  switch (method) {
     case "job.start": {
-      const params = request.params as {
-        prompt?: string;
-        chatId?: string;
-        sessionId?: string;
-        agentMode?: AgentMode;
-        documentIds?: string[];
-      };
-      const prompt = asString(params.prompt);
+      const prompt = asString((params as any).prompt);
       if (!prompt) return failure(400, "Prompt is required");
 
       const jobId = createId();
-      const chatId = asString(params.chatId) || "default";
-      const sessionId = asString(params.sessionId) || `session_${jobId}`;
-      const agentMode = (asString(params.agentMode) as AgentMode) || "build";
+      const chatId = asString((params as any).chatId) || "default";
+      const sessionId = `session_${jobId}`;
+      const agentMode = (asString((params as any).agentMode) as AgentMode) || "build";
 
-      // Create the session record in Postgres
       await createSessionRecord({
         sessionId,
         chatId,
@@ -62,20 +45,21 @@ export async function handleDbosRpc(request: DbosRpcRequest) {
         agentMode,
       });
 
-      // Enqueue the DBOS workflow (runs on any available worker)
-      const workflowHandle = await DBOS.startWorkflow(runAgentSessionWorkflow, {
+      // Start workflow with a custom workflow ID (sessionId)
+      const handle = await DBOS.startWorkflow(runAgentSessionWorkflow, {
+        workflowID: sessionId,
+      })({
         sessionId,
         jobId,
         chatId,
         prompt,
         agentMode,
-        documentIds: params.documentIds,
+        documentIds: (params as any).documentIds,
       });
 
-      // Store the workflow ID for later status queries
       await db
         .update(sessions)
-        .set({ dbosWorkflowId: workflowHandle.workflowID })
+        .set({ dbosWorkflowId: handle.workflowID })
         .where(eq(sessions.id, sessionId));
 
       return success({
@@ -83,116 +67,68 @@ export async function handleDbosRpc(request: DbosRpcRequest) {
         chatId,
         sessionId,
         agentMode,
-        workflowId: workflowHandle.workflowID,
+        workflowId: handle.workflowID,
         agentName: agentMode,
       });
     }
 
-    case "job.get": {
-      const params = request.params as { jobId?: string; sessionId?: string };
-      const sessionId = asString(params.sessionId);
-      if (!sessionId) return failure(400, "sessionId is required");
+    case "job.get":
+    case "chat.getActiveJobs":
+    case "session.getSnapshot": {
+      const sessionId = asString((params as any).sessionId);
+      if (!sessionId) return success({ jobs: [] });
 
       const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
-      if (!row) return failure(404, "Session not found");
+      if (!row) return success({ jobs: [] });
 
-      return success({
-        job: {
-          id: asString(params.jobId) || sessionId,
-          chatId: row.chatId,
-          sessionId: row.id,
-          status: row.status,
-          steps: [],
-          finalContent: row.result ?? "",
-          previewUrl: null,
-          sandboxId: null,
-          error: row.error ?? null,
-          createdAt: row.createdAt?.toISOString() ?? "",
-          updatedAt: row.updatedAt?.toISOString() ?? "",
-        },
-      });
-    }
+      const job = {
+        id: sessionId,
+        chatId: row.chatId,
+        sessionId: row.id,
+        status: row.status,
+        steps: [],
+        finalContent: row.result ?? "",
+        previewUrl: null,
+        sandboxId: null,
+        error: row.error ?? null,
+        createdAt: row.createdAt?.toISOString() ?? "",
+        updatedAt: row.updatedAt?.toISOString() ?? "",
+      };
 
-    case "chat.getActiveJobs": {
-      const params = request.params as { chatId?: string };
-      const chatId = asString(params.chatId);
-      if (!chatId) return success({ jobs: [] });
-
-      const rows = await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.chatId, chatId));
-
-      const jobs = rows
-        .filter((r) => r.status === "running" || r.status === "pending")
-        .map((r) => ({
-          id: r.id,
-          chatId: r.chatId,
-          sessionId: r.id,
-          status: r.status,
-          steps: [],
-          finalContent: r.result ?? "",
-          previewUrl: null,
-          sandboxId: null,
-          error: r.error ?? null,
-          createdAt: r.createdAt?.toISOString() ?? "",
-          updatedAt: r.updatedAt?.toISOString() ?? "",
-        }));
-
-      return success({ jobs });
-    }
-
-    case "session.getSnapshot": {
-      const params = request.params as { sessionId?: string };
-      const sessionId = asString(params.sessionId);
-      if (!sessionId) return failure(400, "sessionId is required");
-
-      const rows = await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, sessionId));
-
-      const jobs = rows
-        .filter((r) => r.status === "running" || r.status === "pending")
-        .map((r) => ({
-          id: r.id,
-          chatId: r.chatId,
-          sessionId: r.id,
-          status: r.status,
-          steps: [],
-          finalContent: r.result ?? "",
-          previewUrl: null,
-          sandboxId: null,
-          error: r.error ?? null,
-          createdAt: r.createdAt?.toISOString() ?? "",
-          updatedAt: r.updatedAt?.toISOString() ?? "",
-        }));
-
-      return success({
-        snapshot: {
-          sessionId,
-          jobs,
-          updatedAt: new Date().toISOString(),
-        },
-      });
+      if (method === "session.getSnapshot") {
+        return success({ snapshot: { sessionId, jobs: [job], updatedAt: new Date().toISOString() } });
+      }
+      if (method === "chat.getActiveJobs") {
+        return success({ jobs: [job] });
+      }
+      return success({ job });
     }
 
     case "session.replayEvents": {
-      // DBOS workflows are durable — all events are persisted as workflow events.
-      // For real-time streaming, the sessionEventBus handles live delivery.
-      // Reconnection replay can use DBOS.getWorkflowEvents() for the full history.
-      const params = request.params as { sessionId?: string };
-      const sessionId = asString(params.sessionId);
+      const sessionId = asString((params as any).sessionId);
       if (!sessionId) return failure(400, "sessionId is required");
 
-      // For now, return empty — live events are on the WebSocket.
-      // TODO: replay from DBOS workflow events when Conductor is connected.
-      return success({ events: [] });
+      // DBOS.readStream replays durable events since the last eventId
+      const events: AgentStreamEvent[] = [];
+      const lastEventId = asString((params as any).lastEventId);
+
+      try {
+        for await (const event of DBOS.readStream(sessionId, STREAM_KEY)) {
+          if (lastEventId) {
+            // DBOS streams don't support offset — replay all events
+            // and the client deduplicates by eventId
+          }
+          events.push(event as AgentStreamEvent);
+        }
+      } catch {
+        // Stream may not exist yet (workflow hasn't started)
+      }
+
+      return success({ events });
     }
 
     case "job.stop": {
-      const params = request.params as { sessionId?: string; jobId?: string };
-      const sessionId = asString(params.sessionId);
+      const sessionId = asString((params as any).sessionId);
       if (!sessionId) return failure(400, "sessionId is required");
 
       await db
@@ -200,13 +136,29 @@ export async function handleDbosRpc(request: DbosRpcRequest) {
         .set({ status: "cancelled" })
         .where(eq(sessions.id, sessionId));
 
+      try {
+        await DBOS.cancelWorkflow(sessionId);
+      } catch {
+        // Workflow may not exist or already be done
+      }
+
       return success({ ok: true });
     }
   }
 
-  return failure(400, `Unsupported method: ${request.method}`);
+  return failure(400, `Unsupported method: ${method}`);
 }
 
 export function isDbosEnabled(): boolean {
   return process.env.KHADIM_USE_DBOS === "true";
+}
+
+/**
+ * Subscribe to real-time events from a DBOS workflow stream.
+ * Yields events as they're written by the running agent session.
+ */
+export async function* streamSessionEvents(sessionId: string): AsyncGenerator<AgentStreamEvent> {
+  for await (const event of DBOS.readStream(sessionId, STREAM_KEY)) {
+    yield event as AgentStreamEvent;
+  }
 }
