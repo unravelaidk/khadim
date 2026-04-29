@@ -129,12 +129,11 @@ export const modelConfigs = pgTable("model_configs", {
 export type ModelConfig = typeof modelConfigs.$inferSelect;
 export type NewModelConfig = typeof modelConfigs.$inferInsert;
 
-// Durable agent sessions (DBOS-backed)
+// Durable agent sessions
 export const sessions = pgTable("agent_sessions", {
   id: text("id").primaryKey().$defaultFn(() => createId()),
   agentId: text("agent_id"),
   chatId: text("chat_id").notNull().references(() => chats.id, { onDelete: "cascade" }),
-  dbosWorkflowId: text("dbos_workflow_id"),
   prompt: text("prompt").notNull(),
   mode: text("mode").notNull().default("build"),
   status: text("status").notNull().default("pending"),

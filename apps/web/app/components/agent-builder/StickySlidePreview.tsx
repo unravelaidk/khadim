@@ -29,10 +29,11 @@ export function StickySlidePreview({
   const theme = useMemo(() => (content ? extractPresentationTheme(content) : undefined), [content]);
 
   const hasSlides = slideData && slideData.length > 0;
+  const hasHtmlContent = Boolean(content?.trim());
   const showBuildingSkeleton = isBuilding && !hasSlides;
 
   // Nothing to show
-  if (!hasSlides && !showBuildingSkeleton) return null;
+  if (!hasSlides && !showBuildingSkeleton && !hasHtmlContent) return null;
 
   return (
     <div className="sticky top-0 z-30 border-b border-[var(--glass-border)] glass-panel-strong">
@@ -48,6 +49,9 @@ export function StickySlidePreview({
             <span className="text-[10px] text-[var(--text-muted)]">
               {slideData.length} {slideData.length === 1 ? "slide" : "slides"}
             </span>
+          )}
+          {!hasSlides && hasHtmlContent && (
+            <span className="text-[10px] text-[var(--text-muted)]">HTML preview</span>
           )}
           {(isStreaming || isBuilding) && (
             <span className="inline-flex items-center gap-1 rounded-full border border-[var(--glass-border)] bg-[var(--color-accent-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-primary)]">
@@ -80,9 +84,26 @@ export function StickySlidePreview({
               workspaceId={workspaceId}
               hideHeader={true}
             />
+          ) : hasHtmlContent ? (
+            <HtmlSlideFallback content={content!} />
           ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+function HtmlSlideFallback({ content }: { content: string }) {
+  return (
+    <div className="overflow-hidden rounded-2xl glass-panel-strong">
+      <div className="h-[360px] bg-black md:h-[460px] lg:h-[520px]">
+        <iframe
+          srcDoc={content}
+          title="Slide HTML Preview"
+          sandbox="allow-scripts allow-same-origin"
+          className="h-full w-full border-0 bg-white"
+        />
+      </div>
     </div>
   );
 }

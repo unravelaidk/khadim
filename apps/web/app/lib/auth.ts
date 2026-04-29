@@ -1,6 +1,7 @@
 import { loadEnv } from "./load-env";
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
+import { getDatabaseSslConfig } from "./db/ssl";
 
 loadEnv();
 
@@ -34,6 +35,7 @@ const socialProviders = {
 export const auth = betterAuth({
   database: new Pool({
     connectionString: process.env.DATABASE_URL,
+    ssl: getDatabaseSslConfig(process.env.DATABASE_URL),
   }),
   emailAndPassword: {
     enabled: true,

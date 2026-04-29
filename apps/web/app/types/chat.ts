@@ -29,6 +29,7 @@ export interface AgentConfig {
 }
 
 export interface PendingQuestion {
+  id: string;
   question: string;
   options?: string[];
   context?: string;

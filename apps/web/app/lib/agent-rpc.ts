@@ -1,6 +1,8 @@
 import { createId } from "@paralleldrive/cuid2";
 import { getActiveModel } from "../agent/model-manager";
 import { selectAgent, type AgentMode } from "../agent/router";
+import { resolveApiKeyForBridge } from "../agent/models";
+import type { ProviderType } from "../agent/models";
 import { loadSkills } from "../agent/skills";
 import { startJob } from "../agent/stream-utils";
 import { decoratePromptWithBadges } from "./badges";
@@ -114,6 +116,7 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         chatId?: string;
         sessionId?: string;
         badges?: string;
+        systemPrompt?: string;
         documentIds?: string[];
         agentMode?: AgentMode;
       };
@@ -136,6 +139,11 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
       if (!activeModel) {
         return failure(400, "No active model configured. Add one in Settings first.");
       }
+
+      const apiKey = await resolveApiKeyForBridge(
+        activeModel.provider as ProviderType,
+        activeModel.apiKey,
+      );
 
       const jobId = createId();
       const resolvedChatId = asString(params.chatId) || "default";
@@ -162,6 +170,8 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         prompt: fullPrompt,
         provider: activeModel.provider,
         model: activeModel.model,
+        apiKey: apiKey || undefined,
+        systemPrompt: asString(params.systemPrompt),
       });
 
       return success({
@@ -174,23 +184,20 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
     }
 
     case "job.followUp": {
-      const params = request.params as { jobId?: string; chatId?: string | null; sessionId?: string; prompt?: string };
+      const params = request.params as { jobId?: string; chatId?: string | null; sessionId?: string; prompt?: string; systemPrompt?: string };
       const prompt = asString(params.prompt);
       if (!prompt) return failure(400, "prompt is required");
 
-      // Follow-up: start a new agent run with the follow-up prompt
-      const jobId = asString(params.jobId);
       const chatId = asString(params.chatId) || "default";
       const sessionId = asString(params.sessionId) || "default";
 
-      if (!jobId) return failure(400, "jobId is required");
-
-      // Get the existing job's model config, then run
-      const existingJob = await getJob(jobId);
-      if (!existingJob) return failure(404, "No active job found");
-
       const activeModel = await getActiveModel();
       if (!activeModel) return failure(400, "No active model configured");
+
+      const apiKey = await resolveApiKeyForBridge(
+        activeModel.provider as ProviderType,
+        activeModel.apiKey,
+      );
 
       const newJobId = createId();
       await createJob(newJobId, chatId, sessionId);
@@ -202,24 +209,28 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         prompt: `[Follow-up]\n${prompt}`,
         provider: activeModel.provider,
         model: activeModel.model,
+        apiKey: apiKey || undefined,
+        systemPrompt: asString(params.systemPrompt),
       });
 
       return success({ jobId: newJobId, chatId, sessionId });
     }
 
     case "job.steer": {
-      const params = request.params as { jobId?: string; chatId?: string | null; sessionId?: string; prompt?: string };
+      const params = request.params as { jobId?: string; chatId?: string | null; sessionId?: string; prompt?: string; systemPrompt?: string };
       const prompt = asString(params.prompt);
       if (!prompt) return failure(400, "prompt is required");
 
-      const jobId = asString(params.jobId);
       const chatId = asString(params.chatId) || "default";
       const sessionId = asString(params.sessionId) || "default";
 
-      if (!jobId) return failure(400, "jobId is required");
-
       const activeModel = await getActiveModel();
       if (!activeModel) return failure(400, "No active model configured");
+
+      const apiKey = await resolveApiKeyForBridge(
+        activeModel.provider as ProviderType,
+        activeModel.apiKey,
+      );
 
       const newJobId = createId();
       await createJob(newJobId, chatId, sessionId);
@@ -231,6 +242,8 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         prompt: `[Steer]\n${prompt}`,
         provider: activeModel.provider,
         model: activeModel.model,
+        apiKey: apiKey || undefined,
+        systemPrompt: asString(params.systemPrompt),
       });
 
       return success({ jobId: newJobId, chatId, sessionId });

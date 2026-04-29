@@ -21,6 +21,8 @@ interface ChatInputProps {
   onSelectModel: (modelId: string) => Promise<void>;
   webBrowsingEnabled: boolean;
   onToggleWebBrowsing: (enabled: boolean) => void;
+  systemPrompt?: string;
+  onSystemPromptChange?: (value: string) => void;
 }
 
 export function ChatInput({
@@ -40,6 +42,8 @@ export function ChatInput({
   onSelectModel,
   webBrowsingEnabled,
   onToggleWebBrowsing,
+  systemPrompt = "",
+  onSystemPromptChange,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [showToolbar, setShowToolbar] = useState(false);
@@ -125,30 +129,52 @@ export function ChatInput({
             className="w-64 max-w-full"
             direction="up"
           />
+          {onSystemPromptChange && (
+            <button
+              type="button"
+              onClick={() => setShowToolbar((prev) => !prev)}
+              className="btn-glass inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium transition-all"
+              title="Edit system prompt"
+            >
+              <LuSettings2 className="h-4 w-4" />
+              <span>Prompt</span>
+            </button>
+          )}
         </div>
 
         {/* Mobile expandable toolbar */}
         {showToolbar && (
-          <div className="flex sm:hidden mb-2 items-center gap-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <button
-              type="button"
-              onClick={() => onToggleWebBrowsing(!webBrowsingEnabled)}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-all ${
-                webBrowsingEnabled ? "btn-ink" : "btn-glass"
-              }`}
-            >
-              <LuGlobe className="h-3.5 w-3.5" />
-              Web
-            </button>
-            <ModelSelector
-              models={availableModels}
-              selectedModelId={selectedModelId}
-              onSelectModel={onSelectModel}
-              isLoading={isModelLoading}
-              isUpdating={isModelUpdating}
-              className="flex-1 min-w-0"
-              direction="up"
-            />
+          <div className="mb-2 space-y-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center gap-2 sm:hidden">
+              <button
+                type="button"
+                onClick={() => onToggleWebBrowsing(!webBrowsingEnabled)}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-all ${
+                  webBrowsingEnabled ? "btn-ink" : "btn-glass"
+                }`}
+              >
+                <LuGlobe className="h-3.5 w-3.5" />
+                Web
+              </button>
+              <ModelSelector
+                models={availableModels}
+                selectedModelId={selectedModelId}
+                onSelectModel={onSelectModel}
+                isLoading={isModelLoading}
+                isUpdating={isModelUpdating}
+                className="flex-1 min-w-0"
+                direction="up"
+              />
+            </div>
+            {onSystemPromptChange && (
+              <textarea
+                value={systemPrompt}
+                onChange={(event) => onSystemPromptChange(event.target.value)}
+                placeholder="System prompt for this web run"
+                rows={4}
+                className="w-full resize-none rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-card)] px-3 py-2 text-xs leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-4 focus:ring-[#10150a]/10"
+              />
+            )}
           </div>
         )}
 

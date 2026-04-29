@@ -20,7 +20,10 @@ export type ProviderType =
   | "vercel-ai-gateway"
   | "opencode"
   | "opencode-go"
-  | "kimi-coding";
+  | "kimi-coding"
+  | "nvidia"
+  | "google"
+  | "google-vertex";
 
 export interface ModelConfig {
   id: string;

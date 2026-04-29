@@ -5,6 +5,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 
 const COPY_RESET_DELAY = 2000;
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
 
 interface ChatMessageProps {
   message: Message;
@@ -71,7 +72,7 @@ function ChatMessageComponent({ message, workspaceId, onOpenFile }: ChatMessageP
     (step) => step.status === "running",
   );
   const hasSlideContent =
-    message.fileContent?.includes('<script id="slide-data"') ?? false;
+    Boolean(message.fileContent && SLIDE_DATA_SCRIPT_RE.test(message.fileContent));
   const shouldShowArtifact = hasPreviewUrl && !hasSlideContent;
 
   if (!hasContent && !shouldShowArtifact && !isUser) {
@@ -81,26 +82,28 @@ function ChatMessageComponent({ message, workspaceId, onOpenFile }: ChatMessageP
   // ── User message ──────────────────────────────────────────────
   if (isUser) {
     return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 flex justify-end">
-        <div className="flex items-start gap-2 md:gap-3 max-w-[92%] md:max-w-[80%]">
-          <div className="flex flex-col items-end min-w-0">
-            <span className="mb-1 flex items-center gap-1.5 px-1 text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)] md:text-[10px]">
-              You
-              {timeLabel && <span className="font-mono opacity-60">{timeLabel}</span>}
-            </span>
-            <div className="rounded-2xl rounded-tr-md border border-[var(--glass-border-strong)] bg-[#10150a] px-4 py-3 text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] md:px-5 md:py-3.5">
-              {hasContent && (
-                <div className="text-sm leading-relaxed text-[var(--text-inverse)]">
-                  <MarkdownRenderer content={message.content} />
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)] md:h-8 md:w-8">
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 group/msg">
+        <div className="mb-1.5 flex items-center gap-2 md:mb-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--color-accent)] md:h-7 md:w-7">
             <span className="font-display text-[11px] font-bold text-[var(--color-accent-ink)] md:text-xs">
               Y
             </span>
           </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] md:text-[11px]">
+            You
+          </span>
+          {timeLabel && (
+            <span className="font-mono text-[10px] text-[var(--text-muted)] opacity-70 md:text-[11px]">
+              {timeLabel}
+            </span>
+          )}
+        </div>
+        <div className="pl-8 md:pl-9">
+          {hasContent && (
+            <div className="whitespace-pre-wrap text-sm leading-[1.65] text-[var(--text-primary)] md:text-base md:leading-[1.7]">
+              <MarkdownRenderer content={message.content} />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -116,11 +119,11 @@ function ChatMessageComponent({ message, workspaceId, onOpenFile }: ChatMessageP
             <KhadimLogo />
           </div>
         </div>
-        <span className="text-[11px] font-semibold text-[var(--text-primary)] md:text-xs tracking-wide">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] md:text-[11px]">
           Khadim
         </span>
         {timeLabel && (
-          <span className="text-[9px] font-mono text-[var(--text-muted)] opacity-60 md:text-[10px]">
+          <span className="font-mono text-[10px] text-[var(--text-muted)] opacity-70 md:text-[11px]">
             {timeLabel}
           </span>
         )}
@@ -129,7 +132,7 @@ function ChatMessageComponent({ message, workspaceId, onOpenFile }: ChatMessageP
       {/* Message body — full width, no bubble on mobile */}
       <div className="pl-8 md:pl-9">
         {hasContent && (
-          <div className="prose-gb text-sm leading-[1.7] md:text-[0.9375rem] md:leading-[1.75]">
+          <div className="prose-gb text-sm leading-[1.7] md:text-base md:leading-[1.75]">
             <MarkdownRenderer content={message.content} />
           </div>
         )}

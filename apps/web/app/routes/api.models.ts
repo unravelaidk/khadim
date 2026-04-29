@@ -17,6 +17,8 @@ import {
   startOpenAICodexLogin,
   submitOpenAICodexManualCode,
 } from "../agent/oauth";
+import { resolveAgentBackend } from "../lib/agent-backends/types";
+import { resolveProviderMeta } from "../lib/agent-backends/provider-map";
 
 const modelSchema = z.object({
   name: z.string().min(1),
@@ -25,6 +27,7 @@ const modelSchema = z.object({
     "xai", "groq", "cerebras", "mistral", "minimax", "zai",
     "amazon-bedrock", "azure-openai-responses", "github-copilot",
     "huggingface", "vercel-ai-gateway", "opencode", "opencode-go", "kimi-coding",
+    "nvidia", "google", "google-vertex",
   ]),
   model: z.string().min(1),
   apiKey: z.string().optional(),
@@ -44,8 +47,32 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   if (action === "providers") {
+    // Try to get providers from the installed agent backend
+    const backend = await resolveAgentBackend().catch(() => null);
+    
+    let providerList = SUPPORTED_PROVIDERS;
+    let recommendedList = RECOMMENDED_MODELS;
+
+    if (backend) {
+      try {
+        const backendProviders = await backend.getProviders();
+        const mapped = backendProviders
+          .map((p) => {
+            const meta = resolveProviderMeta(p.id);
+            return meta ? { type: meta.type, name: p.name || meta.name, needsBaseUrl: meta.needsBaseUrl } : null;
+          })
+          .filter((p): p is { type: (typeof SUPPORTED_PROVIDERS)[number]["type"]; name: string; needsBaseUrl: boolean } => p !== null);
+
+        if (mapped.length > 0) {
+          providerList = mapped;
+        }
+      } catch {
+        // Backend available but call failed — use static fallback
+      }
+    }
+
     const providers = await Promise.all(
-      SUPPORTED_PROVIDERS.map(async (provider) => ({
+      providerList.map(async (provider) => ({
         ...provider,
         hasApiKey: await hasProviderApiKey(provider.type),
       }))
@@ -53,11 +80,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     return Response.json({
       providers,
-      recommended: RECOMMENDED_MODELS,
+      recommended: recommendedList,
       oauth: {
         openaiCodexConnected: await hasOpenAICodexAuth(),
       },
+      backend: backend?.name ?? null,
     });
+  }
+
+  if (action === "backend-models") {
+    const provider = url.searchParams.get("provider");
+    if (!provider) {
+      return Response.json({ error: "Provider is required" }, { status: 400 });
+    }
+
+    const backend = await resolveAgentBackend().catch(() => null);
+    if (!backend) {
+      return Response.json({ models: [] });
+    }
+
+    try {
+      const models = await backend.getModels(provider);
+      return Response.json({ models: models.map((m) => ({ id: m.id, name: m.name })) });
+    } catch {
+      return Response.json({ models: [] });
+    }
   }
 
   if (action === "codexAuthStatus") {
@@ -182,10 +229,36 @@ export async function action({ request }: ActionFunctionArgs) {
           return Response.json({ error: "Provider is required" }, { status: 400 });
         }
 
-        const models = await discoverProviderModels({
-          provider: formData.get("provider") as Parameters<typeof discoverProviderModels>[0]["provider"],
-          apiKey: formData.get("apiKey")?.toString() || undefined,
-          baseUrl: formData.get("baseUrl")?.toString() || undefined,
+        // First try the agent backend for built-in models
+        let backendModels: Array<{ id: string; name: string }> = [];
+        const backend = await resolveAgentBackend().catch(() => null);
+        if (backend) {
+          try {
+            const raw = await backend.getModels(provider);
+            backendModels = raw.map((m) => ({ id: m.id, name: m.name }));
+          } catch {
+            // Fall through to API discovery
+          }
+        }
+
+        // Also try API discovery for dynamic models
+        let apiModels: Array<{ id: string; name: string }> = [];
+        try {
+          apiModels = await discoverProviderModels({
+            provider: formData.get("provider") as Parameters<typeof discoverProviderModels>[0]["provider"],
+            apiKey: formData.get("apiKey")?.toString() || undefined,
+            baseUrl: formData.get("baseUrl")?.toString() || undefined,
+          });
+        } catch {
+          // No API models available
+        }
+
+        // Merge: backend models first, then API models (deduplicate by id)
+        const seen = new Set<string>();
+        const models = [...backendModels, ...apiModels].filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
         });
 
         return Response.json({ success: true, models });

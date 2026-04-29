@@ -34,6 +34,9 @@ const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
   opencode: "https://opencode.ai/api/v1",
   "opencode-go": "https://opencode.ai/zen/go/v1",
   "kimi-coding": "https://api.moonshot.cn/v1",
+  nvidia: "https://integrate.api.nvidia.com/v1",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai",
+  "google-vertex": "",
 };
 
 async function getApiKey(provider: ProviderType, passedApiKey?: string): Promise<string | undefined> {
@@ -72,6 +75,12 @@ async function getApiKey(provider: ProviderType, passedApiKey?: string): Promise
       return process.env.OPENCODE_API_KEY;
     case "kimi-coding":
       return process.env.KIMI_API_KEY;
+    case "nvidia":
+      return process.env.NVIDIA_API_KEY;
+    case "google":
+      return process.env.GEMINI_API_KEY;
+    case "google-vertex":
+      return process.env.GEMINI_API_KEY;
     case "ollama":
     case "amazon-bedrock":
     case "github-copilot":

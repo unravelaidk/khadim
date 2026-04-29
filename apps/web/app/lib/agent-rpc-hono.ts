@@ -1,15 +1,9 @@
 import { getRequestListener } from "@hono/node-server";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import { handleAgentRpc } from "./agent-rpc";
-
-// Lazily import dbos-rpc to avoid Vite SSR double-registration of DBOS workflows.
-// DBOS modules must NOT go through Vite's module runner.
-async function getDbosHandlers() {
-  const { handleDbosRpc, isDbosEnabled } = await import("../agent/dbos-rpc");
-  return { handleDbosRpc, isDbosEnabled };
-}
+import { handleAgentRpc, type AgentRpcMethod, type AgentRpcResponse } from "./agent-rpc";
 
 const optionalString = z.string().min(1).optional();
 const nullableString = z.string().min(1).nullable().optional();
@@ -20,6 +14,7 @@ const jobStartSchema = z.object({
   chatId: optionalString,
   sessionId: optionalString,
   badges: optionalString,
+  systemPrompt: optionalString,
   documentIds: z.array(z.string().min(1)).optional(),
   agentMode: z.enum(["plan", "build", "chat"]).optional(),
 });
@@ -35,6 +30,7 @@ const jobMessageSchema = z.object({
   chatId: nullableString,
   sessionId: optionalString,
   prompt: optionalString,
+  systemPrompt: optionalString,
 });
 
 const jobGetParamSchema = z.object({
@@ -60,18 +56,12 @@ const sessionReplayQuerySchema = z.object({
   lastEventId: nullableString,
 });
 
-async function dispatch(method: string, params: Record<string, unknown>) {
-  // Route to DBOS-backed handlers when KHADIM_USE_DBOS=true
-  const { isDbosEnabled, handleDbosRpc } = await getDbosHandlers();
-  if (isDbosEnabled()) {
-    const result = await handleDbosRpc(method, params);
-    if (!result.ok) return { body: result, status: result.status as 400 | 404 };
-    return { body: result, status: 200 };
-  }
-
-  // Legacy Redis-backed handlers
-  const result = await handleAgentRpc({ method: method as any, params });
-  if (!result.ok) return { body: result, status: result.status as 400 | 404 };
+async function dispatch(
+  method: AgentRpcMethod,
+  params: Record<string, unknown>,
+): Promise<{ body: AgentRpcResponse; status: ContentfulStatusCode }> {
+  const result = await handleAgentRpc({ method, params });
+  if (!result.ok) return { body: result, status: result.status as ContentfulStatusCode };
   return { body: result, status: 200 };
 }
 

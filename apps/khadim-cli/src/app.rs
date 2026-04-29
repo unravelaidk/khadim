@@ -1049,8 +1049,22 @@ impl TuiApp {
     }
 
     pub fn history_next(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+
         match self.history_index {
-            None => {}
+            // Allow ↓ from a fresh prompt to recall the most recent prompt too.
+            // This mirrors ↑ and makes either vertical arrow recover the latest
+            // input-history entry when the cursor is in the main input box.
+            None => {
+                self.saved_input = self.input.clone();
+                self.history_index = Some(self.history.len().saturating_sub(1));
+                if let Some(text) = self.history.last() {
+                    self.input = text.clone();
+                    self.cursor = self.input.chars().count();
+                }
+            }
             Some(idx) => {
                 if idx + 1 < self.history.len() {
                     self.history_index = Some(idx + 1);
@@ -1578,4 +1592,42 @@ mod tests {
         assert_eq!(running, 0);
         assert_eq!(done, 2, "each distinct call id should yield its own row");
     }
+
+    #[test]
+    fn history_up_from_empty_input_recalls_latest_prompt() {
+        let mut app = test_app();
+        app.history = vec!["first".into(), "latest".into()];
+
+        app.history_prev();
+
+        assert_eq!(app.input, "latest");
+        assert_eq!(app.cursor, "latest".chars().count());
+    }
+
+    #[test]
+    fn history_down_from_empty_input_recalls_latest_prompt() {
+        let mut app = test_app();
+        app.history = vec!["first".into(), "latest".into()];
+
+        app.history_next();
+
+        assert_eq!(app.input, "latest");
+        assert_eq!(app.cursor, "latest".chars().count());
+    }
+
+    #[test]
+    fn history_down_after_up_restores_draft() {
+        let mut app = test_app();
+        app.history = vec!["first".into(), "latest".into()];
+        app.input = "draft".into();
+        app.cursor = app.input.chars().count();
+
+        app.history_prev();
+        assert_eq!(app.input, "latest");
+
+        app.history_next();
+        assert_eq!(app.input, "draft");
+        assert_eq!(app.cursor, "draft".chars().count());
+    }
+
 }

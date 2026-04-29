@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +43,9 @@ function reinstallHint() {
 
 const targetTriple = currentTargetTriple();
 const platformPackage = PLATFORM_PACKAGE_BY_TARGET[targetTriple];
+const rootPackageJson = require(path.join(__dirname, "..", "package.json"));
+const packageName = rootPackageJson.name ?? "@unravelai/khadim";
+const currentVersion = rootPackageJson.version ?? "0.0.0";
 const binaryName = process.platform === "win32" ? "khadim-cli.exe" : "khadim-cli";
 const localVendorRoot = path.join(__dirname, "..", "vendor");
 const localBinaryPath = path.join(localVendorRoot, targetTriple, "khadim-cli", binaryName);
@@ -62,6 +66,94 @@ const binaryPath = path.join(vendorRoot, targetTriple, "khadim-cli", binaryName)
 if (!existsSync(binaryPath)) {
   throw new Error(`Khadim native binary not found at ${binaryPath}. Reinstall Khadim: ${reinstallHint()}`);
 }
+
+function compareSemver(a, b) {
+  const parse = (version) => String(version).split("-")[0].split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const left = parse(a);
+  const right = parse(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function commandExists(command) {
+  const checker = process.platform === "win32" ? "where" : "command";
+  const args = process.platform === "win32" ? [command] : ["-v", command];
+  const result = spawnSync(checker, args, { stdio: "ignore", shell: process.platform !== "win32" });
+  return result.status === 0;
+}
+
+function runCommand(command, args) {
+  return new Promise((resolve) => {
+    const update = spawn(command, args, { stdio: "inherit", shell: process.platform === "win32" });
+    update.on("error", (error) => resolve({ ok: false, error }));
+    update.on("exit", (code) => resolve({ ok: code === 0, code }));
+  });
+}
+
+async function npmViewLatestVersion() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+  try {
+    const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName).replace("%40", "@")}/latest`, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const metadata = await response.json();
+    return typeof metadata.version === "string" ? metadata.version : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function askToUpdate(latestVersion) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(`Khadim ${latestVersion} is available (current ${currentVersion}). Update now? [Y/n] `);
+    return !/^(n|no)$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
+}
+
+async function maybeAutoUpdate() {
+  if (process.env.KHADIM_NO_UPDATE_CHECK === "1" || process.env.KHADIM_SKIP_RESTART_UPDATE === "1" || process.env.CI === "true") return;
+  const latestVersion = await npmViewLatestVersion();
+  if (!latestVersion || compareSemver(latestVersion, currentVersion) <= 0) return;
+  if (!(await askToUpdate(latestVersion))) {
+    console.error(`Skipping update. To update later, run: ${reinstallHint()}`);
+    return;
+  }
+
+  const manager = detectPackageManager() === "bun" ? "bun" : "npm";
+  const command = manager === "bun" && commandExists("bun") ? "bun" : "npm";
+  const args = command === "bun"
+    ? ["install", "-g", `${packageName}@latest`]
+    : ["install", "-g", `${packageName}@latest`];
+  console.error(`Updating Khadim with: ${command} ${args.join(" ")}`);
+  const result = await runCommand(command, args);
+  if (!result.ok) {
+    const reason = result.error ? result.error.message : `exit code ${result.code}`;
+    console.error(`Khadim update failed (${reason}). Continuing with ${currentVersion}.`);
+    return;
+  }
+  console.error("Khadim updated successfully. Restarting with the updated CLI...");
+  const restarted = spawn(process.argv[1], process.argv.slice(2), { stdio: "inherit", env: { ...process.env, KHADIM_SKIP_RESTART_UPDATE: "1" } });
+  restarted.on("error", (error) => {
+    console.error(`Failed to restart Khadim: ${error.message}`);
+    process.exit(1);
+  });
+  const code = await new Promise((resolve) => restarted.on("exit", (exitCode) => resolve(exitCode ?? 1)));
+  process.exit(code);
+}
+
+await maybeAutoUpdate();
 
 const env = { ...process.env };
 env[detectPackageManager() === "bun" ? "KHADIM_MANAGED_BY_BUN" : "KHADIM_MANAGED_BY_NPM"] = "1";

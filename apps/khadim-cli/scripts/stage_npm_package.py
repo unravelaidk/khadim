@@ -116,6 +116,13 @@ def stage_main(staging_dir: Path, version: str) -> None:
     bin_dir = staging_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(CLI_ROOT / "bin" / "khadim.js", bin_dir / "khadim.js")
+    src_src = CLI_ROOT / "src"
+    ts_files = list(src_src.glob("*.ts"))
+    if ts_files:
+        src_dst = staging_dir / "src"
+        src_dst.mkdir(parents=True, exist_ok=True)
+        for f in ts_files:
+            shutil.copy2(f, src_dst / f.name)
     copy_common_files(staging_dir)
 
     package_json = load_base_package_json()

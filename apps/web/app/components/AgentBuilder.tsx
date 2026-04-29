@@ -56,7 +56,7 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
           <ChatPanel
             messages={state.messages}
             slideState={state.slideState}
-            pendingQuestion={state.pendingQuestion}
+            pendingQuestions={state.pendingQuestions}
             onAnswerQuestion={actions.handleAnswerQuestion}
             onCancelQuestion={actions.clearPendingQuestion}
             messagesEndRef={state.messagesEndRef}
@@ -75,7 +75,7 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
             onRemoveFile={actions.removeAttachedFile}
             onStartWorkspace={() => void actions.handleOpenWorkspace()}
             onViewWorkspace={() => void actions.handleOpenWorkspace()}
-            hasWorkspace={Boolean(state.selectedWorkspaceId)}
+            hasWorkspace={state.hasWorkspace}
             workspaceId={state.selectedWorkspaceId}
             availableModels={state.availableModels}
             selectedModelId={state.selectedModelId}
@@ -84,6 +84,8 @@ export function AgentBuilder({ initialChatId, initialView = "chat", initialWorks
             onSelectModel={actions.handleSelectModel}
             webBrowsingEnabled={state.webBrowsingEnabled}
             onToggleWebBrowsing={actions.setWebBrowsingEnabled}
+            systemPrompt={state.systemPrompt}
+            onSystemPromptChange={actions.setSystemPrompt}
           />
         )
       }

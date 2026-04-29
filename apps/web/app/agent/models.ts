@@ -22,7 +22,10 @@ export type ProviderType =
   | "vercel-ai-gateway"
   | "opencode"
   | "opencode-go"
-  | "kimi-coding";
+  | "kimi-coding"
+  | "nvidia"
+  | "google"
+  | "google-vertex";
 
 export interface ResolvedChatModel {
   model: Model<any>;
@@ -50,6 +53,9 @@ const PROVIDER_ENV_KEYS: Record<ProviderType, string> = {
   opencode: "OPENCODE_API_KEY",
   "opencode-go": "OPENCODE_API_KEY",
   "kimi-coding": "KIMI_API_KEY",
+  nvidia: "NVIDIA_API_KEY",
+  google: "GEMINI_API_KEY",
+  "google-vertex": "GEMINI_API_KEY",
 };
 
 async function resolveApiKey(provider: ProviderType, modelApiKey: string | null, fallbackApiKey?: string): Promise<string> {
@@ -59,6 +65,12 @@ async function resolveApiKey(provider: ProviderType, modelApiKey: string | null,
   const envKey = PROVIDER_ENV_KEYS[provider];
   if (envKey) return process.env[envKey] || fallbackApiKey || "";
   return fallbackApiKey || "";
+}
+
+/** Resolve the API key for bridging to the khadim binary.
+ *  Checks: DB-stored key → env var → OAuth (Codex). */
+export async function resolveApiKeyForBridge(provider: ProviderType, storedKey: string | null): Promise<string> {
+  return resolveApiKey(provider, storedKey);
 }
 
 function createOpenAICompatibleModel(
@@ -161,6 +173,25 @@ function resolveModel(config: ModelConfig): Model<any> {
         config.model,
         config.baseUrl || "https://api.moonshot.cn/v1"
       );
+    case "nvidia":
+      return createOpenAICompatibleModel(
+        "nvidia",
+        config.model,
+        config.baseUrl || "https://integrate.api.nvidia.com/v1",
+        true
+      );
+    case "google":
+      return createOpenAICompatibleModel(
+        "google",
+        config.model,
+        config.baseUrl || "https://generativelanguage.googleapis.com/v1beta/openai"
+      );
+    case "google-vertex":
+      return createOpenAICompatibleModel(
+        "google-vertex",
+        config.model,
+        config.baseUrl || undefined
+      );
     case "vercel-ai-gateway":
       return createOpenAICompatibleModel(
         "vercel-ai-gateway",
@@ -255,6 +286,9 @@ export function getProviderDisplayName(provider: ProviderType): string {
     case "opencode": return "OpenCode Zen";
     case "opencode-go": return "OpenCode Go";
     case "kimi-coding": return "Kimi Coding";
+    case "nvidia": return "NVIDIA";
+    case "google": return "Google";
+    case "google-vertex": return "Google Vertex";
     default: return provider;
   }
 }
@@ -279,6 +313,9 @@ export const SUPPORTED_PROVIDERS: { type: ProviderType; name: string; needsBaseU
   { type: "github-copilot", name: "GitHub Copilot", needsBaseUrl: false },
   { type: "vercel-ai-gateway", name: "Vercel AI Gateway", needsBaseUrl: true },
   { type: "ollama", name: "Ollama (Local)", needsBaseUrl: true },
+  { type: "nvidia", name: "NVIDIA", needsBaseUrl: false },
+  { type: "google", name: "Google", needsBaseUrl: false },
+  { type: "google-vertex", name: "Google Vertex", needsBaseUrl: true },
 ];
 
 export const RECOMMENDED_MODELS: { provider: ProviderType; model: string; name: string }[] = [

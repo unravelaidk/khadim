@@ -8,7 +8,7 @@ export function loadEnv(): void {
 
   const rootEnvPath = fileURLToPath(new URL("../../../../.env", import.meta.url));
   dotenv.config({ path: rootEnvPath });
-  dotenv.config();
+  dotenv.config({ override: true });
 
   loaded = true;
 }

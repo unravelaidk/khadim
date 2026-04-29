@@ -1031,7 +1031,7 @@ export const createWriteSlidesTool = (
     execute: async (_toolCallId, { content, title, theme }: Static<typeof writeSlidesParameters>) => {
         try {
             // Validate that content contains slide-data script tag
-            if (!content.includes('<script id="slide-data"') && !content.includes("<script id='slide-data'")) {
+            if (!/<script\s+[^>]*id=["']slide-data["'][^>]*>/i.test(content)) {
                 return textToolResult(`❌ ERROR: Slide content must include a <script id="slide-data" type="application/json"> tag with slide data.
 
 Example:

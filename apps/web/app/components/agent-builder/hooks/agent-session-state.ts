@@ -43,9 +43,10 @@ interface ChatSessionState {
   messageOrder: string[];
   sandboxId: string | null;
   activeJobIds: string[];
-  pendingQuestion: PendingQuestion | null;
+  pendingQuestions: PendingQuestion[];
   activeAgent: ActiveAgentState;
   slideBuilding: boolean;
+  hasWorkspaceFiles: boolean;
 }
 
 export interface AgentSessionState {
@@ -63,8 +64,9 @@ export interface ChatRuntimeView {
   messages: Message[];
   sandboxId: string | null;
   activeJobIds: string[];
-  pendingQuestion: PendingQuestion | null;
+  pendingQuestions: PendingQuestion[];
   activeAgent: ActiveAgentState;
+  hasWorkspaceFiles: boolean;
 }
 
 export interface SlideRuntimeView {
@@ -74,6 +76,11 @@ export interface SlideRuntimeView {
 }
 
 export const DRAFT_CHAT_KEY = "__draft__";
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
+
+function hasSlideDataScript(content: string | undefined): content is string {
+  return Boolean(content && SLIDE_DATA_SCRIPT_RE.test(content));
+}
 
 function createEmptyChatState(): ChatSessionState {
   return {
@@ -81,9 +88,10 @@ function createEmptyChatState(): ChatSessionState {
     messageOrder: [],
     sandboxId: null,
     activeJobIds: [],
-    pendingQuestion: null,
+    pendingQuestions: [],
     activeAgent: null,
     slideBuilding: false,
+    hasWorkspaceFiles: false,
   };
 }
 
@@ -282,8 +290,9 @@ export function selectChatRuntime(state: AgentSessionState, chatId: string | nul
     messages: chat.messageOrder.map((id) => chat.messagesById[id]).filter((message): message is Message => !!message),
     sandboxId: chat.sandboxId,
     activeJobIds: chat.activeJobIds,
-    pendingQuestion: chat.pendingQuestion,
+    pendingQuestions: chat.pendingQuestions,
     activeAgent: chat.activeAgent,
+    hasWorkspaceFiles: chat.hasWorkspaceFiles,
   };
 }
 
@@ -301,7 +310,7 @@ export function selectSlideRuntime(
 
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
-    if (message?.role === "assistant" && message.fileContent?.includes('<script id="slide-data"')) {
+    if (message?.role === "assistant" && hasSlideDataScript(message.fileContent)) {
       latestContent = message.fileContent;
       isStreaming = (message.thinkingSteps || []).some((step) => step.status === "running");
       break;
@@ -385,7 +394,7 @@ export function updateMessageById(
 export function setChatMeta(
   state: AgentSessionState,
   chatKey: string,
-  updates: Partial<Pick<ChatSessionState, "sandboxId" | "pendingQuestion" | "activeAgent" | "activeJobIds" | "slideBuilding">>,
+  updates: Partial<Pick<ChatSessionState, "sandboxId" | "pendingQuestions" | "activeAgent" | "activeJobIds" | "slideBuilding" | "hasWorkspaceFiles">>,
 ): AgentSessionState {
   return updateChat(state, chatKey, (chat) => ({ ...chat, ...updates }));
 }
@@ -428,8 +437,9 @@ export function replaceChatKey(state: AgentSessionState, fromKey: string, toKey:
     messageOrder: mergedMessageOrder,
     sandboxId: fromChat.sandboxId || toChat.sandboxId,
     activeJobIds: Array.from(new Set([...toChat.activeJobIds, ...fromChat.activeJobIds])),
-    pendingQuestion: fromChat.pendingQuestion || toChat.pendingQuestion,
+    pendingQuestions: [...toChat.pendingQuestions, ...fromChat.pendingQuestions.filter((question) => !toChat.pendingQuestions.some((existing) => existing.id === question.id))],
     activeAgent: fromChat.activeAgent || toChat.activeAgent,
+    hasWorkspaceFiles: fromChat.hasWorkspaceFiles || toChat.hasWorkspaceFiles,
   }));
 
   const nextChats = { ...nextState.chats };
@@ -826,21 +836,31 @@ export function applyStreamEvent(state: AgentSessionState, event: StreamEvent): 
   if (event.type === "file_written") {
     const filename = typeof event.filename === "string" ? event.filename : undefined;
     const fileContent = typeof event.content === "string" ? event.content : undefined;
-    if (filename === "index.html" && fileContent?.includes('<script id="slide-data"')) {
-      return withAppliedEventMeta(updateJobBoundMessage(state, jobId, chatId, (message) => ({ ...message, fileContent })), event);
+    let nextState = setChatMeta(state, chatKey, { hasWorkspaceFiles: true });
+    if (filename === "index.html" && hasSlideDataScript(fileContent)) {
+      nextState = updateJobBoundMessage(nextState, jobId, chatId, (message) => ({ ...message, fileContent }));
     }
-    return state;
+    return withAppliedEventMeta(nextState, event);
   }
 
   if (event.type === "ask_user") {
+    const questionId = typeof event.id === "string" || typeof event.id === "number"
+      ? String(event.id)
+      : `${jobId}:${event.eventId ?? event.sequence ?? Date.now()}:${String(event.question || "")}`;
     return withAppliedEventMeta(updateJobBoundMessage(
-      setChatMeta(state, chatKey, {
-        pendingQuestion: {
+      updateChat(state, chatKey, (chat) => {
+        const nextQuestion: PendingQuestion = {
+          id: questionId,
           question: event.question as string,
           options: event.options as PendingQuestion["options"],
           context: event.context as string,
           threadId: event.threadId as string,
-        },
+        };
+        const existingIndex = chat.pendingQuestions.findIndex((question) => question.id === questionId);
+        const pendingQuestions = existingIndex >= 0
+          ? chat.pendingQuestions.map((question, index) => index === existingIndex ? nextQuestion : question)
+          : [...chat.pendingQuestions, nextQuestion];
+        return { ...chat, pendingQuestions };
       }),
       jobId,
       chatId,
@@ -868,7 +888,18 @@ export function applyStreamEvent(state: AgentSessionState, event: StreamEvent): 
   }
 
   if (event.type === "error") {
-    return withAppliedEventMeta(setChatMeta(setJobActive(state, jobId, chatId, false), chatKey, { activeAgent: null, slideBuilding: false }), event);
+    const message = typeof event.message === "string" && event.message.trim().length > 0
+      ? event.message.trim()
+      : "The agent run failed.";
+
+    return withAppliedEventMeta(setChatMeta(
+      updateJobBoundMessage(setJobActive(state, jobId, chatId, false), jobId, chatId, (assistantMessage) => ({
+        ...assistantMessage,
+        content: `I couldn't complete that request.\n\n${message}`,
+      })),
+      chatKey,
+      { activeAgent: null, slideBuilding: false },
+    ), event);
   }
 
   return state;
