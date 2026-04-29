@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarNavigation } from "./SidebarNavigation";
 import { SidebarChatList } from "./SidebarChatList";
+import { SidebarAccount } from "./SidebarAccount";
 
 interface SidebarProps {
   selectedChatId: string | null;
@@ -82,6 +83,8 @@ export function Sidebar({
             refreshKey={refreshKey}
             isCollapsed={isCollapsed}
           />
+
+          <SidebarAccount isCollapsed={isCollapsed} />
         </div>
       </aside>
     </>

@@ -12,8 +12,9 @@ type AgentRpcParamsMap = {
     chatId?: string;
     sessionId: string;
     badges?: string;
+    systemPrompt?: string;
     documentIds?: string[];
-    agentMode?: "plan" | "build";
+    agentMode?: "plan" | "build" | "chat";
   };
   "job.stop": {
     jobId: string;
@@ -25,12 +26,14 @@ type AgentRpcParamsMap = {
     chatId?: string | null;
     sessionId?: string;
     prompt: string;
+    systemPrompt?: string;
   };
   "job.steer": {
     jobId?: string;
     chatId?: string | null;
     sessionId?: string;
     prompt: string;
+    systemPrompt?: string;
   };
   "job.get": {
     jobId: string;
@@ -57,7 +60,7 @@ type AgentRpcResultMap = {
     jobId: string;
     chatId: string;
     sessionId: string;
-    agentMode: "plan" | "build";
+    agentMode: "plan" | "build" | "chat";
     agentName: string;
   };
   "job.stop": { ok: true };

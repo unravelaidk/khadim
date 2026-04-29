@@ -43,6 +43,20 @@
       "when": 1775097600000,
       "tag": "0006_uploaded_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777500900000,
+      "tag": "0007_agent_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777501200000,
+      "tag": "0008_auth_tables",
+      "breakpoints": true
     }
   ]
 }

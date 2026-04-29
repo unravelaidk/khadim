@@ -18,6 +18,7 @@ use domain::transcript::TranscriptEntry;
 use infrastructure::terminal::TerminalGuard;
 use khadim_ai_core::error::AppError;
 use services::app_service::{AppService, CommandResult};
+use services::catalog_service;
 use services::settings_service::load_settings;
 use std::time::Duration;
 
@@ -39,6 +40,37 @@ async fn main() {
         tokio::spawn(async move {
             let _ = khadim_ai_core::models::refresh_openrouter_models(None).await;
         });
+
+        // Handle --providers and --models flags (JSON output, no agent loop)
+        if let Some(format) = config.list_providers.clone() {
+            let entries: Vec<serde_json::Value> = catalog_service::provider_catalog()
+                .into_iter()
+                .map(|p| serde_json::json!({
+                    "id": p.id,
+                    "name": p.name,
+                }))
+                .collect();
+            if format == "json" {
+                println!("{}", serde_json::to_string(&entries).unwrap_or_default());
+            } else {
+                for p in catalog_service::provider_catalog() {
+                    println!("{} ({})", p.name, p.id);
+                }
+            }
+            return Ok(());
+        }
+
+        if let Some(provider) = config.list_models.clone() {
+            let entries: Vec<serde_json::Value> = catalog_service::models_for_provider(&provider)
+                .into_iter()
+                .map(|(id, name)| serde_json::json!({
+                    "id": id,
+                    "name": name,
+                }))
+                .collect();
+            println!("{}", serde_json::to_string(&entries).unwrap_or_default());
+            return Ok(());
+        }
 
         if let Some(prompt) = config.prompt.clone() {
             // Batch mode

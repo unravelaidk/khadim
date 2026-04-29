@@ -12,9 +12,12 @@ pub struct CliConfig {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub session: Option<String>,
+    pub system_prompt: Option<String>,
     #[allow(dead_code)]
     pub verbose: bool,
     pub json: bool,
+    pub list_providers: Option<String>,
+    pub list_models: Option<String>,
 }
 
 // ── Arg parsing ──────────────────────────────────────────────────────
@@ -25,8 +28,11 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
     let mut provider = None;
     let mut model = None;
     let mut session = None;
+    let mut system_prompt = None;
     let mut verbose = false;
     let mut json = false;
+    let mut list_providers = None;
+    let mut list_models = None;
     let mut exec_mode = false;
     let mut positional_prompt = Vec::new();
     let mut args = env::args().skip(1).peekable();
@@ -69,6 +75,12 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
                     .ok_or_else(|| AppError::invalid_input("--session requires a value"))?;
                 session = Some(value);
             }
+            "--system-prompt" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| AppError::invalid_input("--system-prompt requires a value"))?;
+                system_prompt = Some(value);
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -79,6 +91,18 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
             }
             "--json" => {
                 json = true;
+            }
+            "--providers" => {
+                let value = args
+                    .next()
+                    .unwrap_or_else(|| "json".to_string());
+                list_providers = Some(value);
+            }
+            "--models" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| AppError::invalid_input("--models requires a provider argument"))?;
+                list_models = Some(value);
             }
             "--verbose" => {
                 verbose = true;
@@ -124,8 +148,11 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
         provider,
         model,
         session,
+        system_prompt,
         verbose,
         json,
+        list_providers,
+        list_models,
     })
 }
 
@@ -153,6 +180,7 @@ fn print_help() {
          \x20 --provider NAME  Set AI provider\n\
          \x20 --model ID       Set AI model\n\
          \x20 --session NAME   Load saved session\n\
+         \x20 --system-prompt TEXT  Override the system prompt for this run\n\
          \x20 --verbose        Enable verbose logging\n\
          \x20 -h, --help       Show this help\n\
          \x20 -v, --version    Show version\n\n\

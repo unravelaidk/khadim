@@ -1,11 +1,13 @@
 import type { Message } from "../../types/chat";
 
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
+
 export type TimelineRow =
   | { id: string; kind: "message"; message: Message }
   | { id: string; kind: "work"; messages: Message[] };
 
 function hasSlideContent(message: Message): boolean {
-  return message.fileContent?.includes('<script id="slide-data"') ?? false;
+  return Boolean(message.fileContent && SLIDE_DATA_SCRIPT_RE.test(message.fileContent));
 }
 
 function hasPreviewArtifact(message: Message): boolean {

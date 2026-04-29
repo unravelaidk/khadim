@@ -11,3 +11,5 @@
 export { runAgent, runAgentStream } from "./run-agent";
 export type { AgentStreamEvent, AgentResult, RunAgentOptions } from "./run-agent";
 export { resolveBinaryPath } from "./resolve-binary";
+export { getProviders, getModels } from "./catalog";
+export type { ProviderInfo, ModelInfo } from "./catalog";

@@ -2,6 +2,7 @@ import { loadEnv } from "../load-env";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { getDatabaseSslConfig } from "./ssl";
 
 loadEnv();
 
@@ -11,7 +12,9 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set. Load the repo .env before starting @khadim/web.");
 }
 
-const queryClient = postgres(connectionString);
+const queryClient = postgres(connectionString, {
+  ssl: getDatabaseSslConfig(connectionString),
+});
 export const db = drizzle(queryClient, { schema });
 
 export { chats, messages, uploadedDocuments, artifacts, projects, projectVersions, modelConfigs, workspaces, workspaceFiles, sessions } from "./schema";

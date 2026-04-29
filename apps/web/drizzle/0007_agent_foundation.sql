@@ -2,7 +2,6 @@ CREATE TABLE IF NOT EXISTS "agent_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"agent_id" text,
 	"chat_id" text NOT NULL,
-	"dbos_workflow_id" text,
 	"prompt" text NOT NULL,
 	"mode" text NOT NULL DEFAULT 'build',
 	"status" text NOT NULL DEFAULT 'pending',

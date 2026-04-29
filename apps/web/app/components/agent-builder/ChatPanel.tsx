@@ -10,12 +10,14 @@ import type { ModelOption } from "./ModelSelector";
 import type { Message, PendingQuestion } from "../../types/chat";
 import type { SlideRuntimeView } from "./hooks/agent-session-state";
 
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
+
 interface ChatPanelProps {
   messages: Message[];
   slideState: SlideRuntimeView | null;
-  pendingQuestion: PendingQuestion | null;
-  onAnswerQuestion: (answer: string) => void;
-  onCancelQuestion: () => void;
+  pendingQuestions: PendingQuestion[];
+  onAnswerQuestion: (questionId: string, answer: string) => void;
+  onCancelQuestion: (questionId?: string) => void;
   messagesEndRef: RefObject<HTMLDivElement | null>;
   input: string;
   onInputChange: (value: string) => void;
@@ -41,12 +43,14 @@ interface ChatPanelProps {
   onSelectModel: (modelId: string) => Promise<void>;
   webBrowsingEnabled: boolean;
   onToggleWebBrowsing: (enabled: boolean) => void;
+  systemPrompt: string;
+  onSystemPromptChange: (value: string) => void;
 }
 
 export function ChatPanel({
   messages,
   slideState,
-  pendingQuestion,
+  pendingQuestions,
   onAnswerQuestion,
   onCancelQuestion,
   messagesEndRef,
@@ -74,11 +78,13 @@ export function ChatPanel({
   onSelectModel,
   webBrowsingEnabled,
   onToggleWebBrowsing,
+  systemPrompt,
+  onSystemPromptChange,
 }: ChatPanelProps) {
   const [slideMinimized, setSlideMinimized] = useState(false);
   const [selectedSlideContent, setSelectedSlideContent] = useState<string | null>(null);
   const latestMessageSlideContent = useMemo(
-    () => [...messages].reverse().find((message) => message.fileContent?.includes('<script id="slide-data"'))?.fileContent || null,
+    () => [...messages].reverse().find((message) => message.fileContent && SLIDE_DATA_SCRIPT_RE.test(message.fileContent))?.fileContent || null,
     [messages],
   );
 
@@ -139,7 +145,7 @@ export function ChatPanel({
             </div>
             <ChatInterface
               messages={messages}
-              pendingQuestion={pendingQuestion}
+              pendingQuestions={pendingQuestions}
               onAnswerQuestion={onAnswerQuestion}
               onCancelQuestion={onCancelQuestion}
               messagesEndRef={messagesEndRef}
@@ -170,6 +176,8 @@ export function ChatPanel({
             onSelectModel={onSelectModel}
             webBrowsingEnabled={webBrowsingEnabled}
             onToggleWebBrowsing={onToggleWebBrowsing}
+            systemPrompt={systemPrompt}
+            onSystemPromptChange={onSystemPromptChange}
           />
         )}
       </main>
@@ -194,6 +202,8 @@ export function ChatPanel({
               onSelectModel={onSelectModel}
               webBrowsingEnabled={webBrowsingEnabled}
               onToggleWebBrowsing={onToggleWebBrowsing}
+              systemPrompt={systemPrompt}
+              onSystemPromptChange={onSystemPromptChange}
             />
           </div>
         </div>

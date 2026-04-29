@@ -8,7 +8,7 @@ const webDir = path.resolve(scriptDir, "..");
 const rootEnv = path.resolve(webDir, "../../.env");
 
 dotenv.config({ path: rootEnv });
-dotenv.config();
+dotenv.config({ override: true });
 
 const command = process.argv[2];
 

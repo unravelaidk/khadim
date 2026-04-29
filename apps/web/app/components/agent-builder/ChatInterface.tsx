@@ -7,11 +7,13 @@ import { WorkTimelineRow } from "./WorkTimelineRow";
 import type { Message, PendingQuestion } from "../../types/chat";
 import { deriveTimelineRows } from "./timeline";
 
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
+
 interface ChatInterfaceProps {
   messages: Message[];
-  pendingQuestion: PendingQuestion | null;
-  onAnswerQuestion: (answer: string) => void;
-  onCancelQuestion: () => void;
+  pendingQuestions: PendingQuestion[];
+  onAnswerQuestion: (questionId: string, answer: string) => void;
+  onCancelQuestion: (questionId?: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   workspaceId?: string | null;
   selectedSlideContent: string | null;
@@ -25,7 +27,7 @@ interface OpenFileInfo {
 
 export function ChatInterface({
   messages,
-  pendingQuestion,
+  pendingQuestions,
   onAnswerQuestion,
   onCancelQuestion,
   messagesEndRef,
@@ -33,11 +35,11 @@ export function ChatInterface({
   selectedSlideContent,
   onSelectSlideContent,
 }: ChatInterfaceProps) {
-  const hasMessages = messages.length > 0 || !!pendingQuestion;
+  const hasMessages = messages.length > 0 || pendingQuestions.length > 0;
   const [openFile, setOpenFile] = useState<OpenFileInfo | null>(null);
   const timelineRows = deriveTimelineRows(messages);
   const slideContents = useMemo(
-    () => messages.map((message) => message.fileContent).filter((content): content is string => Boolean(content?.includes('<script id="slide-data"'))),
+    () => messages.map((message) => message.fileContent).filter((content): content is string => Boolean(content && SLIDE_DATA_SCRIPT_RE.test(content))),
     [messages],
   );
 
@@ -65,15 +67,16 @@ export function ChatInterface({
 
             return <ChatMessage key={row.id} message={row.message} workspaceId={workspaceId} onOpenFile={setOpenFile} />;
           })}
-          {pendingQuestion && (
+          {pendingQuestions.map((pendingQuestion) => (
             <AgentQuestion
+              key={pendingQuestion.id}
               question={pendingQuestion.question}
               options={pendingQuestion.options}
               context={pendingQuestion.context}
-              onAnswer={onAnswerQuestion}
-              onCancel={onCancelQuestion}
+              onAnswer={(answer) => onAnswerQuestion(pendingQuestion.id, answer)}
+              onCancel={() => onCancelQuestion(pendingQuestion.id)}
             />
-          )}
+          ))}
           {!hasMessages && (
             <p className="text-center text-sm text-[var(--text-muted)]">Start a conversation to see chat activity here.</p>
           )}

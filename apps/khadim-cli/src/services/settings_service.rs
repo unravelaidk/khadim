@@ -56,7 +56,7 @@ pub fn effective_settings(
         api_keys: settings.api_keys.clone(),
         theme_family: settings.theme_family.clone(),
         theme_variant: settings.theme_variant.clone(),
-        system_prompt: settings.system_prompt.clone(),
+        system_prompt: config.system_prompt.clone().or_else(|| settings.system_prompt.clone()),
     };
     if let (Some(ref provider), Some(ref key)) =
         (settings.provider.clone(), settings.api_key.clone())

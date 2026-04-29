@@ -66,7 +66,7 @@ export interface AgentBuilderState {
   sidebarRefreshKey: number;
   isProcessing: boolean;
   activeAgent: { mode: "plan" | "build"; name: string } | null;
-  pendingQuestion: PendingQuestion | null;
+  pendingQuestions: PendingQuestion[];
   currentView: "chat" | "workspace" | "settings";
   isSidebarOpen: boolean;
   attachedFiles: AttachedFile[];
@@ -76,6 +76,8 @@ export interface AgentBuilderState {
   isModelLoading: boolean;
   isModelUpdating: boolean;
   webBrowsingEnabled: boolean;
+  systemPrompt: string;
+  hasWorkspace: boolean;
 }
 
 export interface AgentBuilderActions {
@@ -91,15 +93,35 @@ export interface AgentBuilderActions {
   handleCreateChatInWorkspace: () => Promise<void>;
   handleSend: () => Promise<void>;
   handleStop: () => void;
-  handleAnswerQuestion: (answer: string) => Promise<void>;
+  handleAnswerQuestion: (questionId: string, answer: string) => Promise<void>;
   handleSuggestionClick: (feature: ActiveBadge) => void;
   removeBadge: (label: string) => void;
   updateSlideCount: (label: string, count: number) => void;
   removeAttachedFile: (fileName: string) => void;
-  clearPendingQuestion: () => void;
+  clearPendingQuestion: (questionId?: string) => void;
   handleSelectModel: (modelId: string) => Promise<void>;
   setWebBrowsingEnabled: (enabled: boolean) => void;
+  setSystemPrompt: (value: string) => void;
 }
+
+const DEFAULT_WEB_SYSTEM_PROMPT = `You are Khadim running inside the web app.
+
+Use the tools exposed by the web app when they are relevant.
+
+Web workspace database:
+- Treat workspace_* tools as the source of truth for files saved in the web app database.
+- Use workspace_list_files and workspace_read_file before editing existing workspace files.
+- Use workspace_write_file to create or replace complete files in the web workspace.
+- Use workspace_edit_file for small exact replacements after reading the file.
+- Prefer workspace_* tools over local disk tools when the user asks to work with the web workspace, app files, saved files, artifacts, or database-backed project files.
+
+Slide presentations:
+- For slide, deck, presentation, or PPT-style requests, use write_slides instead of writing index.html manually.
+- write_slides does not need a sandbox or preview server; the web app renders the deck natively.
+- The HTML passed to write_slides must include <script id="slide-data" type="application/json"> with slide JSON.
+- Research first when web/search/document tools are available and the topic benefits from factual grounding.
+- Do not call expose_preview for slide decks.`;
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
 
 interface ModelsApiResponse {
   models?: Array<{
@@ -173,17 +195,19 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const [isModelLoading, setIsModelLoading] = useState(true);
   const [isModelUpdating, setIsModelUpdating] = useState(false);
   const [webBrowsingEnabled, setWebBrowsingEnabled] = useState(true);
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_WEB_SYSTEM_PROMPT);
 
   const currentChatKey = getChatStateKey(chatId);
   const currentChatState = selectChatRuntime(sessionState, chatId);
   const messages = currentChatState.messages;
   const sandboxId = currentChatState.sandboxId;
-  const pendingQuestion = currentChatState.pendingQuestion;
+  const pendingQuestions = currentChatState.pendingQuestions;
   const activeAgent = currentChatState.activeAgent;
   const activeJobIds = currentChatState.activeJobIds;
   const jobId = activeJobIds[activeJobIds.length - 1] || null;
   const isProcessing = activeJobIds.length > 0;
   const slideState = selectSlideRuntime(sessionState, chatId, isProcessing);
+  const hasWorkspaceOnChat = Boolean(selectedWorkspaceId) || currentChatState.hasWorkspaceFiles;
 
   const removeAttachedFile = (fileName: string) => {
     setAttachedFiles((prev) => prev.filter((file) => file.name !== fileName));
@@ -327,6 +351,9 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const loadChatState = (nextChatId: string, nextMessages: Message[], nextSandboxId: string | null) => {
     setSessionState((prev) => applyLoadedChat(prev, nextChatId, nextMessages, nextSandboxId));
   };
+  const afterLoadChatState = (chatIdParam: string) => {
+    setSessionState((prev) => setChatMeta(prev, chatIdParam, { hasWorkspaceFiles: true }));
+  };
 
   const activateJob = (nextJobId: string, nextChatId: string, active: boolean) => {
     setSessionState((prev) => setJobActive(prev, nextJobId, nextChatId, active));
@@ -336,8 +363,15 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
     setSessionState((prev) => bindJobToMessage(prev, nextJobId, nextChatId, messageId));
   };
 
-  const clearPendingQuestionForChat = (chatKey: string) => {
-    setSessionState((prev) => setChatMeta(prev, chatKey, { pendingQuestion: null }));
+  const clearPendingQuestionForChat = (chatKey: string, questionId?: string) => {
+    setSessionState((prev) => {
+      const chat = prev.chats[chatKey];
+      if (!chat) return prev;
+      const pendingQuestions = questionId
+        ? chat.pendingQuestions.filter((question) => question.id !== questionId)
+        : [];
+      return setChatMeta(prev, chatKey, { pendingQuestions });
+    });
   };
 
   const formatAttachmentSize = (bytes: number) => {
@@ -447,7 +481,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       const loadedMessages: Message[] = chat.messages.map((msg: any) => {
         let fileContent: string | undefined;
         const indexHtml = chat.artifacts?.find((artifact: any) => artifact.filename === "index.html");
-        const isSlideContent = indexHtml?.content?.includes('<script id="slide-data"');
+        const isSlideContent = Boolean(indexHtml?.content && SLIDE_DATA_SCRIPT_RE.test(indexHtml.content));
 
         if (indexHtml && (msg.previewUrl || isSlideContent)) {
           fileContent = indexHtml.content;
@@ -465,6 +499,9 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       });
 
       loadChatState(chat.id, loadedMessages, chat.sandboxId || null);
+      if (chat.artifacts && chat.artifacts.length > 0) {
+        afterLoadChatState(chat.id);
+      }
       setCurrentView("chat");
 
       const hasPreviewContent =
@@ -831,6 +868,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     const abortController = new AbortController();
     requestAbortControllerRef.current = abortController;
     let currentChatId = chatId;
+    const isNewChat = !currentChatId;
 
     try {
       if (!currentChatId) {
@@ -877,7 +915,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         : null;
 
       const submitAgentRequest = async () => {
-        if (currentChatId) {
+        if (currentChatId && !isNewChat) {
           try {
             return await sendSessionCommand("job.followUp", promptWithAttachments, {
               chatId: currentChatId,
@@ -895,6 +933,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
               chatId: currentChatId,
               sessionId: sessionIdRef.current,
               prompt: promptWithAttachments,
+              systemPrompt,
             }, { signal: abortController.signal });
           } catch (error) {
             if (!(error instanceof Error) || !error.message.includes("No live session host found")) {
@@ -910,6 +949,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           sessionId: sessionIdRef.current,
           badges: activeBadges.length > 0 ? JSON.stringify(activeBadges) : undefined,
           documentIds: uploadedDocumentIds,
+          systemPrompt,
         }, { signal: abortController.signal });
       };
 
@@ -955,10 +995,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     requestAbortControllerRef.current = null;
   };
 
-  const handleAnswerQuestion = async (answer: string) => {
+  const handleAnswerQuestion = async (questionId: string, answer: string) => {
+    const pendingQuestion = pendingQuestions.find((question) => question.id === questionId);
     if (!pendingQuestion) return;
 
-    clearPendingQuestionForChat(getChatStateKey(chatId));
+    clearPendingQuestionForChat(getChatStateKey(chatId), questionId);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -1029,6 +1070,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           sandboxId: sandboxId || undefined,
           chatId: chatId || undefined,
           sessionId: sessionIdRef.current,
+          systemPrompt,
         }),
         saveUserMessage?.(),
       ]);
@@ -1087,7 +1129,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       sidebarRefreshKey,
       isProcessing,
       activeAgent,
-      pendingQuestion,
+      pendingQuestions,
       currentView,
       isSidebarOpen,
       attachedFiles,
@@ -1097,6 +1139,8 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       isModelLoading,
       isModelUpdating,
       webBrowsingEnabled,
+      systemPrompt,
+      hasWorkspace: hasWorkspaceOnChat,
     },
     actions: {
       setInput,
@@ -1118,7 +1162,8 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
       removeAttachedFile,
       handleSelectModel,
       setWebBrowsingEnabled,
-      clearPendingQuestion: () => clearPendingQuestionForChat(getChatStateKey(chatId)),
+      setSystemPrompt,
+      clearPendingQuestion: (questionId?: string) => clearPendingQuestionForChat(getChatStateKey(chatId), questionId),
     },
   };
 }

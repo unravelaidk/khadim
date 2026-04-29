@@ -17,6 +17,7 @@
     "app/lib/versions.ts",
     "app/lib/workspace-sync.ts",
     "app/lib/db/**/*.ts",
+    "app/lib/agent-backends/**/*.ts",
     "app/types/**/*.ts"
   ],
   "compilerOptions": {

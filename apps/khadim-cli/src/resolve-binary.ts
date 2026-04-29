@@ -33,10 +33,6 @@ export async function resolveBinaryPath(): Promise<string> {
   const platformPackage = PLATFORM_PACKAGE_BY_TARGET[targetTriple];
   const binaryName = process.platform === "win32" ? "khadim-cli.exe" : "khadim-cli";
 
-  // Try local vendor directory (dev/staging)
-  const localVendorRoot = path.join(__dirname, "..", "vendor");
-  const localBinaryPath = path.join(localVendorRoot, targetTriple, "khadim-cli", binaryName);
-
   // Try optional dependency npm package
   try {
     const pkgJsonPath = require.resolve(`${platformPackage}/package.json`);
@@ -49,8 +45,22 @@ export async function resolveBinaryPath(): Promise<string> {
     // Package not installed, fall through
   }
 
+  // Try local vendor directory (dev/staging)
+  const localVendorRoot = path.join(__dirname, "..", "vendor");
+  const localBinaryPath = path.join(localVendorRoot, targetTriple, "khadim-cli", binaryName);
   if (existsSync(localBinaryPath)) {
     return localBinaryPath;
+  }
+
+  // Dev mode: check cargo target dir (cargo build output)
+  const devBinaryPath = path.join(__dirname, "..", "target", "debug", binaryName);
+  if (existsSync(devBinaryPath)) {
+    return devBinaryPath;
+  }
+
+  const releaseBinaryPath = path.join(__dirname, "..", "target", "release", binaryName);
+  if (existsSync(releaseBinaryPath)) {
+    return releaseBinaryPath;
   }
 
   throw new Error(

@@ -12,6 +12,7 @@ import {
   LuSend,
   LuRefreshCcw,
   LuArrowUpRight,
+  LuSettings2,
 } from "react-icons/lu";
 import type { SlideTemplate, SlideTheme } from "../../types/slides";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
@@ -54,6 +55,8 @@ interface WelcomeScreenProps {
   onSelectModel: (modelId: string) => Promise<void>;
   webBrowsingEnabled: boolean;
   onToggleWebBrowsing: (enabled: boolean) => void;
+  systemPrompt?: string;
+  onSystemPromptChange?: (value: string) => void;
 }
 
 export function WelcomeScreen({
@@ -75,10 +78,13 @@ export function WelcomeScreen({
   onSelectModel,
   webBrowsingEnabled,
   onToggleWebBrowsing,
+  systemPrompt = "",
+  onSystemPromptChange,
 }: WelcomeScreenProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeExampleSet, setActiveExampleSet] = useState(0);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -326,9 +332,32 @@ export function WelcomeScreen({
               className="w-40 sm:w-56 md:w-64"
               direction="down"
             />
+            {onSystemPromptChange && (
+              <button
+                type="button"
+                onClick={() => setShowSystemPrompt((value) => !value)}
+                className="btn-glass inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium transition-all"
+                title="Edit system prompt"
+              >
+                <LuSettings2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Prompt</span>
+              </button>
+            )}
             <div className="hidden text-xs text-[var(--text-muted)] md:block">Shift + Enter for new line</div>
           </div>
         </div>
+
+        {showSystemPrompt && onSystemPromptChange && (
+          <div className="border-b border-[var(--glass-border)] px-4 py-3 sm:px-6">
+            <textarea
+              value={systemPrompt}
+              onChange={(event) => onSystemPromptChange(event.target.value)}
+              placeholder="System prompt for this web run"
+              rows={4}
+              className="w-full resize-none rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-card)] px-3 py-2 text-xs leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-4 focus:ring-[#10150a]/10"
+            />
+          </div>
+        )}
 
         {activeBadges.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-4 sm:px-6 sm:pt-6 animate-in fade-in slide-in-from-bottom-2">

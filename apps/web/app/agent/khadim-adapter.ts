@@ -20,6 +20,10 @@ export interface RunConfig {
   history?: any[];
   uploadedDocumentsContext?: string;
   cwd?: string;
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  systemPrompt?: string;
   signal?: AbortSignal;
 }
 
@@ -43,6 +47,10 @@ export async function runAgent(config: RunConfig): Promise<RunResult> {
   return nativeRunAgent({
     prompt: fullPrompt,
     cwd: config.cwd,
+    provider: config.provider,
+    model: config.model,
+    apiKey: config.apiKey,
+    systemPrompt: config.systemPrompt,
     signal: config.signal,
   });
 }

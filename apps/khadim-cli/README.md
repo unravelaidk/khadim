@@ -112,7 +112,7 @@ Environment variables:
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `GEMINI_API_KEY` | Google Gemini API key |
 | `GROQ_API_KEY` | Groq API key |
-| `XAI_API_KEY` | xAI Grok API key |
+| `KHADIM_NO_UPDATE_CHECK` | Set to `1` to disable the npm update prompt |
 | ... | See [root README](../../README.md#supported-providers) for all providers |
 
 ---

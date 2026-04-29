@@ -5,6 +5,7 @@ use khadim_ai_core::tools::{Tool, ToolDefinition, ToolResult};
 use khadim_ai_core::types::{ChatMessage, Context, ToolMessage};
 use khadim_ai_core::ModelClient;
 use regex::Regex;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -1549,9 +1550,98 @@ impl Tool for DelegateTool {
 
 // ── Default tool registries ─────────────────────────────────────────────
 
+#[derive(Debug, Deserialize)]
+struct NativeToolDefinition {
+    name: String,
+    description: String,
+    parameters: Value,
+    prompt_snippet: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NativeToolRpcResponse {
+    content: String,
+    metadata: Option<Value>,
+}
+
+pub struct NativeRpcTool {
+    definition: ToolDefinition,
+    rpc_url: String,
+    token: String,
+}
+
+impl NativeRpcTool {
+    fn new(definition: ToolDefinition, rpc_url: String, token: String) -> Self {
+        Self { definition, rpc_url, token }
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for NativeRpcTool {
+    fn definition(&self) -> ToolDefinition {
+        self.definition.clone()
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
+        let url = format!("{}/tool/{}", self.rpc_url.trim_end_matches('/'), self.definition.name);
+        let response = reqwest::Client::new()
+            .post(url)
+            .bearer_auth(&self.token)
+            .json(&json!({ "input": input }))
+            .send()
+            .await
+            .map_err(|err| AppError::io(format!("Native tool RPC request failed: {err}")))?;
+
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|err| AppError::io(format!("Native tool RPC response read failed: {err}")))?;
+        if !status.is_success() {
+            return Err(AppError::io(format!("Native tool RPC failed ({status}): {text}")));
+        }
+
+        let parsed = serde_json::from_str::<NativeToolRpcResponse>(&text)
+            .map_err(|err| AppError::io(format!("Native tool RPC returned invalid JSON: {err}")))?;
+        Ok(ToolResult { content: parsed.content, metadata: parsed.metadata })
+    }
+}
+
+fn native_rpc_tools_from_env() -> Vec<Arc<dyn Tool>> {
+    let Ok(raw_tools) = std::env::var("KHADIM_NATIVE_TOOLS") else {
+        return Vec::new();
+    };
+    let Ok(rpc_url) = std::env::var("KHADIM_NATIVE_TOOL_RPC_URL") else {
+        return Vec::new();
+    };
+    let Ok(token) = std::env::var("KHADIM_NATIVE_TOOL_RPC_TOKEN") else {
+        return Vec::new();
+    };
+
+    let Ok(definitions) = serde_json::from_str::<Vec<NativeToolDefinition>>(&raw_tools) else {
+        return Vec::new();
+    };
+
+    definitions
+        .into_iter()
+        .map(|definition| {
+            Arc::new(NativeRpcTool::new(
+                ToolDefinition {
+                    prompt_snippet: definition.prompt_snippet.unwrap_or_else(|| format!("- {}: {}", definition.name, definition.description)),
+                    name: definition.name,
+                    description: definition.description,
+                    parameters: definition.parameters,
+                },
+                rpc_url.clone(),
+                token.clone(),
+            )) as Arc<dyn Tool>
+        })
+        .collect()
+}
+
 /// Full tool set for primary agents (read + write + execute).
 pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
-    vec![
+    let mut tools: Vec<Arc<dyn Tool>> = vec![
         Arc::new(ReadTool::new(root.to_path_buf())),
         Arc::new(WriteTool::new(root.to_path_buf())),
         Arc::new(EditTool::new(root.to_path_buf())),
@@ -1565,7 +1655,9 @@ pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
         Arc::new(WebFetchTool::new()),
         Arc::new(MemoryTool::new(root.to_path_buf())),
         Arc::new(DelegateTool::new(root.to_path_buf())),
-    ]
+    ];
+    tools.extend(native_rpc_tools_from_env());
+    tools
 }
 
 /// Read-only tool set for subagents (no write, edit, append, delete, or bash).

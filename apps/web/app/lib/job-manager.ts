@@ -10,6 +10,8 @@ import type { AgentJob, AgentJobStep, JobEvent, SessionStreamSnapshot } from "..
 import { and, eq } from "drizzle-orm";
 import { db, artifacts } from "./db";
 
+const SLIDE_DATA_SCRIPT_RE = /<script\s+[^>]*id=["']slide-data["'][^>]*>/i;
+
 type JobManagerState = {
   redis: Redis;
   localSubscribers: Map<string, Set<(event: JobEvent) => void>>;
@@ -88,7 +90,7 @@ async function hydrateSlideArtifact(job: AgentJob): Promise<AgentJob> {
     .where(and(eq(artifacts.chatId, job.chatId), eq(artifacts.filename, "index.html")))
     .limit(1);
 
-  if (!indexHtmlArtifact?.content?.includes('<script id="slide-data"')) {
+  if (!indexHtmlArtifact?.content || !SLIDE_DATA_SCRIPT_RE.test(indexHtmlArtifact.content)) {
     return job;
   }
 

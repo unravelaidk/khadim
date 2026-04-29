@@ -233,7 +233,7 @@ impl AppService {
 
     pub fn spawn_agent_run(&mut self, prompt: String, explicit_mode: Option<String>) {
         let selection = self.model_selection();
-        let system_prompt = self.stored_settings.system_prompt.clone();
+        let system_prompt = self.effective_settings().system_prompt;
         let session = self.session.clone();
         let worker_tx = self.worker_tx.clone();
 
@@ -370,7 +370,7 @@ impl AppService {
     /// Run the agent in batch mode (non-interactive).
     pub async fn run_batch(&self, prompt: &str, json: bool) -> Result<(), AppError> {
         let mut sess = self.session.lock().await;
-        sess.system_prompt_override = self.stored_settings.system_prompt.clone();
+        sess.system_prompt_override = self.effective_settings().system_prompt;
         if json {
             run_once_json(&mut sess, prompt, self.model_selection()).await
         } else {
