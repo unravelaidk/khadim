@@ -6,9 +6,9 @@ export default defineConfig({
   base: "/khadim",
   integrations: [
     starlight({
-      title: "Khadim Plugin SDK",
+      title: "Khadim Docs",
       description:
-        "Documentation for building Khadim plugins with the Plugin SDK and AssemblyScript examples.",
+        "Documentation for the Khadim CLI coding agent, programmatic API, and Plugin SDK.",
       social: [
         {
           icon: "github",
@@ -22,6 +22,13 @@ export default defineConfig({
           items: [
             { label: "Plugin SDK Overview", slug: "index" },
             { label: "Getting Started", slug: "getting-started" },
+          ],
+        },
+        {
+          label: "CLI",
+          items: [
+            { label: "CLI Overview", slug: "cli/overview" },
+            { label: "Programmatic API", slug: "cli/programmatic-api" },
           ],
         },
         {
