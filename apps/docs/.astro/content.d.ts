@@ -139,6 +139,14 @@ declare module 'astro:content' {
   rendered?: RenderedContent;
   filePath?: string;
 }>;
+"i18n": Record<string, {
+  id: string;
+  body?: string;
+  collection: "i18n";
+  data: any;
+  rendered?: RenderedContent;
+  filePath?: string;
+}>;
 
 	};
 
