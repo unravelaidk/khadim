@@ -81,7 +81,7 @@
     },
     "apps/khadim-cli": {
       "name": "@unravelai/khadim",
-      "version": "0.2.6",
+      "version": "0.2.9",
       "bin": {
         "khadim": "bin/khadim.js",
         "khadim-cli": "bin/khadim.js",
