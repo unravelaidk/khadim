@@ -3,13 +3,13 @@ use crate::domain::commands::{
     all_slash_commands, filter_slash_commands, CommandPickerKind, CommandPickerState, SlashCommand,
 };
 use crate::domain::events::WorkerEvent;
-use crate::domain::login::{oauth_provider_list, LoginPhase, LoginState};
+
 use crate::domain::session::{SavedSession, SessionMeta};
 use crate::domain::settings::StoredSettings;
 use crate::domain::transcript::TranscriptEntry;
 use crate::services::agent_service::{run_once, run_once_json};
 use crate::services::catalog_service::{
-    estimate_cost, format_cost, format_tokens, friendly_tool_name, has_oauth_credentials,
+    estimate_cost, format_cost, format_tokens, has_oauth_credentials,
     models_for_provider, provider_auth_status, provider_catalog,
 };
 use crate::services::oauth_service::start_oauth_login;
@@ -96,7 +96,6 @@ pub struct AppService {
     session_name: Option<String>,
 }
 
-#[allow(dead_code)]
 impl AppService {
     pub fn new(
         config: CliConfig,
@@ -361,10 +360,6 @@ impl AppService {
             return true;
         }
         false
-    }
-
-    pub const fn has_active_run(&self) -> bool {
-        self.current_run.is_some()
     }
 
     /// Run the agent in batch mode (non-interactive).
@@ -736,10 +731,6 @@ impl AppService {
         has_oauth_credentials(provider)
     }
 
-    pub fn get_env_api_key(&self, provider: &str) -> Option<String> {
-        khadim_ai_core::env_api_keys::get_env_api_key(provider)
-    }
-
     pub fn estimate_cost(
         &self,
         provider: &str,
@@ -765,27 +756,6 @@ impl AppService {
 
     pub fn format_tokens(&self, n: u64) -> String {
         format_tokens(n)
-    }
-
-    pub fn friendly_tool_name(&self, tool: &str) -> String {
-        friendly_tool_name(tool)
-    }
-
-    // ── Login state builder ────────────────────────────────────────────
-
-    pub fn build_login_state(&self) -> Option<LoginState> {
-        let providers = oauth_provider_list();
-        if providers.is_empty() {
-            return None;
-        }
-        Some(LoginState {
-            phase: LoginPhase::SelectProvider,
-            providers,
-            selected_index: 0,
-            messages: Vec::new(),
-            url: None,
-            device_code: None,
-        })
     }
 
     // ── Command picker builders ────────────────────────────────────────

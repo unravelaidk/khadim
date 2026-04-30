@@ -5,7 +5,7 @@ use crate::domain::settings::{
     is_oauth_provider, SettingsFocus, SettingsPicker, SettingsState, StoredSettings,
 };
 use crate::domain::transcript::TranscriptEntry;
-use crate::services::catalog_service::provider_auth_status;
+use crate::services::app_service::AppService;
 use crate::services::settings_service::effective_settings;
 use khadim_ai_core::env_api_keys::get_env_api_key;
 use khadim_coding_agent::events::AgentStreamEvent;
@@ -216,15 +216,16 @@ pub struct TuiApp {
 }
 
 impl TuiApp {
-    pub fn new(config: &CliConfig, settings: &StoredSettings) -> Self {
+    pub fn new(config: &CliConfig, app_service: &AppService) -> Self {
+        let settings = app_service.stored_settings();
         let eff = effective_settings(config, settings);
         let provider_id = eff.provider.as_deref().unwrap_or("(not set)");
-        let key_status = provider_auth_status(&eff, provider_id);
+        let key_status = app_service.provider_auth_status(provider_id);
 
         let mut auto_detected = Vec::new();
-        for p in crate::services::catalog_service::provider_catalog() {
+        for p in app_service.provider_catalog() {
             if get_env_api_key(&p.id).is_some()
-                || crate::services::catalog_service::has_oauth_credentials(&p.id)
+                || app_service.has_oauth_credentials(&p.id)
             {
                 auto_detected.push(p.name.clone());
             }
@@ -300,9 +301,9 @@ impl TuiApp {
         }
     }
 
-    pub fn clear(&mut self, config: &CliConfig, settings: &StoredSettings) {
+    pub fn clear(&mut self, config: &CliConfig, app_service: &AppService) {
         let history = std::mem::take(&mut self.history);
-        *self = Self::new(config, settings);
+        *self = Self::new(config, app_service);
         self.history = history;
     }
 
@@ -1381,15 +1382,21 @@ mod tests {
     }
 
     fn test_app() -> TuiApp {
+        let (worker_tx, _worker_rx) = tokio::sync::mpsc::unbounded_channel();
         let config = CliConfig {
             cwd: std::env::current_dir().unwrap(),
             prompt: None,
             provider: None,
             model: None,
             session: None,
+            system_prompt: None,
             verbose: false,
+            json: false,
+            list_providers: None,
+            list_models: None,
         };
-        TuiApp::new(&config, &StoredSettings::default())
+        let app_service = AppService::new(config.clone(), StoredSettings::default(), worker_tx);
+        TuiApp::new(&config, &app_service)
     }
 
     #[test]
@@ -1629,5 +1636,4 @@ mod tests {
         assert_eq!(app.input, "draft");
         assert_eq!(app.cursor, "draft".chars().count());
     }
-
 }
