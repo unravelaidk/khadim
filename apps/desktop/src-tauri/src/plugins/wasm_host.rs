@@ -795,8 +795,7 @@ fn register_host_functions(
                 }
 
                 // Flush to disk
-                let snapshot: HashMap<String, String> =
-                    caller.data().store.lock().unwrap().clone();
+                let snapshot: HashMap<String, String> = caller.data().store.lock().unwrap().clone();
                 match serde_json::to_string(&snapshot) {
                     Ok(json) => {
                         if let Some(parent) = store_path.parent() {
@@ -821,10 +820,7 @@ fn register_host_functions(
         .func_wrap(
             "host-store",
             "store_get",
-            move |mut caller: Caller<'_, PluginHostState>,
-                  key_ptr: i32,
-                  key_len: i32|
-                  -> i32 {
+            move |mut caller: Caller<'_, PluginHostState>, key_ptr: i32, key_len: i32| -> i32 {
                 if !store_allowed {
                     caller.data_mut().store_response_buf = b"Store permission denied".to_vec();
                     return -1;

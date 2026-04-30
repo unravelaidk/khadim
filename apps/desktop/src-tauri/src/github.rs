@@ -222,10 +222,7 @@ impl GitHubClient {
 
     // ── HTTP helpers ─────────────────────────────────────────────────
 
-    async fn api_get<T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-    ) -> Result<T, AppError> {
+    async fn api_get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, AppError> {
         let token = self.require_token()?;
         let url = format!("{GITHUB_API}{path}");
         let resp = self
@@ -241,9 +238,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         resp.json::<T>()
             .await
@@ -266,9 +261,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         resp.text()
             .await
@@ -296,9 +289,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         resp.json::<T>()
             .await
@@ -326,9 +317,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         resp.json::<T>()
             .await
@@ -351,9 +340,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         Ok(())
     }
@@ -379,9 +366,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         resp.json::<T>()
             .await
@@ -404,9 +389,7 @@ impl GitHubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::github(format!(
-                "GitHub API {status}: {body}"
-            )));
+            return Err(AppError::github(format!("GitHub API {status}: {body}")));
         }
         Ok(())
     }
@@ -567,11 +550,7 @@ impl GitHubClient {
         self.api_post(&path, &payload).await
     }
 
-    pub async fn list_labels(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<GitHubLabel>, AppError> {
+    pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<GitHubLabel>, AppError> {
         let path = format!("/repos/{owner}/{repo}/labels?per_page=100");
         self.api_get(&path).await
     }
@@ -592,12 +571,7 @@ impl GitHubClient {
         self.api_get(&path).await
     }
 
-    pub async fn get_pr(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-    ) -> Result<GitHubPR, AppError> {
+    pub async fn get_pr(&self, owner: &str, repo: &str, number: u32) -> Result<GitHubPR, AppError> {
         let path = format!("/repos/{owner}/{repo}/pulls/{number}");
         self.api_get(&path).await
     }
@@ -707,14 +681,10 @@ impl GitHubClient {
         self.api_put(&path, &payload).await
     }
 
-    pub async fn pr_diff(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-    ) -> Result<String, AppError> {
+    pub async fn pr_diff(&self, owner: &str, repo: &str, number: u32) -> Result<String, AppError> {
         let path = format!("/repos/{owner}/{repo}/pulls/{number}");
-        self.api_get_text(&path, "application/vnd.github.diff").await
+        self.api_get_text(&path, "application/vnd.github.diff")
+            .await
     }
 
     pub async fn pr_checks(
@@ -737,16 +707,12 @@ impl GitHubClient {
     ) -> Result<serde_json::Value, AppError> {
         let path = format!("/repos/{owner}/{repo}/pulls/{number}/reviews");
         let mut payload = serde_json::Map::new();
-        payload.insert(
-            "event".into(),
-            serde_json::Value::String(event.to_string()),
-        );
+        payload.insert("event".into(), serde_json::Value::String(event.to_string()));
         if let Some(b) = body {
             payload.insert("body".into(), serde_json::Value::String(b.to_string()));
         }
         self.api_post(&path, &payload).await
     }
-
 }
 
 // ── gh CLI detection ─────────────────────────────────────────────────
@@ -880,9 +846,7 @@ pub async fn github_auth_login() -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub async fn github_auth_logout(
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), AppError> {
+pub async fn github_auth_logout(state: State<'_, Arc<AppState>>) -> Result<(), AppError> {
     use std::process::Command;
 
     // Clear our cached token
@@ -989,7 +953,16 @@ pub async fn github_issue_close(
 ) -> Result<GitHubIssue, AppError> {
     state
         .github
-        .edit_issue(&owner, &repo, number, None, None, Some("closed"), None, None)
+        .edit_issue(
+            &owner,
+            &repo,
+            number,
+            None,
+            None,
+            Some("closed"),
+            None,
+            None,
+        )
         .await
 }
 
@@ -1031,7 +1004,13 @@ pub async fn github_issue_comments(
 ) -> Result<Vec<GitHubComment>, AppError> {
     state
         .github
-        .list_issue_comments(&owner, &repo, number, page.unwrap_or(1), per_page.unwrap_or(30))
+        .list_issue_comments(
+            &owner,
+            &repo,
+            number,
+            page.unwrap_or(1),
+            per_page.unwrap_or(30),
+        )
         .await
 }
 
@@ -1159,7 +1138,13 @@ pub async fn github_pr_comments(
 ) -> Result<Vec<GitHubComment>, AppError> {
     state
         .github
-        .list_pr_comments(&owner, &repo, number, page.unwrap_or(1), per_page.unwrap_or(30))
+        .list_pr_comments(
+            &owner,
+            &repo,
+            number,
+            page.unwrap_or(1),
+            per_page.unwrap_or(30),
+        )
         .await
 }
 
@@ -1258,9 +1243,7 @@ pub async fn github_create_and_push(
     }
 
     // 2. Ensure gh credential helper is configured so git can push
-    let _ = Command::new("gh")
-        .args(["auth", "setup-git"])
-        .output();
+    let _ = Command::new("gh").args(["auth", "setup-git"]).output();
 
     // 3. Build the `gh repo create` command (create only, no --push)
     let mut cmd = Command::new("gh");

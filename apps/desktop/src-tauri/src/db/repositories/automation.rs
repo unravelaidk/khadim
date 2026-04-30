@@ -1,9 +1,13 @@
 use crate::db::context::{decode_json, encode_json, now, DbContext};
 use crate::db::entities::{
-    agent_health_snapshots, agent_runs, approval_requests, credentials, environments, managed_agents,
-    memory_entries, memory_store_agents, memory_stores, queue_items, queues, schedules,
+    agent_health_snapshots, agent_runs, approval_requests, credentials, environments,
+    managed_agents, memory_entries, memory_store_agents, memory_stores, queue_items, queues,
+    schedules,
 };
-use crate::db::{AgentHealthSnapshot, AgentSchedule, ApprovalRequestRecord, CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry, MemoryStore, QueueDefinition, QueueItem};
+use crate::db::{
+    AgentHealthSnapshot, AgentSchedule, ApprovalRequestRecord, CredentialRecord,
+    EnvironmentProfile, ManagedAgent, MemoryEntry, MemoryStore, QueueDefinition, QueueItem,
+};
 use crate::error::AppError;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
@@ -78,10 +82,19 @@ pub(crate) struct AutomationRepository {
 
 fn agent_to_domain(model: managed_agents::Model, runs: &[agent_runs::Model]) -> ManagedAgent {
     let model_id = model.id.clone();
-    let related_runs: Vec<&agent_runs::Model> = runs.iter().filter(|r| r.agent_id.as_deref() == Some(model_id.as_str())).collect();
+    let related_runs: Vec<&agent_runs::Model> = runs
+        .iter()
+        .filter(|r| r.agent_id.as_deref() == Some(model_id.as_str()))
+        .collect();
     let total_sessions = related_runs.len() as i64;
-    let completed_sessions = related_runs.iter().filter(|r| r.status == "completed").count() as i64;
-    let last_run_at = related_runs.iter().filter_map(|r| r.finished_at.clone()).max();
+    let completed_sessions = related_runs
+        .iter()
+        .filter(|r| r.status == "completed")
+        .count() as i64;
+    let last_run_at = related_runs
+        .iter()
+        .filter_map(|r| r.finished_at.clone())
+        .max();
     ManagedAgent {
         id: model.id,
         name: model.name,
@@ -103,7 +116,11 @@ fn agent_to_domain(model: managed_agents::Model, runs: &[agent_runs::Model]) -> 
         variables: serde_json::from_str(&model.variables_json).unwrap_or_default(),
         version: model.version,
         total_sessions,
-        success_rate: if total_sessions == 0 { 0.0 } else { completed_sessions as f64 / total_sessions as f64 },
+        success_rate: if total_sessions == 0 {
+            0.0
+        } else {
+            completed_sessions as f64 / total_sessions as f64
+        },
         last_run_at,
         created_at: model.created_at,
         updated_at: model.updated_at,
@@ -199,7 +216,9 @@ fn approval_request_to_domain(model: approval_requests::Model) -> ApprovalReques
 }
 
 impl AutomationRepository {
-    pub(crate) fn new(ctx: Arc<DbContext>) -> Self { Self { ctx } }
+    pub(crate) fn new(ctx: Arc<DbContext>) -> Self {
+        Self { ctx }
+    }
 
     pub(crate) fn list_managed_agents(&self) -> Result<Vec<ManagedAgent>, AppError> {
         let conn = self.ctx.conn();
@@ -209,7 +228,10 @@ impl AutomationRepository {
                 .all(&conn)
                 .await?;
             let runs = agent_runs::Entity::find().all(&conn).await?;
-            Ok(agents.into_iter().map(|agent| agent_to_domain(agent, &runs)).collect())
+            Ok(agents
+                .into_iter()
+                .map(|agent| agent_to_domain(agent, &runs))
+                .collect())
         })
     }
 
@@ -316,7 +338,9 @@ impl AutomationRepository {
         let conn = self.ctx.conn();
         let schedule = schedule.clone();
         self.ctx.run(async move {
-            let existing = schedules::Entity::find_by_id(schedule.id.clone()).one(&conn).await?;
+            let existing = schedules::Entity::find_by_id(schedule.id.clone())
+                .one(&conn)
+                .await?;
             if let Some(existing) = existing {
                 let mut active: schedules::ActiveModel = existing.into();
                 active.agent_id = Set(schedule.agent_id.clone());
@@ -360,7 +384,14 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn update_agent_schedule_runtime(&self, schedule_id: &str, next_run_at: Option<&str>, last_run_at: Option<&str>, last_outcome: Option<&str>, updated_at: &str) -> Result<(), AppError> {
+    pub(crate) fn update_agent_schedule_runtime(
+        &self,
+        schedule_id: &str,
+        next_run_at: Option<&str>,
+        last_run_at: Option<&str>,
+        last_outcome: Option<&str>,
+        updated_at: &str,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let schedule_id = schedule_id.to_string();
         let next_run_at = next_run_at.map(ToOwned::to_owned);
@@ -385,7 +416,10 @@ impl AutomationRepository {
     pub(crate) fn list_queues(&self) -> Result<Vec<QueueDefinition>, AppError> {
         let conn = self.ctx.conn();
         self.ctx.run(async move {
-            let rows = queues::Entity::find().order_by_desc(queues::Column::UpdatedAt).all(&conn).await?;
+            let rows = queues::Entity::find()
+                .order_by_desc(queues::Column::UpdatedAt)
+                .all(&conn)
+                .await?;
             Ok(rows.into_iter().map(queue_to_domain).collect())
         })
     }
@@ -446,7 +480,11 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn find_next_ready_queue_item(&self, queue_id: &str, visible_before: &str) -> Result<Option<QueueItem>, AppError> {
+    pub(crate) fn find_next_ready_queue_item(
+        &self,
+        queue_id: &str,
+        visible_before: &str,
+    ) -> Result<Option<QueueItem>, AppError> {
         let conn = self.ctx.conn();
         let queue_id = queue_id.to_string();
         let visible_before = visible_before.to_string();
@@ -516,7 +554,10 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn list_agent_health_snapshots(&self, agent_id: &str) -> Result<Vec<AgentHealthSnapshot>, AppError> {
+    pub(crate) fn list_agent_health_snapshots(
+        &self,
+        agent_id: &str,
+    ) -> Result<Vec<AgentHealthSnapshot>, AppError> {
         let conn = self.ctx.conn();
         let agent_id = agent_id.to_string();
         self.ctx.run(async move {
@@ -529,7 +570,10 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn create_agent_health_snapshot(&self, snapshot: &AgentHealthSnapshot) -> Result<(), AppError> {
+    pub(crate) fn create_agent_health_snapshot(
+        &self,
+        snapshot: &AgentHealthSnapshot,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let snapshot = snapshot.clone();
         self.ctx.run(async move {
@@ -547,7 +591,10 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn list_approval_requests(&self, run_id: &str) -> Result<Vec<ApprovalRequestRecord>, AppError> {
+    pub(crate) fn list_approval_requests(
+        &self,
+        run_id: &str,
+    ) -> Result<Vec<ApprovalRequestRecord>, AppError> {
         let conn = self.ctx.conn();
         let run_id = run_id.to_string();
         self.ctx.run(async move {
@@ -560,7 +607,10 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn create_approval_request(&self, request: &ApprovalRequestRecord) -> Result<(), AppError> {
+    pub(crate) fn create_approval_request(
+        &self,
+        request: &ApprovalRequestRecord,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let request = request.clone();
         self.ctx.run(async move {
@@ -644,7 +694,10 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn create_environment(&self, environment: &EnvironmentProfile) -> Result<(), AppError> {
+    pub(crate) fn create_environment(
+        &self,
+        environment: &EnvironmentProfile,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         self.ctx.run(async move {
             if environment.is_default {
@@ -677,7 +730,10 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn update_environment(&self, environment: &EnvironmentProfile) -> Result<(), AppError> {
+    pub(crate) fn update_environment(
+        &self,
+        environment: &EnvironmentProfile,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let id = environment.id.clone();
         self.ctx.run(async move {
@@ -747,7 +803,13 @@ impl AutomationRepository {
             let environment_models = environments::Entity::find().all(&conn).await?;
             let environment_creds: HashMap<String, Vec<String>> = environment_models
                 .into_iter()
-                .map(|e| (e.id, serde_json::from_str::<Vec<String>>(&e.credential_ids_json).unwrap_or_default()))
+                .map(|e| {
+                    (
+                        e.id,
+                        serde_json::from_str::<Vec<String>>(&e.credential_ids_json)
+                            .unwrap_or_default(),
+                    )
+                })
                 .collect();
             Ok(credential_models
                 .into_iter()
@@ -793,7 +855,11 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn create_credential(&self, credential: &CredentialRecord, secret: Option<&str>) -> Result<(), AppError> {
+    pub(crate) fn create_credential(
+        &self,
+        credential: &CredentialRecord,
+        secret: Option<&str>,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let secret = secret.map(ToOwned::to_owned);
         self.ctx.run(async move {
@@ -814,7 +880,11 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn update_credential(&self, credential: &CredentialRecord, secret: Option<&str>) -> Result<(), AppError> {
+    pub(crate) fn update_credential(
+        &self,
+        credential: &CredentialRecord,
+        secret: Option<&str>,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let id = credential.id.clone();
         let secret = secret.map(ToOwned::to_owned);
@@ -845,7 +915,8 @@ impl AutomationRepository {
         self.ctx.run(async move {
             let env_models = environments::Entity::find().all(&conn).await?;
             for env in env_models {
-                let mut creds = serde_json::from_str::<Vec<String>>(&env.credential_ids_json).unwrap_or_default();
+                let mut creds = serde_json::from_str::<Vec<String>>(&env.credential_ids_json)
+                    .unwrap_or_default();
                 if creds.iter().any(|cred_id| cred_id == &id) {
                     creds.retain(|cred_id| cred_id != &id);
                     let mut active: environments::ActiveModel = env.into();
@@ -865,30 +936,42 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn list_memory_stores(&self, workspace_id: Option<&str>) -> Result<Vec<MemoryStore>, AppError> {
+    pub(crate) fn list_memory_stores(
+        &self,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<MemoryStore>, AppError> {
         let conn = self.ctx.conn();
         let workspace_id = workspace_id.map(ToOwned::to_owned);
         self.ctx.run(async move {
-            let mut stores_query = memory_stores::Entity::find().order_by_desc(memory_stores::Column::UpdatedAt);
+            let mut stores_query =
+                memory_stores::Entity::find().order_by_desc(memory_stores::Column::UpdatedAt);
             if let Some(workspace_id) = workspace_id.as_ref() {
-                stores_query = stores_query.filter(memory_stores::Column::WorkspaceId.eq(workspace_id.clone()));
+                stores_query = stores_query
+                    .filter(memory_stores::Column::WorkspaceId.eq(workspace_id.clone()));
             }
             let stores = stores_query.all(&conn).await?;
             let agents = managed_agents::Entity::find().all(&conn).await?;
             let links = memory_store_agents::Entity::find().all(&conn).await?;
             let entries = memory_entries::Entity::find().all(&conn).await?;
-            let agent_names: HashMap<String, String> = agents.into_iter().map(|a| (a.id, a.name)).collect();
+            let agent_names: HashMap<String, String> =
+                agents.into_iter().map(|a| (a.id, a.name)).collect();
             Ok(stores
                 .into_iter()
                 .map(|store| {
-                    let entry_count = entries.iter().filter(|entry| entry.store_id == store.id).count() as i64;
+                    let entry_count = entries
+                        .iter()
+                        .filter(|entry| entry.store_id == store.id)
+                        .count() as i64;
                     memory_store_to_domain(store, &links, &agent_names, entry_count)
                 })
                 .collect())
         })
     }
 
-    pub(crate) fn list_agent_memory_stores(&self, agent_id: &str) -> Result<Vec<MemoryStore>, AppError> {
+    pub(crate) fn list_agent_memory_stores(
+        &self,
+        agent_id: &str,
+    ) -> Result<Vec<MemoryStore>, AppError> {
         let conn = self.ctx.conn();
         let agent_id = agent_id.to_string();
         self.ctx.run(async move {
@@ -896,7 +979,10 @@ impl AutomationRepository {
                 .filter(memory_store_agents::Column::AgentId.eq(agent_id.clone()))
                 .all(&conn)
                 .await?;
-            let store_ids = links.iter().map(|link| link.store_id.clone()).collect::<Vec<_>>();
+            let store_ids = links
+                .iter()
+                .map(|link| link.store_id.clone())
+                .collect::<Vec<_>>();
             let stores = memory_stores::Entity::find().all(&conn).await?;
             let filtered_stores = stores
                 .into_iter()
@@ -905,12 +991,16 @@ impl AutomationRepository {
             let agents = managed_agents::Entity::find().all(&conn).await?;
             let all_links = memory_store_agents::Entity::find().all(&conn).await?;
             let entries = memory_entries::Entity::find().all(&conn).await?;
-            let agent_names: HashMap<String, String> = agents.into_iter().map(|a| (a.id, a.name)).collect();
+            let agent_names: HashMap<String, String> =
+                agents.into_iter().map(|a| (a.id, a.name)).collect();
 
             Ok(filtered_stores
                 .into_iter()
                 .map(|store| {
-                    let entry_count = entries.iter().filter(|entry| entry.store_id == store.id).count() as i64;
+                    let entry_count = entries
+                        .iter()
+                        .filter(|entry| entry.store_id == store.id)
+                        .count() as i64;
                     memory_store_to_domain(store, &all_links, &agent_names, entry_count)
                 })
                 .collect())
@@ -955,7 +1045,10 @@ impl AutomationRepository {
         Ok(store)
     }
 
-    pub(crate) fn get_or_create_chat_memory_store(&self, workspace_id: Option<&str>) -> Result<MemoryStore, AppError> {
+    pub(crate) fn get_or_create_chat_memory_store(
+        &self,
+        workspace_id: Option<&str>,
+    ) -> Result<MemoryStore, AppError> {
         let conn = self.ctx.conn();
         let workspace_id = workspace_id.map(ToOwned::to_owned);
         self.ctx.run(async move {
@@ -964,7 +1057,9 @@ impl AutomationRepository {
                 .order_by_asc(memory_stores::Column::CreatedAt);
 
             query = match workspace_id.as_ref() {
-                Some(workspace_id) => query.filter(memory_stores::Column::WorkspaceId.eq(workspace_id.clone())),
+                Some(workspace_id) => {
+                    query.filter(memory_stores::Column::WorkspaceId.eq(workspace_id.clone()))
+                }
                 None => query.filter(memory_stores::Column::WorkspaceId.is_null()),
             };
 
@@ -1015,7 +1110,9 @@ impl AutomationRepository {
                 memory_stores::Entity::find_by_id(id)
                     .one(&conn)
                     .await?
-                    .ok_or_else(|| AppError::not_found("Chat memory store was not created".to_string()))?
+                    .ok_or_else(|| {
+                        AppError::not_found("Chat memory store was not created".to_string())
+                    })?
             };
 
             let agents = managed_agents::Entity::find().all(&conn).await?;
@@ -1024,8 +1121,14 @@ impl AutomationRepository {
                 .filter(memory_entries::Column::StoreId.eq(store.id.clone()))
                 .count(&conn)
                 .await? as i64;
-            let agent_names: HashMap<String, String> = agents.into_iter().map(|a| (a.id, a.name)).collect();
-            Ok(memory_store_to_domain(store, &links, &agent_names, entry_count))
+            let agent_names: HashMap<String, String> =
+                agents.into_iter().map(|a| (a.id, a.name)).collect();
+            Ok(memory_store_to_domain(
+                store,
+                &links,
+                &agent_names,
+                entry_count,
+            ))
         })
     }
 
@@ -1050,7 +1153,13 @@ impl AutomationRepository {
                 memory_store_agents::Entity::insert(memory_store_agents::ActiveModel {
                     store_id: Set(store.id.clone()),
                     agent_id: Set(agent_id.clone()),
-                    is_primary_write_target: Set(if primary_agent_ids.iter().any(|id| id == &agent_id) { 1 } else { 0 }),
+                    is_primary_write_target: Set(
+                        if primary_agent_ids.iter().any(|id| id == &agent_id) {
+                            1
+                        } else {
+                            0
+                        },
+                    ),
                     created_at: Set(store.created_at.clone()),
                 })
                 .exec(&conn)
@@ -1086,7 +1195,17 @@ impl AutomationRepository {
                 memory_store_agents::Entity::insert(memory_store_agents::ActiveModel {
                     store_id: Set(id.clone()),
                     agent_id: Set(agent_id.clone()),
-                    is_primary_write_target: Set(if store.primary_for_agent_ids.iter().any(|value| value == agent_id) { 1 } else { 0 }),
+                    is_primary_write_target: Set(
+                        if store
+                            .primary_for_agent_ids
+                            .iter()
+                            .any(|value| value == agent_id)
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    ),
                     created_at: Set(store.updated_at.clone()),
                 })
                 .exec(&conn)
@@ -1119,7 +1238,12 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn link_memory_store_to_agent(&self, store_id: &str, agent_id: &str, is_primary_write_target: bool) -> Result<(), AppError> {
+    pub(crate) fn link_memory_store_to_agent(
+        &self,
+        store_id: &str,
+        agent_id: &str,
+        is_primary_write_target: bool,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let store_id = store_id.to_string();
         let agent_id = agent_id.to_string();
@@ -1154,7 +1278,11 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn unlink_memory_store_from_agent(&self, store_id: &str, agent_id: &str) -> Result<(), AppError> {
+    pub(crate) fn unlink_memory_store_from_agent(
+        &self,
+        store_id: &str,
+        agent_id: &str,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let store_id = store_id.to_string();
         let agent_id = agent_id.to_string();
@@ -1168,7 +1296,11 @@ impl AutomationRepository {
         })
     }
 
-    pub(crate) fn set_agent_primary_memory_store(&self, store_id: &str, agent_id: &str) -> Result<(), AppError> {
+    pub(crate) fn set_agent_primary_memory_store(
+        &self,
+        store_id: &str,
+        agent_id: &str,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let store_id = store_id.to_string();
         let agent_id = agent_id.to_string();
@@ -1196,10 +1328,7 @@ impl AutomationRepository {
                 .order_by_desc(memory_entries::Column::UpdatedAt)
                 .all(&conn)
                 .await?;
-            Ok(models
-                .into_iter()
-                .map(memory_entry_to_domain)
-                .collect())
+            Ok(models.into_iter().map(memory_entry_to_domain).collect())
         })
     }
 
@@ -1226,7 +1355,10 @@ impl AutomationRepository {
             })
             .exec(&conn)
             .await?;
-            if let Some(store) = memory_stores::Entity::find_by_id(store_id).one(&conn).await? {
+            if let Some(store) = memory_stores::Entity::find_by_id(store_id)
+                .one(&conn)
+                .await?
+            {
                 let mut active: memory_stores::ActiveModel = store.into();
                 active.updated_at = Set(updated_at);
                 active.update(&conn).await?;

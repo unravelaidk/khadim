@@ -1,7 +1,7 @@
 use crate::agent_runner::helpers::now;
 use crate::db::{
-    AgentRun, AgentRunTurn, ArtifactPolicy, BudgetPolicy, CredentialRecord, EnvironmentProfile, ManagedAgent, MemoryEntry,
-    MemoryStore,
+    AgentRun, AgentRunTurn, ArtifactPolicy, BudgetPolicy, CredentialRecord, EnvironmentProfile,
+    ManagedAgent, MemoryEntry, MemoryStore,
 };
 use crate::error::AppError;
 use crate::AppState;
@@ -163,7 +163,9 @@ pub(crate) fn create_managed_agent(
         budget_policy: input
             .budget_policy
             .unwrap_or_else(|| default_budget_policy(input.max_tokens)),
-        artifact_policy: input.artifact_policy.unwrap_or_else(default_artifact_policy),
+        artifact_policy: input
+            .artifact_policy
+            .unwrap_or_else(default_artifact_policy),
         variables: input.variables.unwrap_or_default(),
         version: 1,
         total_sessions: 0,
@@ -177,7 +179,11 @@ pub(crate) fn create_managed_agent(
     let agent_for_sync = agent.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = scheduler.sync_agent(app, &agent_for_sync).await {
-            log::error!("Failed to sync schedule for agent {}: {}", agent_for_sync.id, error.message);
+            log::error!(
+                "Failed to sync schedule for agent {}: {}",
+                agent_for_sync.id,
+                error.message
+            );
         }
     });
     Ok(agent)
@@ -234,7 +240,11 @@ pub(crate) fn update_managed_agent(
     let agent_for_sync = updated.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = scheduler.sync_agent(app, &agent_for_sync).await {
-            log::error!("Failed to sync schedule for agent {}: {}", agent_for_sync.id, error.message);
+            log::error!(
+                "Failed to sync schedule for agent {}: {}",
+                agent_for_sync.id,
+                error.message
+            );
         }
     });
     Ok(updated)
@@ -249,7 +259,11 @@ pub(crate) fn delete_managed_agent(
     let scheduler = state.scheduler_service.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = scheduler.remove_agent(&id).await {
-            log::error!("Failed to remove schedule for agent {}: {}", id, error.message);
+            log::error!(
+                "Failed to remove schedule for agent {}: {}",
+                id,
+                error.message
+            );
         }
     });
     Ok(())
@@ -451,7 +465,9 @@ pub(crate) fn get_or_create_chat_memory_store(
     state: State<'_, Arc<AppState>>,
     workspace_id: Option<String>,
 ) -> Result<MemoryStore, AppError> {
-    state.db.get_or_create_chat_memory_store(workspace_id.as_deref())
+    state
+        .db
+        .get_or_create_chat_memory_store(workspace_id.as_deref())
 }
 
 #[tauri::command]
@@ -496,7 +512,9 @@ pub(crate) fn update_memory_store(
         .ok_or_else(|| AppError::not_found(format!("Memory store {id} not found")))?;
     let scope_type = input.scope_type.unwrap_or(existing.scope_type.clone());
     validate_memory_scope_type(&scope_type)?;
-    let chat_read_access = input.chat_read_access.unwrap_or(existing.chat_read_access.clone());
+    let chat_read_access = input
+        .chat_read_access
+        .unwrap_or(existing.chat_read_access.clone());
     validate_chat_read_access(&chat_read_access)?;
     let store = MemoryStore {
         id,
@@ -507,7 +525,9 @@ pub(crate) fn update_memory_store(
         chat_read_access,
         linked_agent_ids: input.linked_agent_ids.unwrap_or(existing.linked_agent_ids),
         linked_agent_names: existing.linked_agent_names,
-        primary_for_agent_ids: input.primary_for_agent_ids.unwrap_or(existing.primary_for_agent_ids),
+        primary_for_agent_ids: input
+            .primary_for_agent_ids
+            .unwrap_or(existing.primary_for_agent_ids),
         entry_count: existing.entry_count,
         created_at: existing.created_at,
         updated_at: now(),
@@ -531,7 +551,11 @@ pub(crate) fn link_memory_store_to_agent(
     agent_id: String,
     is_primary_write_target: Option<bool>,
 ) -> Result<(), AppError> {
-    state.db.link_memory_store_to_agent(&store_id, &agent_id, is_primary_write_target.unwrap_or(false))
+    state.db.link_memory_store_to_agent(
+        &store_id,
+        &agent_id,
+        is_primary_write_target.unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -540,7 +564,9 @@ pub(crate) fn unlink_memory_store_from_agent(
     store_id: String,
     agent_id: String,
 ) -> Result<(), AppError> {
-    state.db.unlink_memory_store_from_agent(&store_id, &agent_id)
+    state
+        .db
+        .unlink_memory_store_from_agent(&store_id, &agent_id)
 }
 
 #[tauri::command]
@@ -549,7 +575,9 @@ pub(crate) fn set_agent_primary_memory_store(
     store_id: String,
     agent_id: String,
 ) -> Result<(), AppError> {
-    state.db.set_agent_primary_memory_store(&store_id, &agent_id)
+    state
+        .db
+        .set_agent_primary_memory_store(&store_id, &agent_id)
 }
 
 #[tauri::command]
@@ -606,7 +634,9 @@ pub(crate) fn update_memory_entry(
         content: input.content.trim().to_string(),
         kind: input.kind.unwrap_or(existing.kind),
         source_session_id: input.source_session_id.or(existing.source_session_id),
-        source_conversation_id: input.source_conversation_id.or(existing.source_conversation_id),
+        source_conversation_id: input
+            .source_conversation_id
+            .or(existing.source_conversation_id),
         source_message_id: input.source_message_id.or(existing.source_message_id),
         confidence: input.confidence.unwrap_or(existing.confidence),
         recall_count: existing.recall_count,

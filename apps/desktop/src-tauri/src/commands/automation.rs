@@ -1,6 +1,6 @@
 use crate::db::{
-    AgentHealthSnapshot, AgentSchedule, ApprovalRequestRecord, ArtifactRecord,
-    BudgetLedgerEntry, QueueDefinition, QueueItem, RunEvent,
+    AgentHealthSnapshot, AgentSchedule, ApprovalRequestRecord, ArtifactRecord, BudgetLedgerEntry,
+    QueueDefinition, QueueItem, RunEvent,
 };
 use crate::error::AppError;
 use crate::AppState;

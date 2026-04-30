@@ -87,14 +87,16 @@ impl ClaudeCodeManager {
             .unwrap()
             .get(session_id)
             .cloned()
-            .ok_or_else(|| AppError::not_found(format!("Claude Code session not found: {session_id}")))
+            .ok_or_else(|| {
+                AppError::not_found(format!("Claude Code session not found: {session_id}"))
+            })
     }
 
     pub fn mark_started(&self, session_id: &str) -> Result<(), AppError> {
         let mut sessions = self.sessions.lock().unwrap();
-        let session = sessions
-            .get_mut(session_id)
-            .ok_or_else(|| AppError::not_found(format!("Claude Code session not found: {session_id}")))?;
+        let session = sessions.get_mut(session_id).ok_or_else(|| {
+            AppError::not_found(format!("Claude Code session not found: {session_id}"))
+        })?;
         session.started = true;
         Ok(())
     }
@@ -182,7 +184,11 @@ impl ClaudeCodeManager {
                 })
                 .to_string(),
             )
-            .map_err(|_| AppError::backend_busy("Claude Code run is no longer accepting permission responses"))
+            .map_err(|_| {
+                AppError::backend_busy(
+                    "Claude Code run is no longer accepting permission responses",
+                )
+            })
     }
 
     pub fn list_models(&self) -> Vec<OpenCodeModelOption> {

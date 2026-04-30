@@ -93,15 +93,13 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
                 json = true;
             }
             "--providers" => {
-                let value = args
-                    .next()
-                    .unwrap_or_else(|| "json".to_string());
+                let value = args.next().unwrap_or_else(|| "json".to_string());
                 list_providers = Some(value);
             }
             "--models" => {
-                let value = args
-                    .next()
-                    .ok_or_else(|| AppError::invalid_input("--models requires a provider argument"))?;
+                let value = args.next().ok_or_else(|| {
+                    AppError::invalid_input("--models requires a provider argument")
+                })?;
                 list_models = Some(value);
             }
             "--verbose" => {

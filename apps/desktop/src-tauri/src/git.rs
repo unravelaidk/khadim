@@ -156,7 +156,11 @@ fn default_worktree_path(repo_path: &str, branch: &str) -> String {
         .unwrap_or("repo");
     let repo_parent = repo.parent().unwrap_or(repo);
     let sanitized_branch = sanitize_worktree_segment(branch);
-    let branch_segment = if sanitized_branch.is_empty() { "worktree" } else { &sanitized_branch };
+    let branch_segment = if sanitized_branch.is_empty() {
+        "worktree"
+    } else {
+        &sanitized_branch
+    };
 
     repo_parent
         .join(".khadim-worktrees")
@@ -200,23 +204,40 @@ pub fn create_worktree(
         .unwrap_or_else(|| default_worktree_path(repo_path, branch));
 
     if let Some(parent) = std::path::Path::new(&resolved_worktree_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::io(format!("Failed to create worktree parent directory: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AppError::io(format!("Failed to create worktree parent directory: {e}"))
+        })?;
     }
 
     if new_branch {
         if let Some(base_branch) = base_branch.filter(|value| !value.trim().is_empty()) {
             run_git(
                 repo_path,
-                &["worktree", "add", "-b", branch, &resolved_worktree_path, base_branch],
+                &[
+                    "worktree",
+                    "add",
+                    "-b",
+                    branch,
+                    &resolved_worktree_path,
+                    base_branch,
+                ],
             )?;
         } else {
-            run_git(repo_path, &["worktree", "add", "-b", branch, &resolved_worktree_path])?;
+            run_git(
+                repo_path,
+                &["worktree", "add", "-b", branch, &resolved_worktree_path],
+            )?;
         }
     } else {
         run_git(
             repo_path,
-            &["worktree", "add", "--force", &resolved_worktree_path, branch],
+            &[
+                "worktree",
+                "add",
+                "--force",
+                &resolved_worktree_path,
+                branch,
+            ],
         )?;
     }
 
@@ -271,7 +292,9 @@ pub fn list_branches(repo_path: &str) -> Result<Vec<BranchInfo>, AppError> {
             let is_remote = name.starts_with("origin/");
 
             branches.push(BranchInfo {
-                worktree_path: (!is_remote).then(|| worktree_map.get(&name).cloned()).flatten(),
+                worktree_path: (!is_remote)
+                    .then(|| worktree_map.get(&name).cloned())
+                    .flatten(),
                 name,
                 is_current,
                 is_remote,

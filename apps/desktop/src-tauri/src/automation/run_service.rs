@@ -1,7 +1,7 @@
 use crate::agent_runner;
-use crate::automation::{ApprovalDecision, ApprovalService};
 use crate::automation::BudgetService;
 use crate::automation::HealthService;
+use crate::automation::{ApprovalDecision, ApprovalService};
 use crate::automation::{QueueFailureOutcome, QueueService};
 use crate::db::{AgentRun, Database, ManagedAgent, RunEvent};
 use crate::error::AppError;
@@ -62,7 +62,10 @@ impl RunService {
         let agent = self.find_agent(&agent_id)?;
         let trigger = trigger.unwrap_or_else(|| "manual".to_string());
         let pending_run = agent_runner::create_run_record(&self.db, &agent, &trigger)?;
-        match self.approval_service.evaluate_run_start(&agent, &pending_run.id, &trigger)? {
+        match self
+            .approval_service
+            .evaluate_run_start(&agent, &pending_run.id, &trigger)?
+        {
             ApprovalDecision::Approved(request) => {
                 self.record_event(
                     &pending_run.id,
@@ -99,7 +102,9 @@ impl RunService {
                     None,
                 )?;
                 let _ = self.health_service.refresh_agent(&agent);
-                return Err(AppError::invalid_input("Run requires explicit approval before execution"));
+                return Err(AppError::invalid_input(
+                    "Run requires explicit approval before execution",
+                ));
             }
         }
         if let Err(error) = self.budget_service.admit_run(&agent) {
@@ -149,14 +154,8 @@ impl RunService {
         let handle = tokio::spawn(async move {
             match runner_type.as_str() {
                 "docker" => {
-                    agent_runner::docker::execute_docker_run(
-                        app,
-                        db,
-                        agent_clone,
-                        run_clone,
-                        env,
-                    )
-                    .await;
+                    agent_runner::docker::execute_docker_run(app, db, agent_clone, run_clone, env)
+                        .await;
                 }
                 _ => {
                     agent_runner::local::execute_local_run(
@@ -188,7 +187,10 @@ impl RunService {
     ) -> Result<Option<AgentRun>, AppError> {
         let agent = self.find_agent(&agent_id)?;
         let pending_run = agent_runner::create_run_record(&self.db, &agent, "queue")?;
-        match self.approval_service.evaluate_run_start(&agent, &pending_run.id, "queue")? {
+        match self
+            .approval_service
+            .evaluate_run_start(&agent, &pending_run.id, "queue")?
+        {
             ApprovalDecision::Approved(request) => {
                 self.record_event(
                     &pending_run.id,
@@ -225,7 +227,9 @@ impl RunService {
                     None,
                 )?;
                 let _ = self.health_service.refresh_agent(&agent);
-                return Err(AppError::invalid_input("Queue-backed run requires explicit approval before execution"));
+                return Err(AppError::invalid_input(
+                    "Queue-backed run requires explicit approval before execution",
+                ));
             }
         }
         if let Err(error) = self.budget_service.admit_run(&agent) {
@@ -241,7 +245,10 @@ impl RunService {
             return Err(error);
         }
         let placeholder_run = pending_run;
-        let claimed = match self.queue_service.claim_next(&queue_id, &placeholder_run.id)? {
+        let claimed = match self
+            .queue_service
+            .claim_next(&queue_id, &placeholder_run.id)?
+        {
             Some(item) => item,
             None => {
                 self.db.update_agent_run_status(
@@ -270,7 +277,8 @@ impl RunService {
             Some(json!({ "queue_id": queue_id, "queue_item_id": claimed.id })),
         )?;
 
-        self.budget_service.record_run_started(&agent, &placeholder_run.id)?;
+        self.budget_service
+            .record_run_started(&agent, &placeholder_run.id)?;
         let env = agent_runner::resolve_environment(&self.db, &agent)?;
         let run_clone = placeholder_run.clone();
         let agent_clone = agent.clone();
@@ -288,10 +296,22 @@ impl RunService {
         let handle = tokio::spawn(async move {
             match runner_type.as_str() {
                 "docker" => {
-                    agent_runner::docker::execute_docker_run(app, db, agent_clone, run_clone, env).await;
+                    agent_runner::docker::execute_docker_run(app, db, agent_clone, run_clone, env)
+                        .await;
                 }
                 _ => {
-                    agent_runner::local::execute_local_run(app, db, khadim, agent_clone, run_clone, env, plugins, skills, integrations).await;
+                    agent_runner::local::execute_local_run(
+                        app,
+                        db,
+                        khadim,
+                        agent_clone,
+                        run_clone,
+                        env,
+                        plugins,
+                        skills,
+                        integrations,
+                    )
+                    .await;
                 }
             }
             service.finalize_run(&run_id, &agent_for_budget, Some(queue_item_id));
@@ -364,7 +384,11 @@ impl RunService {
             match self.db.get_agent_run(run_id) {
                 Ok(run) if run.status == "completed" => {
                     if let Err(error) = self.queue_service.complete(&queue_item_id) {
-                        log::warn!("Failed to mark queue item {} completed: {}", queue_item_id, error.message);
+                        log::warn!(
+                            "Failed to mark queue item {} completed: {}",
+                            queue_item_id,
+                            error.message
+                        );
                     }
                     let _ = self.record_event(
                         run_id,
@@ -378,7 +402,12 @@ impl RunService {
                     );
                 }
                 Ok(run) => {
-                    match self.queue_service.fail(&queue_item_id, run.error_message.as_deref().unwrap_or("Queue-backed run failed")) {
+                    match self.queue_service.fail(
+                        &queue_item_id,
+                        run.error_message
+                            .as_deref()
+                            .unwrap_or("Queue-backed run failed"),
+                    ) {
                         Ok(QueueFailureOutcome::Retried(item)) => {
                             let _ = self.record_event(
                                 run_id,
@@ -416,18 +445,30 @@ impl RunService {
                             );
                         }
                         Err(error) => {
-                            log::warn!("Failed to update queue item {} after run failure: {}", queue_item_id, error.message);
+                            log::warn!(
+                                "Failed to update queue item {} after run failure: {}",
+                                queue_item_id,
+                                error.message
+                            );
                         }
                     }
                 }
                 Err(error) => {
-                    log::warn!("Failed to load run {} during finalization: {}", run_id, error.message);
+                    log::warn!(
+                        "Failed to load run {} during finalization: {}",
+                        run_id,
+                        error.message
+                    );
                 }
             }
         }
 
         if let Err(error) = self.budget_service.record_completed_run(agent, run_id) {
-            log::warn!("Failed to record budget ledger for run {}: {}", run_id, error.message);
+            log::warn!(
+                "Failed to record budget ledger for run {}: {}",
+                run_id,
+                error.message
+            );
         }
 
         if let Ok(run) = self.db.get_agent_run(run_id) {
@@ -492,6 +533,15 @@ impl RunService {
         metadata: Option<serde_json::Value>,
     ) -> Result<(), AppError> {
         let synthetic_run_id = format!("agent:{}", agent.id);
-        self.record_event(&synthetic_run_id, event_type, "system", title, content, status, None, metadata)
+        self.record_event(
+            &synthetic_run_id,
+            event_type,
+            "system",
+            title,
+            content,
+            status,
+            None,
+            metadata,
+        )
     }
 }

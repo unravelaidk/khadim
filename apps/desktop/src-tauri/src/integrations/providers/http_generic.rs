@@ -5,7 +5,9 @@ pub struct HttpGenericIntegration;
 
 #[async_trait]
 impl Integration for HttpGenericIntegration {
-    fn id(&self) -> &str { "http" }
+    fn id(&self) -> &str {
+        "http"
+    }
 
     fn metadata(&self) -> IntegrationMeta {
         IntegrationMeta {
@@ -28,7 +30,8 @@ impl Integration for HttpGenericIntegration {
     fn actions(&self) -> Vec<ActionDef> {
         vec![
             ActionDef {
-                id: "http.get".into(), name: "GET Request".into(),
+                id: "http.get".into(),
+                name: "GET Request".into(),
                 description: "Send an HTTP GET request".into(),
                 input_schema: serde_json::json!({
                     "type": "object", "required": ["path"],
@@ -37,10 +40,12 @@ impl Integration for HttpGenericIntegration {
                         "headers": { "type": "object", "description": "Additional headers" }
                     }
                 }),
-                is_mutation: false, risk_level: RiskLevel::Low,
+                is_mutation: false,
+                risk_level: RiskLevel::Low,
             },
             ActionDef {
-                id: "http.post".into(), name: "POST Request".into(),
+                id: "http.post".into(),
+                name: "POST Request".into(),
                 description: "Send an HTTP POST request with a JSON body".into(),
                 input_schema: serde_json::json!({
                     "type": "object", "required": ["path"],
@@ -50,10 +55,12 @@ impl Integration for HttpGenericIntegration {
                         "headers": { "type": "object" }
                     }
                 }),
-                is_mutation: true, risk_level: RiskLevel::Medium,
+                is_mutation: true,
+                risk_level: RiskLevel::Medium,
             },
             ActionDef {
-                id: "http.put".into(), name: "PUT Request".into(),
+                id: "http.put".into(),
+                name: "PUT Request".into(),
                 description: "Send an HTTP PUT request".into(),
                 input_schema: serde_json::json!({
                     "type": "object", "required": ["path"],
@@ -63,21 +70,29 @@ impl Integration for HttpGenericIntegration {
                         "headers": { "type": "object" }
                     }
                 }),
-                is_mutation: true, risk_level: RiskLevel::Medium,
+                is_mutation: true,
+                risk_level: RiskLevel::Medium,
             },
             ActionDef {
-                id: "http.delete".into(), name: "DELETE Request".into(),
+                id: "http.delete".into(),
+                name: "DELETE Request".into(),
                 description: "Send an HTTP DELETE request".into(),
                 input_schema: serde_json::json!({
                     "type": "object", "required": ["path"],
                     "properties": { "path": { "type": "string" }, "headers": { "type": "object" } }
                 }),
-                is_mutation: true, risk_level: RiskLevel::High,
+                is_mutation: true,
+                risk_level: RiskLevel::High,
             },
         ]
     }
 
-    async fn execute(&self, action_id: &str, params: serde_json::Value, ctx: &ActionContext) -> ActionResult {
+    async fn execute(
+        &self,
+        action_id: &str,
+        params: serde_json::Value,
+        ctx: &ActionContext,
+    ) -> ActionResult {
         let base_url = match ctx.credentials.get("base_url") {
             Some(u) => u.trim_end_matches('/'),
             None => return ActionResult::err("Missing base_url"),
@@ -95,7 +110,10 @@ impl Integration for HttpGenericIntegration {
         };
 
         // Auth header
-        if let (Some(header), Some(value)) = (ctx.credentials.get("auth_header"), ctx.credentials.get("auth_value")) {
+        if let (Some(header), Some(value)) = (
+            ctx.credentials.get("auth_header"),
+            ctx.credentials.get("auth_value"),
+        ) {
             if !header.is_empty() && !value.is_empty() {
                 builder = builder.header(header.as_str(), value.as_str());
             }
@@ -124,8 +142,12 @@ impl Integration for HttpGenericIntegration {
                 if status >= 200 && status < 300 {
                     // Try to parse as JSON, fall back to text
                     match serde_json::from_str::<serde_json::Value>(&body) {
-                        Ok(json) => ActionResult::ok(serde_json::json!({ "status": status, "body": json })),
-                        Err(_) => ActionResult::ok(serde_json::json!({ "status": status, "body": body })),
+                        Ok(json) => {
+                            ActionResult::ok(serde_json::json!({ "status": status, "body": json }))
+                        }
+                        Err(_) => {
+                            ActionResult::ok(serde_json::json!({ "status": status, "body": body }))
+                        }
                     }
                 } else {
                     ActionResult::err(format!("HTTP {status}: {body}"))
@@ -138,7 +160,13 @@ impl Integration for HttpGenericIntegration {
     async fn test_connection(&self, ctx: &ActionContext) -> ConnectionStatus {
         let base_url = match ctx.credentials.get("base_url") {
             Some(u) => u.clone(),
-            None => return ConnectionStatus { connected: false, account_label: None, error: Some("No base URL configured".into()) },
+            None => {
+                return ConnectionStatus {
+                    connected: false,
+                    account_label: None,
+                    error: Some("No base URL configured".into()),
+                }
+            }
         };
         ConnectionStatus {
             connected: true,

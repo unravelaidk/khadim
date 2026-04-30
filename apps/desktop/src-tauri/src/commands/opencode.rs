@@ -1,10 +1,8 @@
+use crate::backend::{run_streaming_prompt, BackendPrompt, OpenCodeBackend};
 use crate::error::AppError;
-use crate::opencode::{AgentStreamEvent, OpenCodeManager, OpenCodeModelRef};
+use crate::opencode::{OpenCodeManager, OpenCodeModelRef};
 use crate::process::ProcessOutput;
-use crate::run_lifecycle::{
-    extract_text, persist_assistant_message, persist_streamed_assistant_message,
-    persist_user_message,
-};
+use crate::run_lifecycle::{extract_text, persist_assistant_message, persist_user_message};
 use crate::AppState;
 use serde::Serialize;
 use std::sync::Arc;
@@ -40,7 +38,13 @@ pub(crate) async fn opencode_start(
 
     let conn = state
         .opencode
-        .start(&workspace_id, working_dir, port, &state.process_runner, Some(tx))
+        .start(
+            &workspace_id,
+            working_dir,
+            port,
+            &state.process_runner,
+            Some(tx),
+        )
         .await?;
 
     let result = OpenCodeStarted {
@@ -176,97 +180,22 @@ pub(crate) async fn opencode_send_streaming(
     model: Option<OpenCodeModelRef>,
     system: Option<String>,
 ) -> Result<(), AppError> {
-    let conn = connection_for_workspace(state.inner(), &workspace_id)?;
-
-    persist_user_message(state.inner(), &conversation_id, &content)?;
-
-    let (tx, mut rx) = mpsc::unbounded_channel::<AgentStreamEvent>();
-    state
-        .opencode
-        .subscribe_events(&conn, workspace_id.clone(), session_id.clone(), tx);
-
-    OpenCodeManager::send_message_async(
-        &conn,
-        &session_id,
-        &content,
-        model.as_ref(),
-        system.as_deref(),
+    let backend = OpenCodeBackend::new(state.inner().clone(), &workspace_id)?;
+    run_streaming_prompt(
+        state.inner().clone(),
+        app,
+        backend,
+        BackendPrompt {
+            workspace_id,
+            session_id,
+            conversation_id: Some(conversation_id),
+            active_agent_id: None,
+            content,
+            model,
+            system,
+        },
     )
-    .await?;
-
-    let app_handle = app.clone();
-    let state_arc = state.inner().clone();
-    let conn_for_persist = conn.clone();
-    let conv_id = conversation_id.clone();
-    let session_id_for_cleanup = session_id.clone();
-    tokio::spawn(async move {
-        let mut full_content = String::new();
-        let mut assistant_message_id: Option<String> = None;
-        while let Some(evt) = rx.recv().await {
-            if evt.event_type == "message_start" {
-                assistant_message_id = evt
-                    .metadata
-                    .as_ref()
-                    .and_then(|metadata| metadata.get("messageId"))
-                    .and_then(|value| value.as_str())
-                    .map(ToOwned::to_owned);
-            }
-
-            if evt.event_type == "text_delta" {
-                if let Some(ref text) = evt.content {
-                    full_content.push_str(text);
-                }
-            }
-
-            if evt.event_type == "usage_update" {
-                if let Some(ref meta) = evt.metadata {
-                    let input = meta
-                        .get("input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0);
-                    let output = meta
-                        .get("output_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0);
-                    if let Err(e) = state_arc.db.update_conversation_tokens(&conv_id, input, output) {
-                        log::warn!("failed to persist token usage for {conv_id}: {}", e.message);
-                    }
-                }
-            }
-
-            let is_terminal = evt.event_type == "done" || evt.event_type == "error";
-            if is_terminal {
-                if let Err(error) = persist_streamed_assistant_message(
-                    &state_arc,
-                    &conn_for_persist,
-                    &evt.session_id,
-                    &conv_id,
-                    &full_content,
-                    &evt,
-                    assistant_message_id.as_deref(),
-                )
-                .await
-                {
-                    log::warn!(
-                        "failed to persist assistant message for session {}: {}",
-                        evt.session_id,
-                        error.message
-                    );
-                }
-            }
-
-            let _ = app_handle.emit("agent-stream", &evt);
-
-            if is_terminal {
-                state_arc
-                    .opencode
-                    .clear_event_subscription(&session_id_for_cleanup);
-                break;
-            }
-        }
-    });
-
-    Ok(())
+    .await
 }
 
 #[tauri::command]

@@ -192,9 +192,7 @@ impl ProcessRunner {
 
     /// Kill all managed processes. Called on app shutdown.
     pub async fn kill_all(&self) {
-        let ids: Vec<String> = {
-            self.processes.lock().unwrap().keys().cloned().collect()
-        };
+        let ids: Vec<String> = { self.processes.lock().unwrap().keys().cloned().collect() };
         for id in ids {
             let _ = self.kill(&id).await;
         }

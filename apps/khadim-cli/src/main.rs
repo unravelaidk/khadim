@@ -45,10 +45,12 @@ async fn main() {
         if let Some(format) = config.list_providers.clone() {
             let entries: Vec<serde_json::Value> = catalog_service::provider_catalog()
                 .into_iter()
-                .map(|p| serde_json::json!({
-                    "id": p.id,
-                    "name": p.name,
-                }))
+                .map(|p| {
+                    serde_json::json!({
+                        "id": p.id,
+                        "name": p.name,
+                    })
+                })
                 .collect();
             if format == "json" {
                 println!("{}", serde_json::to_string(&entries).unwrap_or_default());
@@ -63,10 +65,12 @@ async fn main() {
         if let Some(provider) = config.list_models.clone() {
             let entries: Vec<serde_json::Value> = catalog_service::models_for_provider(&provider)
                 .into_iter()
-                .map(|(id, name)| serde_json::json!({
-                    "id": id,
-                    "name": name,
-                }))
+                .map(|(id, name)| {
+                    serde_json::json!({
+                        "id": id,
+                        "name": name,
+                    })
+                })
                 .collect();
             println!("{}", serde_json::to_string(&entries).unwrap_or_default());
             return Ok(());
@@ -159,7 +163,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
     let mut app_service = AppService::new(config.clone(), stored_settings, worker_tx);
 
     let mut guard = TerminalGuard::new()?;
-    let mut app = TuiApp::new(&config, app_service.stored_settings());
+    let mut app = TuiApp::new(&config, &app_service);
 
     ui::theme::set_current_theme(
         app_service.stored_settings().theme_family.clone(),
@@ -748,7 +752,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                         app.preview_move_down();
                     }
                     KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.clear(&config, app_service.stored_settings());
+                        app.clear(&config, &app_service);
                     }
                     KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.toggle_tool_collapse();
@@ -916,7 +920,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                             match app_service.execute_slash_command(&prompt) {
                                 CommandResult::Reset => {
                                     app_service.reset_session().await;
-                                    app.clear(&config, app_service.stored_settings());
+                                    app.clear(&config, &app_service);
                                     app.entries.push(TranscriptEntry::System {
                                         text: "↻ Session reset".into(),
                                     });
@@ -935,7 +939,7 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                         )
                                         .await;
                                     app_service.new_session().await;
-                                    app.clear(&config, app_service.stored_settings());
+                                    app.clear(&config, &app_service);
                                     app.entries.push(TranscriptEntry::System {
                                         text: "new session started".into(),
                                     });

@@ -48,33 +48,33 @@ fn generate_code_verifier() -> String {
 /// Generate the S256 code challenge from a verifier.
 fn generate_code_challenge(verifier: &str) -> String {
     let hash = Sha256::digest(verifier.as_bytes());
-    base64::Engine::encode(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        hash,
-    )
+    base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, hash)
 }
 
 /// Generate a random state parameter.
 fn generate_state() -> String {
     let mut rng = rand::rng();
     let bytes: Vec<u8> = (0..32).map(|_| rng.random()).collect();
-    base64::Engine::encode(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        &bytes,
-    )
+    base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &bytes)
 }
 
 /// Find a free port on localhost.
 fn find_free_port() -> Result<u16, AppError> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")
         .map_err(|e| AppError::io(format!("Failed to find free port: {e}")))?;
-    let port = listener.local_addr()
+    let port = listener
+        .local_addr()
         .map_err(|e| AppError::io(format!("Failed to get port: {e}")))?
         .port();
     Ok(port)
 }
 
-fn build_auth_url(config: &OAuthConfig, redirect_uri: &str, state: &str, code_challenge: &str) -> String {
+fn build_auth_url(
+    config: &OAuthConfig,
+    redirect_uri: &str,
+    state: &str,
+    code_challenge: &str,
+) -> String {
     let scopes = config.scopes.join(" ");
     format!(
         "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256",
@@ -125,7 +125,10 @@ fn oauth_html(title: &str, color: &str, body: &str, auto_close: bool) -> String 
     )
 }
 
-fn handle_callback(params: &HashMap<String, String>, expected_state: &str) -> (String, Result<String, String>) {
+fn handle_callback(
+    params: &HashMap<String, String>,
+    expected_state: &str,
+) -> (String, Result<String, String>) {
     if let Some(error) = params.get("error") {
         return (
             oauth_html(
@@ -206,7 +209,9 @@ async fn exchange_token(
 
     if !token_response.status().is_success() {
         let body = token_response.text().await.unwrap_or_default();
-        return Err(AppError::io(format!("Token exchange returned error: {body}")));
+        return Err(AppError::io(format!(
+            "Token exchange returned error: {body}"
+        )));
     }
 
     token_response
@@ -215,7 +220,10 @@ async fn exchange_token(
         .map_err(|e| AppError::io(format!("Failed to parse token response: {e}")))
 }
 
-fn parse_token_set(token_json: serde_json::Value, scopes: Vec<String>) -> Result<OAuthTokenSet, AppError> {
+fn parse_token_set(
+    token_json: serde_json::Value,
+    scopes: Vec<String>,
+) -> Result<OAuthTokenSet, AppError> {
     let access_token = token_json
         .get("access_token")
         .and_then(|v| v.as_str())
@@ -291,7 +299,8 @@ pub async fn run_oauth_flow(config: &OAuthConfig) -> Result<OAuthTokenSet, AppEr
                     response_body.len(),
                     response_body
                 );
-                let _ = tokio::io::AsyncWriteExt::write_all(&mut stream, http_response.as_bytes()).await;
+                let _ = tokio::io::AsyncWriteExt::write_all(&mut stream, http_response.as_bytes())
+                    .await;
             }
         }
     });
@@ -355,10 +364,24 @@ pub async fn refresh_access_token(
         .map_err(|e| AppError::io(format!("Failed to parse refresh response: {e}")))?;
 
     Ok(OAuthTokenSet {
-        access_token: json.get("access_token").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        refresh_token: json.get("refresh_token").and_then(|v| v.as_str()).map(String::from),
-        expires_at: json.get("expires_in").and_then(|v| v.as_i64()).map(|s| chrono::Utc::now().timestamp() + s),
+        access_token: json
+            .get("access_token")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        refresh_token: json
+            .get("refresh_token")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        expires_at: json
+            .get("expires_in")
+            .and_then(|v| v.as_i64())
+            .map(|s| chrono::Utc::now().timestamp() + s),
         scopes: vec![],
-        token_type: json.get("token_type").and_then(|v| v.as_str()).unwrap_or("Bearer").to_string(),
+        token_type: json
+            .get("token_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Bearer")
+            .to_string(),
     })
 }

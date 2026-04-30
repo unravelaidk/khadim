@@ -1187,7 +1187,7 @@ mod visual_demo {
     #[test]
     #[ignore]
     fn markdown_visual_demo() {
-        let md = include_str!("markdown_demo.md");
+        let md = "# Title\n\nA paragraph with **bold**, *italic*, `inline code`, and a [link](https://example.com).\n\n> [!NOTE]\n> Take note of this.\n\n```rust\nfn main() {\n    println!(\"hello, world!\");\n}\n```";
         for line in render_markdown(md, 60) {
             let s: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
             println!("{s}");

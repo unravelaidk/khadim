@@ -167,14 +167,8 @@ impl FileIndexManager {
                 continue;
             }
             let relative_str = relative.to_string_lossy().to_string();
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
-            let is_dir = entry
-                .file_type()
-                .map(|ft| ft.is_dir())
-                .unwrap_or(false);
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
 
             files.push(FileEntry {
                 relative_path: relative_str,
@@ -215,11 +209,13 @@ impl FileIndexManager {
         max_results: Option<usize>,
     ) -> Result<Vec<FileSearchResult>, AppError> {
         let indexes = self.indexes.lock().unwrap();
-        let index = indexes.get(root).ok_or_else(|| {
-            AppError::not_found(format!("No file index for root: {root}"))
-        })?;
+        let index = indexes
+            .get(root)
+            .ok_or_else(|| AppError::not_found(format!("No file index for root: {root}")))?;
 
-        let limit = max_results.unwrap_or(MAX_SEARCH_RESULTS).min(MAX_SEARCH_RESULTS);
+        let limit = max_results
+            .unwrap_or(MAX_SEARCH_RESULTS)
+            .min(MAX_SEARCH_RESULTS);
 
         if query.trim().is_empty() {
             // Return most recent / shortest paths when query is empty
@@ -258,9 +254,12 @@ impl FileIndexManager {
 
         // Sort descending by score, then ascending by path length
         scored.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
-                .then_with(|| a.entry.relative_path.len().cmp(&b.entry.relative_path.len()))
+            b.score.cmp(&a.score).then_with(|| {
+                a.entry
+                    .relative_path
+                    .len()
+                    .cmp(&b.entry.relative_path.len())
+            })
         });
 
         scored.truncate(limit);
@@ -341,10 +340,7 @@ impl FileIndexManager {
                 if let Ok(event) = res {
                     // On any file create/modify/remove, invalidate the index
                     // by clearing the files so the next build picks up changes.
-                    if event.kind.is_create()
-                        || event.kind.is_modify()
-                        || event.kind.is_remove()
-                    {
+                    if event.kind.is_create() || event.kind.is_modify() || event.kind.is_remove() {
                         let mut indexes = indexes.lock().unwrap();
                         if let Some(entry) = indexes.get_mut(&root_owned) {
                             // Mark stale — the caller should re-build.
@@ -358,10 +354,7 @@ impl FileIndexManager {
 
         if let Ok(mut watcher) = watcher_result {
             let _ = watcher.watch(Path::new(root), RecursiveMode::Recursive);
-            watchers.insert(
-                root.to_string(),
-                WatcherHandle { _watcher: watcher },
-            );
+            watchers.insert(root.to_string(), WatcherHandle { _watcher: watcher });
         }
     }
 }
@@ -372,11 +365,7 @@ impl FileIndexManager {
 ///
 /// Returns `Some((score, matched_byte_offsets))` when all query chars appear
 /// in order in the haystack, or `None` on mismatch.
-fn fuzzy_score(
-    query_chars: &[char],
-    path: &str,
-    basename: &str,
-) -> Option<(i64, Vec<usize>)> {
+fn fuzzy_score(query_chars: &[char], path: &str, basename: &str) -> Option<(i64, Vec<usize>)> {
     if query_chars.is_empty() {
         return Some((0, vec![]));
     }
@@ -406,7 +395,10 @@ fn fuzzy_score(
     // Convert char indices → byte offsets for the frontend highlight
     let byte_offsets: Vec<usize> = {
         let char_to_byte: Vec<usize> = path_lower.char_indices().map(|(i, _)| i).collect();
-        indices.iter().filter_map(|&ci| char_to_byte.get(ci).copied()).collect()
+        indices
+            .iter()
+            .filter_map(|&ci| char_to_byte.get(ci).copied())
+            .collect()
     };
 
     // Scoring
@@ -505,7 +497,12 @@ mod tests {
     fn fuzzy_score_basename_bias() {
         let query: Vec<char> = "app".chars().collect();
         let (score_short, _) = fuzzy_score(&query, "src/app.tsx", "app.tsx").unwrap();
-        let (score_long, _) = fuzzy_score(&query, "src/components/application/wrapper.tsx", "wrapper.tsx").unwrap();
+        let (score_long, _) = fuzzy_score(
+            &query,
+            "src/components/application/wrapper.tsx",
+            "wrapper.tsx",
+        )
+        .unwrap();
         // The shorter path with basename match should score higher
         assert!(score_short > score_long);
     }

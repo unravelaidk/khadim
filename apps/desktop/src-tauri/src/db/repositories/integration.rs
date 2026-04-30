@@ -2,7 +2,9 @@ use crate::db::context::{now, DbContext};
 use crate::db::entities::{integration_connections, integration_logs};
 use crate::error::AppError;
 use crate::integrations::{IntegrationConnection, IntegrationLog};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -22,16 +24,19 @@ impl IntegrationRepository {
                 .order_by_desc(integration_connections::Column::CreatedAt)
                 .all(&conn)
                 .await?;
-            Ok(rows.into_iter().map(|r| IntegrationConnection {
-                id: r.id,
-                integration_id: r.integration_id,
-                label: r.label,
-                account_label: r.account_label,
-                is_active: r.is_active != 0,
-                last_verified_at: r.last_verified_at,
-                created_at: r.created_at,
-                updated_at: r.updated_at,
-            }).collect())
+            Ok(rows
+                .into_iter()
+                .map(|r| IntegrationConnection {
+                    id: r.id,
+                    integration_id: r.integration_id,
+                    label: r.label,
+                    account_label: r.account_label,
+                    is_active: r.is_active != 0,
+                    last_verified_at: r.last_verified_at,
+                    created_at: r.created_at,
+                    updated_at: r.updated_at,
+                })
+                .collect())
         })
     }
 
@@ -145,23 +150,25 @@ impl IntegrationRepository {
         let limit = limit as u64;
         self.ctx.run(async {
             let conn = self.ctx.conn();
-            let mut query = integration_logs::Entity::find()
-                .order_by_desc(integration_logs::Column::CreatedAt);
+            let mut query =
+                integration_logs::Entity::find().order_by_desc(integration_logs::Column::CreatedAt);
             if let Some(ref id) = cid {
                 query = query.filter(integration_logs::Column::ConnectionId.eq(id));
             }
-            let rows = query
-                .all(&conn)
-                .await?;
-            Ok(rows.into_iter().take(limit as usize).map(|r| IntegrationLog {
-                id: r.id,
-                connection_id: r.connection_id,
-                action_id: r.action_id,
-                success: r.success != 0,
-                error_message: r.error_message,
-                duration_ms: r.duration_ms,
-                created_at: r.created_at,
-            }).collect())
+            let rows = query.all(&conn).await?;
+            Ok(rows
+                .into_iter()
+                .take(limit as usize)
+                .map(|r| IntegrationLog {
+                    id: r.id,
+                    connection_id: r.connection_id,
+                    action_id: r.action_id,
+                    success: r.success != 0,
+                    error_message: r.error_message,
+                    duration_ms: r.duration_ms,
+                    created_at: r.created_at,
+                })
+                .collect())
         })
     }
 }

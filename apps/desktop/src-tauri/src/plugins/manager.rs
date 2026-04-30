@@ -372,9 +372,8 @@ impl PluginManager {
             if let Some(ref js_file) = ui.js {
                 let src_js = source.join(js_file);
                 if src_js.exists() {
-                    std::fs::copy(&src_js, target.join(js_file)).map_err(|e| {
-                        AppError::io(format!("Failed to copy ui.js: {e}"))
-                    })?;
+                    std::fs::copy(&src_js, target.join(js_file))
+                        .map_err(|e| AppError::io(format!("Failed to copy ui.js: {e}")))?;
                 }
             }
         }

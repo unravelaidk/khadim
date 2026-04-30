@@ -129,10 +129,7 @@ impl PluginManifest {
     pub fn load(dir: &Path) -> Result<ResolvedPlugin, String> {
         let manifest_path = dir.join("plugin.toml");
         if !manifest_path.exists() {
-            return Err(format!(
-                "No plugin.toml found in {}",
-                dir.display()
-            ));
+            return Err(format!("No plugin.toml found in {}", dir.display()));
         }
 
         let content = std::fs::read_to_string(&manifest_path)
@@ -143,10 +140,7 @@ impl PluginManifest {
 
         let wasm_path = dir.join(&manifest.plugin.wasm);
         if !wasm_path.exists() {
-            return Err(format!(
-                "WASM file not found: {}",
-                wasm_path.display()
-            ));
+            return Err(format!("WASM file not found: {}", wasm_path.display()));
         }
 
         Ok(ResolvedPlugin {

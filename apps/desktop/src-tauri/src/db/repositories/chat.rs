@@ -3,7 +3,8 @@ use crate::db::entities::{conversations, messages};
 use crate::db::{ChatMessage, Conversation};
 use crate::error::AppError;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+    QueryOrder,
 };
 use std::sync::Arc;
 
@@ -51,7 +52,9 @@ fn to_message(model: messages::Model) -> ChatMessage {
 }
 
 impl ChatRepository {
-    pub(crate) fn new(ctx: Arc<DbContext>) -> Self { Self { ctx } }
+    pub(crate) fn new(ctx: Arc<DbContext>) -> Self {
+        Self { ctx }
+    }
 
     pub(crate) fn create_conversation(&self, conv: &Conversation) -> Result<(), AppError> {
         let conn = self.ctx.conn();
@@ -77,7 +80,12 @@ impl ChatRepository {
         })
     }
 
-    pub(crate) fn update_conversation_tokens(&self, id: &str, input_tokens: i64, output_tokens: i64) -> Result<(), AppError> {
+    pub(crate) fn update_conversation_tokens(
+        &self,
+        id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let id = id.to_string();
         self.ctx.run(async move {
@@ -113,7 +121,10 @@ impl ChatRepository {
         })
     }
 
-    pub(crate) fn list_conversations(&self, workspace_id: &str) -> Result<Vec<Conversation>, AppError> {
+    pub(crate) fn list_conversations(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Vec<Conversation>, AppError> {
         let conn = self.ctx.conn();
         let workspace_id = workspace_id.to_string();
         self.ctx.run(async move {
@@ -138,7 +149,10 @@ impl ChatRepository {
         })
     }
 
-    pub(crate) fn deactivate_workspace_conversations(&self, workspace_id: &str) -> Result<(), AppError> {
+    pub(crate) fn deactivate_workspace_conversations(
+        &self,
+        workspace_id: &str,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let workspace_id = workspace_id.to_string();
         self.ctx.run(async move {
@@ -157,7 +171,14 @@ impl ChatRepository {
         })
     }
 
-    pub(crate) fn set_backend_session(&self, id: &str, backend_session_id: &str, backend_session_cwd: Option<&str>, branch: Option<&str>, worktree_path: Option<&str>) -> Result<(), AppError> {
+    pub(crate) fn set_backend_session(
+        &self,
+        id: &str,
+        backend_session_id: &str,
+        backend_session_cwd: Option<&str>,
+        branch: Option<&str>,
+        worktree_path: Option<&str>,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let id = id.to_string();
         let backend_session_id = backend_session_id.to_string();
@@ -197,7 +218,10 @@ impl ChatRepository {
         })
     }
 
-    pub(crate) fn list_messages(&self, conversation_id: &str) -> Result<Vec<ChatMessage>, AppError> {
+    pub(crate) fn list_messages(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<ChatMessage>, AppError> {
         let conn = self.ctx.conn();
         let conversation_id = conversation_id.to_string();
         self.ctx.run(async move {
@@ -283,7 +307,9 @@ impl ChatRepository {
                 };
                 results.push(SessionSearchResult {
                     message_id: row.try_get::<String>("", "id").unwrap_or_default(),
-                    conversation_id: row.try_get::<String>("", "conversation_id").unwrap_or_default(),
+                    conversation_id: row
+                        .try_get::<String>("", "conversation_id")
+                        .unwrap_or_default(),
                     role: row.try_get::<String>("", "role").unwrap_or_default(),
                     content_snippet: snippet,
                     created_at: row.try_get::<String>("", "created_at").unwrap_or_default(),

@@ -7,9 +7,9 @@ pub mod docker;
 pub mod helpers;
 pub mod local;
 
+use crate::backend::AgentStreamEvent;
 use crate::db::{AgentRun, AgentRunTurn, Database, ManagedAgent, RunEvent};
 use crate::error::AppError;
-use crate::opencode::AgentStreamEvent;
 use helpers::credential_env_key;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -72,11 +72,7 @@ pub fn resolve_environment(
     agent: &ManagedAgent,
 ) -> Result<ResolvedEnvironment, AppError> {
     let env_profile = match &agent.environment_id {
-        Some(id) if !id.is_empty() => {
-            db.list_environments()?
-                .into_iter()
-                .find(|e| e.id == *id)
-        }
+        Some(id) if !id.is_empty() => db.list_environments()?.into_iter().find(|e| e.id == *id),
         _ => None,
     };
 
@@ -239,8 +235,14 @@ pub fn emit_run_event(
 ) {
     if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
         let db: Arc<Database> = state.db.clone();
-        let metadata_json = metadata.clone().unwrap_or(Value::Object(Default::default())).to_string();
-        let sequence_number = db.list_run_events(run_id).map(|events| events.len() as i64 + 1).unwrap_or(1);
+        let metadata_json = metadata
+            .clone()
+            .unwrap_or(Value::Object(Default::default()))
+            .to_string();
+        let sequence_number = db
+            .list_run_events(run_id)
+            .map(|events| events.len() as i64 + 1)
+            .unwrap_or(1);
         let title = metadata
             .as_ref()
             .and_then(|value| value.get("title"))

@@ -3,13 +3,13 @@
 
 use super::helpers::{resolve_agent_model, substitute_variables, truncate_summary};
 use super::{
-    ResolvedEnvironment, complete_run_and_emit_done, emit_run_event, fail_run_with_events,
-    record_turn,
+    complete_run_and_emit_done, emit_run_event, fail_run_with_events, record_turn,
+    ResolvedEnvironment,
 };
+use crate::backend::AgentStreamEvent;
 use crate::db::{AgentRun, Database, ManagedAgent};
 use crate::integrations::IntegrationRegistry;
 use crate::khadim_agent::KhadimManager;
-use crate::opencode::AgentStreamEvent;
 use serde_json::json;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -44,29 +44,53 @@ pub async fn execute_local_run(
     }
 
     // Update status to running
-    let _ = db.update_agent_run_status(
-        &run_id, "running", None, None, None, None, None, None, None,
-    );
+    let _ =
+        db.update_agent_run_status(&run_id, "running", None, None, None, None, None, None, None);
 
-    emit_run_event(&app, &run_id, "step_start", None, Some(json!({
-        "id": "init",
-        "title": "Starting agent",
-        "tool": "system",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_start",
+        None,
+        Some(json!({
+            "id": "init",
+            "title": "Starting agent",
+            "tool": "system",
+        })),
+    );
 
     // Build the prompt from agent instructions + variables
     let prompt = substitute_variables(&agent.instructions, &env.variables);
 
     // Record the initial user turn
-    let _ = record_turn(&db, &run_id, 1, "user", None, Some(&prompt), None, None, None);
+    let _ = record_turn(
+        &db,
+        &run_id,
+        1,
+        "user",
+        None,
+        Some(&prompt),
+        None,
+        None,
+        None,
+    );
 
     // Ensure the agent has a memory store (create one if missing)
     match db.ensure_agent_memory_store(&agent.id, &agent.name) {
         Ok(store) => {
-            log::info!("Agent '{}' using memory store '{}' ({})", agent.name, store.name, store.id);
+            log::info!(
+                "Agent '{}' using memory store '{}' ({})",
+                agent.name,
+                store.name,
+                store.id
+            );
         }
         Err(e) => {
-            log::warn!("Failed to ensure memory store for agent '{}': {}", agent.name, e.message);
+            log::warn!(
+                "Failed to ensure memory store for agent '{}': {}",
+                agent.name,
+                e.message
+            );
             // Non-fatal — the agent can still run without persistent memory
         }
     }
@@ -98,17 +122,20 @@ pub async fn execute_local_run(
         }
     };
 
-    emit_run_event(&app, &run_id, "step_complete", Some("Agent initialized".to_string()), Some(json!({
-        "id": "init",
-        "title": "Starting agent",
-        "status": "complete",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_complete",
+        Some("Agent initialized".to_string()),
+        Some(json!({
+            "id": "init",
+            "title": "Starting agent",
+            "status": "complete",
+        })),
+    );
 
     // Create a khadim session
-    let session_id = khadim.create_session(
-        format!("run:{run_id}"),
-        run_dir.clone(),
-    );
+    let session_id = khadim.create_session(format!("run:{run_id}"), run_dir.clone());
 
     let session = match khadim.get_session(&session_id) {
         Ok(s) => s,
@@ -155,8 +182,13 @@ pub async fn execute_local_run(
             // Record tool steps as turns
             if event.event_type == "step_complete" {
                 if let Some(ref meta) = event.metadata {
-                    let tool = meta.get("tool").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let result = event.content.as_deref()
+                    let tool = meta
+                        .get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let result = event
+                        .content
+                        .as_deref()
                         .or_else(|| meta.get("result").and_then(|v| v.as_str()));
                     let _ = record_turn(
                         &db_for_stream,
@@ -183,10 +215,11 @@ pub async fn execute_local_run(
                         total_output_tokens = out;
                     }
                     if let Some(state) = app_for_stream.try_state::<Arc<crate::AppState>>() {
-                        if let Err(error) = state
-                            .budget_service
-                            .check_runtime_budget(&agent_for_stream, total_input_tokens, total_output_tokens)
-                        {
+                        if let Err(error) = state.budget_service.check_runtime_budget(
+                            &agent_for_stream,
+                            total_input_tokens,
+                            total_output_tokens,
+                        ) {
                             budget_error = Some(error.message.clone());
                             let _ = khadim_for_stream.abort(&session_id_for_stream).await;
                             break;
@@ -196,7 +229,12 @@ pub async fn execute_local_run(
             }
         }
 
-        (turn_number, total_input_tokens, total_output_tokens, budget_error)
+        (
+            turn_number,
+            total_input_tokens,
+            total_output_tokens,
+            budget_error,
+        )
     });
 
     // Execute
@@ -220,7 +258,8 @@ pub async fn execute_local_run(
     };
     drop(tx);
 
-    let (final_turn, total_input, total_output, budget_error) = stream_task.await.unwrap_or((2, 0, 0, None));
+    let (final_turn, total_input, total_output, budget_error) =
+        stream_task.await.unwrap_or((2, 0, 0, None));
 
     if let Some(message) = budget_error {
         fail_run_with_events(&app, &db, &run_id, message, &started_at);
@@ -229,9 +268,15 @@ pub async fn execute_local_run(
             Ok(response_text) => {
                 // Record the final assistant turn
                 let _ = record_turn(
-                    &db, &run_id, final_turn, "agent", None,
+                    &db,
+                    &run_id,
+                    final_turn,
+                    "agent",
+                    None,
                     Some(&response_text),
-                    Some(total_input), Some(total_output), None,
+                    Some(total_input),
+                    Some(total_output),
+                    None,
                 );
 
                 // Summarize
@@ -239,7 +284,8 @@ pub async fn execute_local_run(
 
                 complete_run_and_emit_done(
                     &app,
-                    &db, &run_id,
+                    &db,
+                    &run_id,
                     Some(&summary),
                     Some(total_input),
                     Some(total_output),
@@ -253,11 +299,17 @@ pub async fn execute_local_run(
     }
 
     if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
-        if let Err(error) = state
-            .artifact_service
-            .capture_directory_outputs(&run_id, Some(&agent.id), &run_dir, &agent.artifact_policy)
-        {
-            log::warn!("Failed to capture artifacts for run {}: {}", run_id, error.message);
+        if let Err(error) = state.artifact_service.capture_directory_outputs(
+            &run_id,
+            Some(&agent.id),
+            &run_dir,
+            &agent.artifact_policy,
+        ) {
+            log::warn!(
+                "Failed to capture artifacts for run {}: {}",
+                run_id,
+                error.message
+            );
         }
     }
 

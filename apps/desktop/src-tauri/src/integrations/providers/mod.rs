@@ -1,29 +1,29 @@
 //! Built-in integration providers.
 
-pub mod http_generic;
-pub mod slack;
-pub mod discord;
-pub mod telegram;
-pub mod notion;
 pub mod airtable;
-pub mod jira;
-pub mod linear;
+pub mod discord;
 pub mod github_ext;
-pub mod sendgrid;
-pub mod twilio;
-pub mod stripe;
-pub mod shopify;
-pub mod google_drive;
-pub mod google_sheets;
 pub mod gmail;
 pub mod google_calendar;
+pub mod google_drive;
+pub mod google_sheets;
+pub mod http_generic;
+pub mod hubspot;
+pub mod jira;
+pub mod linear;
+pub mod notion;
 pub mod onedrive;
 pub mod outlook;
-pub mod rss;
 pub mod postgres;
-pub mod webhook;
-pub mod hubspot;
+pub mod rss;
+pub mod sendgrid;
+pub mod shopify;
+pub mod slack;
+pub mod stripe;
+pub mod telegram;
 pub mod todoist;
+pub mod twilio;
+pub mod webhook;
 
 use super::{Integration, IntegrationRegistry};
 use std::sync::Arc;

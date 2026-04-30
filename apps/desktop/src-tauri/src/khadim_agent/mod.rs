@@ -39,8 +39,8 @@ impl KhadimManager {
         cwd: PathBuf,
         system_prompt_override: Option<String>,
     ) -> String {
-        let session = KhadimSession::new(workspace_id, cwd)
-            .with_system_prompt(system_prompt_override);
+        let session =
+            KhadimSession::new(workspace_id, cwd).with_system_prompt(system_prompt_override);
         let session_id = session.id.clone();
         self.sessions
             .lock()
@@ -49,7 +49,10 @@ impl KhadimManager {
         session_id
     }
 
-    pub fn get_session(&self, session_id: &str) -> Result<Arc<AsyncMutex<KhadimSession>>, AppError> {
+    pub fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<AsyncMutex<KhadimSession>>, AppError> {
         self.sessions
             .lock()
             .unwrap()
@@ -83,12 +86,11 @@ impl KhadimManager {
     }
 
     /// Park a oneshot sender that the question tool will await on.
-    pub fn park_question(
-        &self,
-        session_id: String,
-        sender: tokio::sync::oneshot::Sender<String>,
-    ) {
-        self.pending_answers.lock().unwrap().insert(session_id, sender);
+    pub fn park_question(&self, session_id: String, sender: tokio::sync::oneshot::Sender<String>) {
+        self.pending_answers
+            .lock()
+            .unwrap()
+            .insert(session_id, sender);
     }
 
     /// Resolve a pending question with the user's answer.

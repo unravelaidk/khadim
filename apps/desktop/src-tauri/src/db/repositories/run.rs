@@ -1,6 +1,8 @@
-use crate::db::entities::{agent_run_turns, agent_runs, artifacts, budget_ledger, managed_agents, run_events};
-use crate::db::{AgentRun, AgentRunTurn, ArtifactRecord, BudgetLedgerEntry, RunEvent};
 use crate::db::context::DbContext;
+use crate::db::entities::{
+    agent_run_turns, agent_runs, artifacts, budget_ledger, managed_agents, run_events,
+};
+use crate::db::{AgentRun, AgentRunTurn, ArtifactRecord, BudgetLedgerEntry, RunEvent};
 use crate::error::AppError;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
@@ -98,7 +100,9 @@ fn budget_ledger_to_domain(model: budget_ledger::Model) -> BudgetLedgerEntry {
 }
 
 impl RunRepository {
-    pub(crate) fn new(ctx: Arc<DbContext>) -> Self { Self { ctx } }
+    pub(crate) fn new(ctx: Arc<DbContext>) -> Self {
+        Self { ctx }
+    }
 
     pub(crate) fn list_agent_runs(&self) -> Result<Vec<AgentRun>, AppError> {
         let conn = self.ctx.conn();
@@ -109,11 +113,15 @@ impl RunRepository {
                 .all(&conn)
                 .await?;
             let agents = managed_agents::Entity::find().all(&conn).await?;
-            let agent_names: HashMap<String, String> = agents.into_iter().map(|a| (a.id, a.name)).collect();
+            let agent_names: HashMap<String, String> =
+                agents.into_iter().map(|a| (a.id, a.name)).collect();
             Ok(runs
                 .into_iter()
                 .map(|run| {
-                    let agent_name = run.agent_id.as_ref().and_then(|id| agent_names.get(id).cloned());
+                    let agent_name = run
+                        .agent_id
+                        .as_ref()
+                        .and_then(|id| agent_names.get(id).cloned());
                     run_to_domain(run, agent_name)
                 })
                 .collect())
@@ -161,7 +169,11 @@ impl RunRepository {
         })
     }
 
-    pub(crate) fn update_agent_run_work_dir(&self, id: &str, work_dir: &str) -> Result<(), AppError> {
+    pub(crate) fn update_agent_run_work_dir(
+        &self,
+        id: &str,
+        work_dir: &str,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let id = id.to_string();
         let work_dir = work_dir.to_string();
@@ -177,7 +189,18 @@ impl RunRepository {
         })
     }
 
-    pub(crate) fn update_agent_run_status(&self, id: &str, status: &str, finished_at: Option<&str>, duration_ms: Option<i64>, ended_reason: Option<&str>, result_summary: Option<&str>, error_message: Option<&str>, input_tokens: Option<i64>, output_tokens: Option<i64>) -> Result<(), AppError> {
+    pub(crate) fn update_agent_run_status(
+        &self,
+        id: &str,
+        status: &str,
+        finished_at: Option<&str>,
+        duration_ms: Option<i64>,
+        ended_reason: Option<&str>,
+        result_summary: Option<&str>,
+        error_message: Option<&str>,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         let id = id.to_string();
         let status = status.to_string();
@@ -293,7 +316,10 @@ impl RunRepository {
         })
     }
 
-    pub(crate) fn list_agent_artifacts(&self, agent_id: &str) -> Result<Vec<ArtifactRecord>, AppError> {
+    pub(crate) fn list_agent_artifacts(
+        &self,
+        agent_id: &str,
+    ) -> Result<Vec<ArtifactRecord>, AppError> {
         let conn = self.ctx.conn();
         let agent_id = agent_id.to_string();
         self.ctx.run(async move {
@@ -333,17 +359,24 @@ impl RunRepository {
         let conn = self.ctx.conn();
         let artifact_id = artifact_id.to_string();
         self.ctx.run(async move {
-            artifacts::Entity::delete_by_id(artifact_id).exec(&conn).await?;
+            artifacts::Entity::delete_by_id(artifact_id)
+                .exec(&conn)
+                .await?;
             Ok(())
         })
     }
 
-    pub(crate) fn list_budget_ledger(&self, agent_id: Option<&str>, window_key: Option<&str>) -> Result<Vec<BudgetLedgerEntry>, AppError> {
+    pub(crate) fn list_budget_ledger(
+        &self,
+        agent_id: Option<&str>,
+        window_key: Option<&str>,
+    ) -> Result<Vec<BudgetLedgerEntry>, AppError> {
         let conn = self.ctx.conn();
         let agent_id = agent_id.map(ToOwned::to_owned);
         let window_key = window_key.map(ToOwned::to_owned);
         self.ctx.run(async move {
-            let mut query = budget_ledger::Entity::find().order_by_asc(budget_ledger::Column::CreatedAt);
+            let mut query =
+                budget_ledger::Entity::find().order_by_asc(budget_ledger::Column::CreatedAt);
             if let Some(agent_id) = agent_id {
                 query = query.filter(budget_ledger::Column::AgentId.eq(agent_id));
             }
@@ -355,7 +388,10 @@ impl RunRepository {
         })
     }
 
-    pub(crate) fn create_budget_ledger_entry(&self, entry: &BudgetLedgerEntry) -> Result<(), AppError> {
+    pub(crate) fn create_budget_ledger_entry(
+        &self,
+        entry: &BudgetLedgerEntry,
+    ) -> Result<(), AppError> {
         let conn = self.ctx.conn();
         self.ctx.run(async move {
             budget_ledger::Entity::insert(budget_ledger::ActiveModel {

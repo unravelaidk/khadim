@@ -1,7 +1,7 @@
-use crate::error::AppError;
+use crate::backend::AgentStreamEvent;
 use crate::db::{Database, MemoryEntry, MemoryStore};
+use crate::error::AppError;
 use crate::khadim_agent::KhadimManager;
-use crate::opencode::AgentStreamEvent;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -20,17 +20,19 @@ fn normalize_path(root: &Path, raw: &str) -> Result<PathBuf, AppError> {
         root.join(candidate)
     };
 
-    let normalized = joined.components().fold(PathBuf::new(), |mut acc, component| {
-        use std::path::Component;
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                acc.pop();
+    let normalized = joined
+        .components()
+        .fold(PathBuf::new(), |mut acc, component| {
+            use std::path::Component;
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    acc.pop();
+                }
+                other => acc.push(other.as_os_str()),
             }
-            other => acc.push(other.as_os_str()),
-        }
-        acc
-    });
+            acc
+        });
 
     if !normalized.starts_with(root) {
         return Err(AppError::invalid_input(format!(
@@ -131,7 +133,12 @@ fn score_memory_entry(
     score
 }
 
-fn fallback_memory_score(entry: &MemoryEntry, store: &MemoryStore, preferred_agent_id: Option<&str>, chat_store_id: &str) -> i64 {
+fn fallback_memory_score(
+    entry: &MemoryEntry,
+    store: &MemoryStore,
+    preferred_agent_id: Option<&str>,
+    chat_store_id: &str,
+) -> i64 {
     let mut score = 0_i64;
     if entry.is_pinned {
         score += 50;
@@ -200,8 +207,18 @@ pub struct MemorySearchTool {
 }
 
 impl MemorySearchTool {
-    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
-        Self { db, workspace_id, conversation_id, agent_id }
+    pub fn new(
+        db: Database,
+        workspace_id: String,
+        conversation_id: Option<String>,
+        agent_id: Option<String>,
+    ) -> Self {
+        Self {
+            db,
+            workspace_id,
+            conversation_id,
+            agent_id,
+        }
     }
 }
 
@@ -229,10 +246,14 @@ impl Tool for MemorySearchTool {
             .and_then(|value| value.as_str())
             .unwrap_or("")
             .trim();
-        let limit = input.get("limit").and_then(|value| value.as_u64()).unwrap_or(5) as usize;
+        let limit = input
+            .get("limit")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(5) as usize;
 
         let memory_scope_id = self.agent_id.as_deref().or(self.conversation_id.as_deref());
-        let (chat_store, stores) = resolve_memory_stores(&self.db, &self.workspace_id, memory_scope_id)?;
+        let (chat_store, stores) =
+            resolve_memory_stores(&self.db, &self.workspace_id, memory_scope_id)?;
         let query_terms = split_terms(query);
         let mut matches = Vec::<(MemoryStore, MemoryEntry, i64)>::new();
 
@@ -254,12 +275,8 @@ impl Tool for MemorySearchTool {
         if matches.is_empty() {
             for store in &stores {
                 for entry in self.db.list_memory_entries(&store.id)? {
-                    let score = fallback_memory_score(
-                        &entry,
-                        store,
-                        memory_scope_id,
-                        &chat_store.id,
-                    );
+                    let score =
+                        fallback_memory_score(&entry, store, memory_scope_id, &chat_store.id);
                     matches.push((store.clone(), entry, score));
                 }
             }
@@ -318,10 +335,7 @@ impl Tool for MemorySearchTool {
         };
 
         Ok(ToolResult {
-            content: format!(
-                "Memory scope: {mode_label}\n{}",
-                lines.join("\n")
-            ),
+            content: format!("Memory scope: {mode_label}\n{}", lines.join("\n")),
             metadata: Some(json!({"results": result_rows, "scope": mode_label})),
         })
     }
@@ -342,8 +356,18 @@ pub struct MemorySaveTool {
 }
 
 impl MemorySaveTool {
-    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
-        Self { db, workspace_id, conversation_id, agent_id }
+    pub fn new(
+        db: Database,
+        workspace_id: String,
+        conversation_id: Option<String>,
+        agent_id: Option<String>,
+    ) -> Self {
+        Self {
+            db,
+            workspace_id,
+            conversation_id,
+            agent_id,
+        }
     }
 }
 
@@ -389,7 +413,9 @@ impl Tool for MemorySaveTool {
             .ok_or_else(|| AppError::invalid_input("memory_save requires content"))?
             .trim();
         if key.is_empty() || content.is_empty() {
-            return Err(AppError::invalid_input("memory_save requires non-empty key and content"));
+            return Err(AppError::invalid_input(
+                "memory_save requires non-empty key and content",
+            ));
         }
 
         let memory_scope_id = self.agent_id.as_deref().or(self.conversation_id.as_deref());
@@ -419,7 +445,12 @@ impl Tool for MemorySaveTool {
             updated.updated_at = now;
             self.db.update_memory_entry(&updated)?;
             return Ok(ToolResult {
-                content: format!("Updated memory '{}' in {} store ({} entries)", key, store.scope_type, existing.len()),
+                content: format!(
+                    "Updated memory '{}' in {} store ({} entries)",
+                    key,
+                    store.scope_type,
+                    existing.len()
+                ),
                 metadata: Some(json!({
                     "id": updated.id,
                     "store_id": store.id,
@@ -452,9 +483,10 @@ impl Tool for MemorySaveTool {
         };
         self.db.create_memory_entry(&entry)?;
 
-        let mut content_lines = vec![
-            format!("Saved memory '{}' in {} store", key, store.scope_type),
-        ];
+        let mut content_lines = vec![format!(
+            "Saved memory '{}' in {} store",
+            key, store.scope_type
+        )];
 
         if at_capacity {
             content_lines.push(format!(
@@ -500,8 +532,18 @@ pub struct MemoryDeleteTool {
 }
 
 impl MemoryDeleteTool {
-    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
-        Self { db, workspace_id, conversation_id, agent_id }
+    pub fn new(
+        db: Database,
+        workspace_id: String,
+        conversation_id: Option<String>,
+        agent_id: Option<String>,
+    ) -> Self {
+        Self {
+            db,
+            workspace_id,
+            conversation_id,
+            agent_id,
+        }
     }
 }
 
@@ -546,7 +588,9 @@ impl Tool for MemoryDeleteTool {
         }
 
         if !found {
-            return Err(AppError::not_found(format!("Memory entry {id} not found or not accessible in current scope")));
+            return Err(AppError::not_found(format!(
+                "Memory entry {id} not found or not accessible in current scope"
+            )));
         }
 
         self.db.delete_memory_entry(id)?;
@@ -558,8 +602,18 @@ impl Tool for MemoryDeleteTool {
 }
 
 impl MemoryGetTool {
-    pub fn new(db: Database, workspace_id: String, conversation_id: Option<String>, agent_id: Option<String>) -> Self {
-        Self { db, workspace_id, conversation_id, agent_id }
+    pub fn new(
+        db: Database,
+        workspace_id: String,
+        conversation_id: Option<String>,
+        agent_id: Option<String>,
+    ) -> Self {
+        Self {
+            db,
+            workspace_id,
+            conversation_id,
+            agent_id,
+        }
     }
 }
 
@@ -568,7 +622,8 @@ impl Tool for MemoryGetTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "memory_get".to_string(),
-            description: "Fetch a specific saved memory entry by id after using memory_search.".to_string(),
+            description: "Fetch a specific saved memory entry by id after using memory_search."
+                .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -576,7 +631,9 @@ impl Tool for MemoryGetTool {
                 },
                 "required": ["id"]
             }),
-            prompt_snippet: "- memory_get: Read the full details of a specific saved memory after searching".to_string(),
+            prompt_snippet:
+                "- memory_get: Read the full details of a specific saved memory after searching"
+                    .to_string(),
         }
     }
 
@@ -624,7 +681,9 @@ impl Tool for MemoryGetTool {
             }
         }
 
-        Err(AppError::not_found(format!("Memory entry not found or not accessible: {id}")))
+        Err(AppError::not_found(format!(
+            "Memory entry not found or not accessible: {id}"
+        )))
     }
 }
 
@@ -730,7 +789,10 @@ pub struct ReadTool {
 
 impl ReadTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root, extra_allowed: default_skill_read_dirs() }
+        Self {
+            root,
+            extra_allowed: default_skill_read_dirs(),
+        }
     }
 
     pub fn with_extra_allowed(root: PathBuf, mut extra_allowed: Vec<PathBuf>) -> Self {
@@ -740,7 +802,10 @@ impl ReadTool {
                 extra_allowed.push(dir);
             }
         }
-        Self { root, extra_allowed }
+        Self {
+            root,
+            extra_allowed,
+        }
     }
 }
 
@@ -780,8 +845,14 @@ impl Tool for ReadTool {
             .get("path")
             .and_then(|value| value.as_str())
             .ok_or_else(|| AppError::invalid_input("read requires a path"))?;
-        let offset = input.get("offset").and_then(|value| value.as_u64()).unwrap_or(1) as usize;
-        let limit = input.get("limit").and_then(|value| value.as_u64()).unwrap_or(200) as usize;
+        let offset = input
+            .get("offset")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(1) as usize;
+        let limit = input
+            .get("limit")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(200) as usize;
 
         // Try workspace root first, then check extra allowed dirs (skill dirs)
         let target = match normalize_path(&self.root, path) {
@@ -850,7 +921,9 @@ impl ReadTool {
             use std::path::Component;
             match c {
                 Component::CurDir => {}
-                Component::ParentDir => { acc.pop(); }
+                Component::ParentDir => {
+                    acc.pop();
+                }
                 other => acc.push(other.as_os_str()),
             }
             acc
@@ -858,7 +931,11 @@ impl ReadTool {
 
         for allowed in &self.extra_allowed {
             if normalized.starts_with(allowed) {
-                log::debug!("read: path {:?} allowed by extra dir {:?}", normalized, allowed);
+                log::debug!(
+                    "read: path {:?} allowed by extra dir {:?}",
+                    normalized,
+                    allowed
+                );
                 return Ok(normalized);
             }
         }
@@ -942,13 +1019,11 @@ impl Tool for WriteTool {
             (Some(p), None) => {
                 // Model sent path but no content — maybe it put content in another field
                 // Check all string values that aren't "path"
-                let fallback_content = input
-                    .as_object()
-                    .and_then(|obj| {
-                        obj.iter()
-                            .find(|(k, v)| *k != "path" && v.is_string())
-                            .and_then(|(_, v)| v.as_str())
-                    });
+                let fallback_content = input.as_object().and_then(|obj| {
+                    obj.iter()
+                        .find(|(k, v)| *k != "path" && v.is_string())
+                        .and_then(|(_, v)| v.as_str())
+                });
                 match fallback_content {
                     Some(c) => (p.to_string(), c.to_string()),
                     None => return Ok(ToolResult {
@@ -992,9 +1067,8 @@ impl Tool for WriteTool {
                 // Check if the model sent a single string with everything in it
                 // or used non-standard parameter names
                 let obj = input.as_object();
-                let keys: Vec<String> = obj
-                    .map(|o| o.keys().cloned().collect())
-                    .unwrap_or_default();
+                let keys: Vec<String> =
+                    obj.map(|o| o.keys().cloned().collect()).unwrap_or_default();
                 return Ok(ToolResult {
                     content: format!(
                         "Error: write requires 'path' and 'content' parameters.\n\
@@ -1029,7 +1103,10 @@ impl Tool for WriteTool {
 /// Try to guess a reasonable filename from the file content.
 fn guess_filename(content: &str) -> Option<&str> {
     let trimmed = content.trim();
-    if trimmed.starts_with("<!DOCTYPE") || trimmed.starts_with("<html") || trimmed.starts_with("<HTML") {
+    if trimmed.starts_with("<!DOCTYPE")
+        || trimmed.starts_with("<html")
+        || trimmed.starts_with("<HTML")
+    {
         Some("index.html")
     } else if trimmed.starts_with("<?xml") || trimmed.starts_with("<svg") {
         Some("index.svg")
@@ -1048,9 +1125,17 @@ fn guess_filename(content: &str) -> Option<&str> {
         Some("data.json")
     } else if trimmed.starts_with("---") {
         Some("document.md")
-    } else if trimmed.starts_with("@") || trimmed.starts_with(":root") || trimmed.starts_with("body") || trimmed.starts_with("*") || trimmed.contains("--color") {
+    } else if trimmed.starts_with("@")
+        || trimmed.starts_with(":root")
+        || trimmed.starts_with("body")
+        || trimmed.starts_with("*")
+        || trimmed.contains("--color")
+    {
         Some("styles.css")
-    } else if trimmed.starts_with("// @ts-") || trimmed.starts_with("'use ") || trimmed.starts_with("\"use ") {
+    } else if trimmed.starts_with("// @ts-")
+        || trimmed.starts_with("'use ")
+        || trimmed.starts_with("\"use ")
+    {
         Some("index.ts")
     } else {
         None
@@ -1065,7 +1150,10 @@ pub struct ListFilesTool {
 
 impl ListFilesTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root, extra_allowed: default_skill_read_dirs() }
+        Self {
+            root,
+            extra_allowed: default_skill_read_dirs(),
+        }
     }
 
     pub fn with_extra_allowed(root: PathBuf, mut extra_allowed: Vec<PathBuf>) -> Self {
@@ -1074,7 +1162,10 @@ impl ListFilesTool {
                 extra_allowed.push(dir);
             }
         }
-        Self { root, extra_allowed }
+        Self {
+            root,
+            extra_allowed,
+        }
     }
 
     /// Check if an absolute path falls within one of the extra allowed directories.
@@ -1090,7 +1181,9 @@ impl ListFilesTool {
             use std::path::Component;
             match c {
                 Component::CurDir => {}
-                Component::ParentDir => { acc.pop(); }
+                Component::ParentDir => {
+                    acc.pop();
+                }
                 other => acc.push(other.as_os_str()),
             }
             acc
@@ -1125,7 +1218,10 @@ impl Tool for ListFilesTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult, AppError> {
-        let path = input.get("path").and_then(|value| value.as_str()).unwrap_or(".");
+        let path = input
+            .get("path")
+            .and_then(|value| value.as_str())
+            .unwrap_or(".");
         let target = match normalize_path(&self.root, path) {
             Ok(p) => p,
             Err(_) => self.resolve_extra_allowed(path)?,
@@ -1163,8 +1259,7 @@ impl Tool for BashTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "bash".to_string(),
-            description: "Execute a bash command in the current working directory."
-                .to_string(),
+            description: "Execute a bash command in the current working directory.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -1221,13 +1316,13 @@ impl Tool for BashTool {
             lines
         });
 
-        let status = tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            child.wait(),
-        )
-        .await
-        .map_err(|_| AppError::process_kill(format!("bash timed out after {timeout_ms}ms")))?
-        .map_err(|err| AppError::process_kill(format!("Failed to wait for bash: {err}")))?;
+        let status =
+            tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), child.wait())
+                .await
+                .map_err(|_| {
+                    AppError::process_kill(format!("bash timed out after {timeout_ms}ms"))
+                })?
+                .map_err(|err| AppError::process_kill(format!("Failed to wait for bash: {err}")))?;
 
         let stdout_lines = stdout_task.await.unwrap_or_default();
         let stderr_lines = stderr_task.await.unwrap_or_default();
@@ -1260,9 +1355,15 @@ pub fn default_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
 
 pub fn default_tools_with_skill_dirs(root: &Path, skill_dirs: Vec<PathBuf>) -> Vec<Arc<dyn Tool>> {
     vec![
-        Arc::new(ReadTool::with_extra_allowed(root.to_path_buf(), skill_dirs.clone())),
+        Arc::new(ReadTool::with_extra_allowed(
+            root.to_path_buf(),
+            skill_dirs.clone(),
+        )),
         Arc::new(WriteTool::new(root.to_path_buf())),
-        Arc::new(ListFilesTool::with_extra_allowed(root.to_path_buf(), skill_dirs)),
+        Arc::new(ListFilesTool::with_extra_allowed(
+            root.to_path_buf(),
+            skill_dirs,
+        )),
         Arc::new(BashTool::new(root.to_path_buf())),
     ]
 }
@@ -1286,7 +1387,12 @@ impl QuestionTool {
         tx: tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
         manager: Arc<KhadimManager>,
     ) -> Self {
-        Self { session_id, workspace_id, tx, manager }
+        Self {
+            session_id,
+            workspace_id,
+            tx,
+            manager,
+        }
     }
 }
 
@@ -1343,7 +1449,9 @@ impl Tool for QuestionTool {
                 },
                 "required": ["questions"]
             }),
-            prompt_snippet: "- question: Ask the user a question when you need clarification or a decision".to_string(),
+            prompt_snippet:
+                "- question: Ask the user a question when you need clarification or a decision"
+                    .to_string(),
         }
     }
 
@@ -1375,7 +1483,8 @@ impl Tool for QuestionTool {
 
         // Park a oneshot channel and wait for the answer.
         let (answer_tx, answer_rx) = tokio::sync::oneshot::channel::<String>();
-        self.manager.park_question(self.session_id.clone(), answer_tx);
+        self.manager
+            .park_question(self.session_id.clone(), answer_tx);
 
         let answer = answer_rx.await.map_err(|_| {
             AppError::backend_busy("Question was cancelled (session aborted or dismissed)")
