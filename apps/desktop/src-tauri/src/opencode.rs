@@ -1,3 +1,4 @@
+use crate::backend::AgentStreamEvent;
 use crate::error::AppError;
 use crate::health;
 use crate::process::ProcessRunner;
@@ -9,16 +10,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
-
-/// Normalized streaming event emitted to the frontend via Tauri events.
-#[derive(Debug, Clone, Serialize)]
-pub struct AgentStreamEvent {
-    pub workspace_id: String,
-    pub session_id: String,
-    pub event_type: String, // text_delta, step_start, step_update, step_complete, done, error
-    pub content: Option<String>,
-    pub metadata: Option<serde_json::Value>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenCodeModelRef {
@@ -57,9 +48,7 @@ pub struct OpenCodeSession {
 
 impl OpenCodeSession {
     pub fn get_id(&self) -> Option<&str> {
-        self.session_id
-            .as_deref()
-            .or(self.id.as_deref())
+        self.session_id.as_deref().or(self.id.as_deref())
     }
 }
 
@@ -84,8 +73,7 @@ pub struct OpenCodeManager {
 impl OpenCodeManager {
     pub fn new() -> Self {
         // Try to find opencode binary
-        let opencode_bin = Self::find_opencode_binary()
-            .unwrap_or_else(|| "opencode".to_string());
+        let opencode_bin = Self::find_opencode_binary().unwrap_or_else(|| "opencode".to_string());
 
         log::info!("OpenCode binary: {}", opencode_bin);
 
@@ -166,7 +154,7 @@ impl OpenCodeManager {
             &["/global/health", "/health"],
             &username,
             &password,
-            60, // max retries
+            60,  // max retries
             500, // interval ms
         )
         .await;
@@ -263,9 +251,7 @@ impl OpenCodeManager {
     // ── OpenCode API methods ─────────────────────────────────────────
 
     /// Create a new session on the OpenCode server.
-    pub async fn create_session(
-        conn: &OpenCodeConnection,
-    ) -> Result<serde_json::Value, AppError> {
+    pub async fn create_session(conn: &OpenCodeConnection) -> Result<serde_json::Value, AppError> {
         let client = Self::client_with_auth(conn);
         let resp = client
             .post(format!("{}/session", conn.base_url))
@@ -287,9 +273,7 @@ impl OpenCodeManager {
     }
 
     /// List all sessions.
-    pub async fn list_sessions(
-        conn: &OpenCodeConnection,
-    ) -> Result<serde_json::Value, AppError> {
+    pub async fn list_sessions(conn: &OpenCodeConnection) -> Result<serde_json::Value, AppError> {
         let client = Self::client_with_auth(conn);
         let resp = client
             .get(format!("{}/session", conn.base_url))
@@ -437,9 +421,10 @@ impl OpenCodeManager {
             )));
         }
 
-        let payload = resp.json::<serde_json::Value>().await.map_err(|e| {
-            AppError::health(format!("Failed to parse models response: {e}"))
-        })?;
+        let payload = resp
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| AppError::health(format!("Failed to parse models response: {e}")))?;
 
         let defaults = payload
             .get("default")
@@ -534,10 +519,7 @@ impl OpenCodeManager {
     ) -> Result<serde_json::Value, AppError> {
         let client = Self::client_with_auth(conn);
         let resp = client
-            .get(format!(
-                "{}/session/{}/message",
-                conn.base_url, session_id
-            ))
+            .get(format!("{}/session/{}/message", conn.base_url, session_id))
             .header("Authorization", Self::auth_header(conn))
             .send()
             .await?;
@@ -581,9 +563,7 @@ impl OpenCodeManager {
     }
 
     /// Get VCS info.
-    pub async fn vcs_info(
-        conn: &OpenCodeConnection,
-    ) -> Result<serde_json::Value, AppError> {
+    pub async fn vcs_info(conn: &OpenCodeConnection) -> Result<serde_json::Value, AppError> {
         let client = Self::client_with_auth(conn);
         let resp = client
             .get(format!("{}/vcs", conn.base_url))
@@ -613,7 +593,10 @@ impl OpenCodeManager {
         // Cancel any existing subscription for this session to prevent duplicates
         if let Some(existing) = self.event_subscriptions.lock().unwrap().remove(&session_id) {
             existing.abort();
-            log::debug!("Cancelled existing event subscription for session {}", session_id);
+            log::debug!(
+                "Cancelled existing event subscription for session {}",
+                session_id
+            );
         }
 
         let url = format!("{}/event", conn.base_url);
@@ -765,7 +748,10 @@ fn normalize_opencode_event(
         None => return vec![],
     };
 
-    let properties = match payload.get("properties").and_then(|value| value.as_object()) {
+    let properties = match payload
+        .get("properties")
+        .and_then(|value| value.as_object())
+    {
         Some(properties) => properties,
         None => return vec![],
     };
@@ -785,9 +771,13 @@ fn normalize_opencode_event(
             part_kinds,
             part_buffers,
         ),
-        "message.part.updated" => {
-            normalize_part_updated(workspace_id, session_id, properties, part_kinds, part_buffers)
-        }
+        "message.part.updated" => normalize_part_updated(
+            workspace_id,
+            session_id,
+            properties,
+            part_kinds,
+            part_buffers,
+        ),
         "question.asked" => normalize_question_asked(workspace_id, session_id, properties),
         "question.replied" => normalize_question_replied(workspace_id, session_id, properties),
         "question.rejected" => normalize_question_rejected(workspace_id, session_id, properties),
@@ -911,10 +901,16 @@ fn normalize_message_updated(
     // Extract token usage from info.tokens (OpenCode) or info.usage (fallback).
     let tokens = info.get("tokens").or_else(|| info.get("usage"));
     if let Some(tokens) = tokens {
-        let input  = tokens.get("input").and_then(|v| v.as_i64()).unwrap_or(0);
+        let input = tokens.get("input").and_then(|v| v.as_i64()).unwrap_or(0);
         let output = tokens.get("output").and_then(|v| v.as_i64()).unwrap_or(0);
-        let cache_read  = tokens.get("cache_read").and_then(|v| v.as_i64()).unwrap_or(0);
-        let cache_write = tokens.get("cache_write").and_then(|v| v.as_i64()).unwrap_or(0);
+        let cache_read = tokens
+            .get("cache_read")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let cache_write = tokens
+            .get("cache_write")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
 
         if input > 0 || output > 0 {
             events.push(stream_event(
@@ -1421,6 +1417,9 @@ fn truncate_text(value: &str, max_len: usize) -> String {
 }
 
 fn path_basename(path: &str) -> String {
-    let segments: Vec<&str> = path.split(['/', '\\']).filter(|segment| !segment.is_empty()).collect();
+    let segments: Vec<&str> = path
+        .split(['/', '\\'])
+        .filter(|segment| !segment.is_empty())
+        .collect();
     segments.last().copied().unwrap_or(path).to_string()
 }

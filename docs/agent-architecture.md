@@ -40,3 +40,19 @@ Subagents:
 - Prompts and tool access are intentionally strict for subagents to avoid side effects.
 - The plan agent is read-only and must delegate to build after approval.
 - The build agent can invoke subagents for exploration or review as needed.
+
+## Desktop AI Engine Backend seam
+
+The desktop app has a shared AI Engine Backend module at `apps/desktop/src-tauri/src/backend.rs`.
+
+The `Backend` trait is the seam for desktop AI Engine lifecycle behavior. OpenCode, Claude Code, and Khadim native are adapters behind the same interface. The shared lifecycle handles user message persistence, stream draining, token usage persistence, terminal event ordering, assistant message persistence, and stream cleanup.
+
+Current adapters:
+
+- `OpenCodeBackend` wraps the OpenCode sidecar protocol and SSE event normalization from `opencode.rs`.
+- `ClaudeCodeBackend` wraps the Claude Code bridge process and permission-response channel from `claude_code.rs`.
+- `KhadimBackend` wraps the native Khadim orchestrator in `khadim_agent/orchestrator.rs`.
+
+The normalized desktop stream shape is `AgentStreamEvent`, now owned by the Backend module rather than the OpenCode module. Callers should import it from `crate::backend`, not `crate::opencode`.
+
+When adding another desktop AI Engine, implement a new Backend adapter instead of creating another parallel command lifecycle. Keep backend-specific protocol details inside the adapter and route command paths through `run_streaming_prompt` when possible.

@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-mod automation;
 mod agent_runner;
+mod automation;
+mod backend;
 mod claude_code;
 mod commands;
 mod db;
@@ -24,14 +25,14 @@ mod syntax;
 mod terminal;
 mod workspace_context;
 
-use claude_code::ClaudeCodeManager;
-use automation::RunService;
 use automation::ApprovalService;
 use automation::ArtifactService;
 use automation::BudgetService;
 use automation::HealthService;
 use automation::QueueService;
+use automation::RunService;
 use automation::SchedulerService;
+use claude_code::ClaudeCodeManager;
 use db::Database;
 use file_index::FileIndexManager;
 use integrations::IntegrationRegistry;
@@ -156,7 +157,10 @@ fn build_app_state() -> Arc<AppState> {
 
 fn register_plugin_uri_scheme(
     app_state: Arc<AppState>,
-) -> impl Fn(tauri::UriSchemeContext<'_, tauri::Wry>, tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>>
+) -> impl Fn(
+    tauri::UriSchemeContext<'_, tauri::Wry>,
+    tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>>
        + Send
        + Sync
        + 'static {
@@ -219,7 +223,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(app_state.clone())
-        .register_uri_scheme_protocol("khadim-plugin", register_plugin_uri_scheme(app_state.clone()))
+        .register_uri_scheme_protocol(
+            "khadim-plugin",
+            register_plugin_uri_scheme(app_state.clone()),
+        )
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(true);

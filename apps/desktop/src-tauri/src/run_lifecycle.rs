@@ -1,6 +1,7 @@
+use crate::backend::AgentStreamEvent;
 use crate::db::ChatMessage;
 use crate::error::AppError;
-use crate::opencode::{AgentStreamEvent, OpenCodeConnection, OpenCodeManager};
+use crate::opencode::{OpenCodeConnection, OpenCodeManager};
 use crate::AppState;
 use serde_json::{json, Value};
 use std::sync::Arc;

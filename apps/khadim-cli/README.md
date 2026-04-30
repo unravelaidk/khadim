@@ -2,14 +2,23 @@
 
 CLI coding agent for Khadim. An AI agent that runs in your terminal — reads your code, writes and runs scripts, understands failures, and retries.
 
+Khadim also exposes a programmable SDK that allows you to install it in your React app or use it in your CI/CD pipelines, giving you access to its coding capabilities
+
+Read more in the
+[khadim docs](https://unravelaidk.github.io/khadim/cli/programmatic-api/)
+
+
 ## Quick Install
 
 ```bash
 # npm (recommended)
 npm install -g @unravelai/khadim
+```
 
-# Or use the install script
-curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
+Or use it as a sdk
+
+```bash
+npm i @unravelaidk/khadim
 ```
 
 The package exposes both `khadim` and `khadim-cli` commands.
@@ -17,6 +26,9 @@ The package exposes both `khadim` and `khadim-cli` commands.
 ### Other Install Methods
 
 ```bash
+# Or use the install script
+curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
+
 # Prebuilt binary from GitHub Releases
 KHADIM_CLI_INSTALL_METHOD=prebuilt curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
 

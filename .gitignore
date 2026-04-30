@@ -15,15 +15,10 @@ build
 .react-router
 apps/*/build
 apps/*/.react-router
-apps/*/.astro
-.astro
 target
 apps/*/src-tauri/target
 apps/*/target-debian
 *.tsbuildinfo
-
-# Auth tokens (local only)
-apps/web/auth.json
 
 # Environment variables
 .env
@@ -31,12 +26,15 @@ apps/web/auth.json
 .env.development.local
 .env.test.local
 .env.production.local
+apps/web/auth.json
+skills-lock.json
 
 # Editor directories and files
 .idea
 .vscode
 .claude
 .khadim-worktrees/
+.agents/
 *.suo
 *.ntvs*
 *.njsproj

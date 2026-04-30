@@ -1,6 +1,8 @@
 use crate::agent_runner::helpers::try_repair_json;
-use crate::error::AppError;
+use crate::backend::AgentStreamEvent;
 use crate::db::Database;
+use crate::error::AppError;
+use crate::integrations::IntegrationRegistry;
 use crate::khadim_agent::modes::{build_mode, chat_mode};
 use crate::khadim_agent::session::KhadimSession;
 use crate::khadim_agent::KhadimManager;
@@ -8,10 +10,11 @@ use crate::khadim_ai::types::{
     AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolMessage,
 };
 use crate::khadim_ai::ModelClient;
+use crate::khadim_code::tools::{
+    MemoryDeleteTool, MemoryGetTool, MemorySaveTool, MemorySearchTool, QuestionTool,
+    SessionSearchTool, Tool,
+};
 use crate::khadim_code::AgentRuntime;
-use crate::integrations::IntegrationRegistry;
-use crate::khadim_code::tools::{MemoryDeleteTool, MemoryGetTool, MemorySaveTool, MemorySearchTool, QuestionTool, SessionSearchTool, Tool};
-use crate::opencode::AgentStreamEvent;
 use crate::plugins::PluginManager;
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -41,8 +44,14 @@ fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
 
     for message in messages.drain(..) {
         match &message {
-            ChatMessage::System { .. } | ChatMessage::User { .. } | ChatMessage::UserWithImages { .. } => {
-                flush_missing_tool_results(&mut repaired, &pending_tool_calls, &existing_tool_results);
+            ChatMessage::System { .. }
+            | ChatMessage::User { .. }
+            | ChatMessage::UserWithImages { .. } => {
+                flush_missing_tool_results(
+                    &mut repaired,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
                 pending_tool_calls.clear();
                 existing_tool_results.clear();
                 repaired.push(message);
@@ -52,7 +61,11 @@ fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
                 tool_calls,
                 ..
             } => {
-                flush_missing_tool_results(&mut repaired, &pending_tool_calls, &existing_tool_results);
+                flush_missing_tool_results(
+                    &mut repaired,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
                 pending_tool_calls.clear();
                 existing_tool_results.clear();
 
@@ -64,7 +77,10 @@ fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
                     continue;
                 }
 
-                pending_tool_calls = tool_calls.iter().map(|tool_call| tool_call.id.clone()).collect();
+                pending_tool_calls = tool_calls
+                    .iter()
+                    .map(|tool_call| tool_call.id.clone())
+                    .collect();
                 repaired.push(message);
             }
             ChatMessage::Tool(tool) => {
@@ -102,7 +118,10 @@ fn emit_tool_step_complete(
 }
 
 fn memory_scope_prompt(session: &KhadimSession) -> String {
-    if matches!(session.workspace_id.as_str(), "__chat__" | "__agent_builder__") {
+    if matches!(
+        session.workspace_id.as_str(),
+        "__chat__" | "__agent_builder__"
+    ) {
         "Runtime context:\n- You are in standalone chat mode.\n- Memory tools read from chat memory, plus chat-readable shared memory only when the user enabled that setting.\n- memory_save writes to the chat memory store.".to_string()
     } else if let Some(agent_id) = session.active_agent_id.as_deref() {
         format!(
@@ -121,7 +140,10 @@ pub async fn run_prompt(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     manager: Option<&Arc<KhadimManager>>,
 ) -> Result<String, AppError> {
-    run_prompt_with_plugins(session, prompt, selection, tx, None, None, manager, None, None, None).await
+    run_prompt_with_plugins(
+        session, prompt, selection, tx, None, None, manager, None, None, None,
+    )
+    .await
 }
 
 pub async fn run_prompt_with_plugins(
@@ -185,7 +207,8 @@ pub async fn run_prompt_with_plugins(
 
     // Add connected integration tools (Slack, Gmail, Notion, etc.)
     if let Some(registry) = integration_registry {
-        let integration_tools = crate::integrations::tool_bridge::collect_integration_tools(registry);
+        let integration_tools =
+            crate::integrations::tool_bridge::collect_integration_tools(registry);
         plugin_tools.extend(integration_tools);
     }
 
@@ -203,7 +226,10 @@ pub async fn run_prompt_with_plugins(
 
     // Always use with_extras so skill dirs are available to the read tool
     let runtime = AgentRuntime::with_extras(&session.cwd, plugin_tools, skill_dirs, skills_prompt);
-    let mode = if matches!(session.workspace_id.as_str(), "__chat__" | "__agent_builder__") {
+    let mode = if matches!(
+        session.workspace_id.as_str(),
+        "__chat__" | "__agent_builder__"
+    ) {
         chat_mode()
     } else {
         build_mode()
@@ -222,14 +248,14 @@ pub async fn run_prompt_with_plugins(
     repair_session_messages(&mut session.messages);
 
     if session.messages.is_empty() {
-        session
-            .messages
-            .push(ChatMessage::System { content: system_prompt });
+        session.messages.push(ChatMessage::System {
+            content: system_prompt,
+        });
     }
 
-    session
-        .messages
-        .push(ChatMessage::User { content: prompt.to_string() });
+    session.messages.push(ChatMessage::User {
+        content: prompt.to_string(),
+    });
 
     let _ = tx.send(AgentStreamEvent {
         workspace_id: session.workspace_id.clone(),
@@ -338,7 +364,11 @@ pub async fn run_prompt_with_plugins(
                             })),
                         });
                     }
-                    AssistantStreamEvent::ToolCallDelta { id, name, arguments } => {
+                    AssistantStreamEvent::ToolCallDelta {
+                        id,
+                        name,
+                        arguments,
+                    } => {
                         let _ = stream_tx.send(AgentStreamEvent {
                             workspace_id: workspace_id.clone(),
                             session_id: session_id.clone(),

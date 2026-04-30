@@ -75,6 +75,6 @@ At runtime, Khadim loads your manifest, reads the permission declarations, and c
 
 ## Next steps
 
-- Learn the manifest format in [Manifest](/khadim/reference/manifest/)
-- Explore helper APIs in [AssemblyScript SDK](/khadim/reference/assemblyscript-sdk/)
-- Review host permissions in [Host Capabilities](/khadim/reference/host-capabilities/)
+- Learn the manifest format in [Manifest](/khadim/plugins/manifest/)
+- Explore helper APIs in [AssemblyScript SDK](/khadim/plugins/assemblyscript-sdk/)
+- Review host permissions in [Host Capabilities](/khadim/plugins/host-capabilities/)
