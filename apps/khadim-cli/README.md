@@ -18,7 +18,7 @@ npm install -g @unravelai/khadim
 Or use it as a sdk
 
 ```bash
-npm i @unravelaidk/khadim
+npm i @unravelai/khadim
 ```
 
 The package exposes both `khadim` and `khadim-cli` commands.
