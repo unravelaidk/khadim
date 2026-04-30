@@ -1,5 +1,5 @@
-use crate::error::AppError;
 use crate::db::entities;
+use crate::error::AppError;
 use sea_orm::{
     ConnectionTrait, Database as SeaDatabase, DatabaseConnection, DbBackend, ExecResult,
     QueryResult, Schema, Statement, Value,
@@ -293,8 +293,14 @@ impl DbContext {
             let backend = DbBackend::Sqlite;
             let schema = Schema::new(backend);
 
-            conn.execute(backend.build(&schema.create_table_from_entity(entities::run_events::Entity))).await?;
-            conn.execute(stmt("CREATE INDEX idx_run_events_run_seq ON run_events(run_id, sequence_number ASC)")).await?;
+            conn.execute(
+                backend.build(&schema.create_table_from_entity(entities::run_events::Entity)),
+            )
+            .await?;
+            conn.execute(stmt(
+                "CREATE INDEX idx_run_events_run_seq ON run_events(run_id, sequence_number ASC)",
+            ))
+            .await?;
             conn.execute(stmt("PRAGMA user_version = 5")).await?;
             Ok(())
         })
@@ -306,8 +312,14 @@ impl DbContext {
             let backend = DbBackend::Sqlite;
             let schema = Schema::new(backend);
 
-            conn.execute(backend.build(&schema.create_table_from_entity(entities::schedules::Entity))).await?;
-            conn.execute(stmt("CREATE INDEX idx_schedules_agent ON schedules(agent_id)")).await?;
+            conn.execute(
+                backend.build(&schema.create_table_from_entity(entities::schedules::Entity)),
+            )
+            .await?;
+            conn.execute(stmt(
+                "CREATE INDEX idx_schedules_agent ON schedules(agent_id)",
+            ))
+            .await?;
             conn.execute(stmt("PRAGMA user_version = 6")).await?;
             Ok(())
         })
@@ -319,8 +331,14 @@ impl DbContext {
             let backend = DbBackend::Sqlite;
             let schema = Schema::new(backend);
 
-            conn.execute(backend.build(&schema.create_table_from_entity(entities::artifacts::Entity))).await?;
-            conn.execute(stmt("CREATE INDEX idx_artifacts_run ON artifacts(run_id, created_at ASC)")).await?;
+            conn.execute(
+                backend.build(&schema.create_table_from_entity(entities::artifacts::Entity)),
+            )
+            .await?;
+            conn.execute(stmt(
+                "CREATE INDEX idx_artifacts_run ON artifacts(run_id, created_at ASC)",
+            ))
+            .await?;
             conn.execute(stmt("PRAGMA user_version = 7")).await?;
             Ok(())
         })
@@ -381,7 +399,13 @@ impl DbContext {
     fn migrate_v11_to_v12(&self) -> Result<(), AppError> {
         self.run(async {
             let conn = self.conn.clone();
-            add_column_if_missing(&conn, "queue_items", "max_attempts", "INTEGER NOT NULL DEFAULT 3").await?;
+            add_column_if_missing(
+                &conn,
+                "queue_items",
+                "max_attempts",
+                "INTEGER NOT NULL DEFAULT 3",
+            )
+            .await?;
             add_column_if_missing(&conn, "queue_items", "dead_lettered_at", "TEXT").await?;
             conn.execute(stmt("PRAGMA user_version = 12")).await?;
             Ok(())
@@ -407,7 +431,8 @@ impl DbContext {
         self.run(async {
             let conn = self.conn.clone();
             add_column_if_missing(&conn, "agent_runs", "work_dir", "TEXT").await?;
-            conn.execute(stmt(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))).await?;
+            conn.execute(stmt(&format!("PRAGMA user_version = {SCHEMA_VERSION}")))
+                .await?;
             Ok(())
         })
     }

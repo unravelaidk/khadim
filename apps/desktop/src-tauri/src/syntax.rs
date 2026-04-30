@@ -196,8 +196,12 @@ pub struct HighlightResult {
 /// Map a file extension to the canonical tree-sitter language ID.
 pub fn ext_to_lang(filename: &str) -> Option<&'static str> {
     let lower = filename.to_lowercase();
-    if lower == "dockerfile" { return None; }
-    if lower == "makefile" || lower == "gnumakefile" { return None; }
+    if lower == "dockerfile" {
+        return None;
+    }
+    if lower == "makefile" || lower == "gnumakefile" {
+        return None;
+    }
 
     let ext = filename.rsplit('.').next().map(|s| s.to_lowercase());
     let lang = match ext.as_deref() {
@@ -334,7 +338,20 @@ fn html_escape_into(buf: &mut String, text: &str) {
 /// List supported languages.
 pub fn supported_languages() -> Vec<&'static str> {
     vec![
-        "rust", "javascript", "typescript", "json", "python", "go",
-        "c", "cpp", "html", "css", "bash", "toml", "yaml", "markdown", "zig",
+        "rust",
+        "javascript",
+        "typescript",
+        "json",
+        "python",
+        "go",
+        "c",
+        "cpp",
+        "html",
+        "css",
+        "bash",
+        "toml",
+        "yaml",
+        "markdown",
+        "zig",
     ]
 }

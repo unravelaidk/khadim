@@ -35,6 +35,7 @@ skills-lock.json
 .claude
 .khadim-worktrees/
 .agents/
+.pi/
 *.suo
 *.ntvs*
 *.njsproj

@@ -2,7 +2,9 @@ use crate::db::context::{now, DbContext};
 use crate::db::entities::workspaces;
 use crate::db::Workspace;
 use crate::error::AppError;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -26,7 +28,9 @@ fn to_domain(model: workspaces::Model) -> Workspace {
 }
 
 impl WorkspaceRepository {
-    pub(crate) fn new(ctx: Arc<DbContext>) -> Self { Self { ctx } }
+    pub(crate) fn new(ctx: Arc<DbContext>) -> Self {
+        Self { ctx }
+    }
 
     pub(crate) fn create(&self, ws: &Workspace) -> Result<(), AppError> {
         let conn = self.ctx.conn();
@@ -120,7 +124,9 @@ impl WorkspaceRepository {
 
             for conversation_id in conversation_ids {
                 crate::db::entities::messages::Entity::delete_many()
-                    .filter(crate::db::entities::messages::Column::ConversationId.eq(conversation_id))
+                    .filter(
+                        crate::db::entities::messages::Column::ConversationId.eq(conversation_id),
+                    )
                     .exec(&conn)
                     .await?;
             }

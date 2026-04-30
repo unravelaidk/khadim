@@ -7,8 +7,8 @@
 
 use super::helpers::{substitute_variables, truncate_summary};
 use super::{
-    ResolvedEnvironment, complete_run_and_emit_done, emit_run_event, fail_run_with_events,
-    record_turn,
+    complete_run_and_emit_done, emit_run_event, fail_run_with_events, record_turn,
+    ResolvedEnvironment,
 };
 use crate::db::{AgentRun, Database, ManagedAgent};
 use bollard::container::{
@@ -53,15 +53,20 @@ pub async fn execute_docker_run(
     let started_at = run.started_at.clone().unwrap_or_default();
 
     // Mark running
-    let _ = db.update_agent_run_status(
-        &run_id, "running", None, None, None, None, None, None, None,
-    );
+    let _ =
+        db.update_agent_run_status(&run_id, "running", None, None, None, None, None, None, None);
 
-    emit_run_event(&app, &run_id, "step_start", None, Some(json!({
-        "id": "docker-init",
-        "title": "Connecting to Docker",
-        "tool": "docker",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_start",
+        None,
+        Some(json!({
+            "id": "docker-init",
+            "title": "Connecting to Docker",
+            "tool": "docker",
+        })),
+    );
 
     // Connect to Docker
     let docker = match Docker::connect_with_local_defaults() {
@@ -80,30 +85,53 @@ pub async fn execute_docker_run(
         return;
     }
 
-    emit_run_event(&app, &run_id, "step_complete", Some("Docker connected".to_string()), Some(json!({
-        "id": "docker-init",
-        "title": "Connecting to Docker",
-        "status": "complete",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_complete",
+        Some("Docker connected".to_string()),
+        Some(json!({
+            "id": "docker-init",
+            "title": "Connecting to Docker",
+            "status": "complete",
+        })),
+    );
 
     // Build prompt with variable substitution
     let prompt = substitute_variables(&agent.instructions, &env.variables);
 
     // Record the initial user turn
-    let _ = record_turn(&db, &run_id, 1, "user", None, Some(&prompt), None, None, None);
+    let _ = record_turn(
+        &db,
+        &run_id,
+        1,
+        "user",
+        None,
+        Some(&prompt),
+        None,
+        None,
+        None,
+    );
 
     // Determine image
-    let image = env.docker_image
+    let image = env
+        .docker_image
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or(DEFAULT_IMAGE);
 
     // Try to pull the image
-    emit_run_event(&app, &run_id, "step_start", None, Some(json!({
-        "id": "docker-pull",
-        "title": format!("Pulling image {image}"),
-        "tool": "docker",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_start",
+        None,
+        Some(json!({
+            "id": "docker-pull",
+            "title": format!("Pulling image {image}"),
+            "tool": "docker",
+        })),
+    );
 
     {
         use bollard::image::CreateImageOptions;
@@ -127,22 +155,25 @@ pub async fn execute_docker_run(
         }
     }
 
-    emit_run_event(&app, &run_id, "step_complete", Some(format!("Image {image} ready")), Some(json!({
-        "id": "docker-pull",
-        "title": format!("Pulling image {image}"),
-        "status": "complete",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_complete",
+        Some(format!("Image {image} ready")),
+        Some(json!({
+            "id": "docker-pull",
+            "title": format!("Pulling image {image}"),
+            "status": "complete",
+        })),
+    );
 
     // Build environment variables for the container
-    let mut container_env: Vec<String> = env.variables
+    let mut container_env: Vec<String> = env
+        .variables
         .iter()
         .map(|(k, v)| format!("{k}={v}"))
         .collect();
-    container_env.extend(
-        env.secrets
-            .iter()
-            .map(|(k, v)| format!("{k}={v}")),
-    );
+    container_env.extend(env.secrets.iter().map(|(k, v)| format!("{k}={v}")));
     // Pass the prompt as an env var so the entrypoint can access it
     container_env.push(format!("KHADIM_PROMPT={}", prompt.replace('\n', "\\n")));
 
@@ -191,15 +222,24 @@ echo "=== Agent Run Completed ==="
         ..Default::default()
     };
 
-    emit_run_event(&app, &run_id, "step_start", None, Some(json!({
-        "id": "docker-run",
-        "title": "Running container",
-        "tool": "docker",
-    })));
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_start",
+        None,
+        Some(json!({
+            "id": "docker-run",
+            "title": "Running container",
+            "tool": "docker",
+        })),
+    );
 
     let container_id = match docker
         .create_container(
-            Some(CreateContainerOptions { name: &container_name, platform: None }),
+            Some(CreateContainerOptions {
+                name: &container_name,
+                platform: None,
+            }),
             config,
         )
         .await
@@ -267,7 +307,10 @@ echo "=== Agent Run Completed ==="
         -1
     };
 
-    emit_run_event(&app, &run_id, "step_complete",
+    emit_run_event(
+        &app,
+        &run_id,
+        "step_complete",
         Some(format!("Container exited with code {exit_code}")),
         Some(json!({
             "id": "docker-run",
@@ -278,10 +321,15 @@ echo "=== Agent Run Completed ==="
 
     // Record the output as a tool turn
     let _ = record_turn(
-        &db, &run_id, turn_number, "tool",
+        &db,
+        &run_id,
+        turn_number,
+        "tool",
         Some("docker"),
         Some(&output),
-        None, None, None,
+        None,
+        None,
+        None,
     );
     turn_number += 1;
 
@@ -289,9 +337,15 @@ echo "=== Agent Run Completed ==="
     if exit_code == 0 {
         let summary = truncate_summary(&output, 200);
         let _ = record_turn(
-            &db, &run_id, turn_number, "agent", None,
+            &db,
+            &run_id,
+            turn_number,
+            "agent",
+            None,
             Some("Run completed successfully"),
-            None, None, None,
+            None,
+            None,
+            None,
         );
         complete_run_and_emit_done(&app, &db, &run_id, Some(&summary), None, None, &started_at);
     } else {
@@ -300,11 +354,20 @@ echo "=== Agent Run Completed ==="
     }
 
     if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
-        if let Err(error) = state
-            .artifact_service
-            .persist_text_artifact(&run_id, Some(&agent.id), "log", "docker-output", "log", &output, &agent.artifact_policy)
-        {
-            log::warn!("Failed to persist docker output artifact for run {}: {}", run_id, error.message);
+        if let Err(error) = state.artifact_service.persist_text_artifact(
+            &run_id,
+            Some(&agent.id),
+            "log",
+            "docker-output",
+            "log",
+            &output,
+            &agent.artifact_policy,
+        ) {
+            log::warn!(
+                "Failed to persist docker output artifact for run {}: {}",
+                run_id,
+                error.message
+            );
         }
     }
 

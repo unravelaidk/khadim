@@ -1,6 +1,6 @@
 pub mod bridge;
-pub mod manifest;
 pub mod manager;
+pub mod manifest;
 pub mod wasm_host;
 
 pub use bridge::collect_plugin_tools;

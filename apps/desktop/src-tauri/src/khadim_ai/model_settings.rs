@@ -1,10 +1,10 @@
+use crate::db::Database;
 use crate::error::AppError;
 use crate::khadim_ai::env_api_keys::get_env_api_key;
-use crate::khadim_ai::oauth::{get_openai_codex_api_key, has_openai_codex_auth_sync};
 use crate::khadim_ai::models::{builtin_models, find_model};
+use crate::khadim_ai::oauth::{get_openai_codex_api_key, has_openai_codex_auth_sync};
 use crate::khadim_ai::providers::request_headers::build_codex_request_headers;
 use crate::khadim_ai::types::{Cost, InputKind};
-use crate::db::Database;
 use base64::Engine;
 use khadim_ai_core::pricing::default_cost_for;
 use serde::{Deserialize, Serialize};
@@ -104,7 +104,11 @@ fn enrich_discovered(provider: &str, id: &str, name: &str) -> DiscoveredProvider
             provider: model.provider,
             api: model.api,
             reasoning: model.reasoning,
-            input: model.input.iter().map(|k| input_kind_str(k).to_string()).collect(),
+            input: model
+                .input
+                .iter()
+                .map(|k| input_kind_str(k).to_string())
+                .collect(),
             context_window: model.context_window,
             max_tokens: model.max_tokens,
             cost: model.cost,
@@ -155,7 +159,11 @@ fn provider_name(provider: &str) -> String {
 fn provider_needs_base_url(provider: &str) -> bool {
     matches!(
         provider,
-        "ollama" | "amazon-bedrock" | "azure-openai-responses" | "vercel-ai-gateway" | "google-vertex"
+        "ollama"
+            | "amazon-bedrock"
+            | "azure-openai-responses"
+            | "vercel-ai-gateway"
+            | "google-vertex"
     )
 }
 
@@ -182,7 +190,9 @@ fn get_secret(name: &str) -> Result<Option<String>, AppError> {
         Ok(value) if value.trim().is_empty() => Ok(None),
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(AppError::io(format!("Failed to read keyring entry '{name}': {err}"))),
+        Err(err) => Err(AppError::io(format!(
+            "Failed to read keyring entry '{name}': {err}"
+        ))),
     }?;
 
     secret_cache()
@@ -210,10 +220,15 @@ fn delete_secret(name: &str) -> Result<(), AppError> {
     let entry = keyring_entry(name)?;
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => {
-            secret_cache().lock().unwrap().insert(name.to_string(), None);
+            secret_cache()
+                .lock()
+                .unwrap()
+                .insert(name.to_string(), None);
             Ok(())
         }
-        Err(err) => Err(AppError::io(format!("Failed to delete keyring entry '{name}': {err}"))),
+        Err(err) => Err(AppError::io(format!(
+            "Failed to delete keyring entry '{name}': {err}"
+        ))),
     }
 }
 
@@ -254,7 +269,11 @@ fn normalize_base_url(config: &mut ModelConfig) {
         return;
     }
 
-    let trimmed = config.base_url.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let trimmed = config
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let builtin_base_url = builtin_models()
         .into_iter()
         .find(|model| model.provider == config.provider && model.id == config.model)
@@ -313,11 +332,18 @@ fn load_configs(db: &Database) -> Result<Vec<ModelConfig>, AppError> {
     let raw = db.get_setting(MODEL_CONFIGS_KEY)?;
     match raw {
         Some(raw) => {
-            let mut configs: Vec<ModelConfig> = serde_json::from_str(&raw)
-                .map_err(|err| AppError::db(format!("Failed to parse stored Khadim model configs: {err}")))?;
+            let mut configs: Vec<ModelConfig> = serde_json::from_str(&raw).map_err(|err| {
+                AppError::db(format!(
+                    "Failed to parse stored Khadim model configs: {err}"
+                ))
+            })?;
             let mut migrated = false;
             for config in &mut configs {
-                if let Some(api_key) = config.api_key.clone().filter(|value| !value.trim().is_empty()) {
+                if let Some(api_key) = config
+                    .api_key
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+                {
                     save_api_key(&config.id, &config.provider, &api_key)?;
                     config.api_key = None;
                     migrated = true;
@@ -340,8 +366,14 @@ fn save_configs(db: &Database, configs: &[ModelConfig]) -> Result<(), AppError> 
 }
 
 fn normalize_flags(configs: &mut [ModelConfig]) {
-    let default_id = configs.iter().find(|config| config.is_default).map(|config| config.id.clone());
-    let active_id = configs.iter().find(|config| config.is_active).map(|config| config.id.clone());
+    let default_id = configs
+        .iter()
+        .find(|config| config.is_default)
+        .map(|config| config.id.clone());
+    let active_id = configs
+        .iter()
+        .find(|config| config.is_active)
+        .map(|config| config.id.clone());
 
     if let Some(default_id) = default_id {
         for config in configs.iter_mut() {
@@ -361,13 +393,23 @@ pub fn list_configs(db: &Database) -> Result<Vec<ModelConfig>, AppError> {
         populate_runtime_secrets(config)?;
     }
     normalize_flags(&mut configs);
-    configs.sort_by(|left, right| right.is_active.cmp(&left.is_active).then_with(|| left.name.cmp(&right.name)));
+    configs.sort_by(|left, right| {
+        right
+            .is_active
+            .cmp(&left.is_active)
+            .then_with(|| left.name.cmp(&right.name))
+    });
     Ok(configs)
 }
 
 pub fn create_config(db: &Database, input: ModelConfigInput) -> Result<ModelConfig, AppError> {
-    if input.name.trim().is_empty() || input.provider.trim().is_empty() || input.model.trim().is_empty() {
-        return Err(AppError::invalid_input("Name, provider, and model are required"));
+    if input.name.trim().is_empty()
+        || input.provider.trim().is_empty()
+        || input.model.trim().is_empty()
+    {
+        return Err(AppError::invalid_input(
+            "Name, provider, and model are required",
+        ));
     }
     let mut configs = load_configs(db)?;
     let mut config = ModelConfig {
@@ -408,7 +450,11 @@ pub fn create_config(db: &Database, input: ModelConfigInput) -> Result<ModelConf
     Ok(config)
 }
 
-pub fn update_config(db: &Database, id: &str, input: ModelConfigInput) -> Result<ModelConfig, AppError> {
+pub fn update_config(
+    db: &Database,
+    id: &str,
+    input: ModelConfigInput,
+) -> Result<ModelConfig, AppError> {
     let mut configs = load_configs(db)?;
     let index = configs
         .iter()
@@ -453,7 +499,8 @@ pub fn update_config(db: &Database, id: &str, input: ModelConfigInput) -> Result
 pub fn delete_config(db: &Database, id: &str) -> Result<(), AppError> {
     let mut configs = load_configs(db)?;
     let removed = configs.iter().position(|config| config.id == id);
-    let removed = removed.ok_or_else(|| AppError::not_found(format!("Model config not found: {id}")))?;
+    let removed =
+        removed.ok_or_else(|| AppError::not_found(format!("Model config not found: {id}")))?;
     let removed_config = configs.remove(removed);
     delete_secret(&model_key_name(&removed_config.id))?;
     if removed_config.is_default {
@@ -498,7 +545,9 @@ pub fn set_default_config(db: &Database, id: &str) -> Result<(), AppError> {
 }
 
 pub fn active_config(db: &Database) -> Result<Option<ModelConfig>, AppError> {
-    let mut config = load_configs(db)?.into_iter().find(|config| config.is_active);
+    let mut config = load_configs(db)?
+        .into_iter()
+        .find(|config| config.is_active);
     if let Some(config) = config.as_mut() {
         populate_runtime_secrets(config)?;
     }
@@ -515,7 +564,11 @@ fn registry_models_for_provider(provider: &str) -> Vec<DiscoveredProviderModel> 
             provider: model.provider.clone(),
             api: model.api.clone(),
             reasoning: model.reasoning,
-            input: model.input.iter().map(|k| input_kind_str(k).to_string()).collect(),
+            input: model
+                .input
+                .iter()
+                .map(|k| input_kind_str(k).to_string())
+                .collect(),
             context_window: model.context_window,
             max_tokens: model.max_tokens,
             cost: model.cost,
@@ -536,7 +589,11 @@ fn opencode_discovery_base_url(base_url: Option<String>) -> String {
     }
 }
 
-async fn discover_opencode_models(provider: &str, api_key: Option<String>, base_url: Option<String>) -> Result<Vec<DiscoveredProviderModel>, AppError> {
+async fn discover_opencode_models(
+    provider: &str,
+    api_key: Option<String>,
+    base_url: Option<String>,
+) -> Result<Vec<DiscoveredProviderModel>, AppError> {
     let resolved_base_url = opencode_discovery_base_url(base_url);
     let api_key = api_key
         .filter(|value| !value.trim().is_empty())
@@ -552,7 +609,11 @@ async fn discover_opencode_models(provider: &str, api_key: Option<String>, base_
             .map_err(|err| AppError::invalid_input(format!("Invalid provider API key: {err}")))?,
     );
 
-    let payload = fetch_json(&format!("{}/models", resolved_base_url.trim_end_matches('/')), headers).await?;
+    let payload = fetch_json(
+        &format!("{}/models", resolved_base_url.trim_end_matches('/')),
+        headers,
+    )
+    .await?;
     let discovered = payload
         .get("data")
         .and_then(|value| value.as_array())
@@ -600,7 +661,11 @@ fn decode_codex_account_id(token: &str) -> Option<String> {
     let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(parts[1])
         .ok()
-        .or_else(|| base64::engine::general_purpose::URL_SAFE.decode(parts[1]).ok())?;
+        .or_else(|| {
+            base64::engine::general_purpose::URL_SAFE
+                .decode(parts[1])
+                .ok()
+        })?;
     let json = serde_json::from_slice::<serde_json::Value>(&decoded).ok()?;
     json.get("https://api.openai.com/auth")?
         .get("chatgpt_account_id")?
@@ -696,10 +761,20 @@ async fn discover_codex_models() -> Result<Vec<DiscoveredProviderModel>, AppErro
     Ok(models)
 }
 
-async fn fetch_json(url: &str, headers: reqwest::header::HeaderMap) -> Result<serde_json::Value, AppError> {
-    let response = reqwest::Client::new().get(url).headers(headers).send().await?;
+async fn fetch_json(
+    url: &str,
+    headers: reqwest::header::HeaderMap,
+) -> Result<serde_json::Value, AppError> {
+    let response = reqwest::Client::new()
+        .get(url)
+        .headers(headers)
+        .send()
+        .await?;
     if !response.status().is_success() {
-        return Err(AppError::health(format!("Failed to fetch provider models: HTTP {}", response.status())));
+        return Err(AppError::health(format!(
+            "Failed to fetch provider models: HTTP {}",
+            response.status()
+        )));
     }
     response
         .json::<serde_json::Value>()
@@ -707,7 +782,11 @@ async fn fetch_json(url: &str, headers: reqwest::header::HeaderMap) -> Result<se
         .map_err(|err| AppError::health(format!("Failed to parse provider models response: {err}")))
 }
 
-pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: Option<String>) -> Result<Vec<DiscoveredProviderModel>, AppError> {
+pub async fn discover_models(
+    provider: &str,
+    api_key: Option<String>,
+    base_url: Option<String>,
+) -> Result<Vec<DiscoveredProviderModel>, AppError> {
     let registry_only = BTreeSet::from([
         "opencode-go",
         "github-copilot",
@@ -731,18 +810,33 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
     }
 
     if provider == "ollama" {
-        let url = format!("{}/api/tags", base_url.unwrap_or_else(|| "http://localhost:11434".to_string()).trim_end_matches('/'));
+        let url = format!(
+            "{}/api/tags",
+            base_url
+                .unwrap_or_else(|| "http://localhost:11434".to_string())
+                .trim_end_matches('/')
+        );
         let payload = fetch_json(&url, reqwest::header::HeaderMap::new()).await?;
         let models = payload
             .get("models")
             .and_then(|value| value.as_array())
             .cloned()
             .unwrap_or_default();
-        return Ok(normalize_model_pairs("ollama", models.into_iter().filter_map(|model| {
-            let id = model.get("model").or_else(|| model.get("name")).and_then(|value| value.as_str())?;
-            let name = model.get("name").or_else(|| model.get("model")).and_then(|value| value.as_str()).unwrap_or(id);
-            Some((id.to_string(), name.to_string()))
-        })));
+        return Ok(normalize_model_pairs(
+            "ollama",
+            models.into_iter().filter_map(|model| {
+                let id = model
+                    .get("model")
+                    .or_else(|| model.get("name"))
+                    .and_then(|value| value.as_str())?;
+                let name = model
+                    .get("name")
+                    .or_else(|| model.get("model"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or(id);
+                Some((id.to_string(), name.to_string()))
+            }),
+        ));
     }
 
     if provider == "anthropic" {
@@ -751,17 +845,40 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
             .or_else(|| get_saved_provider_api_key(provider).ok().flatten())
             .or_else(|| get_env_api_key(provider))
             .ok_or_else(|| AppError::invalid_input("Missing API key for Anthropic"))?;
-        let url = format!("{}/models", base_url.unwrap_or_else(|| "https://api.anthropic.com/v1".to_string()).trim_end_matches('/'));
+        let url = format!(
+            "{}/models",
+            base_url
+                .unwrap_or_else(|| "https://api.anthropic.com/v1".to_string())
+                .trim_end_matches('/')
+        );
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("x-api-key", reqwest::header::HeaderValue::from_str(&key).map_err(|err| AppError::invalid_input(format!("Invalid Anthropic API key: {err}")))?);
-        headers.insert("anthropic-version", reqwest::header::HeaderValue::from_static("2023-06-01"));
+        headers.insert(
+            "x-api-key",
+            reqwest::header::HeaderValue::from_str(&key).map_err(|err| {
+                AppError::invalid_input(format!("Invalid Anthropic API key: {err}"))
+            })?,
+        );
+        headers.insert(
+            "anthropic-version",
+            reqwest::header::HeaderValue::from_static("2023-06-01"),
+        );
         let payload = fetch_json(&url, headers).await?;
-        let models = payload.get("data").and_then(|value| value.as_array()).cloned().unwrap_or_default();
-        return Ok(normalize_model_pairs("anthropic", models.into_iter().filter_map(|model| {
-            let id = model.get("id").and_then(|value| value.as_str())?;
-            let name = model.get("display_name").and_then(|value| value.as_str()).unwrap_or(id);
-            Some((id.to_string(), name.to_string()))
-        })));
+        let models = payload
+            .get("data")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        return Ok(normalize_model_pairs(
+            "anthropic",
+            models.into_iter().filter_map(|model| {
+                let id = model.get("id").and_then(|value| value.as_str())?;
+                let name = model
+                    .get("display_name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or(id);
+                Some((id.to_string(), name.to_string()))
+            }),
+        ));
     }
 
     let resolved_base_url = match base_url {
@@ -771,7 +888,9 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
             .find(|model| model.provider == provider)
             .map(|model| model.base_url)
             .filter(|url| !url.is_empty())
-            .ok_or_else(|| AppError::invalid_input(format!("Base URL is required for {provider}")))?,
+            .ok_or_else(|| {
+                AppError::invalid_input(format!("Base URL is required for {provider}"))
+            })?,
     };
 
     let mut headers = reqwest::header::HeaderMap::new();
@@ -781,18 +900,39 @@ pub async fn discover_models(provider: &str, api_key: Option<String>, base_url: 
         .or_else(|| get_env_api_key(provider))
     {
         let bearer = format!("Bearer {api_key}");
-        headers.insert(reqwest::header::AUTHORIZATION, reqwest::header::HeaderValue::from_str(&bearer).map_err(|err| AppError::invalid_input(format!("Invalid provider API key: {err}")))?);
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            reqwest::header::HeaderValue::from_str(&bearer).map_err(|err| {
+                AppError::invalid_input(format!("Invalid provider API key: {err}"))
+            })?,
+        );
     }
-    let payload = fetch_json(&format!("{}/models", resolved_base_url.trim_end_matches('/')), headers).await?;
-    let models = payload.get("data").and_then(|value| value.as_array()).cloned().unwrap_or_default();
-    Ok(normalize_model_pairs(provider, models.into_iter().filter_map(|model| {
-        let id = model.get("id").and_then(|value| value.as_str())?;
-        let name = model.get("name").and_then(|value| value.as_str()).unwrap_or(id);
-        Some((id.to_string(), name.to_string()))
-    })))
+    let payload = fetch_json(
+        &format!("{}/models", resolved_base_url.trim_end_matches('/')),
+        headers,
+    )
+    .await?;
+    let models = payload
+        .get("data")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    Ok(normalize_model_pairs(
+        provider,
+        models.into_iter().filter_map(|model| {
+            let id = model.get("id").and_then(|value| value.as_str())?;
+            let name = model
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or(id);
+            Some((id.to_string(), name.to_string()))
+        }),
+    ))
 }
 
-pub fn configured_model_options(db: &Database) -> Result<Vec<crate::khadim_ai::models::CatalogModelOption>, AppError> {
+pub fn configured_model_options(
+    db: &Database,
+) -> Result<Vec<crate::khadim_ai::models::CatalogModelOption>, AppError> {
     Ok(list_configs(db)?
         .into_iter()
         .map(|config| crate::khadim_ai::models::CatalogModelOption {
@@ -805,7 +945,11 @@ pub fn configured_model_options(db: &Database) -> Result<Vec<crate::khadim_ai::m
         .collect())
 }
 
-pub fn configured_model_override(db: &Database, provider: &str, model_id: &str) -> Result<Option<ModelConfig>, AppError> {
+pub fn configured_model_override(
+    db: &Database,
+    provider: &str,
+    model_id: &str,
+) -> Result<Option<ModelConfig>, AppError> {
     let mut config = load_configs(db)?
         .into_iter()
         .find(|config| config.provider == provider && config.model == model_id);
@@ -844,8 +988,7 @@ fn provider_has_credentials(provider: &str) -> bool {
         .flatten()
         .is_some();
     let has_env_key = get_env_api_key(provider).is_some();
-    let has_oauth_key = provider == "openai-codex"
-        && has_openai_codex_auth_sync().unwrap_or(false);
+    let has_oauth_key = provider == "openai-codex" && has_openai_codex_auth_sync().unwrap_or(false);
 
     has_saved_key || has_env_key || has_oauth_key
 }
@@ -856,7 +999,10 @@ pub fn provider_statuses(db: &Database) -> Result<Vec<ProviderStatus>, AppError>
     let mut statuses = Vec::with_capacity(providers.len());
 
     for provider in &providers {
-        let model_count = configs.iter().filter(|c| c.provider == provider.r#type).count() as u32;
+        let model_count = configs
+            .iter()
+            .filter(|c| c.provider == provider.r#type)
+            .count() as u32;
 
         let has_env_key = get_env_api_key(&provider.r#type).is_some();
         let has_key = provider_has_credentials(&provider.r#type);
@@ -884,7 +1030,9 @@ pub fn provider_statuses(db: &Database) -> Result<Vec<ProviderStatus>, AppError>
     Ok(statuses)
 }
 
-pub async fn sync_saved_provider_models(db: &Database) -> Result<ProviderModelSyncResult, AppError> {
+pub async fn sync_saved_provider_models(
+    db: &Database,
+) -> Result<ProviderModelSyncResult, AppError> {
     let providers = supported_providers();
     let mut checked_providers = 0u32;
     let mut synced_providers = 0u32;
@@ -915,7 +1063,8 @@ pub async fn sync_saved_provider_models(db: &Database) -> Result<ProviderModelSy
                     })
                     .collect::<Vec<_>>();
 
-                let result = apply_provider_models(db, &provider.r#type, &models, should_reconcile)?;
+                let result =
+                    apply_provider_models(db, &provider.r#type, &models, should_reconcile)?;
                 if result.created > 0 || result.removed > 0 {
                     synced_providers += 1;
                 }
@@ -1009,7 +1158,9 @@ fn apply_provider_models(
             .map(|config| config.id.clone())
             .collect::<Vec<_>>();
         if !removed_ids.is_empty() {
-            configs.retain(|config| !(config.provider == provider && !discovered_ids.contains(&config.model)));
+            configs.retain(|config| {
+                !(config.provider == provider && !discovered_ids.contains(&config.model))
+            });
             for id in &removed_ids {
                 let _ = delete_secret(&model_key_name(id));
             }
@@ -1115,14 +1266,18 @@ pub fn remove_provider_models(db: &Database, provider: &str) -> Result<u32, AppE
     Ok(removed)
 }
 
-pub fn active_model_option(db: &Database) -> Result<Option<crate::khadim_ai::models::CatalogModelOption>, AppError> {
-    Ok(active_config(db)?.map(|config| crate::khadim_ai::models::CatalogModelOption {
-        provider_id: config.provider.clone(),
-        provider_name: provider_name(&config.provider),
-        model_id: config.model.clone(),
-        model_name: config.name.clone(),
-        is_default: config.is_default,
-    }))
+pub fn active_model_option(
+    db: &Database,
+) -> Result<Option<crate::khadim_ai::models::CatalogModelOption>, AppError> {
+    Ok(
+        active_config(db)?.map(|config| crate::khadim_ai::models::CatalogModelOption {
+            provider_id: config.provider.clone(),
+            provider_name: provider_name(&config.provider),
+            model_id: config.model.clone(),
+            model_name: config.name.clone(),
+            is_default: config.is_default,
+        }),
+    )
 }
 
 /// Look up a saved model config by id. Returns `None` if no config with

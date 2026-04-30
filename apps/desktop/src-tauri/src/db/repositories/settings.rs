@@ -10,13 +10,18 @@ pub(crate) struct SettingsRepository {
 }
 
 impl SettingsRepository {
-    pub(crate) fn new(ctx: Arc<DbContext>) -> Self { Self { ctx } }
+    pub(crate) fn new(ctx: Arc<DbContext>) -> Self {
+        Self { ctx }
+    }
 
     pub(crate) fn get(&self, key: &str) -> Result<Option<String>, AppError> {
         let conn = self.ctx.conn();
         let key = key.to_string();
         self.ctx.run(async move {
-            Ok(settings::Entity::find_by_id(key).one(&conn).await?.map(|model| model.value))
+            Ok(settings::Entity::find_by_id(key)
+                .one(&conn)
+                .await?
+                .map(|model| model.value))
         })
     }
 

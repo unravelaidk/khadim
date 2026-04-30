@@ -246,10 +246,7 @@ impl IntegrationRegistry {
         metas
     }
 
-    pub async fn list_by_category(
-        &self,
-        category: &IntegrationCategory,
-    ) -> Vec<IntegrationMeta> {
+    pub async fn list_by_category(&self, category: &IntegrationCategory) -> Vec<IntegrationMeta> {
         let guard = self.integrations.read().await;
         let mut metas: Vec<_> = guard
             .values()
@@ -337,15 +334,10 @@ impl IntegrationRegistry {
     }
 
     /// Build an ActionContext for a stored connection.
-    pub fn build_context(
-        &self,
-        connection_id: &str,
-    ) -> Result<ActionContext, AppError> {
+    pub fn build_context(&self, connection_id: &str) -> Result<ActionContext, AppError> {
         let secret = self.db.get_integration_connection_secret(connection_id)?;
         let credentials: HashMap<String, String> = match secret {
-            Some(json) => {
-                serde_json::from_str(&json).map_err(|e| AppError::db(e.to_string()))?
-            }
+            Some(json) => serde_json::from_str(&json).map_err(|e| AppError::db(e.to_string()))?,
             None => HashMap::new(),
         };
         // If there's a single "api_key" field, also set access_token for convenience
@@ -377,10 +369,7 @@ impl IntegrationRegistry {
     }
 
     /// Test connection health.
-    pub async fn test_connection(
-        &self,
-        connection_id: &str,
-    ) -> Result<ConnectionStatus, AppError> {
+    pub async fn test_connection(&self, connection_id: &str) -> Result<ConnectionStatus, AppError> {
         let conn = self.find_connection(connection_id)?;
         let integration = self.find_integration_for_connection(&conn).await?;
         let ctx = self.build_context(connection_id)?;
@@ -389,7 +378,9 @@ impl IntegrationRegistry {
         // Update verification timestamp if connected
         if status.connected {
             let now = chrono::Utc::now().to_rfc3339();
-            let _ = self.db.update_integration_connection_verified(connection_id, &now);
+            let _ = self
+                .db
+                .update_integration_connection_verified(connection_id, &now);
         }
 
         Ok(status)

@@ -347,9 +347,7 @@ fn maybe_respond_to_terminal_queries(
     combined.extend_from_slice(tail);
     combined.extend_from_slice(chunk);
 
-    let saw_da1 = combined
-        .windows(DA1_QUERY.len())
-        .any(|w| w == DA1_QUERY)
+    let saw_da1 = combined.windows(DA1_QUERY.len()).any(|w| w == DA1_QUERY)
         || combined
             .windows(DA1_QUERY_ZERO.len())
             .any(|w| w == DA1_QUERY_ZERO);

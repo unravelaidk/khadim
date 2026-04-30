@@ -108,16 +108,7 @@ pub async fn wait_for_health_paths(
     let mut last_error: Option<AppError> = None;
 
     for path in paths {
-        match wait_for_health(
-            base_url,
-            path,
-            username,
-            password,
-            max_retries,
-            interval_ms,
-        )
-        .await
-        {
+        match wait_for_health(base_url, path, username, password, max_retries, interval_ms).await {
             Ok(status) => return Ok(status),
             Err(err) => last_error = Some(err),
         }

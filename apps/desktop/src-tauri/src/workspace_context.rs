@@ -143,7 +143,11 @@ mod tests {
         }
     }
 
-    fn conversation(cwd: Option<&str>, worktree: Option<&str>, branch: Option<&str>) -> Conversation {
+    fn conversation(
+        cwd: Option<&str>,
+        worktree: Option<&str>,
+        branch: Option<&str>,
+    ) -> Conversation {
         Conversation {
             id: "conv".into(),
             workspace_id: "ws".into(),

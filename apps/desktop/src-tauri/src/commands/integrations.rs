@@ -1,9 +1,8 @@
 use crate::error::AppError;
 use crate::integrations::{
-    ActionDef, ActionResult, AuthKind, ConnectionStatus, IntegrationConnection,
+    auth::{run_oauth_flow, OAuthConfig, OAuthTokenSet},
+    ActionDef, ActionResult, AuthKind, ConnectionStatus, Integration, IntegrationConnection,
     IntegrationLog, IntegrationMeta,
-    auth::{OAuthConfig, OAuthTokenSet, run_oauth_flow},
-    Integration,
 };
 use crate::AppState;
 use serde::Deserialize;
@@ -15,9 +14,11 @@ async fn require_integration(
     state: &AppState,
     integration_id: &str,
 ) -> Result<Arc<dyn Integration>, AppError> {
-    state.integrations.get(integration_id).await.ok_or_else(|| {
-        AppError::not_found(format!("Integration {integration_id} not found"))
-    })
+    state
+        .integrations
+        .get(integration_id)
+        .await
+        .ok_or_else(|| AppError::not_found(format!("Integration {integration_id} not found")))
 }
 
 fn oauth_env_key(integration_id: &str, suffix: &str) -> String {
@@ -36,10 +37,7 @@ fn get_oauth_client_secret(integration_id: &str) -> Option<String> {
     std::env::var(oauth_env_key(integration_id, "CLIENT_SECRET")).ok()
 }
 
-fn build_oauth_config(
-    integration_id: &str,
-    auth_type: &AuthKind,
-) -> Result<OAuthConfig, AppError> {
+fn build_oauth_config(integration_id: &str, auth_type: &AuthKind) -> Result<OAuthConfig, AppError> {
     match auth_type {
         AuthKind::OAuth2 {
             auth_url,
@@ -188,11 +186,9 @@ pub(crate) async fn connect_integration_oauth(
 
     let creds = oauth_token_credentials(&token_set);
 
-    let conn = app_state.integrations.create_connection(
-        &integration_id,
-        &label,
-        creds,
-    )?;
+    let conn = app_state
+        .integrations
+        .create_connection(&integration_id, &label, creds)?;
 
     finalize_connected_integration(app_state, conn, false).await
 }

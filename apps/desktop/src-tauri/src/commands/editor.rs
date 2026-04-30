@@ -33,7 +33,11 @@ const KNOWN_EDITORS: &[(&str, &str, &[&str])] = &[
     ("clion", "CLion", &["clion"]),
     ("lapce", "Lapce", &["lapce"]),
     ("kate", "Kate", &["kate"]),
-    ("gedit", "GNOME Text Editor", &["gedit", "gnome-text-editor"]),
+    (
+        "gedit",
+        "GNOME Text Editor",
+        &["gedit", "gnome-text-editor"],
+    ),
     ("nano", "Nano", &["nano"]),
     ("xdg", "System Default", &["xdg-open"]),
 ];
@@ -71,8 +75,13 @@ pub(crate) async fn open_in_editor(
         )));
     }
 
-    let effective_id = editor_id
-        .or_else(|| state.db.get_setting("khadim:preferred_editor").ok().flatten());
+    let effective_id = editor_id.or_else(|| {
+        state
+            .db
+            .get_setting("khadim:preferred_editor")
+            .ok()
+            .flatten()
+    });
 
     if let Some(ref id) = effective_id {
         if let Some((_, _, binaries)) = KNOWN_EDITORS.iter().find(|(eid, _, _)| eid == id) {
@@ -130,7 +139,11 @@ pub(crate) async fn open_project_in_editor(
         )));
     }
 
-    let editor_id = state.db.get_setting("khadim:preferred_editor").ok().flatten();
+    let editor_id = state
+        .db
+        .get_setting("khadim:preferred_editor")
+        .ok()
+        .flatten();
 
     if let Some(ref id) = editor_id {
         if let Some((_, _, binaries)) = KNOWN_EDITORS.iter().find(|(eid, _, _)| eid == id) {
@@ -145,15 +158,7 @@ pub(crate) async fn open_project_in_editor(
     }
 
     for bin in [
-        "code",
-        "cursor",
-        "zed",
-        "windsurf",
-        "subl",
-        "idea",
-        "webstorm",
-        "fleet",
-        "lapce",
+        "code", "cursor", "zed", "windsurf", "subl", "idea", "webstorm", "fleet", "lapce",
     ] {
         if Command::new(bin).arg(&project_path).spawn().is_ok() {
             return Ok(());

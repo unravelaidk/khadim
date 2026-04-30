@@ -45,7 +45,11 @@ fn parse_frontmatter(content: &str) -> HashMap<String, String> {
     for line in block.lines() {
         if let Some((key, value)) = line.split_once(':') {
             let k = key.trim().to_lowercase();
-            let v = value.trim().trim_matches('"').trim_matches('\'').to_string();
+            let v = value
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
             if !k.is_empty() && !v.is_empty() {
                 map.insert(k, v);
             }
@@ -224,29 +228,33 @@ impl SkillManager {
                     dir: path.to_string_lossy().to_string(),
                     source_dir: dir_path.clone(),
                     enabled,
-                    author: frontmatter.get("author").cloned()
-                        .or_else(|| {
-                            // Try metadata.json
-                            let meta_path = path.join("metadata.json");
-                            if meta_path.exists() {
-                                let meta = std::fs::read_to_string(&meta_path).ok()?;
-                                let meta_val: serde_json::Value = serde_json::from_str(&meta).ok()?;
-                                meta_val.get("author").and_then(|v| v.as_str()).map(|s| s.to_string())
-                            } else {
-                                None
-                            }
-                        }),
-                    version: frontmatter.get("version").cloned()
-                        .or_else(|| {
-                            let meta_path = path.join("metadata.json");
-                            if meta_path.exists() {
-                                let meta = std::fs::read_to_string(&meta_path).ok()?;
-                                let meta_val: serde_json::Value = serde_json::from_str(&meta).ok()?;
-                                meta_val.get("version").and_then(|v| v.as_str()).map(|s| s.to_string())
-                            } else {
-                                None
-                            }
-                        }),
+                    author: frontmatter.get("author").cloned().or_else(|| {
+                        // Try metadata.json
+                        let meta_path = path.join("metadata.json");
+                        if meta_path.exists() {
+                            let meta = std::fs::read_to_string(&meta_path).ok()?;
+                            let meta_val: serde_json::Value = serde_json::from_str(&meta).ok()?;
+                            meta_val
+                                .get("author")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    }),
+                    version: frontmatter.get("version").cloned().or_else(|| {
+                        let meta_path = path.join("metadata.json");
+                        if meta_path.exists() {
+                            let meta = std::fs::read_to_string(&meta_path).ok()?;
+                            let meta_val: serde_json::Value = serde_json::from_str(&meta).ok()?;
+                            meta_val
+                                .get("version")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    }),
                 };
 
                 all.insert(dir_name, skill);
@@ -311,10 +319,7 @@ impl SkillManager {
     /// Returns the scan directories themselves (e.g. ~/.agents/skills) so
     /// every skill and its subdirectories are readable.
     pub fn enabled_skill_dirs(&self) -> Vec<PathBuf> {
-        let dirs: Vec<PathBuf> = self.list_dirs()
-            .into_iter()
-            .map(PathBuf::from)
-            .collect();
+        let dirs: Vec<PathBuf> = self.list_dirs().into_iter().map(PathBuf::from).collect();
         log::info!("SkillManager::enabled_skill_dirs() -> {:?}", dirs);
         dirs
     }

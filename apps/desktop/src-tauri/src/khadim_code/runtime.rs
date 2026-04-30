@@ -1,6 +1,8 @@
 use crate::khadim_agent::types::AgentModeDefinition;
 use crate::khadim_code::prompt::build_system_prompt;
-use crate::khadim_code::tools::{default_tools, default_tools_with_skill_dirs, Tool, ToolDefinition};
+use crate::khadim_code::tools::{
+    default_tools, default_tools_with_skill_dirs, Tool, ToolDefinition,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,7 +22,11 @@ impl AgentRuntime {
             .into_iter()
             .map(|tool| (tool.definition().name.clone(), tool))
             .collect::<HashMap<_, _>>();
-        Self { root, tools, prompt_suffix: String::new() }
+        Self {
+            root,
+            tools,
+            prompt_suffix: String::new(),
+        }
     }
 
     /// Create a runtime with plugin tools, skill dirs for the read tool,
@@ -43,7 +49,11 @@ impl AgentRuntime {
             tools.insert(name, tool);
         }
 
-        Self { root, tools, prompt_suffix: skills_prompt }
+        Self {
+            root,
+            tools,
+            prompt_suffix: skills_prompt,
+        }
     }
 
     pub fn root(&self) -> &Path {
