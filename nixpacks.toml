@@ -1,13 +1,13 @@
-providers = ["node"]
-
 [phases.setup]
-nixPkgs = ["bun"]
+nixPkgs = ["bun", "curl", "unzip"]
+cmds = ["curl -fsSL https://bun.sh/install | bash -s 'bun-v1.3.13'"]
+paths = ["/root/.bun/bin"]
 
 [phases.install]
-cmds = ["bun install --frozen-lockfile"]
+cmds = ["which bun && bun --version && bun install --frozen-lockfile"]
 
 [phases.build]
-cmds = ["bun --filter @khadim/web build"]
+cmds = ["bun --filter @khadim/web --filter @khadim/codeexecution-client --filter @khadim/html-to-pptx build"]
 
 [start]
 cmd = "bun --filter @khadim/web start"
