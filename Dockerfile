@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS base
+FROM oven/bun:1.3.13 AS base
 WORKDIR /app
 
 FROM base AS deps
@@ -12,7 +12,7 @@ FROM deps AS build
 COPY . .
 RUN bun --filter @khadim/web --filter @khadim/codeexecution-client --filter @khadim/html-to-pptx build
 
-FROM oven/bun:1 AS runtime
+FROM oven/bun:1.3.13 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
