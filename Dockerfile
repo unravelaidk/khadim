@@ -10,7 +10,7 @@ RUN bun install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-RUN bun run build
+RUN bun --filter @khadim/web --filter @khadim/codeexecution-client --filter @khadim/html-to-pptx build
 
 FROM oven/bun:1 AS runtime
 WORKDIR /app
