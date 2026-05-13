@@ -17,5 +17,5 @@ khadim --prompt "このプロジェクトを説明してください"
 完全なドキュメントは現在[英語](/khadim/)で提供されています。
 
 - [CLI 概要](/khadim/cli/overview/)
-- [プログラム API](/khadim/cli/programmatic-api/)
+- [プログラム API](/khadim/cli/sdk/)
 - [プラグイン SDK](/khadim/plugins/overview/)

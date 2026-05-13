@@ -17,5 +17,5 @@ khadim --prompt "explică acest proiect"
 Documentația completă este disponibilă momentan în [engleză](/khadim/).
 
 - [Prezentare CLI](/khadim/cli/overview/)
-- [API programatic](/khadim/cli/programmatic-api/)
+- [API programatic](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

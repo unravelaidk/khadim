@@ -17,5 +17,5 @@ khadim --prompt "forklar dette prosjektet"
 Full dokumentasjon er for øyeblikket tilgjengelig på [engelsk](/khadim/).
 
 - [CLI Oversikt](/khadim/cli/overview/)
-- [Programmatisk API](/khadim/cli/programmatic-api/)
+- [Programmatisk API](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

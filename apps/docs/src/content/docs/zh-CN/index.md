@@ -17,5 +17,5 @@ khadim --prompt "解释这个项目"
 完整文档目前提供[英文版](/khadim/)。
 
 - [CLI 概述](/khadim/cli/overview/)
-- [编程接口](/khadim/cli/programmatic-api/)
+- [编程接口](/khadim/cli/sdk/)
 - [插件 SDK](/khadim/plugins/overview/)

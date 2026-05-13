@@ -17,5 +17,5 @@ khadim --prompt "इस प्रोजेक्ट को समझाएं"
 पूर्ण दस्तावेज़ीकरण वर्तमान में [अंग्रेज़ी](/khadim/) में उपलब्ध है।
 
 - [CLI अवलोकन](/khadim/cli/overview/)
-- [प्रोग्रामेटिक API](/khadim/cli/programmatic-api/)
+- [प्रोग्रामेटिक API](/khadim/cli/sdk/)
 - [प्लगइन SDK](/khadim/plugins/overview/)

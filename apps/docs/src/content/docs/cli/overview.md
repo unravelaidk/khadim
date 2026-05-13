@@ -79,7 +79,7 @@ The `--json` flag switches to machine-readable JSON-line output. Each line is a 
 {"event_type":"done"}
 ```
 
-This is the format consumed by the [programmatic API](/khadim/cli/programmatic-api/).
+This is the same event stream the [Khadim SDK](/khadim/cli/sdk/) consumes — anything you can read from `--json` you can wire into your own app.
 
 ## Configuration
 
@@ -144,4 +144,4 @@ GitHub Copilot and OpenAI Codex use OAuth device-code flow instead of API keys. 
 
 ## Docker (coming soon)
 
-Docker support is under active development. A pre-built `khadim-cli` image will let you run the agent in containers without installing any native binary — ideal for server deployments, CI/CD pipelines, and embedding into web applications. See the [programmatic API](/khadim/cli/programmatic-api/#docker-integration) for the planned integration pattern.
+Docker support is under active development. A pre-built `khadim-cli` image will let you run the agent in containers without installing any native binary — ideal for server deployments, CI/CD pipelines, and embedding into web applications. See the [Khadim SDK](/khadim/cli/sdk/#docker-runtime-preview) for the planned integration pattern.

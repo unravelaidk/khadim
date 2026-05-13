@@ -17,5 +17,5 @@ khadim --prompt "objasni ovaj projekat"
 Potpuna dokumentacija je trenutno dostupna na [engleskom jeziku](/khadim/).
 
 - [CLI Pregled](/khadim/cli/overview/)
-- [Programski API](/khadim/cli/programmatic-api/)
+- [Programski API](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

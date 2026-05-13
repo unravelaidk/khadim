@@ -17,5 +17,5 @@ khadim --prompt "bu projeyi açıkla"
 Tam dokümantasyon şu anda [İngilizce](/khadim/) olarak mevcuttur.
 
 - [CLI Genel Bakış](/khadim/cli/overview/)
-- [Programatik API](/khadim/cli/programmatic-api/)
+- [Programatik API](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

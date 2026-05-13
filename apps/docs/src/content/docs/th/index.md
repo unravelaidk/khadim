@@ -17,5 +17,5 @@ khadim --prompt "อธิบายโปรเจกต์นี้"
 เอกสารฉบับสมบูรณ์มีให้บริการเป็น[ภาษาอังกฤษ](/khadim/)
 
 - [ภาพรวม CLI](/khadim/cli/overview/)
-- [API แบบโปรแกรม](/khadim/cli/programmatic-api/)
+- [API แบบโปรแกรม](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

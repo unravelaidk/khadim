@@ -17,5 +17,5 @@ khadim --prompt "leg dit project uit"
 De volledige documentatie is momenteel beschikbaar in het [Engels](/khadim/).
 
 - [CLI Overzicht](/khadim/cli/overview/)
-- [Programmatische API](/khadim/cli/programmatic-api/)
+- [Programmatische API](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

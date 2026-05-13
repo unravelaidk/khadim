@@ -1,0 +1,232 @@
+/* Khadim docs theme — teal-on-ink brand identity.
+   Overrides Starlight's default tokens so the site matches the
+   Khadim desktop / web surfaces (accent #3C8E91 + Space Grotesk). */
+
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --sl-font: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sl-font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+
+  /* Khadim brand */
+  --khadim-accent: #3c8e91;
+  --khadim-accent-soft: #2d6a6c;
+  --khadim-accent-ink: #f4fafa;
+  --khadim-ink: #07100f;
+  --khadim-paper: #ebf3f3;
+}
+
+/* ─── Dark theme (default) ─────────────────────────────── */
+:root,
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #102e2f;
+  --sl-color-accent: #3c8e91;
+  --sl-color-accent-high: #a8d4d5;
+
+  --sl-color-white: #eef4f4;
+  --sl-color-gray-1: #d5dcdc;
+  --sl-color-gray-2: #abb6b6;
+  --sl-color-gray-3: #7c8a8a;
+  --sl-color-gray-4: #515c5c;
+  --sl-color-gray-5: #2a3232;
+  --sl-color-gray-6: #161c1c;
+  --sl-color-black: #07100f;
+
+  --sl-color-bg: var(--khadim-ink);
+  --sl-color-bg-nav: rgba(7, 16, 15, 0.85);
+  --sl-color-bg-sidebar: #0a1716;
+  --sl-color-bg-inline-code: #122020;
+  --sl-color-bg-accent: var(--khadim-accent);
+
+  --sl-color-text: #c7d2d2;
+  --sl-color-text-accent: var(--khadim-accent);
+  --sl-color-text-invert: var(--khadim-accent-ink);
+
+  --sl-color-hairline: rgba(60, 142, 145, 0.12);
+  --sl-color-hairline-light: rgba(60, 142, 145, 0.22);
+  --sl-color-hairline-shade: rgba(60, 142, 145, 0.06);
+
+  --sl-shadow-md: 0 12px 32px -16px rgba(60, 142, 145, 0.22);
+  --sl-shadow-lg: 0 24px 56px -24px rgba(60, 142, 145, 0.28);
+}
+
+/* ─── Light theme ──────────────────────────────────────── */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #cfe4e5;
+  --sl-color-accent: #2d6a6c;
+  --sl-color-accent-high: #0f2c2d;
+
+  --sl-color-white: #07100f;
+  --sl-color-gray-1: #161c1c;
+  --sl-color-gray-2: #2a3232;
+  --sl-color-gray-3: #515c5c;
+  --sl-color-gray-4: #7c8a8a;
+  --sl-color-gray-5: #abb6b6;
+  --sl-color-gray-6: #d5dcdc;
+  --sl-color-black: var(--khadim-paper);
+
+  --sl-color-bg: var(--khadim-paper);
+  --sl-color-bg-nav: rgba(235, 243, 243, 0.9);
+  --sl-color-bg-sidebar: #dde8e8;
+  --sl-color-bg-inline-code: #d4e1e1;
+
+  --sl-color-text: #142020;
+  --sl-color-text-accent: #1f4d4e;
+  --sl-color-text-invert: var(--khadim-paper);
+
+  --sl-color-hairline: rgba(20, 32, 32, 0.1);
+  --sl-color-hairline-light: rgba(20, 32, 32, 0.18);
+  --sl-color-hairline-shade: rgba(20, 32, 32, 0.06);
+}
+
+/* ─── Display typography ──────────────────────────────── */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+header.header .site-title,
+.hero h1 {
+  font-family: "Space Grotesk", "Manrope", sans-serif;
+  letter-spacing: -0.015em;
+}
+
+header.header .site-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+/* Accent underline on H1 — gives every page a Khadim signature */
+.sl-markdown-content > h1:first-child {
+  position: relative;
+  padding-bottom: 0.6rem;
+  margin-bottom: 1.2rem;
+}
+.sl-markdown-content > h1:first-child::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 3rem;
+  height: 3px;
+  background: var(--khadim-accent);
+  border-radius: 2px;
+}
+
+/* Section headings: subtle accent tick */
+.sl-markdown-content h2 {
+  border-top: 1px solid var(--sl-color-hairline);
+  padding-top: 2rem;
+  margin-top: 2.5rem;
+}
+
+/* ─── Links ───────────────────────────────────────────── */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-text-accent);
+  text-decoration-color: rgba(60, 142, 145, 0.4);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: var(--khadim-accent);
+}
+
+/* ─── Inline code + code blocks ───────────────────────── */
+.sl-markdown-content code:not(:where(.not-content *)) {
+  font-family: var(--sl-font-mono);
+  font-size: 0.88em;
+  padding: 0.12em 0.4em;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 4px;
+  background: var(--sl-color-bg-inline-code);
+}
+
+.expressive-code,
+.sl-markdown-content pre {
+  border: 1px solid var(--sl-color-hairline-light) !important;
+  border-radius: 8px;
+}
+
+/* ─── Tables: monospace-ish, tightened ────────────────── */
+.sl-markdown-content table {
+  font-size: 0.92rem;
+  border-collapse: collapse;
+  width: 100%;
+}
+.sl-markdown-content th {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+  color: var(--sl-color-text-accent);
+  border-bottom: 2px solid var(--sl-color-hairline-light);
+}
+.sl-markdown-content td {
+  border-bottom: 1px solid var(--sl-color-hairline);
+  padding: 0.6rem 0.75rem;
+}
+
+/* ─── Sidebar polish ──────────────────────────────────── */
+.sidebar-pane {
+  background: var(--sl-color-bg-sidebar);
+}
+.sidebar a[aria-current="page"] {
+  background: linear-gradient(
+    90deg,
+    rgba(60, 142, 145, 0.16) 0%,
+    rgba(60, 142, 145, 0) 100%
+  );
+  color: var(--khadim-accent) !important;
+  border-left: 2px solid var(--khadim-accent);
+  padding-left: calc(var(--sl-sidebar-item-padding-inline) - 2px);
+}
+.sidebar .group-label > span {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: var(--sl-color-text-accent);
+  opacity: 0.85;
+}
+
+/* ─── Top nav: subtle glow under the header ───────────── */
+header.header {
+  border-bottom: 1px solid var(--sl-color-hairline);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+header.header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(60, 142, 145, 0.45) 30%,
+    rgba(60, 142, 145, 0.45) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* ─── Asides / callouts ───────────────────────────────── */
+.starlight-aside {
+  border-left-width: 3px;
+  border-radius: 0 6px 6px 0;
+}
+.starlight-aside--note {
+  border-inline-start-color: var(--khadim-accent);
+}
+
+/* ─── Search and other small bits ─────────────────────── */
+button[data-open-modal] {
+  border-color: var(--sl-color-hairline-light);
+}
+button[data-open-modal]:hover {
+  border-color: var(--khadim-accent);
+  color: var(--khadim-accent);
+}

@@ -17,5 +17,5 @@ khadim --prompt "اشرح هذا المشروع"
 التوثيق الكامل متوفر حاليًا [باللغة الإنجليزية](/khadim/).
 
 - [CLI Overview](/khadim/cli/overview/)
-- [Programmatic API](/khadim/cli/programmatic-api/)
+- [Khadim SDK](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/)

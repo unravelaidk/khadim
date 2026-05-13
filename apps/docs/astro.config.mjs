@@ -29,7 +29,14 @@ export default defineConfig({
         "zh-CN": "Khadim 文档",
       },
       description:
-        "Documentation for the Khadim CLI coding agent, programmatic API, Plugin SDK, and Docker runtime.",
+        "Documentation for the Khadim CLI coding agent, SDK, Plugin SDK, and Docker runtime.",
+      logo: {
+        light: "./public/khadim-logo-light.svg",
+        dark: "./public/khadim-logo.svg",
+        alt: "Khadim",
+        replacesTitle: true,
+      },
+      customCss: ["./src/styles/khadim.css"],
       defaultLocale: "root",
       locales: {
         root: {
@@ -93,7 +100,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { label: "CLI Overview", slug: "cli/overview" },
-            { label: "Programmatic API", slug: "cli/programmatic-api" },
+            { label: "SDK", slug: "cli/sdk" },
           ],
         },
         {

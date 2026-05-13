@@ -1,56 +1,60 @@
 ---
-title: Intro
-description: Khadim — an open-source, local-first agentic automation platform.
+title: Khadim
+description: An open-source, local-first agentic automation platform — terminal, desktop, web, and SDK.
 ---
 
-Khadim is an open-source, local-first agentic automation platform. Instead of pre-built RPA blocks, Khadim uses AI agents to write and execute automation scripts on the fly.
+**Khadim** is an open-source, local-first agentic automation platform. Instead of stitching together pre-built RPA blocks, Khadim hands the job to an AI agent that writes and runs automation scripts on the fly — in your terminal, on your desktop, or embedded inside your own product.
 
-## Quick start
+> One agent. One tool loop. Every surface — CLI, desktop, web, SDK — talks to the same engine.
 
-Install the CLI coding agent:
+## Install in 30 seconds
 
 ```bash
 npm install -g @unravelai/khadim
 ```
 
-Run a prompt in batch mode:
+Run a one-shot prompt in batch mode:
 
 ```bash
 khadim --prompt "explain this codebase"
 ```
 
-Or launch the interactive TUI:
+…or drop into the interactive terminal UI:
 
 ```bash
 khadim
 ```
 
-## What Khadim can do
+## What you get
 
-- Autonomous coding agent with 19+ LLM providers
-- Interactive terminal UI with streaming tool execution
-- Programmatic API for embedding into your own apps
-- Plugin SDK for building sandboxed WebAssembly extensions
-- Desktop app with glass UI design system
-- Web app for team collaboration and cloud deployment
+- **Coding agent, 19+ providers.** OpenAI, Anthropic, Gemini, Groq, xAI, Copilot, Codex, Cerebras, OpenRouter, Mistral and more — swap providers without rewriting prompts.
+- **Streaming terminal UI.** Multi-line input, live tool execution, slash commands, session save/load, and an F2 settings panel.
+- **[Khadim SDK](/khadim/cli/sdk/).** Embed the same agent into your Node.js app with a typed, streaming API — including custom tool bridges that run in *your* process.
+- **[Plugin SDK](/khadim/plugins/overview/).** Ship sandboxed WebAssembly tools the agent loads at runtime.
+- **Desktop app.** A glass-UI Tauri build for users who don't live in a terminal.
+- **Web app.** Team collaboration and cloud deployment for shared agent runs.
 
-## Architecture
+## Architecture at a glance
 
 ```
-Desktop App (Tauri)          Web App (React Router + Express)
-       │                              │
-       ▼                              ▼
-   Agent Engine (shared core: LLM → plan → call tools → loop)
-       │
-   Tool Domains (pluggable)
-       ├── domains/coding     — file read/write, shell, grep, git
-       ├── domains/rpa        — screenshot, OCR, mouse/keyboard, browser
-       └── plugins/           — WASM user-extensible tools
+Desktop (Tauri)          Web (React Router + Express)        CLI / SDK
+       │                              │                          │
+       └──────────────────────────────┴──────────────────────────┘
+                                  │
+                          Agent Engine
+                  (LLM → plan → call tools → loop)
+                                  │
+                          Tool Domains
+              ├── domains/coding   — file I/O, shell, grep, git
+              ├── domains/rpa      — screenshot, OCR, mouse / keyboard, browser
+              └── plugins/         — WASM, user-extensible
 ```
 
-## Docs map
+The CLI, desktop, web, and SDK are four windows onto the same engine. Switch surfaces — keep the same prompts, the same tools, the same events.
 
-- [CLI Overview](/khadim/cli/overview/) — install, configure, and use the CLI.
-- [Programmatic API](/khadim/cli/programmatic-api/) — embed the agent in your own app.
-- [Plugin SDK](/khadim/plugins/overview/) — build sandboxed WebAssembly plugins.
-- [Docker Agent Runtime](/khadim/reference/docker-agent-runtime/) — run the agent in containers.
+## Where to go next
+
+- **[CLI Overview](/khadim/cli/overview/)** — install, configure, and live in the terminal.
+- **[Khadim SDK](/khadim/cli/sdk/)** — embed the agent in your own Node.js application.
+- **[Plugin SDK](/khadim/plugins/overview/)** — build sandboxed WebAssembly tools.
+- **[Docker Agent Runtime](/khadim/reference/docker-agent-runtime/)** — run the agent in containers.

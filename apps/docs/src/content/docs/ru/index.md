@@ -17,5 +17,5 @@ khadim --prompt "объясни этот проект"
 Полная документация в настоящее время доступна на [английском](/khadim/).
 
 - [Обзор CLI](/khadim/cli/overview/)
-- [Программный API](/khadim/cli/programmatic-api/)
+- [Программный API](/khadim/cli/sdk/)
 - [Plugin SDK](/khadim/plugins/overview/)

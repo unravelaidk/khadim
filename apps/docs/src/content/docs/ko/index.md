@@ -17,5 +17,5 @@ khadim --prompt "이 프로젝트를 설명해주세요"
 전체 문서는 현재 [영어](/khadim/)로 제공됩니다.
 
 - [CLI 개요](/khadim/cli/overview/)
-- [프로그래매틱 API](/khadim/cli/programmatic-api/)
+- [프로그래매틱 API](/khadim/cli/sdk/)
 - [플러그인 SDK](/khadim/plugins/overview/)
