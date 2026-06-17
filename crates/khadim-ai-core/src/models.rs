@@ -194,12 +194,87 @@ pub async fn refresh_openrouter_models(api_key: Option<&str>) -> Result<(), crat
     Ok(())
 }
 
+// ── Ollama Cloud model autodiscovery cache ───────────────────────────
+
+static OLLAMA_MODELS_CACHE: OnceLock<Mutex<Vec<Model>>> = OnceLock::new();
+
+fn ollama_cache() -> &'static Mutex<Vec<Model>> {
+    OLLAMA_MODELS_CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Return cached Ollama Cloud models (empty if never refreshed).
+pub fn get_ollama_models() -> Vec<Model> {
+    ollama_cache().lock().unwrap().clone()
+}
+
+/// Fetch available models from Ollama's OpenAI-compatible `/v1/models`
+/// endpoint and populate the static cache.
+///
+/// Ollama Cloud (https://ollama.com/v1) and a self-hosted server
+/// (OLLAMA_BASE_URL, e.g. http://localhost:11434/v1) both expose the same
+/// OpenAI-shaped list: `data[].id` is the model id (e.g. `gpt-oss:120b`),
+/// with `created` and `owned_by` metadata. The cloud endpoint requires a
+/// bearer key; a local server ignores it.
+pub async fn refresh_ollama_models(api_key: Option<&str>) -> Result<(), crate::error::AppError> {
+    use crate::env_api_keys::{get_env_api_key, get_env_base_url};
+
+    let base_url =
+        get_env_base_url("ollama").unwrap_or_else(|| "https://ollama.com/v1".to_string());
+    let api_key = api_key
+        .map(|s| s.to_string())
+        .or_else(|| get_env_api_key("ollama"))
+        .filter(|key| !key.is_empty());
+
+    let client = reqwest::Client::new();
+    let mut request = client.get(format!("{}/models", base_url.trim_end_matches('/')));
+    if let Some(ref key) = api_key {
+        request = request.bearer_auth(key);
+    }
+    let response = request.send().await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(crate::error::AppError::health(format!(
+            "Ollama models fetch failed: HTTP {status} - {body}"
+        )));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|err| {
+        crate::error::AppError::health(format!("Failed to parse Ollama models response: {err}"))
+    })?;
+
+    let mut models = Vec::new();
+    if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+        for item in data {
+            let Some(id) = item.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            // Heuristic: vision-capable Ollama models carry "-vl" / "vision".
+            let supports_image = {
+                let lower = id.to_lowercase();
+                lower.contains("-vl") || lower.contains("vision") || lower.contains("llava")
+            };
+            let mut model = base_model("ollama", id, id, "openai-completions", true);
+            if supports_image {
+                model.input.push(InputKind::Image);
+            }
+            models.push(model);
+        }
+    }
+
+    let mut cache = ollama_cache().lock().unwrap();
+    *cache = models;
+    Ok(())
+}
+
 /// Return all builtin models merged with any cached autodiscovered models.
-/// Hard-coded NVIDIA and OpenRouter models are replaced by the cached set when available.
+/// Hard-coded NVIDIA, OpenRouter, and Ollama models are replaced by the
+/// cached set when available.
 pub fn all_models() -> Vec<Model> {
     let mut models: Vec<Model> = builtin_models()
         .into_iter()
-        .filter(|m| m.provider != "nvidia" && m.provider != "openrouter")
+        .filter(|m| m.provider != "nvidia" && m.provider != "openrouter" && m.provider != "ollama")
         .collect();
 
     let nvidia_cached = get_nvidia_models();
@@ -214,6 +289,13 @@ pub fn all_models() -> Vec<Model> {
         models.extend(builtin_models().into_iter().filter(|m| m.provider == "openrouter"));
     } else {
         models.extend(openrouter_cached);
+    }
+
+    let ollama_cached = get_ollama_models();
+    if ollama_cached.is_empty() {
+        models.extend(builtin_models().into_iter().filter(|m| m.provider == "ollama"));
+    } else {
+        models.extend(ollama_cached);
     }
 
     models
@@ -290,6 +372,7 @@ fn provider_label(provider: &str) -> String {
         "minimax-cn" => "MiniMax CN",
         "zai" => "Z.AI",
         "nvidia" => "NVIDIA",
+        "ollama" => "Ollama Cloud",
         "azure-openai-responses" => "Azure OpenAI",
         "google" => "Google",
         "google-vertex" => "Google Vertex",
@@ -2680,6 +2763,18 @@ pub fn builtin_models() -> Vec<Model> {
             "bedrock-converse-stream",
             true,
         ),
+        // ── Ollama Cloud ────────────────────────────────────────────
+        // Ollama Cloud (https://ollama.com) serves an OpenAI-compatible API.
+        // The catalog is fetched dynamically via refresh_ollama_models; we
+        // include only the canonical default from Ollama's own docs so the
+        // provider is usable before the cache is populated.
+        base_model(
+            "ollama",
+            "gpt-oss:120b",
+            "GPT-OSS 120B",
+            "openai-completions",
+            true,
+        ),
         // ── OpenRouter ──────────────────────────────────────────────
         // OpenRouter models are fetched dynamically, but we include a
         // representative default so the provider is usable when the cache
@@ -2786,6 +2881,20 @@ mod tests {
             models.len() > 100,
             "Expected >100 OpenRouter models, got {}",
             models.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_ollama_models_without_api_key() {
+        // Ollama Cloud's /v1/models is public, so discovery works with no key.
+        let result = refresh_ollama_models(None).await;
+        assert!(result.is_ok(), "refresh_ollama_models failed: {:?}", result.err());
+        let models = get_ollama_models();
+        println!("Fetched {} Ollama Cloud models (no API key)", models.len());
+        assert!(!models.is_empty(), "Expected >0 Ollama models, got 0");
+        assert!(
+            models.iter().all(|m| m.provider == "ollama"),
+            "All discovered models should be provider=ollama"
         );
     }
 }
