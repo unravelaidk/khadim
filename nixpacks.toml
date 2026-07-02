@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["bun", "curl", "unzip"]
+nixPkgs = ["bun", "nodejs_22", "curl", "unzip"]
 cmds = ["curl -fsSL https://bun.sh/install | bash -s 'bun-v1.3.13'"]
 paths = ["/root/.bun/bin"]
 

@@ -48,7 +48,7 @@ fn push_unique(target: &mut Vec<String>, value: impl Into<String>) {
     }
 }
 
-fn extract_contract_summary(prompt: &str) -> Option<String> {
+pub(crate) fn extract_contract_summary(prompt: &str) -> Option<String> {
     let mut outputs = Vec::new();
     let mut commands = Vec::new();
     let mut forbidden_edits = Vec::new();
@@ -228,13 +228,9 @@ const PARALLEL_SAFE_TOOLS: &[&str] = &[
 ];
 
 /// Result of executing a single tool call.
-#[allow(dead_code)]
 struct ToolExecResult {
     tool_call_id: String,
-    tool_name: String,
     content: String,
-    is_error: bool,
-    metadata: Option<Value>,
 }
 
 /// Execute a single tool call: resolve → run → emit events → return result.
@@ -286,10 +282,7 @@ async fn execute_single_tool(
             );
             return ToolExecResult {
                 tool_call_id: step_id,
-                tool_name,
                 content: "Tool not available".to_string(),
-                is_error: true,
-                metadata: None,
             };
         }
     };
@@ -317,10 +310,7 @@ async fn execute_single_tool(
             );
             ToolExecResult {
                 tool_call_id: step_id,
-                tool_name,
                 content: result.content,
-                is_error: false,
-                metadata: result.metadata,
             }
         }
         Err(error) => {
@@ -337,10 +327,7 @@ async fn execute_single_tool(
             );
             ToolExecResult {
                 tool_call_id: step_id,
-                tool_name,
                 content: format!("Error: {}", error.message),
-                is_error: true,
-                metadata: None,
             }
         }
     }
@@ -734,11 +721,12 @@ pub async fn run_prompt_with_explicit_mode(
     mode: AgentModeDefinition,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
 ) -> Result<String, AppError> {
-    session.system_prompt_override = None; // Ensure we use the explicit mode, not an override
-    let old_override = session.system_prompt_override.take();
+    // Save and clear any system prompt override so the explicit mode's prompt is used.
+    // take() returns the current value and sets the field to None in one step.
+    let saved_override = session.system_prompt_override.take();
     let runtime = AgentRuntime::new(&session.cwd);
     let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, RunConfig::default()).await;
-    session.system_prompt_override = old_override;
+    session.system_prompt_override = saved_override;
     result
 }
 
@@ -752,10 +740,9 @@ pub async fn run_prompt_with_runtime_and_explicit_mode(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     runtime: AgentRuntime,
 ) -> Result<String, AppError> {
-    session.system_prompt_override = None;
-    let old_override = session.system_prompt_override.take();
+    let saved_override = session.system_prompt_override.take();
     let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, RunConfig::default()).await;
-    session.system_prompt_override = old_override;
+    session.system_prompt_override = saved_override;
     result
 }
 

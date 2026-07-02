@@ -1,0 +1,27 @@
+[package]
+name = "khadim-rpa-harness"
+version = "0.1.0"
+edition = "2021"
+description = "RPA and computer-use harness tools for Khadim"
+license = "AGPL-3.0-only"
+keywords = ["khadim", "rpa", "automation", "computer-use"]
+categories = ["command-line-interface", "development-tools"]
+
+[dependencies]
+async-trait = "0.1"
+enigo = { version = "0.6.1", optional = true }
+khadim-ai-core = { version = "0.1.0", path = "../khadim-ai-core" }
+rustautogui = { version = "2.5.0", optional = true }
+serde_json = "1"
+xcap = { version = "0.9.4", optional = true }
+
+[features]
+default = []
+screen = ["dep:xcap"]
+input = ["dep:enigo"]
+audio = []
+rustautogui-backend = ["dep:rustautogui"]
+rustautogui-opencl = ["rustautogui-backend", "rustautogui/opencl"]
+
+[lib]
+crate-type = ["lib"]

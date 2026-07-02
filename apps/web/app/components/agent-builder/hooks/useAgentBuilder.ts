@@ -180,12 +180,14 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const lastStreamEventIdRef = useRef<string | null>(null);
   const lastPongAtRef = useRef<number>(Date.now());
   const reconnectAttemptRef = useRef(0);
-  const requestAbortControllerRef = useRef<AbortController | null>(null);
-  const pendingSocketCommandRef = useRef<{
+  // Both maps are keyed so concurrent chats stay independent: aborting or
+  // finishing one chat's request must not touch another chat's.
+  const requestAbortControllersByChatRef = useRef<Map<string, AbortController>>(new Map());
+  const pendingSocketCommandsRef = useRef<Map<string, {
     resolve: (value: { jobId: string; chatId: string; sessionId: string }) => void;
     reject: (error: Error) => void;
     timeoutId: number;
-  } | null>(null);
+  }>>(new Map());
 
   const [currentView, setCurrentView] = useState<"chat" | "workspace" | "settings">(initialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -310,21 +312,17 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
       return Promise.reject(new Error("Session socket is not connected"));
     }
 
-    if (pendingSocketCommandRef.current) {
-      return Promise.reject(new Error("Another session command is already pending"));
-    }
+    const requestId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     return new Promise<{ jobId: string; chatId: string; sessionId: string }>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
-        if (!pendingSocketCommandRef.current) {
-          return;
+        if (pendingSocketCommandsRef.current.delete(requestId)) {
+          reject(new Error("Session command timed out"));
         }
-        pendingSocketCommandRef.current = null;
-        reject(new Error("Session command timed out"));
       }, 15000);
 
-      pendingSocketCommandRef.current = { resolve, reject, timeoutId };
-      socket.send(JSON.stringify({ type: command, prompt, chatId: options.chatId, jobId: options.jobId }));
+      pendingSocketCommandsRef.current.set(requestId, { resolve, reject, timeoutId });
+      socket.send(JSON.stringify({ type: command, prompt, chatId: options.chatId, jobId: options.jobId, requestId }));
     });
   };
 
@@ -538,10 +536,10 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         });
         for (const activeJob of payload.jobs || []) {
           setSessionState((prev) => applyJobSnapshot(prev, activeJob));
-          if (activeJob.status === "running") {
-            setIsTyping(true);
-          }
         }
+        // Typing reflects the selected chat only — without the else branch,
+        // switching from a busy chat to an idle one leaves the indicator on.
+        setIsTyping((payload.jobs || []).some((activeJob) => activeJob.status === "running"));
       } catch (error) {
         console.log("No active job to resume or error checking:", error);
       }
@@ -553,6 +551,7 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
   const handleNewChat = () => {
     setChatId(null);
+    setIsTyping(false);
     setSessionState((prev) => resetDraftChat(prev));
     setActiveBadges([]);
     setCurrentView("chat");
@@ -769,25 +768,24 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
             return;
           }
 
-          if (event.type === "command_accepted") {
-            if (pendingSocketCommandRef.current) {
-              window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
-              pendingSocketCommandRef.current.resolve({
-                jobId: String((event as any).jobId || ""),
-                chatId: String((event as any).chatId || ""),
-                sessionId: String((event as any).sessionId || sessionId),
-              });
-              pendingSocketCommandRef.current = null;
+          if (event.type === "command_accepted" || event.type === "command_error") {
+            const requestId = typeof (event as any).requestId === "string" ? (event as any).requestId : null;
+            const pending = requestId ? pendingSocketCommandsRef.current.get(requestId) : null;
+            if (requestId && pending) {
+              window.clearTimeout(pending.timeoutId);
+              pendingSocketCommandsRef.current.delete(requestId);
+              if (event.type === "command_accepted") {
+                pending.resolve({
+                  jobId: String((event as any).jobId || ""),
+                  chatId: String((event as any).chatId || ""),
+                  sessionId: String((event as any).sessionId || sessionId),
+                });
+              } else {
+                pending.reject(
+                  new Error(typeof (event as any).error === "string" ? (event as any).error : "Session command failed"),
+                );
+              }
             }
-            return;
-          }
-
-          if (event.type === "error" && pendingSocketCommandRef.current) {
-            window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
-            pendingSocketCommandRef.current.reject(
-              new Error(typeof (event as any).error === "string" ? (event as any).error : "Session command failed"),
-            );
-            pendingSocketCommandRef.current = null;
             return;
           }
 
@@ -808,11 +806,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         if (sessionSocketRef.current === socket) {
           sessionSocketRef.current = null;
         }
-        if (pendingSocketCommandRef.current) {
-          window.clearTimeout(pendingSocketCommandRef.current.timeoutId);
-          pendingSocketCommandRef.current.reject(new Error("Session socket closed"));
-          pendingSocketCommandRef.current = null;
+        for (const pending of pendingSocketCommandsRef.current.values()) {
+          window.clearTimeout(pending.timeoutId);
+          pending.reject(new Error("Session socket closed"));
         }
+        pendingSocketCommandsRef.current.clear();
         scheduleReconnect();
       });
 
@@ -866,7 +864,8 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
     setIsTyping(true);
 
     const abortController = new AbortController();
-    requestAbortControllerRef.current = abortController;
+    let abortKey = draftChatKey;
+    requestAbortControllersByChatRef.current.set(abortKey, abortController);
     let currentChatId = chatId;
     const isNewChat = !currentChatId;
 
@@ -888,6 +887,11 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
           clearPendingAssistant(draftChatKey, assistantMessageId);
           queuePendingAssistant(nextChatKey, assistantMessageId);
           renameChatStateKey(DRAFT_CHAT_KEY, chat.id);
+          if (requestAbortControllersByChatRef.current.get(abortKey) === abortController) {
+            requestAbortControllersByChatRef.current.delete(abortKey);
+          }
+          abortKey = nextChatKey;
+          requestAbortControllersByChatRef.current.set(abortKey, abortController);
           setChatId(chat.id);
           setSelectedWorkspaceId(chat.workspaceId || selectedWorkspaceId || null);
           setSidebarRefreshKey((prev) => prev + 1);
@@ -976,23 +980,29 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         agentMessages.failed(error instanceof Error ? error.message : undefined);
       }
     } finally {
-      requestAbortControllerRef.current = null;
+      if (requestAbortControllersByChatRef.current.get(abortKey) === abortController) {
+        requestAbortControllersByChatRef.current.delete(abortKey);
+      }
     }
   };
 
   const handleStop = () => {
-    if (requestAbortControllerRef.current) {
-      requestAbortControllerRef.current.abort();
+    const chatKey = getChatStateKey(chatId);
+    const abortController = requestAbortControllersByChatRef.current.get(chatKey);
+    if (abortController) {
+      abortController.abort();
+      requestAbortControllersByChatRef.current.delete(chatKey);
     }
     setIsTyping(false);
-    if (jobId && chatId) {
-      void callAgentRpc("job.stop", {
-        jobId,
-        chatId,
-        sessionId: sessionIdRef.current,
-      });
+    if (chatId) {
+      for (const activeJobId of activeJobIds) {
+        void callAgentRpc("job.stop", {
+          jobId: activeJobId,
+          chatId,
+          sessionId: sessionIdRef.current,
+        });
+      }
     }
-    requestAbortControllerRef.current = null;
   };
 
   const handleAnswerQuestion = async (questionId: string, answer: string) => {
@@ -1086,8 +1096,6 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
         ...message,
         content: "Sorry, there was an error processing your answer.",
       }));
-    } finally {
-      requestAbortControllerRef.current = null;
     }
   };
 

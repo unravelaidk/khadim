@@ -1,5 +1,6 @@
 use crate::args::CliConfig;
 use crate::domain::commands::{filter_slash_commands, CommandPickerState, SlashCommand};
+use crate::domain::harness::Harness;
 use crate::domain::login::{LoginPhase, LoginState};
 use crate::domain::settings::{
     is_oauth_provider, SettingsFocus, SettingsPicker, SettingsState, StoredSettings,
@@ -191,6 +192,7 @@ pub struct TuiApp {
     pub content_lines: Cell<usize>,
     pub visible_height: Cell<usize>,
     pub current_mode: String,
+    pub current_harness: Harness,
     pub settings_open: bool,
     pub settings: SettingsState,
     pub input_focused: bool,
@@ -224,9 +226,7 @@ impl TuiApp {
 
         let mut auto_detected = Vec::new();
         for p in app_service.provider_catalog() {
-            if get_env_api_key(&p.id).is_some()
-                || app_service.has_oauth_credentials(&p.id)
-            {
+            if get_env_api_key(&p.id).is_some() || app_service.has_oauth_credentials(&p.id) {
                 auto_detected.push(p.name.clone());
             }
         }
@@ -234,8 +234,9 @@ impl TuiApp {
         let version = env!("CARGO_PKG_VERSION");
         let mut entries = vec![TranscriptEntry::System {
             text: format!(
-                "✦ khadim-cli v{}  ·  {}/{}  ·  auth: {}",
+                "✦ khadim-cli v{}  ·  {} harness  ·  {}/{}  ·  auth: {}",
                 version,
+                config.harness.id(),
                 provider_id,
                 eff.model_id.as_deref().unwrap_or("(not set)"),
                 key_status,
@@ -282,6 +283,7 @@ impl TuiApp {
             content_lines: Cell::new(0),
             visible_height: Cell::new(0),
             current_mode: "auto".into(),
+            current_harness: config.harness.clone(),
             settings_open: false,
             settings: build_settings_state(settings),
             input_focused: true,
@@ -327,6 +329,14 @@ impl TuiApp {
         };
         self.entries.push(TranscriptEntry::System {
             text: format!("🔀 Mode: {label}"),
+        });
+        self.entries.push(TranscriptEntry::Separator);
+    }
+
+    pub fn set_harness(&mut self, harness: Harness) {
+        self.current_harness = harness.clone();
+        self.entries.push(TranscriptEntry::System {
+            text: format!("Harness: {} ({})", harness.id(), harness.description()),
         });
         self.entries.push(TranscriptEntry::Separator);
     }
@@ -1390,6 +1400,7 @@ mod tests {
             model: None,
             session: None,
             system_prompt: None,
+            harness: Harness::default(),
             verbose: false,
             json: false,
             list_providers: None,

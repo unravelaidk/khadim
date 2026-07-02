@@ -1,6 +1,8 @@
 use khadim_ai_core::error::AppError;
 use khadim_ai_core::types::ModelSelection;
-use khadim_coding_agent::{events::AgentStreamEvent, run_prompt, KhadimSession};
+use khadim_coding_agent::{
+    events::AgentStreamEvent, run_prompt_with_runtime, AgentRuntime, KhadimSession, RunConfig,
+};
 use tokio::io::AsyncWriteExt;
 
 /// Run the agent once in non-interactive (batch) mode.
@@ -8,6 +10,7 @@ pub async fn run_once(
     session: &mut KhadimSession,
     prompt: &str,
     selection: Option<ModelSelection>,
+    runtime: AgentRuntime,
 ) -> Result<(), AppError> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentStreamEvent>();
     let printer = tokio::spawn(async move {
@@ -15,7 +18,15 @@ pub async fn run_once(
             print_human(&event);
         }
     });
-    let result = run_prompt(session, prompt, selection, &tx).await;
+    let result = run_prompt_with_runtime(
+        session,
+        prompt,
+        selection,
+        &tx,
+        runtime,
+        RunConfig::default(),
+    )
+    .await;
     drop(tx);
     let _ = printer.await;
     result.map(|_| ())
@@ -26,6 +37,7 @@ pub async fn run_once_json(
     session: &mut KhadimSession,
     prompt: &str,
     selection: Option<ModelSelection>,
+    runtime: AgentRuntime,
 ) -> Result<(), AppError> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentStreamEvent>();
     let printer = tokio::spawn(async move {
@@ -39,7 +51,15 @@ pub async fn run_once_json(
             }
         }
     });
-    let result = run_prompt(session, prompt, selection, &tx).await;
+    let result = run_prompt_with_runtime(
+        session,
+        prompt,
+        selection,
+        &tx,
+        runtime,
+        RunConfig::default(),
+    )
+    .await;
     drop(tx);
     let _ = printer.await;
     result.map(|_| ())

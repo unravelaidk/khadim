@@ -12,8 +12,8 @@ const CLOSE_CODE_BAD_REQUEST = 1008;
 type ClientMessage =
   | { type: "session.connect"; sessionId?: string; lastEventId?: string | null }
   | { type: "ping" }
-  | { type: "job.followUp"; prompt?: string; chatId?: string; jobId?: string }
-  | { type: "job.steer"; prompt?: string; chatId?: string; jobId?: string };
+  | { type: "job.followUp"; prompt?: string; chatId?: string; jobId?: string; requestId?: string }
+  | { type: "job.steer"; prompt?: string; chatId?: string; jobId?: string; requestId?: string };
 
 const agentWsApp = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: agentWsApp });
@@ -81,14 +81,23 @@ export const agentWsRoute = agentWsApp.get(
         }
 
         if (message.type === "job.followUp" || message.type === "job.steer") {
+          // Command replies carry the client's requestId and a dedicated
+          // command_error type so concurrent commands (one per chat) can be
+          // correlated, and job "error" stream events are never mistaken for
+          // command failures.
+          const requestId = typeof message.requestId === "string" ? message.requestId : undefined;
+          const sendCommandError = (error: string) => {
+            ws.send(JSON.stringify({ type: "command_error", requestId, command: message.type, error }));
+          };
+
           if (!connectedSessionId) {
-            ws.send(JSON.stringify({ type: "error", error: "session.connect required before commands" }));
+            sendCommandError("session.connect required before commands");
             return;
           }
 
           const prompt = typeof message.prompt === "string" && message.prompt.trim().length > 0 ? message.prompt : null;
           if (!prompt) {
-            ws.send(JSON.stringify({ type: "error", error: "prompt is required" }));
+            sendCommandError("prompt is required");
             return;
           }
 
@@ -98,12 +107,16 @@ export const agentWsRoute = agentWsApp.get(
             jobId: typeof message.jobId === "string" ? message.jobId : undefined,
           });
           if (!record) {
-            ws.send(JSON.stringify({ type: "error", error: "No live session host found" }));
+            sendCommandError("No live session host found");
             return;
           }
 
-          const result = await runLiveHostInput({ method: message.type, prompt, record });
-          ws.send(JSON.stringify({ type: "command_accepted", command: message.type, ...result }));
+          try {
+            const result = await runLiveHostInput({ method: message.type, prompt, record });
+            ws.send(JSON.stringify({ type: "command_accepted", requestId, command: message.type, ...result }));
+          } catch (error) {
+            sendCommandError(error instanceof Error ? error.message : "Session command failed");
+          }
           return;
         }
 

@@ -205,10 +205,6 @@ fn pddl_actions() -> Vec<PddlAction> {
 /// Analyze a user prompt and derive PDDL predicates from it.
 /// This function implements the natural language constraint evaluation.
 pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str) {
-    let lower = prompt.to_ascii_lowercase();
-    let words: Vec<&str> = lower.split_whitespace().collect();
-    let _word_set: std::collections::HashSet<&str> = words.iter().copied().collect();
-
     // ── NL Constraint: "If the task involves writing, modifying, or creating
     //    code files, use build mode" ──
     let code_creation_signals = [

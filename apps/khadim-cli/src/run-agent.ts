@@ -38,6 +38,7 @@ export interface RunAgentOptions {
   model?: string;
   session?: string;
   systemPrompt?: string;
+  harness?: string;
   signal?: AbortSignal;
   /**
    * API key injected into the child process environment.
@@ -176,6 +177,7 @@ function buildArgs(opts: RunAgentOptions): string[] {
   if (opts.model) args.unshift("--model", opts.model);
   if (opts.session) args.unshift("--session", opts.session);
   if (opts.systemPrompt) args.unshift("--system-prompt", opts.systemPrompt);
+  if (opts.harness) args.unshift("--harness", opts.harness);
   return args;
 }
 

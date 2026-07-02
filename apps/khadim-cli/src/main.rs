@@ -508,6 +508,21 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                             app.entries.push(TranscriptEntry::Separator);
                                         }
                                     }
+                                    CommandPickerKind::Harness => {
+                                        match app_service.switch_harness(&id) {
+                                            Ok(()) => {
+                                                app.set_harness(
+                                                    app_service.current_harness().clone(),
+                                                );
+                                            }
+                                            Err(err) => {
+                                                app.entries.push(TranscriptEntry::Error {
+                                                    text: err.message,
+                                                });
+                                                app.entries.push(TranscriptEntry::Separator);
+                                            }
+                                        }
+                                    }
                                     CommandPickerKind::Theme => {
                                         if let Some((family_str, variant_str)) = id.split_once(':')
                                         {
@@ -958,6 +973,10 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                 }
                                 CommandResult::OpenModelPicker => {
                                     app.set_command_picker(app_service.build_model_picker());
+                                    continue;
+                                }
+                                CommandResult::OpenHarnessPicker => {
+                                    app.set_command_picker(app_service.build_harness_picker());
                                     continue;
                                 }
                                 CommandResult::OpenThemePicker => {

@@ -188,7 +188,7 @@ impl GoalTracker {
                     }
                 }
                 GoalKind::ModifyFile => {
-                    if ["edit", "line_edit", "patch", "append"].contains(&tool_name)
+                    if ["edit", "patch", "append"].contains(&tool_name)
                         && args.contains(&goal.description)
                     {
                         goal.satisfied = true;

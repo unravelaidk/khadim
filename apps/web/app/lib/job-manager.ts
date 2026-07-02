@@ -22,6 +22,29 @@ declare global {
   var __khadimJobManagerState: JobManagerState | undefined;
 }
 
+// Sequence assignment and stream append must be one atomic step: with two
+// jobs broadcasting into the same session concurrently, a bare INCR followed
+// by XADD can interleave so a higher sequence lands in the stream first, and
+// the client's monotonic stale-event guard then drops the lower one.
+const APPEND_SESSION_EVENT_LUA = `
+local seq = redis.call('INCR', KEYS[1])
+local payload = '{"sequence":' .. seq .. ',' .. string.sub(ARGV[1], 2)
+local eventId = redis.call('XADD', KEYS[2], 'MAXLEN', '~', tonumber(ARGV[2]), '*', 'event', payload)
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
+return {seq, eventId}
+`;
+
+type JobManagerRedis = Redis & {
+  appendSessionEventAtomic(
+    sequenceKey: string,
+    streamKey: string,
+    eventJson: string,
+    maxLen: number,
+    ttlSeconds: number,
+  ): Promise<[number, string]>;
+};
+
 function createJobManagerState(): JobManagerState {
   const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 
@@ -45,6 +68,11 @@ globalThis.__khadimJobManagerState = state;
 
 // Redis client for persistence
 const { redis, localSubscribers, sessionSubscribers } = state;
+
+redis.defineCommand("appendSessionEventAtomic", {
+  numberOfKeys: 2,
+  lua: APPEND_SESSION_EVENT_LUA,
+});
 
 // Key prefixes
 const JOB_PREFIX = "agent:job:";
@@ -112,19 +140,6 @@ function createEmptySessionSnapshot(sessionId: string): SessionStreamSnapshot {
   };
 }
 
-function upsertSessionSnapshotJob(snapshot: SessionStreamSnapshot, job: AgentJob): SessionStreamSnapshot {
-  const jobs = snapshot.jobs.filter((existingJob) => existingJob.id !== job.id);
-  if (job.status === "running") {
-    jobs.push(job);
-  }
-
-  return {
-    ...snapshot,
-    jobs: sortJobsByUpdatedAt(jobs),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
 async function readStoredSessionSnapshot(sessionId: string): Promise<SessionStreamSnapshot | null> {
   const data = await redis.get(getSessionSnapshotKey(sessionId));
   return data ? (JSON.parse(data) as SessionStreamSnapshot) : null;
@@ -134,13 +149,21 @@ async function writeSessionSnapshot(snapshot: SessionStreamSnapshot): Promise<vo
   await redis.set(getSessionSnapshotKey(snapshot.sessionId), JSON.stringify(snapshot), "EX", 3600);
 }
 
-async function syncSessionSnapshotJob(job: AgentJob, snapshotEventId?: string): Promise<void> {
-  const snapshot = (await readStoredSessionSnapshot(job.sessionId)) ?? createEmptySessionSnapshot(job.sessionId);
-  const nextSnapshot = upsertSessionSnapshotJob(snapshot, job);
-  if (snapshotEventId) {
-    nextSnapshot.snapshotEventId = snapshotEventId;
-  }
-  nextSnapshot.snapshotSequence = Number.parseInt((await redis.get(getSessionSequenceKey(job.sessionId))) || "0", 10) || 0;
+// Rebuild the snapshot's job list from the active-jobs zset instead of
+// read-modify-writing the stored JSON: with several jobs in one session,
+// concurrent read-modify-writes lose each other's updates (dropped or
+// resurrected jobs). The zset is updated atomically per job, so even when
+// two syncs race, the last writer still stores the correct job list.
+async function syncSessionSnapshot(sessionId: string, snapshotEventId?: string): Promise<void> {
+  const stored = await readStoredSessionSnapshot(sessionId);
+  const jobs = await collectActiveJobsBySession(sessionId);
+  const nextSnapshot: SessionStreamSnapshot = {
+    sessionId,
+    jobs: sortJobsByUpdatedAt(jobs),
+    updatedAt: new Date().toISOString(),
+    snapshotEventId: snapshotEventId ?? stored?.snapshotEventId,
+    snapshotSequence: Number.parseInt((await redis.get(getSessionSequenceKey(sessionId))) || "0", 10) || 0,
+  };
   await writeSessionSnapshot(nextSnapshot);
 }
 
@@ -158,25 +181,17 @@ async function touchActiveJob(job: Pick<AgentJob, "id" | "chatId" | "sessionId" 
 
 async function appendSessionEvent(event: JobEvent): Promise<JobEvent> {
   const streamKey = getSessionEventStreamKey(event.sessionId);
-  const sequence = await redis.incr(getSessionSequenceKey(event.sessionId));
-  const eventId = await redis.xadd(
+  const { sequence: _staleSequence, eventId: _staleEventId, ...payload } = event;
+  const [sequence, eventId] = await (redis as JobManagerRedis).appendSessionEventAtomic(
+    getSessionSequenceKey(event.sessionId),
     streamKey,
-    "MAXLEN",
-    "~",
+    JSON.stringify(payload),
     SESSION_EVENT_STREAM_MAX_LEN,
-    "*",
-    "event",
-    JSON.stringify({ ...event, sequence })
+    3600,
   );
 
-  await redis.expire(streamKey, 3600);
-  await redis.expire(getSessionSequenceKey(event.sessionId), 3600);
-  const persistedEvent = { ...event, eventId: eventId ?? undefined, sequence };
-
-  const currentJob = await getJob(event.jobId);
-  if (currentJob?.sessionId === event.sessionId) {
-    await syncSessionSnapshotJob(currentJob, persistedEvent.eventId);
-  }
+  const persistedEvent = { ...payload, eventId, sequence };
+  await syncSessionSnapshot(event.sessionId, eventId);
 
   return persistedEvent;
 }
@@ -240,7 +255,7 @@ export async function createJob(id: string, chatId: string, sessionId = "default
   
   await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
   await touchActiveJob(job);
-  await syncSessionSnapshotJob(job);
+  await syncSessionSnapshot(job.sessionId);
   console.log(`[JobManager] Created job ${id} for chat ${chatId}`);
   return job;
 }
@@ -314,12 +329,13 @@ export async function getJobsByChatId(chatId: string, sessionId?: string): Promi
   return hydrateJobs(jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
 }
 
-export async function getActiveJobsBySession(sessionId: string): Promise<AgentJob[]> {
+async function collectActiveJobsBySession(sessionId: string): Promise<AgentJob[]> {
   const jobIds = await redis.zrevrange(getActiveJobsBySessionKey(sessionId), 0, 49);
   const jobs: AgentJob[] = [];
 
   for (const jobId of jobIds) {
-    const job = await getJob(jobId);
+    const data = await redis.get(JOB_PREFIX + jobId);
+    const job = data ? (JSON.parse(data) as AgentJob) : null;
     if (job?.sessionId === sessionId && job.status === "running") {
       jobs.push(job);
       continue;
@@ -328,7 +344,11 @@ export async function getActiveJobsBySession(sessionId: string): Promise<AgentJo
     await redis.zrem(getActiveJobsBySessionKey(sessionId), jobId);
   }
 
-  return hydrateJobs(jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+  return jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getActiveJobsBySession(sessionId: string): Promise<AgentJob[]> {
+  return hydrateJobs(await collectActiveJobsBySession(sessionId));
 }
 
 export async function updateJob(id: string, updates: Partial<AgentJob>): Promise<void> {
@@ -337,7 +357,7 @@ export async function updateJob(id: string, updates: Partial<AgentJob>): Promise
     Object.assign(job, updates, { updatedAt: new Date().toISOString() });
     await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
     await touchActiveJob(job);
-    await syncSessionSnapshotJob(job);
+    await syncSessionSnapshot(job.sessionId);
   }
 }
 
@@ -348,7 +368,7 @@ export async function addStep(jobId: string, step: AgentJobStep): Promise<void> 
     job.updatedAt = new Date().toISOString();
     await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", 3600);
     await touchActiveJob(job);
-    await syncSessionSnapshotJob(job);
+    await syncSessionSnapshot(job.sessionId);
   }
 }
 
@@ -365,7 +385,7 @@ export async function updateStep(
       job.updatedAt = new Date().toISOString();
       await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", 3600);
       await touchActiveJob(job);
-      await syncSessionSnapshotJob(job);
+      await syncSessionSnapshot(job.sessionId);
     }
   }
 }

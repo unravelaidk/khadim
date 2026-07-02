@@ -50,3 +50,57 @@ pub fn try_repair_json(raw: &str) -> Option<serde_json::Value> {
 
     serde_json::from_str::<serde_json::Value>(&repaired).ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_json_is_returned_unchanged() {
+        let v = try_repair_json(r#"{"key": "value"}"#).unwrap();
+        assert_eq!(v["key"], "value");
+    }
+
+    #[test]
+    fn empty_string_returns_none() {
+        assert!(try_repair_json("").is_none());
+        assert!(try_repair_json("   ").is_none());
+    }
+
+    #[test]
+    fn unclosed_object_is_repaired() {
+        let v = try_repair_json(r#"{"a": 1"#).unwrap();
+        assert_eq!(v["a"], 1);
+    }
+
+    #[test]
+    fn unclosed_array_is_repaired() {
+        let v = try_repair_json(r#"[1, 2, 3"#).unwrap();
+        assert_eq!(v[0], 1);
+        assert_eq!(v[2], 3);
+    }
+
+    #[test]
+    fn nested_unclosed_is_repaired() {
+        let v = try_repair_json(r#"{"a": {"b": 1}"#).unwrap();
+        assert_eq!(v["a"]["b"], 1);
+    }
+
+    #[test]
+    fn unclosed_string_in_object_is_repaired() {
+        // Truncated mid-string value
+        let v = try_repair_json(r#"{"msg": "hello"#).unwrap();
+        assert!(v["msg"].as_str().unwrap().starts_with("hello"));
+    }
+
+    #[test]
+    fn valid_array_is_returned() {
+        let v = try_repair_json("[1,2,3]").unwrap();
+        assert_eq!(v.as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn completely_invalid_returns_none() {
+        assert!(try_repair_json("not json at all !!!").is_none());
+    }
+}

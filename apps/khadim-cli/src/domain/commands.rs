@@ -63,6 +63,11 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             description: "Switch model",
             icon: "🧠",
         },
+        SlashCommand {
+            name: "/harness",
+            description: "Switch harness",
+            icon: "🧰",
+        },
         // ── Auth ───────────────────────────────────────────────────
         SlashCommand {
             name: "/login",
@@ -154,6 +159,7 @@ pub enum CommandPickerKind {
     Provider,
     Model,
     Theme,
+    Harness,
     Session,
 }
 

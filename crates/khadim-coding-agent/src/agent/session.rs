@@ -50,3 +50,59 @@ impl KhadimSession {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn new_session_has_empty_defaults() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"));
+        assert_eq!(session.cwd, PathBuf::from("/tmp"));
+        assert!(session.messages.is_empty());
+        assert!(session.workspace_id.is_empty());
+        assert!(session.system_prompt_override.is_none());
+        assert!(session.active_conversation_id.is_none());
+        assert!(session.active_agent_id.is_none());
+        // UUID is non-empty
+        assert!(!session.id.is_empty());
+    }
+
+    #[test]
+    fn with_workspace_sets_id() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"))
+            .with_workspace("workspace-abc");
+        assert_eq!(session.workspace_id, "workspace-abc");
+    }
+
+    #[test]
+    fn with_system_prompt_stores_prompt() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"))
+            .with_system_prompt(Some("You are a helper.".to_string()));
+        assert_eq!(session.system_prompt_override.as_deref(), Some("You are a helper."));
+    }
+
+    #[test]
+    fn with_system_prompt_rejects_empty_string() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"))
+            .with_system_prompt(Some("   ".to_string()));
+        assert!(session.system_prompt_override.is_none());
+    }
+
+    #[test]
+    fn with_system_prompt_accepts_none() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"))
+            .with_system_prompt(None);
+        assert!(session.system_prompt_override.is_none());
+    }
+
+    #[test]
+    fn with_conversation_and_agent_set_ids() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"))
+            .with_conversation(Some("conv-1".to_string()))
+            .with_agent(Some("agent-2".to_string()));
+        assert_eq!(session.active_conversation_id.as_deref(), Some("conv-1"));
+        assert_eq!(session.active_agent_id.as_deref(), Some("agent-2"));
+    }
+}

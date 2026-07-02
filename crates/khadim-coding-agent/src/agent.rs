@@ -4,3 +4,6 @@ pub mod modes;
 pub mod orchestrator;
 pub mod session;
 pub mod types;
+
+#[cfg(test)]
+mod orchestrator_tests;

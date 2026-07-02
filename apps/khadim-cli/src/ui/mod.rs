@@ -1092,6 +1092,7 @@ pub fn render_footer(
     let provider = eff.provider.unwrap_or_else(|| "?".into());
     let model = eff.model_id.unwrap_or_else(|| "?".into());
     let mode = &app.current_mode;
+    let harness = app.current_harness.id();
 
     let cost = estimate_cost(
         &provider,
@@ -1129,6 +1130,8 @@ pub fn render_footer(
     let mut left: Vec<Span<'static>> = vec![
         Span::styled(" ", dim),
         Span::styled(cwd_display, dim),
+        sep.clone(),
+        Span::styled(harness.to_string(), dim),
         sep.clone(),
         Span::styled(mode_label.to_string(), dim),
     ];
@@ -1805,6 +1808,7 @@ pub fn render_command_picker(frame: &mut Frame, app: &TuiApp) {
     let title = match picker.kind {
         CommandPickerKind::Provider => "provider",
         CommandPickerKind::Model => "model",
+        CommandPickerKind::Harness => "harness",
         CommandPickerKind::Theme => "theme",
         CommandPickerKind::Session => "session",
     };

@@ -3,14 +3,15 @@ use crate::domain::commands::{
     all_slash_commands, filter_slash_commands, CommandPickerKind, CommandPickerState, SlashCommand,
 };
 use crate::domain::events::WorkerEvent;
+use crate::domain::harness::Harness;
 
 use crate::domain::session::{SavedSession, SessionMeta};
 use crate::domain::settings::StoredSettings;
 use crate::domain::transcript::TranscriptEntry;
 use crate::services::agent_service::{run_once, run_once_json};
 use crate::services::catalog_service::{
-    estimate_cost, format_cost, format_tokens, has_oauth_credentials,
-    models_for_provider, provider_auth_status, provider_catalog,
+    estimate_cost, format_cost, format_tokens, has_oauth_credentials, models_for_provider,
+    provider_auth_status, provider_catalog,
 };
 use crate::services::oauth_service::start_oauth_login;
 use crate::services::session_service::{
@@ -20,6 +21,7 @@ use crate::services::session_service::{
 };
 use crate::services::settings_service::{effective_settings, load_settings, save_settings};
 use khadim_ai_core::error::AppError;
+use khadim_ai_core::tools::Tool;
 use khadim_ai_core::types::ModelSelection;
 use khadim_coding_agent::KhadimSession;
 use khadim_coding_agent::{
@@ -42,6 +44,8 @@ pub enum CommandResult {
     OpenModelPicker,
     /// Open theme picker.
     OpenThemePicker,
+    /// Open harness picker.
+    OpenHarnessPicker,
     /// Open session picker.
     OpenSessionPicker,
     /// Switch to a named session.
@@ -200,6 +204,15 @@ impl AppService {
         let _ = save_settings(&self.stored_settings);
     }
 
+    pub fn current_harness(&self) -> &Harness {
+        &self.config.harness
+    }
+
+    pub fn switch_harness(&mut self, harness_id: &str) -> Result<(), AppError> {
+        self.config.harness = Harness::parse(harness_id)?;
+        Ok(())
+    }
+
     fn apply_system_prompt(&self, sess: &mut KhadimSession) {
         sess.system_prompt_override = self.stored_settings.system_prompt.clone();
     }
@@ -233,6 +246,8 @@ impl AppService {
     pub fn spawn_agent_run(&mut self, prompt: String, explicit_mode: Option<String>) {
         let selection = self.model_selection();
         let system_prompt = self.effective_settings().system_prompt;
+        let harness_prompt = self.config.harness.prompt_suffix();
+        let harness = self.config.harness.clone();
         let session = self.session.clone();
         let worker_tx = self.worker_tx.clone();
 
@@ -273,7 +288,9 @@ impl AppService {
             });
 
             let mut sess = session.lock().await;
-            let runtime = AgentRuntime::with_extras(&cwd, vec![question_tool], String::new());
+            let mut extra_tools = harness_tools(&harness);
+            extra_tools.push(question_tool);
+            let runtime = AgentRuntime::with_extras(&cwd, extra_tools, harness_prompt);
             let result = match explicit_mode.as_deref() {
                 Some("build") => {
                     run_prompt_with_runtime_and_explicit_mode(
@@ -366,10 +383,15 @@ impl AppService {
     pub async fn run_batch(&self, prompt: &str, json: bool) -> Result<(), AppError> {
         let mut sess = self.session.lock().await;
         sess.system_prompt_override = self.effective_settings().system_prompt;
+        let runtime = AgentRuntime::with_extras(
+            self.config.cwd.clone(),
+            harness_tools(&self.config.harness),
+            self.config.harness.prompt_suffix(),
+        );
         if json {
-            run_once_json(&mut sess, prompt, self.model_selection()).await
+            run_once_json(&mut sess, prompt, self.model_selection(), runtime).await
         } else {
-            run_once(&mut sess, prompt, self.model_selection()).await
+            run_once(&mut sess, prompt, self.model_selection(), runtime).await
         }
     }
 
@@ -531,6 +553,7 @@ impl AppService {
             "/settings" => CommandResult::OpenSettings,
             "/provider" => CommandResult::OpenProviderPicker,
             "/model" => CommandResult::OpenModelPicker,
+            "/harness" => CommandResult::OpenHarnessPicker,
             "/theme" => CommandResult::OpenThemePicker,
             "/help" => {
                 let mut lines = vec!["commands".to_string()];
@@ -845,4 +868,45 @@ impl AppService {
             current_index: current,
         }
     }
+
+    pub fn build_harness_picker(&self) -> CommandPickerState {
+        let current_harness = self.config.harness.id();
+        let items: Vec<(String, String, String)> = Harness::catalog()
+            .into_iter()
+            .map(|harness| {
+                let status = if harness.id() == current_harness {
+                    format!("✓ active — {}", harness.description())
+                } else {
+                    harness.description().to_string()
+                };
+                (
+                    harness.id().to_string(),
+                    harness.label().to_string(),
+                    status,
+                )
+            })
+            .collect();
+        let current = items
+            .iter()
+            .position(|(id, _, _)| id == current_harness)
+            .unwrap_or(0);
+        CommandPickerState {
+            kind: CommandPickerKind::Harness,
+            items,
+            selected_index: current,
+            current_index: current,
+        }
+    }
+}
+
+fn harness_tools(harness: &Harness) -> Vec<Arc<dyn Tool>> {
+    let mut tools = if harness.uses_rpa_tools() {
+        khadim_rpa_harness::default_tools()
+    } else {
+        Vec::new()
+    };
+    if harness.uses_rpa_tools() {
+        tools.extend(crate::tools::qwen_vla_tool::qwen_vla_tools());
+    }
+    tools
 }

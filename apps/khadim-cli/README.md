@@ -110,6 +110,35 @@ echo "error: timeout on line 42" | khadim --prompt "fix this"
 
 The agent discovers `AGENTS.md` files in the workspace and injects scoped repository instructions into the system prompt. Nested `AGENTS.md` files override broader ones for files under their scope.
 
+### Experimental local Qwen VLA
+
+A tiny local Vision-Language-Action experiment is available at `scripts/qwen_vla_controller.py`.
+It captures the screen, asks a Hugging Face VLM such as `Qwen/Qwen3.5-2B` or
+`Qwen/Qwen3-VL-2B-Instruct` for one JSON UI action, and can optionally execute
+that action with PyAutoGUI.
+
+```bash
+pip install 'transformers>=4.57' accelerate pillow torch qwen-vl-utils pyautogui
+
+# Dry run through the helper directly.
+scripts/qwen_vla_controller.py --model Qwen/Qwen3.5-2B "click the wifi icon"
+
+# Let Khadim call the local Qwen VLA tool and execute the action.
+khadim rpa exec --model gpt-5.5 "Use qwen_vla_action with Qwen/Qwen3.5-2B to click the wifi icon"
+
+# Execute through the helper directly; prefer an isolated VM/session.
+scripts/qwen_vla_controller.py --model Qwen/Qwen3-VL-2B-Instruct --execute "click the wifi icon"
+```
+
+This is not a trained robotics/action head. It uses the VLM's screenshot
+understanding plus a strict JSON action prompt for `click`, `move`, `type`,
+`key`, `scroll`, `wait`, and `final`. In RPA/assistant harnesses Khadim also
+registers a `qwen_vla_action` tool, so the normal Khadim agent can delegate a
+visual action to local Qwen while Khadim still performs the mouse/keyboard
+operation through its action loop. Treat it as a starting point for local evals
+and guarded desktop automation.
+
+
 ---
 
 ## Configuration

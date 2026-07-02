@@ -1,3 +1,4 @@
+use crate::domain::harness::Harness;
 use khadim_ai_core::error::AppError;
 use std::env;
 use std::io::{self, IsTerminal, Read};
@@ -13,6 +14,7 @@ pub struct CliConfig {
     pub model: Option<String>,
     pub session: Option<String>,
     pub system_prompt: Option<String>,
+    pub harness: Harness,
     #[allow(dead_code)]
     pub verbose: bool,
     pub json: bool,
@@ -29,6 +31,7 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
     let mut model = None;
     let mut session = None;
     let mut system_prompt = None;
+    let mut harness = Harness::default();
     let mut verbose = false;
     let mut json = false;
     let mut list_providers = None;
@@ -39,6 +42,15 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
     if matches!(args.peek().map(String::as_str), Some("exec")) {
         exec_mode = true;
         args.next();
+    } else if let Some(first) = args.peek().cloned() {
+        if is_harness_subcommand(&first) {
+            harness = Harness::parse(&first)?;
+            args.next();
+            if matches!(args.peek().map(String::as_str), Some("exec")) {
+                exec_mode = true;
+                args.next();
+            }
+        }
     }
 
     while let Some(arg) = args.next() {
@@ -80,6 +92,12 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
                     .next()
                     .ok_or_else(|| AppError::invalid_input("--system-prompt requires a value"))?;
                 system_prompt = Some(value);
+            }
+            "--harness" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| AppError::invalid_input("--harness requires a value"))?;
+                harness = Harness::parse(&value)?;
             }
             "--help" | "-h" => {
                 print_help();
@@ -147,11 +165,16 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
         model,
         session,
         system_prompt,
+        harness,
         verbose,
         json,
         list_providers,
         list_models,
     })
+}
+
+fn is_harness_subcommand(value: &str) -> bool {
+    matches!(value, "coding" | "rpa" | "assistant")
 }
 
 fn read_stdin() -> Result<String, AppError> {
@@ -168,10 +191,13 @@ fn print_version() {
 
 fn print_help() {
     println!(
-        "khadim — Autonomous Coding Agent\n\n\
+        "khadim — Local-first Agentic Automation\n\n\
          USAGE:\n\
          \x20 khadim [OPTIONS]\n\
          \x20 khadim exec [OPTIONS] [PROMPT]\n\n\
+         \x20 khadim rpa [OPTIONS]\n\
+         \x20 khadim rpa exec [OPTIONS] [PROMPT]\n\
+         \x20 khadim assistant [OPTIONS]\n\n\
          OPTIONS:\n\
          \x20 --cwd PATH       Set working directory\n\
          \x20 --prompt TEXT    Run in batch mode with prompt (`-` reads stdin)\n\
@@ -179,6 +205,7 @@ fn print_help() {
          \x20 --model ID       Set AI model\n\
          \x20 --session NAME   Load saved session\n\
          \x20 --system-prompt TEXT  Override the system prompt for this run\n\
+         \x20 --harness NAME   Select harness: coding, rpa, assistant, or custom\n\
          \x20 --verbose        Enable verbose logging\n\
          \x20 -h, --help       Show this help\n\
          \x20 -v, --version    Show version\n\n\
@@ -196,6 +223,7 @@ fn print_help() {
          \x20 /theme           Switch theme\n\
          \x20 /provider        Switch AI provider\n\
          \x20 /model           Switch model\n\
+         \x20 /harness         Switch harness\n\
          \x20 /login           OAuth login (Copilot, Codex)\n\
          \x20 /settings        Open settings panel (F2)\n\
          \x20 /providers       List providers & auth status\n\
