@@ -71,7 +71,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev
+          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libwayland-dev
 
       - name: Build CLI binary
         run: |
@@ -193,5 +193,4 @@ jobs:
           publish_tarball "$npm_dir/khadim-cli-npm-darwin-x64-${version}.tgz" "darwin-x64"
           publish_tarball "$npm_dir/khadim-cli-npm-darwin-arm64-${version}.tgz" "darwin-arm64"
           publish_tarball "$npm_dir/khadim-cli-npm-${version}.tgz" "$npm_tag"
-
 
