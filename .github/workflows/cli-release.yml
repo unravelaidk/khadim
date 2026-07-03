@@ -71,7 +71,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libwayland-dev libpipewire-0.3-dev
+          sudo apt-get install -y \
+            pkg-config \
+            clang \
+            libclang-dev \
+            libssl-dev \
+            libdbus-1-dev \
+            libwayland-dev \
+            libpipewire-0.3-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            libdrm-dev \
+            libxkbcommon-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxtst-dev
 
       - name: Build CLI binary
         run: |
