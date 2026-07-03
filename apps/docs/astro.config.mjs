@@ -29,7 +29,7 @@ export default defineConfig({
         "zh-CN": "Khadim 文档",
       },
       description:
-        "Documentation for the Khadim CLI coding agent, SDK, Plugin SDK, and Docker runtime.",
+        "Documentation for the Khadim local-first agentic automation platform.",
       logo: {
         light: "./public/khadim-logo-light.svg",
         dark: "./public/khadim-logo.svg",
@@ -87,7 +87,34 @@ export default defineConfig({
           ],
         },
         {
-          label: "Usage",
+          label: "Getting Started",
+          collapsed: false,
+          items: [
+            { label: "Installation", slug: "getting-started/installation" },
+            { label: "First Steps", slug: "getting-started/first-steps" },
+            { label: "Features", slug: "getting-started/features" },
+            { label: "Getting Help", slug: "getting-started/getting-help" },
+          ],
+        },
+        {
+          label: "Guides",
+          collapsed: false,
+          items: [
+            { label: "Agentic Automation", slug: "guides/agentic-automation" },
+            { label: "Desktop App", slug: "guides/desktop-app" },
+            { label: "Web Control Plane", slug: "guides/web-control-plane" },
+          ],
+        },
+        {
+          label: "Concepts",
+          collapsed: false,
+          items: [
+            { label: "Architecture", slug: "concepts/architecture" },
+            { label: "Tools and Domains", slug: "concepts/tools-and-domains" },
+          ],
+        },
+        {
+          label: "CLI",
           translations: {
             ar: "الاستخدام", bs: "Upotreba", da: "Brug",
             de: "Verwendung", es: "Uso", fr: "Utilisation",
@@ -99,7 +126,7 @@ export default defineConfig({
           },
           collapsed: false,
           items: [
-            { label: "CLI Overview", slug: "cli/overview" },
+            { label: "CLI overview", slug: "cli/overview" },
             { label: "SDK", slug: "cli/sdk" },
           ],
         },
@@ -129,6 +156,8 @@ export default defineConfig({
           collapsed: false,
           items: [
             { label: "Docker Agent Runtime", slug: "reference/docker-agent-runtime" },
+            { label: "Commands", slug: "reference/commands" },
+            { label: "Configuration", slug: "reference/configuration" },
           ],
         },
       ],

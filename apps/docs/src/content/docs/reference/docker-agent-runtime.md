@@ -1,117 +1,113 @@
 ---
 title: Docker Agent Runtime
-description: Run the Khadim CLI agent in Docker containers for server deployments and web app integration.
+description: Run Khadim agents in Docker containers for isolation, server deployments, and web app integration.
 ---
 
-# Docker Agent Runtime — Implementation Plan
+The Docker Agent Runtime is the planned container execution path for Khadim.
+It keeps the event stream unchanged while moving tool execution into an
+isolated container.
 
-## Overview
+<!-- prettier-ignore -->
+> [!NOTE]
+> This runtime is under active development. The current documentation describes
+> the target contract and integration plan.
 
-Replace the current `spawn(binaryPath)` call in `@unravelai/khadim`'s `run-agent.ts` with `docker run khadim-cli`, so the web app spins up containers instead of running the native binary directly on the host.
+## Runtime model
 
-## Current vs Target Flow
+The native path starts the Khadim binary directly on the host. The Docker path
+starts the same agent inside a container:
 
-```
-CURRENT:
-  agent-rpc.ts (job.start)
-    → startJob() → runAgentJob() (run-agent-job.ts)
-      → runAgentStream() (@unravelai/khadim run-agent.ts)
-        → spawn(binaryPath, args) — native binary on host
-          → stdout: JSON lines of AgentStreamEvent
-
-TARGET:
-  agent-rpc.ts (job.start)
-    → startJob() → runAgentJob()
-      → runAgentStream() with useDocker=true
-        → docker run --rm khadim-cli exec --json "prompt"
-          → stdout: JSON lines of AgentStreamEvent (same contract)
+```text
+Web app or SDK
+  -> runAgentStream()
+  -> docker run khadim-cli exec --json "prompt"
+  -> JSON-line AgentStreamEvent output
 ```
 
-## Files to Create
-
-### 1. `apps/khadim-cli/Dockerfile`
-
-Multi-stage build:
-
-```dockerfile
-# Stage 1: Build
-FROM debian:bookworm-slim AS builder
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl build-essential pkg-config libssl-dev libdbus-1-dev \
-    && rm -rf /var/lib/apt/lists/*
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-ENV PATH="/root/.cargo/bin:${PATH}"
-WORKDIR /src
-COPY . .
-RUN cargo build --release --manifest-path apps/khadim-cli/Cargo.toml
-
-# Stage 2: Minimal runtime
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /src/apps/khadim-cli/target/release/khadim-cli /usr/local/bin/khadim-cli
-WORKDIR /workspace
-ENTRYPOINT ["/usr/local/bin/khadim-cli"]
-CMD ["exec"]
-```
-
-Build: `docker build -f apps/khadim-cli/Dockerfile -t khadim-cli .` (from repo root)
-
-### 2. Add npm scripts to `apps/khadim-cli/package.json`
+The caller still receives the same normalized event stream:
 
 ```json
-"docker:build": "docker build -f Dockerfile -t khadim-cli ../..",
-"docker:build:local": "docker build -f Dockerfile -t khadim-cli:latest ../.."
-```
-
-## Files to Modify
-
-### 3. `apps/khadim-cli/src/run-agent.ts` — Add Docker support
-
-- Add `useDocker?: boolean` and `dockerImage?: string` to `RunAgentOptions`
-- When `useDocker` is true, replace `spawn(binaryPath, buildArgs(opts))` with:
-  ```
-  spawn("docker", [
-    "run", "--rm", "-i",
-    ...Object.entries(buildEnv(opts)).map(([k,v]) => `-e`).flat(),
-    opts.dockerImage || "khadim-cli",
-    "exec", "--json", opts.prompt
-  ])
-  ```
-- Same stdout pipe, same `readline` JSON parsing — zero changes to the event stream contract
-- Native tools (`KHADIM_NATIVE_TOOL_RPC_URL`) won't work in Docker mode unless the host is reachable from the container — gate this or use `host.docker.internal`
-
-The `buildEnv()` function already maps `provider → env var` (e.g. `openai → OPENAI_API_KEY`). In Docker mode, these env vars are passed as `-e` flags. No new env var logic needed.
-
-### 4. `apps/web/app/agent/run-agent-job.ts` — Pass Docker flag
-
-- Accept `useDocker?: boolean` in `RunAgentJobOptions`
-- Pass through to `runAgentStream({ prompt, useDocker: true, ... })`
-
-### 5. `apps/web/app/lib/agent-rpc.ts` — Gate behind env var
-
-- Check `process.env.KHADIM_AGENT_RUNNER === "docker"` to gate behavior
-- Pass `useDocker: true` through the chain: `agent-rpc.ts → startJob() → runAgentJob() → runAgentStream()`
-
-## Environment Variables for Docker Mode
-
-| Env Var | Purpose |
-|---------|---------|
-| `KHADIM_AGENT_RUNNER` | Set to `"docker"` to use Docker instead of native binary |
-| `OPENAI_API_KEY` | OpenAI auth (passed to container via `-e`) |
-| `ANTHROPIC_API_KEY` | Anthropic auth (passed to container via `-e`) |
-| `KHADIM_API_KEY` | Universal fallback (passed to container via `-e`) |
-| etc. | All provider env vars forwarded from host via `buildEnv()` |
-
-## CLI Binary Contract (unchanged)
-
-The binary in batch mode writes one JSON event per line to stdout:
-
-```
 {"event_type":"text_delta","content":"Hello"}
 {"event_type":"step_start","content":"Running tool","metadata":{"tool":"read_file"}}
 {"event_type":"step_complete","content":"file contents","metadata":{"tool":"read_file"}}
 {"event_type":"done"}
 ```
 
-This format is identical whether the binary runs on the host or inside Docker. The `run-agent.ts` event parser and `run-agent-job.ts` broadcaster need no changes.
+## Why use Docker
+
+Use the Docker runtime when a run needs stronger execution boundaries:
+
+- Server deployments that cannot install a native binary globally.
+- CI jobs that need reproducible runtime dependencies.
+- Multi-tenant web app runs.
+- RPA or connector runs that need explicit filesystem, network, and resource
+  controls.
+- Coding runs that need a mounted workspace but isolated process execution.
+
+## Target Dockerfile
+
+The planned image builds the CLI in one stage and copies the binary into a
+small runtime image:
+
+```dockerfile
+FROM debian:bookworm-slim AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl build-essential pkg-config libssl-dev libdbus-1-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+WORKDIR /src
+COPY . .
+RUN cargo build --release --manifest-path apps/khadim-cli/Cargo.toml
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /src/apps/khadim-cli/target/release/khadim-cli \
+    /usr/local/bin/khadim-cli
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/khadim-cli"]
+CMD ["exec"]
+```
+
+Build the image from the repository root:
+
+```bash
+docker build -f apps/khadim-cli/Dockerfile -t khadim-cli .
+```
+
+## Environment variables
+
+The runner passes only the variables needed by the selected provider and run.
+
+| Variable | Purpose |
+| --- | --- |
+| `KHADIM_AGENT_RUNNER` | Set to `docker` to select Docker mode |
+| `OPENAI_API_KEY` | OpenAI credential |
+| `ANTHROPIC_API_KEY` | Anthropic credential |
+| `GEMINI_API_KEY` | Gemini credential |
+| `KHADIM_API_KEY` | Universal fallback credential |
+
+Provider-specific variables follow the same names documented in
+[Configuration](./configuration/).
+
+## Workspace and network controls
+
+The final runtime will formalize these inputs:
+
+- Prompt and model settings.
+- Environment variables and secret bindings.
+- Workspace mounts for coding runs.
+- Scratch mounts for RPA and connector runs.
+- CPU, memory, and timeout limits.
+- Network policy.
+- Runner metadata for audit and replay.
+
+## Native tools in Docker
+
+Native tool bridges run in the host process. A containerized agent cannot call
+them unless the host bridge is reachable from the container and the bridge URL
+is intentionally passed into the container environment.
+
+Use host-reachable bridge URLs only for trusted local runs.

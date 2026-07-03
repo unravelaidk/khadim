@@ -1,178 +1,116 @@
 # khadim-cli
 
-CLI coding agent for Khadim. An AI agent that runs in your terminal — reads your code, writes and runs scripts, understands failures, and retries.
+`khadim-cli` is the terminal entry point for Khadim, an open-source,
+local-first agentic automation platform. It runs an AI coding agent in your
+terminal, supports headless automation, and exposes the same event stream used
+by the SDK, desktop app, and web app.
 
-Khadim also exposes a programmable SDK that allows you to install it in your React app or use it in your CI/CD pipelines, giving you access to its coding capabilities
+## Installation
 
-Read more in the
-[khadim docs](https://unravelaidk.github.io/khadim/cli/programmatic-api/)
-
-
-## Quick Install
+Install globally:
 
 ```bash
-# npm (recommended)
 npm install -g @unravelai/khadim
 ```
 
-Or use it as a sdk
+The package exposes both commands:
 
 ```bash
-npm i @unravelai/khadim
+khadim
+khadim-cli
 ```
 
-The package exposes both `khadim` and `khadim-cli` commands.
-
-### Other Install Methods
+Use it as an SDK dependency:
 
 ```bash
-# Or use the install script
-curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-
-# Prebuilt binary from GitHub Releases
-KHADIM_CLI_INSTALL_METHOD=prebuilt curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-
-# Build from source
-KHADIM_CLI_INSTALL_METHOD=source curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
-
-# Custom install directory (source/prebuilt only)
-KHADIM_CLI_INSTALL_METHOD=source INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/unravelaidk/khadim/main/apps/khadim-cli/scripts/install.sh | bash
+npm install @unravelai/khadim
 ```
 
-### Manual Build
+## Documentation
 
-```bash
-git clone https://github.com/unravelaidk/khadim.git
-cd khadim
-cargo build --release --manifest-path apps/khadim-cli/Cargo.toml
-# Binary: apps/khadim-cli/target/release/khadim-cli
-```
+Read the full documentation at
+[unravelaidk.github.io/khadim](https://unravelaidk.github.io/khadim/).
 
-### Prebuilt Binaries
+Useful pages:
 
-Prebuilt binaries are available on the [releases page](https://github.com/unravelaidk/khadim/releases) for tags matching `cli-v*`.
-
----
+- [Installation](https://unravelaidk.github.io/khadim/getting-started/installation/)
+- [First steps](https://unravelaidk.github.io/khadim/getting-started/first-steps/)
+- [CLI overview](https://unravelaidk.github.io/khadim/cli/overview/)
+- [Khadim SDK](https://unravelaidk.github.io/khadim/cli/sdk/)
+- [Commands](https://unravelaidk.github.io/khadim/reference/commands/)
 
 ## Usage
 
+Start the interactive terminal UI:
+
 ```bash
-# Start the interactive Khadim TUI in the current project
 khadim
-
-# Start Khadim in another project directory
-khadim --cwd /path/to/project
-
-# Inside the TUI, type natural-language requests
-> summarize this repo
-> fix the failing tests
-> add unit tests for the auth service
-
-# Type / to browse built-in commands with live preview
-/help
-/provider
-/model
-/sessions
-/theme
 ```
 
-Common interactive commands:
-
-| Command | What it does |
-|---------|--------------|
-| `/help` | Show commands and keyboard shortcuts |
-| `/provider` | Switch AI provider |
-| `/model` | Switch model for the current provider |
-| `/login` | OAuth login for supported providers such as Copilot or Codex |
-| `/sessions` | List saved sessions |
-| `/session NAME` | Switch to a saved session |
-| `/new` | Start a new session |
-| `/save NAME` | Save the current session |
-| `/theme` | Switch the TUI theme |
-| `/settings` | Open the settings panel |
-| `/tokens` | Show token usage |
-| `/export [PATH]` | Export the conversation to markdown |
-
-Batch/headless modes are still available when you want a one-shot command:
+Run one prompt without the UI:
 
 ```bash
-# Prompt mode
 khadim --prompt "summarize this repo"
-
-# Headless exec mode
-khadim exec "summarize failures" < build.log
-
-# Pipe stdin as context
-echo "error: timeout on line 42" | khadim --prompt "fix this"
 ```
 
-`--prompt -` reads the entire prompt from stdin.
-
-The agent discovers `AGENTS.md` files in the workspace and injects scoped repository instructions into the system prompt. Nested `AGENTS.md` files override broader ones for files under their scope.
-
-### Experimental local Qwen VLA
-
-A tiny local Vision-Language-Action experiment is available at `scripts/qwen_vla_controller.py`.
-It captures the screen, asks a Hugging Face VLM such as `Qwen/Qwen3.5-2B` or
-`Qwen/Qwen3-VL-2B-Instruct` for one JSON UI action, and can optionally execute
-that action with PyAutoGUI.
+Use `exec` for script-friendly runs:
 
 ```bash
-pip install 'transformers>=4.57' accelerate pillow torch qwen-vl-utils pyautogui
-
-# Dry run through the helper directly.
-scripts/qwen_vla_controller.py --model Qwen/Qwen3.5-2B "click the wifi icon"
-
-# Let Khadim call the local Qwen VLA tool and execute the action.
-khadim rpa exec --model gpt-5.5 "Use qwen_vla_action with Qwen/Qwen3.5-2B to click the wifi icon"
-
-# Execute through the helper directly; prefer an isolated VM/session.
-scripts/qwen_vla_controller.py --model Qwen/Qwen3-VL-2B-Instruct --execute "click the wifi icon"
+khadim exec "summarize failures" < build.log
+khadim exec --json "explain this repository"
 ```
 
-This is not a trained robotics/action head. It uses the VLM's screenshot
-understanding plus a strict JSON action prompt for `click`, `move`, `type`,
-`key`, `scroll`, `wait`, and `final`. In RPA/assistant harnesses Khadim also
-registers a `qwen_vla_action` tool, so the normal Khadim agent can delegate a
-visual action to local Qwen while Khadim still performs the mouse/keyboard
-operation through its action loop. Treat it as a starting point for local evals
-and guarded desktop automation.
+Select a different working directory:
 
+```bash
+khadim --cwd /path/to/project
+```
 
----
+Type `/` in the terminal UI to browse commands such as `/help`, `/provider`,
+`/model`, `/sessions`, `/settings`, `/harness`, and `/tokens`.
 
-## Configuration
+## Providers
 
-Environment variables:
+Khadim reads provider credentials from environment variables or from the
+interactive settings panel.
 
-| Variable | Description |
-|----------|-------------|
-| `KHADIM_PROVIDER` | Default provider (default: `openai`) |
-| `KHADIM_MODEL` | Default model for the provider |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `GEMINI_API_KEY` | Google Gemini API key |
-| `GROQ_API_KEY` | Groq API key |
-| `KHADIM_NO_UPDATE_CHECK` | Set to `1` to disable the npm update prompt |
-| ... | See [root README](../../README.md#supported-providers) for all providers |
+```bash
+export ANTHROPIC_API_KEY=...
+export KHADIM_PROVIDER=anthropic
+khadim
+```
 
----
+List providers and models:
+
+```bash
+khadim --providers
+khadim --models anthropic
+```
+
+## RPA preview
+
+The CLI includes preview harnesses for desktop and assistant automation:
+
+```bash
+khadim rpa exec "inspect the current screen"
+khadim assistant
+```
+
+The coding harness is the stable path. RPA tooling is under active development.
 
 ## Development
 
+From the repository root:
+
 ```bash
-cd apps/khadim-cli
+cargo run --manifest-path apps/khadim-cli/Cargo.toml -- --prompt "hello"
+cargo build --release --manifest-path apps/khadim-cli/Cargo.toml
+```
 
-# Run in dev mode
+From this package directory:
+
+```bash
 npm run dev -- --prompt "hello"
-
-# Build release binary
 npm run build:release
-
-# Build distributable bin
 npm run dist:bin
-./dist/bin/khadim --help
-
-# Stage npm tarballs (requires built artifacts)
-python3 scripts/stage_npm_package.py --version 0.2.1 --package all --artifact-dir ./artifacts
 ```

@@ -1,60 +1,85 @@
 ---
 title: Khadim
-description: An open-source, local-first agentic automation platform — terminal, desktop, web, and SDK.
+description: Local-first agentic automation across CLI, desktop, web, SDK, and plugins.
 ---
 
-**Khadim** is an open-source, local-first agentic automation platform. Instead of stitching together pre-built RPA blocks, Khadim hands the job to an AI agent that writes and runs automation scripts on the fly — in your terminal, on your desktop, or embedded inside your own product.
+Khadim is an open-source, local-first agentic automation platform. It gives an
+AI agent the tools to inspect a workspace or screen, write the automation it
+needs, execute it, recover from failures, and report what happened.
 
-> One agent. One tool loop. Every surface — CLI, desktop, web, SDK — talks to the same engine.
+The CLI coding agent is the working entry point today. The desktop app, web
+control plane, RPA tools, Docker runtime, memory system, and plugins are being
+built around the same engine.
 
-## Install in 30 seconds
+## Highlights
+
+- Run an interactive coding agent in your terminal.
+- Execute one-shot prompts with `khadim exec` or `khadim --prompt`.
+- Stream normalized events for apps and services.
+- Use 19+ AI providers through one provider/model interface.
+- Add sandboxed WebAssembly tools through the Plugin SDK.
+- Build toward RPA workflows with screenshots, OCR, browser automation,
+  connectors, schedules, environments, credentials, and memory.
+- Run the same automation model across CLI, desktop, web, Docker, and cloud
+  runners.
+
+## Install
+
+Install the CLI from npm:
 
 ```bash
 npm install -g @unravelai/khadim
 ```
 
-Run a one-shot prompt in batch mode:
-
-```bash
-khadim --prompt "explain this codebase"
-```
-
-…or drop into the interactive terminal UI:
+Start the terminal UI:
 
 ```bash
 khadim
 ```
 
-## What you get
+Run one task without opening the UI:
 
-- **Coding agent, 19+ providers.** OpenAI, Anthropic, Gemini, Groq, xAI, Copilot, Codex, Cerebras, OpenRouter, Mistral and more — swap providers without rewriting prompts.
-- **Streaming terminal UI.** Multi-line input, live tool execution, slash commands, session save/load, and an F2 settings panel.
-- **[Khadim SDK](/khadim/cli/sdk/).** Embed the same agent into your Node.js app with a typed, streaming API — including custom tool bridges that run in *your* process.
-- **[Plugin SDK](/khadim/plugins/overview/).** Ship sandboxed WebAssembly tools the agent loads at runtime.
-- **Desktop app.** A glass-UI Tauri build for users who don't live in a terminal.
-- **Web app.** Team collaboration and cloud deployment for shared agent runs.
-
-## Architecture at a glance
-
-```
-Desktop (Tauri)          Web (React Router + Express)        CLI / SDK
-       │                              │                          │
-       └──────────────────────────────┴──────────────────────────┘
-                                  │
-                          Agent Engine
-                  (LLM → plan → call tools → loop)
-                                  │
-                          Tool Domains
-              ├── domains/coding   — file I/O, shell, grep, git
-              ├── domains/rpa      — screenshot, OCR, mouse / keyboard, browser
-              └── plugins/         — WASM, user-extensible
+```bash
+khadim --prompt "explain this codebase"
 ```
 
-The CLI, desktop, web, and SDK are four windows onto the same engine. Switch surfaces — keep the same prompts, the same tools, the same events.
+## Learn the basics
 
-## Where to go next
+Start with these pages if you are new to Khadim:
 
-- **[CLI Overview](/khadim/cli/overview/)** — install, configure, and live in the terminal.
-- **[Khadim SDK](/khadim/cli/sdk/)** — embed the agent in your own Node.js application.
-- **[Plugin SDK](/khadim/plugins/overview/)** — build sandboxed WebAssembly tools.
-- **[Docker Agent Runtime](/khadim/reference/docker-agent-runtime/)** — run the agent in containers.
+- [Installation](getting-started/installation/) explains the supported install
+  paths.
+- [First steps](getting-started/first-steps/) walks through your first
+  interactive and headless runs.
+- [Features](getting-started/features/) maps the current and planned platform
+  capabilities.
+- [CLI overview](cli/overview/) documents the terminal UI and batch modes.
+
+## Understand the platform
+
+Khadim is built around one shared agent loop:
+
+```text
+LLM -> plan -> call tools -> observe results -> continue or finish
+```
+
+The same loop powers multiple surfaces:
+
+- **CLI** for terminal-first coding and scripted runs.
+- **Desktop** for local RPA and screen-aware automation.
+- **Web** for managed agents, team dashboards, and run monitoring.
+- **SDK** for embedding the agent into applications.
+- **Plugins** for user-extensible tool domains.
+
+Read [Architecture](concepts/architecture/) for the full model.
+
+## Build with Khadim
+
+Use these paths when you want to extend or embed Khadim:
+
+- [Khadim SDK](cli/sdk/) explains the TypeScript API and event stream.
+- [Plugin SDK](plugins/overview/) explains sandboxed WASM tools.
+- [Tools and domains](concepts/tools-and-domains/) explains how coding, RPA,
+  connectors, and plugins fit together.
+- [Docker Agent Runtime](reference/docker-agent-runtime/) explains the
+  container runtime plan.
