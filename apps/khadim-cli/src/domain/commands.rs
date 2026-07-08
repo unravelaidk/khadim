@@ -68,6 +68,16 @@ pub fn all_slash_commands() -> Vec<SlashCommand> {
             description: "Switch harness",
             icon: "🧰",
         },
+        SlashCommand {
+            name: "/multi-agent",
+            description: "Toggle multi-agent coordinator",
+            icon: "👥",
+        },
+        SlashCommand {
+            name: "/multi",
+            description: "Alias for /multi-agent",
+            icon: "👥",
+        },
         // ── Auth ───────────────────────────────────────────────────
         SlashCommand {
             name: "/login",

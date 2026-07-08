@@ -1,9 +1,6 @@
-use crate::helpers::try_repair_json;
-use crate::runtime::AgentRuntime;
+use crate::coordinator::worker::{spawn_worker, WriteScope, WorkerSpec};
 use khadim_ai_core::error::AppError;
 use khadim_ai_core::tools::{Tool, ToolDefinition, ToolResult};
-use khadim_ai_core::types::{ChatMessage, Context, ToolMessage};
-use khadim_ai_core::ModelClient;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -11,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// Kill a child process and its entire process group.
 /// On Unix, we send SIGKILL to the process group (negative PID).
@@ -147,11 +145,31 @@ impl Tool for ReadTool {
 
 pub struct WriteTool {
     root: PathBuf,
+    /// Optional lease guard for post-edit conflict detection (multi-agent).
+    lease_guard: Option<Arc<crate::coordinator::lease_guard::LeaseGuard>>,
+    /// Optional event sink for emitting `lease_conflict` events.
+    event_tx: Option<UnboundedSender<AgentStreamEvent>>,
 }
 
 impl WriteTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            lease_guard: None,
+            event_tx: None,
+        }
+    }
+
+    /// Attach a lease guard for post-edit conflict checks (builder).
+    pub fn with_lease_guard(mut self, guard: Arc<crate::coordinator::lease_guard::LeaseGuard>) -> Self {
+        self.lease_guard = Some(guard);
+        self
+    }
+
+    /// Attach an event sink for `lease_conflict` events (builder).
+    pub fn with_event_tx(mut self, tx: UnboundedSender<AgentStreamEvent>) -> Self {
+        self.event_tx = Some(tx);
+        self
     }
 }
 
@@ -188,6 +206,23 @@ impl Tool for WriteTool {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&target, content)?;
+
+        // Post-edit lease conflict check (multi-agent only).
+        if let Some(guard) = &self.lease_guard {
+            let conflicts = guard.check_after_edit_with_source(&target, content);
+            if !conflicts.is_empty() {
+                guard.emit_conflict_events(&conflicts);
+                let c = &conflicts[0];
+                return Err(AppError::invalid_input(format!(
+                    "lease_conflict: worker '{}' edited file {} range {}..{} which is leased by worker '{}'",
+                    guard.worker_id(),
+                    c.file.display(),
+                    c.range.start,
+                    c.range.end,
+                    c.conflicting_lease.worker_id,
+                )));
+            }
+        }
 
         Ok(ToolResult::text(format!("Wrote {} bytes to {}", content.len(), target.display())))
     }
@@ -579,11 +614,31 @@ impl Tool for BashTool {
 
 pub struct EditTool {
     root: PathBuf,
+    /// Optional lease guard for post-edit conflict detection (multi-agent).
+    lease_guard: Option<Arc<crate::coordinator::lease_guard::LeaseGuard>>,
+    /// Optional event sink for emitting `lease_conflict` events.
+    event_tx: Option<UnboundedSender<AgentStreamEvent>>,
 }
 
 impl EditTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            lease_guard: None,
+            event_tx: None,
+        }
+    }
+
+    /// Attach a lease guard for post-edit conflict checks (builder).
+    pub fn with_lease_guard(mut self, guard: Arc<crate::coordinator::lease_guard::LeaseGuard>) -> Self {
+        self.lease_guard = Some(guard);
+        self
+    }
+
+    /// Attach an event sink for `lease_conflict` events (builder).
+    pub fn with_event_tx(mut self, tx: UnboundedSender<AgentStreamEvent>) -> Self {
+        self.event_tx = Some(tx);
+        self
     }
 }
 
@@ -665,6 +720,25 @@ impl Tool for EditTool {
         if applied > 0 {
             std::fs::write(&target, &content)
                 .map_err(|e| AppError::io(format!("Failed to write {}: {e}", target.display())))?;
+        }
+
+        // Post-edit lease conflict check (multi-agent only).
+        if applied > 0 {
+            if let Some(guard) = &self.lease_guard {
+                let conflicts = guard.check_after_edit_with_source(&target, &content);
+                if !conflicts.is_empty() {
+                    guard.emit_conflict_events(&conflicts);
+                    let c = &conflicts[0];
+                    return Err(AppError::invalid_input(format!(
+                        "lease_conflict: worker '{}' edited file {} range {}..{} which is leased by worker '{}'",
+                        guard.worker_id(),
+                        c.file.display(),
+                        c.range.start,
+                        c.range.end,
+                        c.conflicting_lease.worker_id,
+                    )));
+                }
+            }
         }
 
         let mut result = format!("Applied {applied}/{} edits to {}", edits.len(), target.display());
@@ -1418,13 +1492,28 @@ impl Tool for MemoryTool {
 
 // ── Delegation tool ────────────────────────────────────────────────────
 
+use crate::agent::modes::{sub_general_mode, sub_explore_mode, sub_review_mode};
+use crate::events::AgentStreamEvent;
+
 pub struct DelegateTool {
     root: PathBuf,
+    /// Optional event sink. When present, subagent events stream to the parent
+    /// run instead of being discarded. When `None`, the tool behaves exactly
+    /// like the previous silent inline loop.
+    event_tx: Option<UnboundedSender<AgentStreamEvent>>,
 }
 
 impl DelegateTool {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self { root, event_tx: None }
+    }
+
+    /// Construct with an event sink (streaming mode).
+    pub fn with_event_sink(root: PathBuf, event_tx: UnboundedSender<AgentStreamEvent>) -> Self {
+        Self {
+            root,
+            event_tx: Some(event_tx),
+        }
     }
 }
 
@@ -1464,87 +1553,49 @@ impl Tool for DelegateTool {
             .ok_or_else(|| AppError::invalid_input("delegate_to_agent requires a task"))?;
 
         let mode = match agent_type {
-            "general" => crate::agent::modes::sub_general_mode(),
-            "explore" => crate::agent::modes::sub_explore_mode(),
-            "review" => crate::agent::modes::sub_review_mode(),
+            "general" => sub_general_mode(),
+            "explore" => sub_explore_mode(),
+            "review" => sub_review_mode(),
             other => return Err(AppError::invalid_input(format!(
                 "Unknown subagent type: '{}'. Use 'general', 'explore', or 'review'.",
                 other
             ))),
         };
 
-        // Run the subagent with read-only tools
-        let runtime = AgentRuntime::new_read_only(&self.root);
-        let client = ModelClient::from_selection(None).await?;
-        let system_prompt = runtime.build_prompt(&mode);
-        let tool_defs = runtime.definitions();
+        // Delegate to a read-only, bounded worker (max 10 turns — matching the
+        // previous inline subagent loop). When an event sink is set, subagent
+        // events stream to the parent; otherwise they are discarded (silent,
+        // preserving the original behavior).
+        let worker_id = format!("delegate-{agent_type}-{}", uuid::Uuid::new_v4());
+        let spec = WorkerSpec {
+            worker_id: worker_id.clone(),
+            mode,
+            task: task.to_string(),
+            write_scope: WriteScope::ReadOnly,
+            max_turns: Some(10),
+            leases: Vec::new(),
+        };
 
-        let mut messages = vec![ChatMessage::System { content: system_prompt }];
-        messages.push(ChatMessage::User { content: task.to_string() });
+        let handle = if let Some(tx) = self.event_tx.clone() {
+            spawn_worker(spec, self.root.clone(), None, tx)
+        } else {
+            // No sink: create a throwaway channel and drain it silently.
+            let (silent_tx, mut silent_rx) =
+                tokio::sync::mpsc::unbounded_channel::<AgentStreamEvent>();
+            let handle = spawn_worker(spec, self.root.clone(), None, silent_tx);
+            // Drain in the background so the worker's sends don't block.
+            tokio::spawn(async move {
+                while silent_rx.recv().await.is_some() {}
+            });
+            handle
+        };
 
-        // Run the subagent for a limited number of turns
-        let max_subagent_turns: usize = 10;
-        let mut turn_index: usize = 0;
-        let mut final_result = String::new();
+        let summary = handle
+            .join
+            .await
+            .map_err(|e| AppError::io(format!("Subagent worker panicked: {e}")))??;
 
-        loop {
-            if turn_index >= max_subagent_turns {
-                final_result.push_str(&format!("\n[Subagent reached maximum turn limit ({max_subagent_turns})]"));
-                break;
-            }
-
-            let context = Context {
-                messages: messages.clone(),
-                tools: tool_defs.clone(),
-                session_id: Some(format!("subagent-{}", agent_type)),
-            };
-
-            let reply = client.stream(
-                &context,
-                mode.temperature,
-                Arc::new(|_event| {}), // Silent — we don't stream subagent events
-            ).await.map_err(|e| AppError::io(format!("Subagent LLM error: {}", e.message)))?;
-
-            if !reply.tool_calls.is_empty() {
-                messages.push(ChatMessage::Assistant {
-                    content: if reply.content.trim().is_empty() { None } else { Some(reply.content.clone()) },
-                    tool_calls: reply.tool_calls.clone(),
-                    reasoning_content: reply.reasoning_content.clone(),
-                });
-
-                for tool_call in &reply.tool_calls {
-                    let args = serde_json::from_str::<Value>(&tool_call.function.arguments)
-                        .unwrap_or_else(|_| try_repair_json(&tool_call.function.arguments).unwrap_or_else(|| json!({})));
-
-                    let tool_result: Result<ToolResult, AppError> = match runtime.get(&tool_call.function.name) {
-                        Some(tool) => tool.execute(args).await,
-                        None => Err(AppError::invalid_input(format!(
-                            "Subagent requested unavailable tool: {}",
-                            tool_call.function.name
-                        ))),
-                    };
-
-                    let result_content = match tool_result {
-                        Ok(result) => result.content,
-                        Err(err) => format!("Error: {}", err.message),
-                    };
-
-                    messages.push(ChatMessage::Tool(ToolMessage {
-                        content: result_content,
-                        tool_call_id: tool_call.id.clone(),
-                    }));
-                }
-
-                turn_index += 1;
-                continue;
-            }
-
-            // No tool calls — the subagent is done
-            final_result = reply.content;
-            break;
-        }
-
-        Ok(ToolResult::text(format!("[Subagent '{}' findings]\n{}", agent_type, final_result)))
+        Ok(ToolResult::text(format!("[Subagent '{}' findings]\n{}", agent_type, summary)))
     }
 }
 
@@ -1670,4 +1721,197 @@ pub fn read_only_tools(root: &Path) -> Vec<Arc<dyn Tool>> {
         Arc::new(WebSearchTool::new()),
         Arc::new(WebFetchTool::new()),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::coordinator::lease::LeaseManager;
+    use crate::coordinator::lease_guard::LeaseGuard;
+    use khadim_ai_core::tools::Tool;
+    use khadim_code_graph::{NodePath, NodeSpan, ParseCache};
+    use std::sync::Arc;
+
+    fn make_guard(worker_id: &str) -> (Arc<LeaseGuard>, Arc<std::sync::Mutex<LeaseManager>>) {
+        let mgr = Arc::new(std::sync::Mutex::new(LeaseManager::new()));
+        let cache = Arc::new(std::sync::Mutex::new(ParseCache::new()));
+        let guard = Arc::new(LeaseGuard::new(mgr.clone(), cache, worker_id));
+        (guard, mgr)
+    }
+
+    fn span(start: usize, end: usize) -> NodeSpan {
+        NodeSpan {
+            path: NodePath::new(vec![
+                ("source_file".to_string(), 0),
+                ("function_item".to_string(), start),
+            ]),
+            byte_range: start..end,
+        }
+    }
+
+    // ── Regression: WriteTool without guard behaves exactly as before ────
+
+    #[tokio::test]
+    async fn write_tool_without_guard_behaves_as_before() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tool = WriteTool::new(tmp.path().to_path_buf());
+        let input = json!({ "path": "out.txt", "content": "hello" });
+        let res = tool.execute(input).await.unwrap();
+        assert!(res.content.contains("Wrote 5 bytes"));
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("out.txt")).unwrap(),
+            "hello"
+        );
+    }
+
+    #[tokio::test]
+    async fn edit_tool_without_guard_behaves_as_before() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("e.txt");
+        std::fs::write(&file, "fn foo() { 1 }").unwrap();
+        let tool = EditTool::new(tmp.path().to_path_buf());
+        let input = json!({ "path": "e.txt", "edits": [
+            { "old_text": "1", "new_text": "99" }
+        ]});
+        let res = tool.execute(input).await.unwrap();
+        assert!(res.content.contains("Applied 1/1 edits"));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "fn foo() { 99 }");
+    }
+
+    // ── WriteTool with guard: conflict into another worker's lease ────────
+
+    #[tokio::test]
+    async fn write_tool_with_guard_conflict_returns_error_and_emits_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("lib.rs");
+        std::fs::write(&file, "fn foo() { 1 }\nfn bar() { 2 }\n").unwrap();
+
+        let (_guard, mgr) = make_guard("w2");
+        // w1 owns the whole file.
+        mgr.lock().unwrap().claim("w1", file.clone(), None).unwrap();
+
+        // Attach an event tx to the guard.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentStreamEvent>();
+        // Rebuild guard with event tx.
+        let mgr2 = mgr.clone();
+        let cache = Arc::new(std::sync::Mutex::new(ParseCache::new()));
+        // Pre-parse the file so the guard has a baseline.
+        {
+            let mut c = cache.lock().unwrap();
+            c.parse(&file, &std::fs::read_to_string(&file).unwrap());
+        }
+        let guard = Arc::new(
+            LeaseGuard::new(mgr2, cache, "w2").with_event_tx(tx),
+        );
+
+        let tool = WriteTool::new(tmp.path().to_path_buf()).with_lease_guard(guard);
+        let input = json!({
+            "path": "lib.rs",
+            "content": "fn foo() { 1; extra }\nfn bar() { 2 }\n",
+        });
+        let res = tool.execute(input).await;
+        assert!(res.is_err(), "conflicting write should error");
+        let err = res.unwrap_err();
+        assert!(err.message.contains("lease_conflict"));
+        assert!(err.message.contains("w1"));
+
+        // Event emitted.
+        let ev = rx.try_recv().expect("lease_conflict event");
+        assert_eq!(ev.event_type, "lease_conflict");
+    }
+
+    #[tokio::test]
+    async fn write_tool_with_guard_no_conflict_when_editing_own_region() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("lib.rs");
+        std::fs::write(&file, "fn foo() { 1 }\n").unwrap();
+
+        let (_guard, mgr) = make_guard("w1");
+        // w1 owns the whole file.
+        mgr.lock().unwrap().claim("w1", file.clone(), None).unwrap();
+
+        // Pre-parse.
+        let cache = Arc::new(std::sync::Mutex::new(ParseCache::new()));
+        {
+            let mut c = cache.lock().unwrap();
+            c.parse(&file, &std::fs::read_to_string(&file).unwrap());
+        }
+        let guard = Arc::new(
+            LeaseGuard::new(mgr, cache, "w1"),
+        );
+
+        let tool = WriteTool::new(tmp.path().to_path_buf()).with_lease_guard(guard);
+        let input = json!({ "path": "lib.rs", "content": "fn foo() { 99 }\n" });
+        let res = tool.execute(input).await;
+        assert!(res.is_ok(), "editing own lease should succeed: {:?}", res);
+    }
+
+    // ── EditTool with guard: conflict into another worker's lease ────────
+
+    #[tokio::test]
+    async fn edit_tool_with_guard_conflict_returns_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("lib.rs");
+        std::fs::write(&file, "fn foo() { 1 }\nfn bar() { 2 }\n").unwrap();
+
+        let (_guard, mgr) = make_guard("w2");
+        // w1 owns bytes 0..14 (the foo function).
+        mgr.lock().unwrap().claim("w1", file.clone(), Some(span(0, 14))).unwrap();
+
+        // Pre-parse.
+        let cache = Arc::new(std::sync::Mutex::new(ParseCache::new()));
+        {
+            let mut c = cache.lock().unwrap();
+            c.parse(&file, &std::fs::read_to_string(&file).unwrap());
+        }
+        let guard = Arc::new(LeaseGuard::new(mgr, cache, "w2"));
+
+        let tool = EditTool::new(tmp.path().to_path_buf()).with_lease_guard(guard);
+        // Edit the foo function (inside w1's leased region).
+        let input = json!({ "path": "lib.rs", "edits": [
+            { "old_text": "fn foo() { 1 }", "new_text": "fn foo() { 1; 2 }" }
+        ]});
+        let res = tool.execute(input).await;
+        assert!(res.is_err(), "edit into another's lease should error");
+        let err = res.unwrap_err();
+        assert!(err.message.contains("lease_conflict"));
+        assert!(err.message.contains("w1"));
+    }
+
+    // ── Two workers editing different functions: no conflict ─────────────
+
+    #[tokio::test]
+    async fn write_tool_with_guard_no_conflict_different_functions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("lib.rs");
+        std::fs::write(&file, "fn foo() { 1 }\nfn bar() { 2 }\n").unwrap();
+
+        // w1 owns bytes 0..14 (foo), w2 owns bytes 15..30 (bar) — distinct paths.
+        let (_guard_w1, mgr) = make_guard("w1");
+        mgr.lock().unwrap().claim("w1", file.clone(), Some(span(0, 14))).unwrap();
+
+        let cache = Arc::new(std::sync::Mutex::new(ParseCache::new()));
+        {
+            let mut c = cache.lock().unwrap();
+            c.parse(&file, &std::fs::read_to_string(&file).unwrap());
+        }
+        let guard_w1 = Arc::new(LeaseGuard::new(mgr.clone(), cache.clone(), "w1"));
+        // w1 edits its own region.
+        let tool_w1 = WriteTool::new(tmp.path().to_path_buf()).with_lease_guard(guard_w1);
+        let input = json!({ "path": "lib.rs", "content": "fn foo() { 99 }\nfn bar() { 2 }\n" });
+        let res = tool_w1.execute(input).await;
+        assert!(res.is_ok(), "w1 editing own region: {:?}", res);
+
+        // w2 claims bar region (bytes 15..30) and edits it — no conflict with w1.
+        mgr.lock().unwrap().claim("w2", file.clone(), Some(span(15, 30))).unwrap();
+        let guard_w2 = Arc::new(LeaseGuard::new(mgr, cache, "w2"));
+        let tool_w2 = WriteTool::new(tmp.path().to_path_buf()).with_lease_guard(guard_w2);
+        let input2 = json!({ "path": "lib.rs", "content": "fn foo() { 99 }\nfn bar() { 42 }\n" });
+        let res2 = tool_w2.execute(input2).await;
+        // Note: w2's write replaces the whole file, which includes w1's region.
+        // The changed range from the reparse will cover the edit in bar only
+        // (common prefix/suffix diff). So this should NOT conflict if the
+        // reparse correctly localizes the change to bar's region.
+        assert!(res2.is_ok(), "w2 editing bar (distinct from foo): {:?}", res2);
+    }
 }

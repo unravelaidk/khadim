@@ -1332,6 +1332,11 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     });
                                     continue;
                                 }
+                                CommandResult::ToggleMultiAgent => {
+                                    let enable = !app.multi_agent_enabled();
+                                    app.set_multi_agent(enable);
+                                    continue;
+                                }
                                 CommandResult::None => {
                                     // Not a command — submit as prompt
                                     app.submit_user_prompt(&prompt);
@@ -1339,10 +1344,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     // (aborted) run so they don't interfere with
                                     // the new run's state.
                                     while worker_rx.try_recv().is_ok() {}
-                                    let mode = if app.current_mode == "auto" {
-                                        None
-                                    } else {
-                                        Some(app.current_mode.clone())
+                                    let mode = match app.current_mode.as_str() {
+                                        "auto" => None,
+                                        other => Some(other.to_string()),
                                     };
                                     app_service.spawn_agent_run(prompt, mode);
                                 }

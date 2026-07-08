@@ -20,6 +20,9 @@ pub struct CliConfig {
     pub json: bool,
     pub list_providers: Option<String>,
     pub list_models: Option<String>,
+    /// Run via the multi-agent coordinator (decompose → assign → spawn →
+    /// aggregate) instead of the single-agent loop. Default: off.
+    pub multi_agent: bool,
 }
 
 // ── Arg parsing ──────────────────────────────────────────────────────
@@ -36,6 +39,7 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
     let mut json = false;
     let mut list_providers = None;
     let mut list_models = None;
+    let mut multi_agent = false;
     let mut exec_mode = false;
     let mut positional_prompt = Vec::new();
     let mut args = env::args().skip(1).peekable();
@@ -110,6 +114,9 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
             "--json" => {
                 json = true;
             }
+            "--multi-agent" => {
+                multi_agent = true;
+            }
             "--providers" => {
                 let value = args.next().unwrap_or_else(|| "json".to_string());
                 list_providers = Some(value);
@@ -170,6 +177,7 @@ pub fn parse_args() -> Result<CliConfig, AppError> {
         json,
         list_providers,
         list_models,
+        multi_agent,
     })
 }
 
@@ -205,8 +213,9 @@ fn print_help() {
          \x20 --model ID       Set AI model\n\
          \x20 --session NAME   Load saved session\n\
          \x20 --system-prompt TEXT  Override the system prompt for this run\n\
-         \x20 --harness NAME   Select harness: coding, rpa, assistant, or custom\n\
-         \x20 --verbose        Enable verbose logging\n\
+          \x20 --harness NAME   Select harness: coding, rpa, assistant, or custom\n\
+          \x20 --multi-agent   Use the multi-agent coordinator (decompose → spawn → aggregate)\n\
+          \x20 --verbose        Enable verbose logging\n\
          \x20 -h, --help       Show this help\n\
          \x20 -v, --version    Show version\n\n\
          Without --prompt or exec, Khadim launches an interactive TUI.\n\

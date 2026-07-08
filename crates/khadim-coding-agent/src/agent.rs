@@ -1,3 +1,4 @@
+pub mod goal_board;
 pub mod goal_tracker;
 pub mod mode_planner;
 pub mod modes;

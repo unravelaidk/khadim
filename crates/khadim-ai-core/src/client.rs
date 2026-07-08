@@ -7,6 +7,7 @@ use crate::types::{
 };
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct ModelClient {
     model: Model,
     api_key: String,

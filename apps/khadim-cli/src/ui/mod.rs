@@ -1025,7 +1025,7 @@ pub fn render_welcome(
         ),
         ("tip", "/sessions resumes a saved conversation"),
         ("tip", "drag a file path into the prompt to attach it"),
-        ("tip", "shift-tab cycles through agent modes"),
+        ("tip", "shift-tab cycles modes · /multi-agent for multi-agent"),
     ];
     let tip_idx = ((app.tick_count / 100) as usize) % tips.len();
     let (tip_label, tip_body) = tips[tip_idx];
@@ -1118,6 +1118,8 @@ pub fn render_footer(
         "question"
     } else if mode == "auto" {
         "auto"
+    } else if mode == "multi" {
+        "multi-agent"
     } else {
         mode.as_str()
     };

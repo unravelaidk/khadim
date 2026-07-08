@@ -3,11 +3,12 @@ use crate::agent::mode_planner;
 use crate::agent::modes::{build_mode, chat_mode, explore_mode, plan_mode, sub_general_mode, sub_explore_mode, sub_review_mode};
 use crate::agent::session::KhadimSession;
 use crate::agent::types::{AgentId, AgentModeDefinition};
+use crate::coordinator::search::{self, ProposerFn, Scorer, SearchMode, SelectedAction};
 use khadim_ai_core::error::AppError;
 use crate::events::AgentStreamEvent;
 use crate::helpers::try_repair_json;
 use khadim_ai_core::types::{
-    AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolCall, ToolMessage,
+    AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolCall, ToolFunction, ToolMessage,
 };
 use khadim_ai_core::ModelClient;
 use crate::runtime::AgentRuntime;
@@ -347,6 +348,7 @@ async fn execute_tool_calls(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     session: &mut KhadimSession,
     mut goal_tracker: Option<&mut GoalTracker>,
+    mut parse_cache: Option<&mut khadim_code_graph::ParseCache>,
 ) {
     // Split tool calls into runs of parallel-safe and sequential tools.
     // We process them in order, batching adjacent parallel-safe calls.
@@ -381,7 +383,22 @@ async fn execute_tool_calls(
             for (idx, result) in results.into_iter().enumerate() {
                 if let Some(ref mut gt) = goal_tracker {
                     let tc = &batch[idx];
-                    gt.update_from_tool_json(&tc.function.name, &tc.function.arguments, &result.content);
+                    let newly = if let Some(cache) = parse_cache.as_mut() {
+                        gt.update_from_tool_json_with_graph(
+                            &tc.function.name,
+                            &tc.function.arguments,
+                            &result.content,
+                            cache,
+                        )
+                    } else {
+                        gt.update_from_tool_json(
+                            &tc.function.name,
+                            &tc.function.arguments,
+                            &result.content,
+                        );
+                        newly_satisfied_indices(gt)
+                    };
+                    emit_goal_satisfied_events(&newly, gt, session, tx);
                 }
                 session.messages.push(ChatMessage::Tool(ToolMessage {
                     content: result.content,
@@ -403,7 +420,19 @@ async fn execute_tool_calls(
             .await;
 
             if let Some(ref mut gt) = goal_tracker {
-                gt.update_from_tool_json(&tc.function.name, &tc.function.arguments, &result.content);
+                let newly = if let Some(cache) = parse_cache.as_mut() {
+                    gt.update_from_tool_json_with_graph(
+                        &tc.function.name,
+                        &tc.function.arguments,
+                        &result.content,
+                        cache,
+                    )
+                } else {
+                    let before: Vec<bool> = gt.goals.iter().map(|g| g.satisfied).collect();
+                    gt.update_from_tool_json(&tc.function.name, &tc.function.arguments, &result.content);
+                    newly_satisfied_from_before(&before, gt)
+                };
+                emit_goal_satisfied_events(&newly, gt, session, tx);
             }
 
             session.messages.push(ChatMessage::Tool(ToolMessage {
@@ -411,6 +440,51 @@ async fn execute_tool_calls(
                 tool_call_id: result.tool_call_id,
             }));
             i += 1;
+        }
+    }
+}
+
+/// Return the indices of goals that are currently satisfied (used as the
+/// "newly satisfied" list when the graph variant isn't available and we fall
+/// back to the legacy `update_from_tool_json`, which doesn't return indices).
+fn newly_satisfied_indices(gt: &GoalTracker) -> Vec<usize> {
+    gt.goals
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| g.satisfied)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Given the pre-update `satisfied` flags, return the indices of goals that
+/// flipped from unsatisfied to satisfied.
+fn newly_satisfied_from_before(before: &[bool], gt: &GoalTracker) -> Vec<usize> {
+    gt.goals
+        .iter()
+        .enumerate()
+        .filter(|(i, g)| !before.get(*i).copied().unwrap_or(false) && g.satisfied)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Emit a `goal_satisfied` event for each newly-satisfied goal index.
+fn emit_goal_satisfied_events(
+    newly: &[usize],
+    gt: &GoalTracker,
+    session: &KhadimSession,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+) {
+    for &idx in newly {
+        if let Some(goal) = gt.goals.get(idx) {
+            let _ = tx.send(
+                make_event(session, "goal_satisfied")
+                    .with_content(format!("Goal satisfied: {}", goal.description))
+                    .with_metadata(json!({
+                        "goal_index": idx,
+                        "kind": goal.kind.label(),
+                        "description": goal.description,
+                    })),
+            );
         }
     }
 }
@@ -425,6 +499,15 @@ pub struct RunConfig {
     pub extract_contracts: bool,
     /// Whether to extract goals from the prompt and inject goal-count heuristic nudges (default: true).
     pub goal_tracking: bool,
+    /// Upper bound on concurrently-running delegated workers (default: 3).
+    /// NOTE: parallel-batch execution of `delegate_to_agent` stays serialized in
+    /// this WP; this field is reserved for the coordinator (WP7) and is
+    /// documented here so callers can configure it now.
+    pub max_workers: usize,
+    /// When to engage the propose-k search layer (System-2). Default is
+    /// [`SearchMode::Stalled { turns: 4 }`]; set to [`SearchMode::Off`] for a
+    /// true no-op (byte-identical to the pre-WP6 loop).
+    pub search: SearchMode,
 }
 
 impl Default for RunConfig {
@@ -434,6 +517,8 @@ impl Default for RunConfig {
             nudge_interval: 6,
             extract_contracts: true,
             goal_tracking: true,
+            max_workers: 3,
+            search: SearchMode::default(),
         }
     }
 }
@@ -459,6 +544,16 @@ pub async fn run_prompt_with_runtime(
     runtime: AgentRuntime,
     config: RunConfig,
 ) -> Result<String, AppError> {
+    // If the runtime has no event sink set, attach this run's `tx` so that
+    // `delegate_to_agent` subagent events stream to the parent by default.
+    // Callers that pre-wired a sink via `with_event_sink` keep their sink.
+    let runtime = if runtime.has_event_sink() {
+        runtime
+    } else {
+        runtime.with_event_sink(tx.clone())
+    };
+    let _ = &config; // reserved for future use (e.g. max_workers enforcement)
+
     // If the session has a system prompt override, use chat mode.
     // Otherwise, auto-select mode based on the prompt.
     let (mode, mode_reasoning) = if session.system_prompt_override.is_some() {
@@ -507,6 +602,7 @@ pub async fn run_prompt_with_runtime(
                         "goals": gt.goals.iter().map(|g| json!({
                             "kind": g.kind.label(),
                             "description": g.description,
+                            "symbol": g.symbol,
                         })).collect::<Vec<_>>(),
                     })),
             );
@@ -516,8 +612,23 @@ pub async fn run_prompt_with_runtime(
         None
     };
 
+    // Parse cache shared across this run for AST-verified goal satisfaction
+    // (WP2). Only constructed when goal tracking is enabled.
+    let mut parse_cache = if config.goal_tracking {
+        Some(khadim_code_graph::ParseCache::new())
+    } else {
+        None
+    };
+
     let max_turns = config.max_turns;
     let mut turn_index: usize = 0;
+    // Per-turn goal-count heuristic history (WP6). Pushed after each turn's
+    // goal_tracker update; used by the search trigger to detect stalls.
+    let mut heuristic_history: Vec<usize> = Vec::new();
+    // Lazy-initialized proposer for the propose-k search layer. Built on first
+    // engagement so we don't pay the cost (or hold the Arc) when search is Off.
+    let mut proposer: Option<ProposerFn> = None;
+    let scorer = Scorer;
     loop {
         if turn_index >= max_turns {
             let _ = tx.send(
@@ -536,6 +647,101 @@ pub async fn run_prompt_with_runtime(
                 content: nudge,
             });
         }
+
+        // ── WP6: propose-k search trigger ──────────────────────────────────
+        // Check whether the search layer should engage this turn. Only engages
+        // when goal tracking is on and we have a goal tracker + parse cache.
+        if let (Some(gt), Some(pc)) = (goal_tracker.as_ref(), parse_cache.as_mut()) {
+            let current_h = gt.heuristic();
+            if let Some(trigger) = search::should_engage(&config.search, &heuristic_history, current_h) {
+                // Emit search_engaged.
+                let stall_length = match &config.search {
+                    SearchMode::Stalled { turns } => Some(*turns),
+                    _ => None,
+                };
+                let _ = tx.send(
+                    make_event(session, "search_engaged")
+                        .with_metadata(json!({
+                            "turn": turn_index,
+                            "trigger": trigger,
+                            "stall_length": stall_length,
+                        })),
+                );
+
+                // Build the proposer on first engagement.
+                if proposer.is_none() {
+                    proposer = Some(search::make_model_proposer(client.clone()));
+                }
+
+                let context = Context {
+                    messages: session.messages.clone(),
+                    tools: runtime.definitions(),
+                    session_id: Some(session.id.clone()),
+                };
+
+                let action = search::propose_and_select(
+                    proposer.as_ref().unwrap(),
+                    &context,
+                    3,
+                    &scorer,
+                    gt,
+                    pc,
+                    tx,
+                    0.9,
+                )
+                .await?;
+
+                // If the selected action is a tool call, synthesize it,
+                // execute it, and continue the loop (skip the normal LLM call).
+                if let Some(tool_call_json) = action.tool_call {
+                    let name = tool_call_json
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let arguments = tool_call_json
+                        .get("arguments")
+                        .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()))
+                        .unwrap_or_else(|| "{}".to_string());
+                    let id = format!("search-{turn_index}");
+                    let tool_call = ToolCall {
+                        id: id.clone(),
+                        call_type: "function".to_string(),
+                        function: ToolFunction { name, arguments },
+                    };
+
+                    session.messages.push(ChatMessage::Assistant {
+                        content: Some(format!("[search] {}", action.rationale)),
+                        tool_calls: vec![tool_call.clone()],
+                        reasoning_content: None,
+                    });
+
+                    execute_tool_calls(
+                        vec![tool_call],
+                        &runtime,
+                        tx,
+                        session,
+                        goal_tracker.as_mut(),
+                        parse_cache.as_mut(),
+                    )
+                    .await;
+
+                    // Push the post-turn heuristic.
+                    if let Some(gt) = goal_tracker.as_ref() {
+                        heuristic_history.push(gt.heuristic());
+                    }
+                    turn_index += 1;
+                    continue;
+                }
+
+                // If only a plan note, inject it as a system nudge and fall
+                // through to the normal LLM call.
+                if let Some(note) = action.plan_note {
+                    session.messages.push(ChatMessage::System { content: format!("[search note] {note}") });
+                }
+            }
+        }
+        // ── end WP6 trigger ─────────────────────────────────────────────────
 
         let context = Context {
             messages: session.messages.clone(),
@@ -689,8 +895,12 @@ pub async fn run_prompt_with_runtime(
                 reasoning_content: reply.reasoning_content.clone(),
             });
 
-            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut()).await;
+            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut(), parse_cache.as_mut()).await;
 
+            // WP6: record the post-turn heuristic for stall detection.
+            if let Some(gt) = goal_tracker.as_ref() {
+                heuristic_history.push(gt.heuristic());
+            }
             turn_index += 1;
             continue;
         }
@@ -746,6 +956,24 @@ pub async fn run_prompt_with_runtime_and_explicit_mode(
     result
 }
 
+/// Run a prompt with an explicit mode, pre-configured runtime, and explicit
+/// `RunConfig`. Used by the worker infrastructure (and power callers) to apply
+/// per-run limits (e.g. bounded subagent turns).
+pub async fn run_prompt_with_runtime_and_explicit_mode_and_config(
+    session: &mut KhadimSession,
+    prompt: &str,
+    selection: Option<ModelSelection>,
+    mode: AgentModeDefinition,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    runtime: AgentRuntime,
+    config: RunConfig,
+) -> Result<String, AppError> {
+    let saved_override = session.system_prompt_override.take();
+    let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, config).await;
+    session.system_prompt_override = saved_override;
+    result
+}
+
 /// Internal: Run the loop with an explicit mode (no auto-selection).
 async fn run_prompt_inner(
     session: &mut KhadimSession,
@@ -787,11 +1015,20 @@ async fn run_prompt_inner(
                         "goals": gt.goals.iter().map(|g| json!({
                             "kind": g.kind.label(),
                             "description": g.description,
+                            "symbol": g.symbol,
                         })).collect::<Vec<_>>(),
                     })),
             );
         }
         Some(gt)
+    } else {
+        None
+    };
+
+    // Parse cache shared across this run for AST-verified goal satisfaction
+    // (WP2). Only constructed when goal tracking is enabled.
+    let mut parse_cache = if config.goal_tracking {
+        Some(khadim_code_graph::ParseCache::new())
     } else {
         None
     };
@@ -966,7 +1203,7 @@ async fn run_prompt_inner(
                 reasoning_content: reply.reasoning_content.clone(),
             });
 
-            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut()).await;
+            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut(), parse_cache.as_mut()).await;
 
             turn_index += 1;
             continue;

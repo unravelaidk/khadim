@@ -1,11 +1,13 @@
 use crate::agent::types::AgentModeDefinition;
+use crate::events::AgentStreamEvent;
 use crate::prompt::build_system_prompt;
-use crate::tools::{default_tools, read_only_tools};
+use crate::tools::{default_tools, read_only_tools, DelegateTool};
 use khadim_ai_core::tools::{Tool, ToolDefinition};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedSender;
 
 const MAX_AGENT_INSTRUCTIONS_BYTES: usize = 24 * 1024;
 const SKIP_AGENT_DIRS: &[&str] = &[
@@ -87,6 +89,9 @@ pub struct AgentRuntime {
     tools: HashMap<String, Arc<dyn Tool>>,
     /// Extra text appended to the system prompt (e.g. skill listings).
     prompt_suffix: String,
+    /// Whether the `delegate_to_agent` tool already carries an event sink.
+    /// Set by `with_event_sink` so the orchestrator knows not to overwrite it.
+    event_sink_set: bool,
 }
 
 impl AgentRuntime {
@@ -101,6 +106,7 @@ impl AgentRuntime {
             root,
             tools,
             prompt_suffix: String::new(),
+            event_sink_set: false,
         }
     }
 
@@ -115,6 +121,7 @@ impl AgentRuntime {
             root,
             tools,
             prompt_suffix: String::new(),
+            event_sink_set: false,
         }
     }
 
@@ -140,6 +147,7 @@ impl AgentRuntime {
             root,
             tools,
             prompt_suffix,
+            event_sink_set: false,
         }
     }
 
@@ -172,6 +180,30 @@ impl AgentRuntime {
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
         self.tools.get(name).cloned()
+    }
+
+    /// Set an event sink so that `delegate_to_agent` (and any future streaming
+    /// subagent tool) forwards subagent events to the parent run. Returns a new
+    /// runtime with the sink-wired `DelegateTool`. The existing tools are
+    /// preserved; only `delegate_to_agent` is replaced.
+    ///
+    /// `AgentRuntime::new` and `new_read_only` keep `sink = None` by default,
+    /// so the single-agent path is unchanged unless the caller opts in.
+    pub fn with_event_sink(mut self, tx: UnboundedSender<AgentStreamEvent>) -> Self {
+        if self.tools.contains_key("delegate_to_agent") {
+            let sinked = DelegateTool::with_event_sink(self.root.clone(), tx);
+            self.tools
+                .insert("delegate_to_agent".to_string(), Arc::new(sinked));
+            self.event_sink_set = true;
+        }
+        self
+    }
+
+    /// Whether `with_event_sink` has been called (i.e. `delegate_to_agent`
+    /// already streams its subagent events somewhere). The orchestrator uses
+    /// this to decide whether to attach the run's `tx` as a default sink.
+    pub fn has_event_sink(&self) -> bool {
+        self.event_sink_set
     }
 
     /// Convert tool definitions to OpenAI function-calling format.

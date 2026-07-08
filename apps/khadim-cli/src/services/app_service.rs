@@ -86,6 +86,8 @@ pub enum CommandResult {
     ClearHistory,
     /// Refresh dynamic model lists.
     RefreshModels,
+    /// Toggle multi-agent coordinator mode.
+    ToggleMultiAgent,
     /// Not a recognized command.
     None,
 }
@@ -250,6 +252,7 @@ impl AppService {
         let harness = self.config.harness.clone();
         let session = self.session.clone();
         let worker_tx = self.worker_tx.clone();
+        let multi_agent = explicit_mode.as_deref() == Some("multi");
 
         // Bridge for the question tool to communicate with the TUI
         let (question_tx, mut question_rx) = tokio::sync::mpsc::unbounded_channel::<(
@@ -291,61 +294,73 @@ impl AppService {
             let mut extra_tools = harness_tools(&harness);
             extra_tools.push(question_tool);
             let runtime = AgentRuntime::with_extras(&cwd, extra_tools, harness_prompt);
-            let result = match explicit_mode.as_deref() {
-                Some("build") => {
-                    run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess,
-                        &prompt,
-                        selection,
-                        build_mode(),
-                        &tx,
-                        runtime,
-                    )
-                    .await
-                }
-                Some("plan") => {
-                    run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess,
-                        &prompt,
-                        selection,
-                        plan_mode(),
-                        &tx,
-                        runtime,
-                    )
-                    .await
-                }
-                Some("explore") => {
-                    run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess,
-                        &prompt,
-                        selection,
-                        explore_mode(),
-                        &tx,
-                        runtime,
-                    )
-                    .await
-                }
-                Some("chat") => {
-                    run_prompt_with_runtime_and_explicit_mode(
-                        &mut sess,
-                        &prompt,
-                        selection,
-                        chat_mode(),
-                        &tx,
-                        runtime,
-                    )
-                    .await
-                }
-                _ => {
-                    run_prompt_with_runtime(
-                        &mut sess,
-                        &prompt,
-                        selection,
-                        &tx,
-                        runtime,
-                        khadim_coding_agent::RunConfig::default(),
-                    )
-                    .await
+            let result = if multi_agent {
+                khadim_coding_agent::run_multi_agent(
+                    &mut sess,
+                    &prompt,
+                    selection,
+                    &tx,
+                    runtime,
+                    khadim_coding_agent::MultiAgentConfig::default(),
+                )
+                .await
+            } else {
+                match explicit_mode.as_deref() {
+                    Some("build") => {
+                        run_prompt_with_runtime_and_explicit_mode(
+                            &mut sess,
+                            &prompt,
+                            selection,
+                            build_mode(),
+                            &tx,
+                            runtime,
+                        )
+                        .await
+                    }
+                    Some("plan") => {
+                        run_prompt_with_runtime_and_explicit_mode(
+                            &mut sess,
+                            &prompt,
+                            selection,
+                            plan_mode(),
+                            &tx,
+                            runtime,
+                        )
+                        .await
+                    }
+                    Some("explore") => {
+                        run_prompt_with_runtime_and_explicit_mode(
+                            &mut sess,
+                            &prompt,
+                            selection,
+                            explore_mode(),
+                            &tx,
+                            runtime,
+                        )
+                        .await
+                    }
+                    Some("chat") => {
+                        run_prompt_with_runtime_and_explicit_mode(
+                            &mut sess,
+                            &prompt,
+                            selection,
+                            chat_mode(),
+                            &tx,
+                            runtime,
+                        )
+                        .await
+                    }
+                    _ => {
+                        run_prompt_with_runtime(
+                            &mut sess,
+                            &prompt,
+                            selection,
+                            &tx,
+                            runtime,
+                            khadim_coding_agent::RunConfig::default(),
+                        )
+                        .await
+                    }
                 }
             };
             drop(tx);
@@ -389,9 +404,9 @@ impl AppService {
             self.config.harness.prompt_suffix(),
         );
         if json {
-            run_once_json(&mut sess, prompt, self.model_selection(), runtime).await
+            run_once_json(&mut sess, prompt, self.model_selection(), runtime, self.config.multi_agent).await
         } else {
-            run_once(&mut sess, prompt, self.model_selection(), runtime).await
+            run_once(&mut sess, prompt, self.model_selection(), runtime, self.config.multi_agent).await
         }
     }
 
@@ -554,6 +569,7 @@ impl AppService {
             "/provider" => CommandResult::OpenProviderPicker,
             "/model" => CommandResult::OpenModelPicker,
             "/harness" => CommandResult::OpenHarnessPicker,
+            "/multi-agent" | "/multi" => CommandResult::ToggleMultiAgent,
             "/theme" => CommandResult::OpenThemePicker,
             "/help" => {
                 let mut lines = vec!["commands".to_string()];

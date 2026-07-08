@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 
 /// Kinds of goals the agent may need to satisfy.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GoalKind {
     /// A file that must be created (e.g. "create src/foo.rs").
     CreateFile,
@@ -38,11 +38,18 @@ impl GoalKind {
 }
 
 /// A single goal extracted from the prompt.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Goal {
     pub kind: GoalKind,
     pub description: String,
     pub satisfied: bool,
+    /// Optional symbol name (a backticked identifier in the prompt) that must
+    /// exist in the target file for AST-verified satisfaction. Populated for
+    /// `CreateFile`/`ModifyFile` goals when the prompt names a function/struct
+    /// etc. alongside the file path. `None` keeps the legacy tool-output
+    /// heuristic-only satisfaction path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
 }
 
 impl Goal {
@@ -51,6 +58,7 @@ impl Goal {
             kind,
             description: description.into(),
             satisfied: false,
+            symbol: None,
         }
     }
 }
@@ -105,6 +113,20 @@ impl GoalTracker {
         // ── Deduplicate by description (keep first kind) ─────────────────
         let mut seen = HashSet::new();
         goals.retain(|g| seen.insert(g.description.clone()));
+
+        // ── Enrich CreateFile/ModifyFile goals with a target symbol ──────
+        // For each such goal, look in the prompt around the path occurrence
+        // for a backticked identifier that is not itself a path, and record it
+        // as `goal.symbol` for AST-verified satisfaction. This is additive and
+        // does not change `description`, so existing substring matching in
+        // `update_from_tool` is unaffected.
+        for goal in &mut goals {
+            if matches!(goal.kind, GoalKind::CreateFile | GoalKind::ModifyFile) {
+                if let Some(sym) = find_symbol_near_path(prompt, &goal.description) {
+                    goal.symbol = Some(sym);
+                }
+            }
+        }
 
         Self { goals }
     }
@@ -256,9 +278,183 @@ impl GoalTracker {
         }
         self.update_from_tool(tool_name, &arg_text, result);
     }
+
+    /// Variant of [`update_from_tool_json`] that additionally verifies
+    /// AST-level satisfaction for `CreateFile`/`ModifyFile` goals that carry a
+    /// target symbol name.
+    ///
+    /// Behaviour:
+    /// - First applies the existing tool-output heuristic (as
+    ///   `update_from_tool_json` does) to mark candidate-satisfied goals.
+    /// - Then, for each `CreateFile`/`ModifyFile` goal that was just marked
+    ///   satisfied AND has a `symbol`, re-verify against the code graph: parse
+    ///   the target file (taken from the tool args `path`/`file_path`/`file`
+    ///   field, or from the goal description) and confirm the symbol exists.
+    ///   If the file does not parse or the symbol is absent, the goal is
+    ///   reverted to unsatisfied (the tool-output heuristic alone is not
+    ///   enough). For unsupported languages or goals without a symbol, the
+    ///   existing heuristic result stands.
+    ///
+    /// Returns the indices of goals that transitioned from unsatisfied to
+    ///   satisfied during this update (used by the orchestrator to emit
+    ///   `goal_satisfied` events).
+    pub fn update_from_tool_json_with_graph(
+        &mut self,
+        tool_name: &str,
+        args_json: &str,
+        result: &str,
+        cache: &mut khadim_code_graph::ParseCache,
+    ) -> Vec<usize> {
+        let before: Vec<bool> = self.goals.iter().map(|g| g.satisfied).collect();
+
+        // Existing heuristic pass.
+        self.update_from_tool_json(tool_name, args_json, result);
+
+        // Parse the tool args to find the file path written/edited.
+        let file_path = parse_file_path_from_args_json(args_json);
+
+        // AST verification pass for goals that became satisfied and have a
+        // symbol + a known target file.
+        for goal in &mut self.goals {
+            if !goal.satisfied {
+                continue;
+            }
+            if !matches!(goal.kind, GoalKind::CreateFile | GoalKind::ModifyFile) {
+                continue;
+            }
+            let Some(symbol) = goal.symbol.as_ref() else {
+                continue;
+            };
+
+            // Determine the file to verify: prefer the tool-arg path (the file
+            // actually written), else fall back to the goal description (which
+            // is a path for CreateFile/ModifyFile goals).
+            let candidate = file_path
+                .as_deref()
+                .filter(|p| !p.is_empty())
+                .unwrap_or(&goal.description);
+            let path = std::path::Path::new(candidate);
+
+            // Unsupported language → keep heuristic result.
+            if cache.language_id_for_path(path).is_none() {
+                continue;
+            }
+
+            // We need the current source of the file to parse/verify. The
+            // write/edit tool args contain the new content under `content`
+            // (write) or `new`/`text` (edit). If present, parse it; else if
+            // already cached, use the cache; else we cannot verify → keep
+            // heuristic result (degrade gracefully).
+            let source_opt = parse_content_from_args_json(args_json);
+            let verified = if let Some(src) = source_opt {
+                // (Re)parse the file with the new content.
+                let _ = cache.parse(path, &src);
+                cache.parse_valid(path, None) && cache.function_exists(path, symbol)
+            } else if cache.tree(path).is_some() {
+                // Already cached from a prior call in this run.
+                cache.parse_valid(path, None) && cache.function_exists(path, symbol)
+            } else {
+                // No content available and not cached — cannot verify; keep
+                // heuristic result (graceful degradation).
+                true
+            };
+
+            if !verified {
+                goal.satisfied = false;
+            }
+        }
+
+        // Collect newly-satisfied indices.
+        let mut newly = Vec::new();
+        for (i, (was, now)) in before.iter().zip(self.goals.iter().map(|g| g.satisfied)).enumerate() {
+            if !*was && now {
+                newly.push(i);
+            }
+        }
+        newly
+    }
+}
+
+/// Extract the target file path from a tool-call args JSON object.
+fn parse_file_path_from_args_json(args_json: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(args_json).ok()?;
+    let obj = v.as_object()?;
+    for key in ["path", "file_path", "file"] {
+        if let Some(s) = obj.get(key).and_then(|v| v.as_str()) {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract the written/new content from a tool-call args JSON object.
+fn parse_content_from_args_json(args_json: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(args_json).ok()?;
+    let obj = v.as_object()?;
+    for key in ["content", "new", "text", "new_content"] {
+        if let Some(s) = obj.get(key).and_then(|v| v.as_str()) {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
 }
 
 // ── Extraction helpers ──────────────────────────────────────────────────
+
+/// Look for a backticked identifier near `path`'s occurrence in `text`.
+///
+/// Scans a window around the path for a backticked token that is not itself a
+/// path (no slash, no dot+extension), returns the first such identifier. This
+/// captures phrases like "create `foo.rs` with function `bar`" → returns
+/// `bar`. Returns `None` when no such identifier is found.
+fn find_symbol_near_path(text: &str, path: &str) -> Option<String> {
+    let pos = text.find(path)?;
+    // Window: 80 chars before and 120 after the path (covers "with function `bar`").
+    let start = pos.saturating_sub(80);
+    let end = (pos + path.len() + 120).min(text.len());
+    let window = &text[start..end];
+
+    // Collect backticked tokens in the window, excluding the path itself.
+    let mut tokens = Vec::new();
+    let mut inside = false;
+    let mut current = String::new();
+    for ch in window.chars() {
+        if ch == '`' {
+            if inside {
+                let t = current.trim().to_string();
+                if !t.is_empty() && t != path && !looks_like_path(&t) && looks_like_identifier(&t) {
+                    tokens.push(t);
+                }
+                current.clear();
+            }
+            inside = !inside;
+            continue;
+        }
+        if inside {
+            current.push(ch);
+        }
+    }
+    tokens.into_iter().next()
+}
+
+/// Heuristic: does `s` look like a plain identifier (function/struct/etc.)?
+/// Allows snake_case and CamelCase, no whitespace, no path separators.
+fn looks_like_identifier(s: &str) -> bool {
+    if s.is_empty() || s.contains(' ') {
+        return false;
+    }
+    // First char must be a letter or underscore.
+    let first = s.chars().next().unwrap();
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    // All chars must be alphanumeric or underscore.
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 
 /// Pull out quoted segments that look like file paths.
 fn extract_quoted_paths(text: &str) -> Vec<String> {
@@ -472,5 +668,126 @@ mod tests {
         let tracker = GoalTracker::from_prompt("What is the weather?");
         assert!(!tracker.has_goals());
         assert!(tracker.nudge().is_none());
+    }
+
+    // ── AST-verified satisfaction (WP2) ──────────────────────────────────
+
+    #[test]
+    fn test_ast_symbol_extracted_from_prompt() {
+        let prompt = "Create `foo.rs` with function `bar`";
+        let tracker = GoalTracker::from_prompt(prompt);
+        let create_goal = tracker
+            .goals
+            .iter()
+            .find(|g| g.kind == GoalKind::CreateFile)
+            .expect("a CreateFile goal");
+        assert_eq!(create_goal.description, "foo.rs");
+        assert_eq!(create_goal.symbol.as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn test_ast_not_satisfied_when_symbol_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("foo.rs");
+        let path_str = file_path.to_str().unwrap().to_string();
+
+        let prompt = format!("Create `{}` with function `bar`", path_str);
+        let mut tracker = GoalTracker::from_prompt(&prompt);
+        assert_eq!(tracker.heuristic(), 1);
+
+        let mut cache = khadim_code_graph::ParseCache::new();
+
+        // Write the file WITHOUT the function `bar` — must NOT be satisfied.
+        let args = serde_json::json!({
+            "path": path_str,
+            "content": "fn main() {}\n",
+        })
+        .to_string();
+        let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
+        assert!(newly.is_empty(), "no goals should be newly satisfied");
+        assert_eq!(tracker.heuristic(), 1, "goal must remain unsatisfied without the symbol");
+        assert!(!tracker.goals[0].satisfied);
+    }
+
+    #[test]
+    fn test_ast_satisfied_when_symbol_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("foo.rs");
+        let path_str = file_path.to_str().unwrap().to_string();
+
+        let prompt = format!("Create `{}` with function `bar`", path_str);
+        let mut tracker = GoalTracker::from_prompt(&prompt);
+        assert_eq!(tracker.heuristic(), 1);
+
+        let mut cache = khadim_code_graph::ParseCache::new();
+
+        // Write the file WITH the function `bar` — must be satisfied.
+        let args = serde_json::json!({
+            "path": path_str,
+            "content": "fn bar() -> i32 { 1 }\nfn main() {}\n",
+        })
+        .to_string();
+        let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
+        assert_eq!(newly, vec![0], "goal 0 should be newly satisfied");
+        assert_eq!(tracker.heuristic(), 0);
+        assert!(tracker.goals[0].satisfied);
+    }
+
+    #[test]
+    fn test_ast_unsupported_language_keeps_heuristic() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("notes.md");
+        let path_str = file_path.to_str().unwrap().to_string();
+
+        // Markdown is not a supported code-graph language; symbol may be set
+        // but the AST check degrades gracefully to the heuristic result.
+        let prompt = format!("Create `{}` with function `bar`", path_str);
+        let mut tracker = GoalTracker::from_prompt(&prompt);
+        let mut cache = khadim_code_graph::ParseCache::new();
+        let args = serde_json::json!({
+            "path": path_str,
+            "content": "# notes\n",
+        })
+        .to_string();
+        let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
+        assert_eq!(newly, vec![0], "heuristic should stand for unsupported lang");
+        assert!(tracker.goals[0].satisfied);
+    }
+
+    #[test]
+    fn test_ast_no_symbol_keeps_heuristic() {
+        let prompt = "Create `src/main.rs`";
+        let mut tracker = GoalTracker::from_prompt(prompt);
+        let mut cache = khadim_code_graph::ParseCache::new();
+        let args = serde_json::json!({
+            "path": "src/main.rs",
+            "content": "fn main() {}\n",
+        })
+        .to_string();
+        let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
+        assert_eq!(newly, vec![0]);
+        assert!(tracker.goals[0].satisfied);
+    }
+
+    #[test]
+    fn test_ast_broken_parse_not_satisfied() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("foo.rs");
+        let path_str = file_path.to_str().unwrap().to_string();
+
+        let prompt = format!("Create `{}` with function `bar`", path_str);
+        let mut tracker = GoalTracker::from_prompt(&prompt);
+        let mut cache = khadim_code_graph::ParseCache::new();
+
+        // Content mentions `bar` in a comment but does not parse, and the
+        // function is not actually defined — must NOT be satisfied.
+        let args = serde_json::json!({
+            "path": path_str,
+            "content": "fn bar( { broken\n",
+        })
+        .to_string();
+        let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
+        assert!(newly.is_empty());
+        assert!(!tracker.goals[0].satisfied);
     }
 }
