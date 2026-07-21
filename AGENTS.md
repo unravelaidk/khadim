@@ -4,8 +4,6 @@
 
 Khadim is an **open-source, local-first agentic automation platform**. Instead of pre-built RPA blocks, Khadim uses AI agents to write and execute automation scripts on the fly. When a UI changes or an edge case appears, the agent can see the screen, understand what broke, rewrite the script, and retry.
 
-See `apps/desktop/DESIGN.md` for the full product design document.
-
 ## Architecture Overview
 
 ```
@@ -36,6 +34,25 @@ Desktop App (Tauri)          Web App (React Router + Express)
 - **Desktop app** — build, test, run automations locally. Docker for headless execution.
 - **Web app** — cloud control plane. Deploy managed agents, monitor runs, team dashboards.
 - **Shared core** — same agent engine, same tool system, same data model.
+
+## Electron Studio Handoff
+
+The active artifact-editor prototype lives in `apps/electron`. Before changing
+Studio, artifact schemas, visual editing, preview execution, or PDF export, read
+[`apps/electron/docs/plan.md`](apps/electron/docs/plan.md). It records the
+current implementation, the Parallel Web library research, architectural
+guardrails, verification status, and the ordered plan for the next agent.
+
+Raw Electron research captures and comparison data live in
+`apps/electron/research/`. Put new research JSON files in that directory instead
+of the package root, and keep synthesized decisions and implementation guidance
+in `apps/electron/docs/plan.md`.
+
+The current direction is Puck for React visual composition, Monaco for source
+editing, Excalidraw for the canvas, a supervised Vite runtime for executable
+web-project previews, and Electron `webContents.printToPDF` for export. Keep
+direct editing available without AI, and route component-scoped AI edits through
+the selected agent and saved model snapshot.
 
 ---
 

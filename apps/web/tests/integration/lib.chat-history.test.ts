@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { loadChatHistory } from "../../app/lib/chat-history";
+import { formatChatHistoryForPrompt, loadChatHistory, withoutLatestPersistedUserTurn } from "../../app/lib/chat-history";
 
 const sampleMessages = [
   { role: "user", content: "Hello" },
@@ -9,7 +9,7 @@ const sampleMessages = [
 const fakeDb = {
   select: () => ({
     from: () => ({
-      where: async () => sampleMessages,
+      where: () => ({ orderBy: async () => sampleMessages }),
     }),
   }),
 };
@@ -29,7 +29,7 @@ describe("loadChatHistory", () => {
     const emptyDb = {
       select: () => ({
         from: () => ({
-          where: async () => [],
+          where: () => ({ orderBy: async () => [] }),
         }),
       }),
     };
@@ -42,7 +42,7 @@ describe("loadChatHistory", () => {
     const dbWithUnknown = {
       select: () => ({
         from: () => ({
-          where: async () => [{ role: "system", content: "note" }],
+          where: () => ({ orderBy: async () => [{ role: "system", content: "note" }] }),
         }),
       }),
     };
@@ -58,7 +58,10 @@ describe("loadChatHistory", () => {
     const dbSpy = {
       select: () => ({
         from: () => ({
-          where: whereSpy,
+          where: (query: unknown) => {
+            whereSpy(query);
+            return { orderBy: async () => sampleMessages };
+          },
         }),
       }),
     };
@@ -95,5 +98,29 @@ describe("loadChatHistory", () => {
     expect(loadMessages).toHaveBeenCalledTimes(2);
     expect(loadMessages).toHaveBeenNthCalledWith(1, "chat-A");
     expect(loadMessages).toHaveBeenNthCalledWith(2, "chat-B");
+  });
+
+  it("formats persisted turns as explicit model context", async () => {
+    const history = await loadChatHistory("chat-1", { dbClient: fakeDb as any });
+
+    expect(formatChatHistoryForPrompt(history)).toBe(
+      "Conversation history:\nUser: Hello\n\nAssistant: Hi there",
+    );
+  });
+
+  it("excludes only the current persisted user turn from model history", async () => {
+    const history = await loadChatHistory("chat-1", {
+      loadMessages: async () => [
+        { role: "user", content: "Previous question" },
+        { role: "assistant", content: "Previous answer" },
+        { role: "user", content: "Current question" },
+      ],
+    });
+
+    const context = formatChatHistoryForPrompt(withoutLatestPersistedUserTurn(history, true));
+    expect(context).toContain("Previous question");
+    expect(context).toContain("Previous answer");
+    expect(context).not.toContain("Current question");
+    expect(withoutLatestPersistedUserTurn(history, false)).toHaveLength(3);
   });
 });

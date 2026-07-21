@@ -1,8 +1,8 @@
 use crate::env_api_keys::{get_default_model, get_default_provider, get_env_base_url};
 use crate::pricing::default_cost_for;
 use crate::types::{InputKind, Model, ModelSelection, OpenAiCompat};
-use serde::Serialize;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CatalogModelOption {
@@ -11,6 +11,311 @@ pub struct CatalogModelOption {
     pub model_id: String,
     pub model_name: String,
     pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RemoteCatalogModel {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteCatalogProvider {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    pub api_key_required: bool,
+    pub available: bool,
+    pub models: Vec<RemoteCatalogModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsDevProvider {
+    name: String,
+    #[serde(default)]
+    npm: String,
+    api: Option<String>,
+    #[serde(default)]
+    env: Vec<String>,
+    #[serde(default)]
+    models: BTreeMap<String, ModelsDevModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsDevModel {
+    #[serde(default)]
+    id: String,
+    name: String,
+    #[serde(default)]
+    tool_call: bool,
+    status: Option<String>,
+}
+
+fn parse_remote_catalog(
+    value: serde_json::Value,
+) -> Result<Vec<RemoteCatalogProvider>, crate::error::AppError> {
+    let providers: BTreeMap<String, ModelsDevProvider> =
+        serde_json::from_value(value).map_err(|error| {
+            crate::error::AppError::health(format!("Failed to parse Models.dev catalog: {error}"))
+        })?;
+    let supported: HashSet<String> = builtin_models()
+        .into_iter()
+        .map(|model| model.provider)
+        .collect();
+    let catalog = providers
+        .into_iter()
+        .filter(|(id, provider)| {
+            supported.contains(id)
+                || (provider.npm == "@ai-sdk/openai-compatible"
+                    && provider.api.as_ref().is_some_and(|api| !api.contains("${")))
+        })
+        .filter_map(|(id, provider)| {
+            let mut models: Vec<RemoteCatalogModel> = provider
+                .models
+                .into_iter()
+                .filter(|(_, model)| {
+                    model.tool_call && model.status.as_deref() != Some("deprecated")
+                })
+                .map(|(key, model)| RemoteCatalogModel {
+                    id: if model.id.is_empty() { key } else { model.id },
+                    name: model.name,
+                })
+                .collect();
+            models.sort_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));
+            (!models.is_empty()).then_some(RemoteCatalogProvider {
+                id,
+                name: provider.name,
+                base_url: provider.api,
+                api_key_required: !provider.env.is_empty(),
+                available: true,
+                models,
+            })
+        })
+        .collect();
+    Ok(catalog)
+}
+
+fn ensure_openai_codex_provider(catalog: &mut Vec<RemoteCatalogProvider>) {
+    if catalog.iter().any(|provider| provider.id == "openai-codex") {
+        return;
+    }
+    catalog.push(RemoteCatalogProvider {
+        id: "openai-codex".to_string(),
+        name: "OpenAI Codex".to_string(),
+        base_url: Some("https://chatgpt.com/backend-api/codex".to_string()),
+        api_key_required: true,
+        available: true,
+        models: Vec::new(),
+    });
+}
+
+fn parse_openai_codex_models(payload: &serde_json::Value) -> Vec<RemoteCatalogModel> {
+    let mut models = payload
+        .get("models")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|model| {
+            if model
+                .get("visibility")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|visibility| visibility != "list")
+            {
+                return None;
+            }
+            let id = model
+                .get("slug")
+                .or_else(|| model.get("id"))
+                .or_else(|| model.get("model_slug"))
+                .and_then(serde_json::Value::as_str)?;
+            let name = model
+                .get("display_name")
+                .or_else(|| model.get("title"))
+                .or_else(|| model.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(id);
+            let priority = model
+                .get("priority")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(i64::MAX);
+            Some((
+                priority,
+                RemoteCatalogModel {
+                    id: id.to_string(),
+                    name: name.to_string(),
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
+    models.sort_by(|(left_priority, left), (right_priority, right)| {
+        left_priority
+            .cmp(right_priority)
+            .then(left.name.cmp(&right.name))
+            .then(left.id.cmp(&right.id))
+    });
+    let mut seen = HashSet::new();
+    models
+        .into_iter()
+        .filter_map(|(_, model)| seen.insert(model.id.clone()).then_some(model))
+        .collect()
+}
+
+const CODEX_MODELS_CLIENT_VERSION: &str = "0.144.4";
+
+async fn discover_openai_codex_models() -> Result<Vec<RemoteCatalogModel>, crate::error::AppError> {
+    let token = crate::oauth::get_openai_codex_api_key().await?;
+    let base_url = get_env_base_url("openai-codex")
+        .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex".to_string());
+    let normalized = base_url.trim_end_matches('/');
+    let endpoint = if normalized.ends_with("/models") {
+        normalized.to_string()
+    } else if normalized.ends_with("/codex") {
+        format!("{normalized}/models")
+    } else {
+        format!("{normalized}/codex/models")
+    };
+    let mut endpoint = reqwest::Url::parse(&endpoint).map_err(|error| {
+        crate::error::AppError::invalid_input(format!("Invalid OpenAI Codex models URL: {error}"))
+    })?;
+    endpoint.query_pairs_mut().append_pair(
+        "client_version",
+        &std::env::var("KHADIM_CODEX_CLIENT_VERSION")
+            .unwrap_or_else(|_| CODEX_MODELS_CLIENT_VERSION.to_string()),
+    );
+    let mut request = reqwest::Client::new()
+        .get(endpoint)
+        .bearer_auth(&token)
+        .header("originator", "khadim");
+    for (name, value) in crate::providers::request_headers::build_codex_request_headers(None) {
+        request = request.header(name, value);
+    }
+    if let Ok(account_id) = crate::oauth::openai_codex_account_id(&token) {
+        request = request.header("chatgpt-account-id", account_id);
+    }
+    let response = request.send().await?;
+    if !response.status().is_success() {
+        return Err(crate::error::AppError::health(format!(
+            "OpenAI Codex model discovery failed: HTTP {}",
+            response.status()
+        )));
+    }
+    let models = parse_openai_codex_models(&response.json::<serde_json::Value>().await?);
+    if models.is_empty() {
+        return Err(crate::error::AppError::health(
+            "OpenAI Codex returned no available models",
+        ));
+    }
+    Ok(models)
+}
+
+static OPENAI_CODEX_MODELS_CACHE: OnceLock<Mutex<Vec<Model>>> = OnceLock::new();
+
+fn openai_codex_cache() -> &'static Mutex<Vec<Model>> {
+    OPENAI_CODEX_MODELS_CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Return the models visible to the authenticated OpenAI Codex account.
+pub fn get_openai_codex_models() -> Vec<Model> {
+    openai_codex_cache().lock().unwrap().clone()
+}
+
+/// Refresh the account-specific OpenAI Codex model list used by CLI pickers.
+pub async fn refresh_openai_codex_models() -> Result<(), crate::error::AppError> {
+    let discovered = discover_openai_codex_models().await?;
+    let builtins = builtin_models();
+    let models = discovered
+        .into_iter()
+        .map(|option| {
+            builtins
+                .iter()
+                .find(|model| model.provider == "openai-codex" && model.id == option.id)
+                .cloned()
+                .map(|mut model| {
+                    model.name = option.name.clone();
+                    model
+                })
+                .unwrap_or_else(|| {
+                    base_model(
+                        "openai-codex",
+                        &option.id,
+                        &option.name,
+                        "openai-codex-responses",
+                        true,
+                    )
+                })
+        })
+        .collect();
+    *openai_codex_cache().lock().unwrap() = models;
+    Ok(())
+}
+
+/// Fetch the current provider/model catalog used by OpenCode. Provider IDs
+/// are filtered against Khadim's execution adapters so every returned choice
+/// is runnable by this build of the core.
+pub async fn fetch_remote_catalog() -> Result<Vec<RemoteCatalogProvider>, crate::error::AppError> {
+    let url = std::env::var("KHADIM_MODEL_CATALOG_URL")
+        .unwrap_or_else(|_| "https://models.dev/api.json".to_string());
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?
+        .get(url)
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(crate::error::AppError::health(format!(
+            "Models.dev catalog fetch failed: HTTP {}",
+            response.status()
+        )));
+    }
+    let mut catalog = parse_remote_catalog(response.json().await.map_err(|error| {
+        crate::error::AppError::health(format!("Failed to read Models.dev catalog: {error}"))
+    })?)?;
+    if crate::oauth::has_openai_codex_auth().await.unwrap_or(false) {
+        if let Ok(models) = discover_openai_codex_models().await {
+            if let Some(provider) = catalog
+                .iter_mut()
+                .find(|provider| provider.id == "openai-codex")
+            {
+                provider.models = models;
+            } else {
+                catalog.push(RemoteCatalogProvider {
+                    id: "openai-codex".to_string(),
+                    name: "OpenAI Codex".to_string(),
+                    base_url: Some("https://chatgpt.com/backend-api/codex".to_string()),
+                    api_key_required: true,
+                    available: true,
+                    models,
+                });
+            }
+        }
+    }
+    ensure_openai_codex_provider(&mut catalog);
+
+    let local_base_url = "http://localhost:11434/v1";
+    let local_available = refresh_ollama_models_at(local_base_url, None).await.is_ok();
+    let models = if local_available {
+        get_ollama_models()
+            .into_iter()
+            .map(|model| RemoteCatalogModel {
+                id: model.id,
+                name: model.name,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    catalog.push(RemoteCatalogProvider {
+        id: "ollama".to_string(),
+        name: "Ollama (Local)".to_string(),
+        base_url: Some(local_base_url.to_string()),
+        api_key_required: false,
+        available: local_available,
+        models,
+    });
+    catalog.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(catalog)
 }
 
 // ── NVIDIA model autodiscovery cache ─────────────────────────────────
@@ -45,7 +350,9 @@ pub async fn refresh_nvidia_models(api_key: Option<&str>) -> Result<(), crate::e
             )
         })?;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()?;
     let response = client
         .get(format!("{}/models", base_url.trim_end_matches('/')))
         .bearer_auth(&api_key)
@@ -61,9 +368,7 @@ pub async fn refresh_nvidia_models(api_key: Option<&str>) -> Result<(), crate::e
     }
 
     let json: serde_json::Value = response.json().await.map_err(|err| {
-        crate::error::AppError::health(format!(
-            "Failed to parse NVIDIA models response: {err}"
-        ))
+        crate::error::AppError::health(format!("Failed to parse NVIDIA models response: {err}"))
     })?;
 
     let mut models = Vec::new();
@@ -103,7 +408,9 @@ pub fn get_openrouter_models() -> Vec<Model> {
 ///
 /// OpenRouter returns a standard OpenAI-compatible model list.  We parse
 /// each entry and infer image support from the model ID / description.
-pub async fn refresh_openrouter_models(api_key: Option<&str>) -> Result<(), crate::error::AppError> {
+pub async fn refresh_openrouter_models(
+    api_key: Option<&str>,
+) -> Result<(), crate::error::AppError> {
     use crate::env_api_keys::{get_env_api_key, get_env_base_url};
 
     let base_url = get_env_base_url("openrouter")
@@ -131,9 +438,7 @@ pub async fn refresh_openrouter_models(api_key: Option<&str>) -> Result<(), crat
     }
 
     let json: serde_json::Value = response.json().await.map_err(|err| {
-        crate::error::AppError::health(format!(
-            "Failed to parse OpenRouter models response: {err}"
-        ))
+        crate::error::AppError::health(format!("Failed to parse OpenRouter models response: {err}"))
     })?;
 
     let mut models = Vec::new();
@@ -142,10 +447,7 @@ pub async fn refresh_openrouter_models(api_key: Option<&str>) -> Result<(), crat
             let Some(id) = item.get("id").and_then(|v| v.as_str()) else {
                 continue;
             };
-            let name = item
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(id);
+            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or(id);
             let description = item
                 .get("description")
                 .and_then(|v| v.as_str())
@@ -219,15 +521,24 @@ pub async fn refresh_ollama_models(api_key: Option<&str>) -> Result<(), crate::e
     use crate::env_api_keys::{get_env_api_key, get_env_base_url};
 
     let base_url =
-        get_env_base_url("ollama").unwrap_or_else(|| "https://ollama.com/v1".to_string());
+        get_env_base_url("ollama").unwrap_or_else(|| "http://localhost:11434/v1".to_string());
     let api_key = api_key
         .map(|s| s.to_string())
         .or_else(|| get_env_api_key("ollama"))
         .filter(|key| !key.is_empty());
 
-    let client = reqwest::Client::new();
+    refresh_ollama_models_at(&base_url, api_key.as_deref()).await
+}
+
+async fn refresh_ollama_models_at(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<(), crate::error::AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()?;
     let mut request = client.get(format!("{}/models", base_url.trim_end_matches('/')));
-    if let Some(ref key) = api_key {
+    if let Some(key) = api_key {
         request = request.bearer_auth(key);
     }
     let response = request.send().await?;
@@ -269,31 +580,58 @@ pub async fn refresh_ollama_models(api_key: Option<&str>) -> Result<(), crate::e
 }
 
 /// Return all builtin models merged with any cached autodiscovered models.
-/// Hard-coded NVIDIA, OpenRouter, and Ollama models are replaced by the
-/// cached set when available.
+/// Hard-coded dynamic-provider models are replaced by cached sets when available.
 pub fn all_models() -> Vec<Model> {
     let mut models: Vec<Model> = builtin_models()
         .into_iter()
-        .filter(|m| m.provider != "nvidia" && m.provider != "openrouter" && m.provider != "ollama")
+        .filter(|m| {
+            m.provider != "openai-codex"
+                && m.provider != "nvidia"
+                && m.provider != "openrouter"
+                && m.provider != "ollama"
+        })
         .collect();
+
+    let codex_cached = get_openai_codex_models();
+    if codex_cached.is_empty() {
+        models.extend(
+            builtin_models()
+                .into_iter()
+                .filter(|m| m.provider == "openai-codex"),
+        );
+    } else {
+        models.extend(codex_cached);
+    }
 
     let nvidia_cached = get_nvidia_models();
     if nvidia_cached.is_empty() {
-        models.extend(builtin_models().into_iter().filter(|m| m.provider == "nvidia"));
+        models.extend(
+            builtin_models()
+                .into_iter()
+                .filter(|m| m.provider == "nvidia"),
+        );
     } else {
         models.extend(nvidia_cached);
     }
 
     let openrouter_cached = get_openrouter_models();
     if openrouter_cached.is_empty() {
-        models.extend(builtin_models().into_iter().filter(|m| m.provider == "openrouter"));
+        models.extend(
+            builtin_models()
+                .into_iter()
+                .filter(|m| m.provider == "openrouter"),
+        );
     } else {
         models.extend(openrouter_cached);
     }
 
     let ollama_cached = get_ollama_models();
     if ollama_cached.is_empty() {
-        models.extend(builtin_models().into_iter().filter(|m| m.provider == "ollama"));
+        models.extend(
+            builtin_models()
+                .into_iter()
+                .filter(|m| m.provider == "ollama"),
+        );
     } else {
         models.extend(ollama_cached);
     }
@@ -2871,10 +3209,134 @@ pub fn find_or_synth_model(provider: &str, model_id: &str) -> Model {
 mod tests {
     use super::*;
 
+    #[test]
+    fn remote_catalog_keeps_only_runnable_agent_models() {
+        let catalog = parse_remote_catalog(serde_json::json!({
+            "anthropic": {
+                "name": "Anthropic",
+                "models": {
+                    "current": { "id": "claude-current", "name": "Claude Current", "tool_call": true },
+                    "deprecated": { "id": "claude-old", "name": "Claude Old", "tool_call": true, "status": "deprecated" },
+                    "text-only": { "id": "claude-text", "name": "Claude Text", "tool_call": false }
+                }
+            },
+            "not-supported-by-khadim": {
+                "name": "Unknown",
+                "models": { "model": { "id": "model", "name": "Model", "tool_call": true } }
+            }
+        })).expect("parse catalog");
+
+        assert_eq!(
+            catalog,
+            vec![RemoteCatalogProvider {
+                id: "anthropic".to_string(),
+                name: "Anthropic".to_string(),
+                base_url: None,
+                api_key_required: false,
+                available: true,
+                models: vec![RemoteCatalogModel {
+                    id: "claude-current".to_string(),
+                    name: "Claude Current".to_string(),
+                }],
+            }]
+        );
+        assert!(
+            serde_json::to_value(&catalog[0])
+                .expect("serialize provider")
+                .get("baseUrl")
+                .is_none(),
+            "providers without custom endpoints should omit baseUrl"
+        );
+    }
+
+    #[test]
+    fn remote_catalog_includes_openai_compatible_providers() {
+        let catalog = parse_remote_catalog(serde_json::json!({
+            "ollama-cloud": {
+                "name": "Ollama Cloud",
+                "npm": "@ai-sdk/openai-compatible",
+                "api": "https://ollama.com/v1",
+                "env": ["OLLAMA_API_KEY"],
+                "models": {
+                    "gpt-oss:120b": { "id": "gpt-oss:120b", "name": "GPT OSS 120B", "tool_call": true }
+                }
+            }
+        })).expect("parse catalog");
+
+        assert_eq!(
+            catalog,
+            vec![RemoteCatalogProvider {
+                id: "ollama-cloud".to_string(),
+                name: "Ollama Cloud".to_string(),
+                base_url: Some("https://ollama.com/v1".to_string()),
+                api_key_required: true,
+                available: true,
+                models: vec![RemoteCatalogModel {
+                    id: "gpt-oss:120b".to_string(),
+                    name: "GPT OSS 120B".to_string(),
+                }],
+            }]
+        );
+    }
+
+    #[test]
+    fn remote_catalog_adds_openai_codex_without_inventing_models() {
+        let mut catalog = Vec::new();
+        ensure_openai_codex_provider(&mut catalog);
+
+        let codex = catalog
+            .iter()
+            .find(|provider| provider.id == "openai-codex")
+            .expect("Codex provider");
+        assert_eq!(codex.name, "OpenAI Codex");
+        assert!(codex.api_key_required);
+        assert!(codex.available);
+        assert!(codex.models.is_empty());
+
+        ensure_openai_codex_provider(&mut catalog);
+        assert_eq!(
+            catalog
+                .iter()
+                .filter(|provider| provider.id == "openai-codex")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn codex_catalog_uses_only_backend_models_visible_to_the_account() {
+        let models = parse_openai_codex_models(&serde_json::json!({
+            "models": [
+                { "slug": "gpt-5.4", "display_name": "GPT-5.4", "visibility": "list", "priority": 1 },
+                { "id": "gpt-5.3-codex", "name": "GPT-5.3 Codex", "priority": 2 },
+                { "slug": "internal-model", "display_name": "Internal", "visibility": "hide" },
+                { "slug": "gpt-5.4", "display_name": "GPT-5.4 duplicate", "visibility": "list", "priority": 3 }
+            ]
+        }));
+
+        assert_eq!(
+            models,
+            vec![
+                RemoteCatalogModel {
+                    id: "gpt-5.4".to_string(),
+                    name: "GPT-5.4".to_string(),
+                },
+                RemoteCatalogModel {
+                    id: "gpt-5.3-codex".to_string(),
+                    name: "GPT-5.3 Codex".to_string(),
+                },
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn test_refresh_openrouter_models_without_api_key() {
         let result = refresh_openrouter_models(None).await;
-        assert!(result.is_ok(), "refresh_openrouter_models failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "refresh_openrouter_models failed: {:?}",
+            result.err()
+        );
         let models = get_openrouter_models();
         println!("Fetched {} OpenRouter models (no API key)", models.len());
         assert!(
@@ -2886,15 +3348,46 @@ mod tests {
 
     #[tokio::test]
     async fn test_refresh_ollama_models_without_api_key() {
-        // Ollama Cloud's /v1/models is public, so discovery works with no key.
-        let result = refresh_ollama_models(None).await;
-        assert!(result.is_ok(), "refresh_ollama_models failed: {:?}", result.err());
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock Ollama server");
+        let address = listener.local_addr().expect("mock server address");
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept Ollama request");
+            let mut request = vec![0; 4096];
+            let read = stream
+                .read(&mut request)
+                .await
+                .expect("read Ollama request");
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /v1/models "));
+            assert!(!request.to_ascii_lowercase().contains("authorization:"));
+            let body = r#"{"data":[{"id":"llama3.2","owned_by":"library"},{"id":"gpt-oss:120b-cloud","owned_by":"library"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("write Ollama response");
+        });
+
+        refresh_ollama_models_at(&format!("http://{address}/v1"), None)
+            .await
+            .expect("refresh local Ollama models");
+        server.await.expect("mock Ollama server");
         let models = get_ollama_models();
-        println!("Fetched {} Ollama Cloud models (no API key)", models.len());
-        assert!(!models.is_empty(), "Expected >0 Ollama models, got 0");
-        assert!(
-            models.iter().all(|m| m.provider == "ollama"),
-            "All discovered models should be provider=ollama"
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            ["llama3.2", "gpt-oss:120b-cloud"]
         );
+        assert!(models.iter().all(|model| model.provider == "ollama"));
     }
 }

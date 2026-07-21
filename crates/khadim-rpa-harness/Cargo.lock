@@ -1758,6 +1758,7 @@ dependencies = [
  "khadim-ai-core",
  "rustautogui",
  "serde_json",
+ "tokio",
  "xcap",
 ]
 

@@ -1,0 +1,59 @@
+name: Electron Agent Boundary
+
+on:
+  pull_request:
+    paths:
+      - "apps/electron/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/electron-agent-boundary.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/electron/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/electron-agent-boundary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-agent-boundary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Electron checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test Electron agent boundary
+        run: bun --filter @khadim/electron test
+
+      - name: Typecheck Electron app
+        run: bun --filter @khadim/electron typecheck
+
+      - name: Build Electron main, preload, and renderer
+        run: bun --filter @khadim/electron build

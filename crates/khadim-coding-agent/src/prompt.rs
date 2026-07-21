@@ -71,7 +71,10 @@ mod tests {
     #[test]
     fn tool_snippets_are_joined_into_prompt() {
         let mode = build_mode();
-        let snippets = vec!["read: read a file".to_string(), "write: write a file".to_string()];
+        let snippets = vec![
+            "read: read a file".to_string(),
+            "write: write a file".to_string(),
+        ];
         let prompt = build_system_prompt("/cwd", &mode, &snippets);
         assert!(prompt.contains("read: read a file"));
         assert!(prompt.contains("write: write a file"));
@@ -81,7 +84,10 @@ mod tests {
     fn prompt_does_not_mention_unimplemented_line_edit_tool() {
         let mode = build_mode();
         let prompt = build_system_prompt("/cwd", &mode, &[]);
-        assert!(!prompt.contains("line_edit"), "prompt must not reference the non-existent line_edit tool");
+        assert!(
+            !prompt.contains("line_edit"),
+            "prompt must not reference the non-existent line_edit tool"
+        );
     }
 
     #[test]

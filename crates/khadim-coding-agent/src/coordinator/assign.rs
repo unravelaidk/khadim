@@ -109,7 +109,11 @@ pub fn assign_with(
         let touches_code = cluster.iter().any(|(_, f)| !f.is_empty());
         assignments.push(WorkerAssignment {
             goals,
-            suggested_mode_name: if touches_code { "build".to_string() } else { "chat".to_string() },
+            suggested_mode_name: if touches_code {
+                "build".to_string()
+            } else {
+                "chat".to_string()
+            },
         });
     }
 
@@ -124,7 +128,11 @@ pub fn assign_with(
         all_goals.dedup();
         assignments = vec![WorkerAssignment {
             goals: all_goals,
-            suggested_mode_name: if any_code { "build".to_string() } else { "chat".to_string() },
+            suggested_mode_name: if any_code {
+                "build".to_string()
+            } else {
+                "chat".to_string()
+            },
         }];
     }
 
@@ -156,12 +164,7 @@ fn cluster_by_locality(
     // Map file paths to graph node indices once.
     let node_for_file: Vec<Vec<Option<usize>>> = with_files
         .iter()
-        .map(|(_, files)| {
-            files
-                .iter()
-                .map(|f| graph.graph().node_index(f))
-                .collect()
-        })
+        .map(|(_, files)| files.iter().map(|f| graph.graph().node_index(f)).collect())
         .collect();
 
     loop {
@@ -177,7 +180,12 @@ fn cluster_by_locality(
         let mut best: Option<(f64, usize, usize)> = None;
         for i in 0..clusters.len() {
             for j in (i + 1)..clusters.len() {
-                let avg = average_inter_cluster_distance(&clusters[i], &clusters[j], &node_for_file, graph);
+                let avg = average_inter_cluster_distance(
+                    &clusters[i],
+                    &clusters[j],
+                    &node_for_file,
+                    graph,
+                );
                 // Skip disconnected pairs.
                 let avg = match avg {
                     Some(d) => d,
@@ -309,7 +317,9 @@ mod tests {
             assignments.iter().map(|a| a.goals.clone()).collect();
         // Both goals on the same worker.
         assert!(
-            assigned_goal_sets.iter().any(|s| s.contains(&0) && s.contains(&1)),
+            assigned_goal_sets
+                .iter()
+                .any(|s| s.contains(&0) && s.contains(&1)),
             "goals 0 and 1 should cluster together: {assigned_goal_sets:?}"
         );
     }
@@ -346,7 +356,11 @@ mod tests {
             (2, vec![PathBuf::from("/proj/c.rs")]),
         ];
         let assignments = assign(&targets, &mut idx, 1);
-        assert_eq!(assignments.len(), 1, "max_workers=1 => one worker: {assignments:?}");
+        assert_eq!(
+            assignments.len(),
+            1,
+            "max_workers=1 => one worker: {assignments:?}"
+        );
         let mut all: Vec<usize> = assignments[0].goals.clone();
         all.sort_unstable();
         assert_eq!(all, vec![0, 1, 2]);

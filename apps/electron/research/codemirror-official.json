@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_ede346631df34e439195884f1e1c757b",
+  "session_id": "session_ede346631df34e439195884f1e1c757b",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://codemirror.net/",
+      "title": "CodeMirror",
+      "publish_date": null,
+      "excerpts": [
+        "# Extensible Code Editor\nCodeMirror is a code editor component for the web. It can be used\nin websites to implement a text input field with support for many\nediting features, and has a rich programming interface to allow\nfurther extension.\nThis is a CodeMirror field, configured for editing JavaScript code.\n\n## Features\n* Accessibility\nWorks well with screen readers and keyboard-only users.\n* Mobile Support\nUse the platform's native selection and editing features on phones.\n* Bidirectional Text\nSupport mixing of right-to-left and left-to-right text.\n* Syntax Highlighting\nColor code to reflect syntactic structure.\n* Line Numbers\n\n...\n\nDetailed parse trees allow many types of language integration.\n* Extension Interface\nRobustly implement demanding editor extensions.\n* Modularity\nMost features are implemented on top of a generic public API.\n* Speed\nRemains responsive even on huge documents and long lines.\n* Bracket Closing\nAutomatically insert matching brackets during typing.\n* Linting\nShow error and warning messages in the editor.\n* Flexible Styling\nMix font styles and sizes, add widgets in the content.\n* Theming\nImport or create custom visual editor styles.\n* Collaborative Editing\nAllow multiple users to edit the same document.\n* Undo History\nUndo and redo functionality with collab editing support.\n* Multiple Selections\nSelect and edit multiple ranges of the document at once.\n* Internationalization\nProvide custom text to display or announce to the user.\n* ...and more\nFind a full description of the library's features in the docs.\n\n## About\nCodeMirror is open source under a permissive license\n([MIT](https://code.haverbeke.berlin/codemirror/dev/src/branch/main/LICENSE)).\nIt is being developed\non [code.haverbeke.berlin](https://code.haverbeke.berlin/codemirror/dev).\nContributions are welcome.\n\n...\n\n## Language Support\nA full parser package, often with language-specific integration and\nextension code, exists for the following languages:\n* [**Angular**](https://code.haverbeke.berlin/codemirror/lang-angular)\n* [**CSS**](https://code.haverbeke.berlin/codemirror/lang-css)\n* [**C++**](https://code.haverbeke.berlin/codemirror/lang-cpp)\n* [**Go**](https://code.haverbeke.berlin/codemirror/lang-go)\n* [**HTML**](https://code.haverbeke.berlin/codemirror/lang-html)\n\n...\n\nThere is also a collection\nof [CodeMirror 5\nmodes](https://code.haverbeke.berlin/codemirror/legacy-modes) that can be used, and\na list of community-maintained\nlanguage packages. If your language is not listed above, you may still\nfind a solution there."
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

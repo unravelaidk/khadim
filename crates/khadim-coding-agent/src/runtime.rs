@@ -125,6 +125,29 @@ impl AgentRuntime {
         }
     }
 
+    /// Create a runtime from an explicit tool allowlist.
+    ///
+    /// Unlike [`Self::with_extras`], this constructor does not add the default
+    /// coding tools. Callers can therefore disable whole tool groups by simply
+    /// omitting them from `tools`.
+    pub fn with_tools(
+        root: impl AsRef<Path>,
+        tools: Vec<Arc<dyn Tool>>,
+        prompt_suffix: String,
+    ) -> Self {
+        let tools = tools
+            .into_iter()
+            .map(|tool| (tool.definition().name.clone(), tool))
+            .collect::<HashMap<_, _>>();
+
+        Self {
+            root: root.as_ref().to_path_buf(),
+            tools,
+            prompt_suffix,
+            event_sink_set: false,
+        }
+    }
+
     /// Create a runtime with extra plugin tools and a prompt suffix.
     /// Used by the desktop app to inject plugins, skills, memory tools, etc.
     pub fn with_extras(
@@ -156,7 +179,16 @@ impl AgentRuntime {
     }
 
     pub fn definitions(&self) -> Vec<ToolDefinition> {
-        self.tools.values().map(|tool| tool.definition()).collect()
+        let mut definitions = self
+            .tools
+            .values()
+            .map(|tool| tool.definition())
+            .collect::<Vec<_>>();
+        // HashMap iteration order is intentionally randomized. Stable tool
+        // schemas make prompts, provider requests, recordings, and tests
+        // reproducible across processes and operating systems.
+        definitions.sort_by(|left, right| left.name.cmp(&right.name));
+        definitions
     }
 
     pub fn build_prompt(&self, mode: &AgentModeDefinition) -> String {
@@ -221,5 +253,51 @@ impl AgentRuntime {
                 })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::modes::chat_mode;
+    use crate::tools::ReadTool;
+
+    #[test]
+    fn explicit_tools_expose_only_the_provided_definitions() {
+        let root = tempfile::tempdir().expect("create temporary workspace");
+        let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(ReadTool::new(root.path().to_path_buf()))];
+
+        let runtime = AgentRuntime::with_tools(root.path(), tools, String::new());
+        let definitions = runtime.definitions();
+
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "read");
+    }
+
+    #[test]
+    fn explicit_tools_runtime_appends_the_prompt_suffix() {
+        let root = tempfile::tempdir().expect("create temporary workspace");
+        let suffix = "Enabled skills:\n- spreadsheet automation";
+
+        let runtime = AgentRuntime::with_tools(root.path(), Vec::new(), suffix.to_string());
+        let prompt = runtime.build_prompt(&chat_mode());
+
+        assert!(prompt.ends_with(suffix));
+    }
+
+    #[test]
+    fn tool_definitions_are_stably_sorted_by_name() {
+        let root = tempfile::tempdir().expect("create temporary workspace");
+        let runtime = AgentRuntime::new(root.path());
+
+        let names = runtime
+            .definitions()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
+        let mut sorted = names.clone();
+        sorted.sort();
+
+        assert_eq!(names, sorted);
     }
 }

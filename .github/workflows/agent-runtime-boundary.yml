@@ -1,0 +1,135 @@
+name: Agent Runtime Boundary
+
+on:
+  pull_request:
+    paths:
+      - "apps/khadim-cli/**"
+      - "crates/khadim-ai-core/**"
+      - "crates/khadim-code-graph/**"
+      - "crates/khadim-coding-agent/**"
+      - "crates/khadim-rpa-harness/**"
+      - ".github/workflows/agent-runtime-boundary.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/khadim-cli/**"
+      - "crates/khadim-ai-core/**"
+      - "crates/khadim-code-graph/**"
+      - "crates/khadim-coding-agent/**"
+      - "crates/khadim-rpa-harness/**"
+      - ".github/workflows/agent-runtime-boundary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-runtime-boundary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-boundary:
+    name: Rust agent boundary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-latest
+          - windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure isolated agent storage
+        shell: bash
+        run: echo "KHADIM_CONFIG_HOME=${RUNNER_TEMP}/khadim-agent-runtime-config" >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/khadim-coding-agent -> target
+            apps/khadim-cli -> target
+          shared-key: agent-runtime-${{ runner.os }}
+
+      - name: Install Linux runtime build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang \
+            libclang-dev \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            libpipewire-0.3-dev \
+            libssl-dev \
+            libwayland-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxkbcommon-dev \
+            libxtst-dev \
+            pkg-config
+
+      - name: Test shared coding-agent runtime and session harness
+        run: cargo test --locked --manifest-path crates/khadim-coding-agent/Cargo.toml --all-targets
+
+      - name: Test CLI agent boundary
+        run: cargo test --locked --no-default-features --manifest-path apps/khadim-cli/Cargo.toml --all-targets
+
+      - name: Test embedded Qwen helper contract
+        run: python -B -m unittest apps/khadim-cli/scripts/test_qwen_vla_controller.py
+
+      - name: Verify headless dependency graph
+        shell: bash
+        run: bash apps/khadim-cli/scripts/check_headless_cargo_graph.sh
+
+      - name: Check opt-in native RPA backends
+        run: cargo check --locked --manifest-path apps/khadim-cli/Cargo.toml --features native-rpa,rustautogui-backend
+
+      - name: Build headless CLI binary
+        run: cargo build --locked --release --no-default-features --manifest-path apps/khadim-cli/Cargo.toml
+
+      - name: Verify headless Linux runtime boundary
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bash apps/khadim-cli/scripts/check_headless_linux_binary.sh \
+            apps/khadim-cli/target/release/khadim-cli
+
+  packaging-targets:
+    name: CLI packaging target contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/khadim-cli/package-lock.json
+
+      - name: Install locked npm API build dependencies
+        run: npm ci --prefix apps/khadim-cli --workspaces=false --ignore-scripts
+
+      - name: Test npm and installer platform mappings
+        run: npm --prefix apps/khadim-cli run test:packaging

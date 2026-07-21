@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;600;700&family=Source+Serif+4:wght@400;500;600&display=swap");
 @import "tailwindcss";
 @import "./components/editor/markdown-editor.css";
 
@@ -274,6 +275,157 @@ html, body {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* Electron parity shell ----------------------------------------------------
+   Shared product chrome for the web control plane. These aliases let the
+   existing feature panels migrate incrementally without retaining the old
+   lime-glass visual language in the application shell. */
+:root {
+  --shell: oklch(0.987 0.004 80);
+  --surface: oklch(0.98 0.005 80);
+  --surface-raised: oklch(0.995 0.002 80);
+  --surface-hover: oklch(0.945 0.004 80);
+  --line: oklch(0.38 0.008 270 / 0.2);
+  --text: oklch(0.22 0.006 270);
+  --text-2: oklch(0.43 0.008 270);
+  --text-3: oklch(0.5 0.008 270);
+  --blue: oklch(0.5 0.17 245);
+  --chrome: oklch(0.992 0.003 80);
+  --search-bg: oklch(0.965 0.004 80);
+  --choice-active: oklch(0.92 0.035 245);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-muted: var(--text-3);
+  --text-inverse: oklch(0.98 0.003 270);
+  --surface-bg: var(--surface);
+  --surface-bg-subtle: var(--shell);
+  --surface-card: var(--surface-raised);
+  --surface-card-hover: var(--surface-hover);
+  --surface-elevated: var(--surface-raised);
+  --glass-bg: var(--surface-raised);
+  --glass-bg-strong: var(--surface-hover);
+  --glass-border: var(--line);
+  --glass-border-strong: var(--line);
+  --input-bg: var(--surface-raised);
+  --input-border: var(--line);
+  font-family: "Atkinson Hyperlegible Next", "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+html.dark {
+  --shell: oklch(0.12 0.004 270);
+  --surface: oklch(0.16 0.004 270);
+  --surface-raised: oklch(0.19 0.004 270);
+  --surface-hover: oklch(0.22 0.004 270);
+  --line: oklch(0.29 0.004 270 / 0.55);
+  --text: oklch(0.93 0.003 270);
+  --text-2: oklch(0.73 0.004 270);
+  --text-3: oklch(0.64 0.004 270);
+  --blue: oklch(0.68 0.18 245);
+  --chrome: oklch(0.145 0.004 270);
+  --search-bg: oklch(0.18 0.004 270);
+  --choice-active: oklch(0.23 0.04 245);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-muted: var(--text-3);
+  --surface-bg: var(--surface);
+  --surface-bg-subtle: var(--shell);
+  --surface-card: var(--surface-raised);
+  --surface-card-hover: var(--surface-hover);
+  --surface-elevated: var(--surface-raised);
+  --glass-bg: var(--surface-raised);
+  --glass-bg-strong: var(--surface-hover);
+  --glass-border: var(--line);
+  --glass-border-strong: var(--line);
+  color-scheme: dark;
+}
+
+body { overflow: hidden; background: var(--shell); font-family: "Atkinson Hyperlegible Next", "Segoe UI", sans-serif; }
+button, input, textarea, select { font-family: inherit; }
+
+.khadim-web-shell {
+  display: grid;
+  grid-template: 62px minmax(0, 1fr) / 282px minmax(0, 1fr);
+  background: var(--shell);
+  color: var(--text);
+}
+.khadim-web-header { grid-column: 1 / -1; min-width: 0; border-bottom: 1px solid var(--line); background: var(--chrome); }
+.khadim-web-sidebar { grid-row: 2; min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--line); background: var(--chrome); }
+.khadim-web-workspace { grid-row: 2; background: var(--surface); }
+
+.electron-header { height: 61px; display: grid; grid-template-columns: 36px auto minmax(220px, 450px) auto; align-items: center; gap: 16px; padding: 0 16px; }
+.electron-header-logo, .electron-header-menu, .electron-header-actions button, .electron-icon-button { border: 0; border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.electron-header-logo { width: 34px; height: 34px; display: grid; place-items: center; }
+.electron-header-logo > span, .electron-header-logo svg { width: 25px; height: 25px; display: block; }
+.electron-header-menu { display: none; width: 34px; height: 34px; place-items: center; }
+.electron-header-logo:hover, .electron-header-menu:hover, .electron-header-actions button:hover, .electron-icon-button:hover { color: var(--text); background: var(--surface-hover); }
+.electron-mode-nav { display: flex; gap: 2px; width: max-content; padding: 2px; border-radius: 9px; background: color-mix(in oklch, var(--search-bg) 72%, transparent); }
+.electron-mode-nav button { height: 32px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
+.electron-mode-nav button:hover { color: var(--text); background: var(--surface-raised); }
+.electron-mode-nav button.active { color: var(--text); background: var(--surface-hover); font-weight: 600; }
+.electron-mode-nav button.active svg { color: var(--blue); }
+.electron-command-trigger { height: 34px; min-width: 0; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--search-bg); color: var(--text-3); display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+.electron-command-trigger span { overflow: hidden; flex: 1; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.electron-command-trigger kbd { font: 9px "IBM Plex Mono", monospace; }
+.electron-header-actions { justify-self: end; display: flex; align-items: center; gap: 5px; }
+.electron-header-actions button { width: 34px; height: 34px; display: grid; place-items: center; }
+.electron-header-actions button.active { color: var(--blue); background: var(--choice-active); }
+.electron-account-avatar { width: 27px; height: 27px; margin-left: 3px; border-radius: 7px; display: grid; place-items: center; background: oklch(0.31 0.055 190); color: oklch(0.94 0.02 190); font-size: 10px; font-weight: 700; }
+
+.electron-sidebar { background: var(--chrome); }
+.electron-sidebar-title { min-height: 48px; display: flex; align-items: center; color: var(--text-3); font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.electron-primary-nav button.active::before { content: ""; position: absolute; left: 6px; top: 50%; width: 3px; height: 16px; border-radius: 2px; background: var(--blue); transform: translateY(-50%); }
+.electron-primary-nav button.active svg { color: var(--blue); }
+.electron-history-label { color: var(--text-3); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+.electron-history-list { padding-inline: 12px; }
+
+.electron-welcome-copy { display: flex; justify-content: center; margin-bottom: 20px; text-align: center; }
+.electron-welcome-copy > div { justify-content: center; }
+.electron-welcome-copy > div > div:first-child { flex-direction: column; }
+.electron-welcome-copy h1 { margin: 0; color: var(--text); font-size: 28px; font-weight: 540; letter-spacing: -.025em; }
+.electron-welcome-copy p:not(.sr-only) { max-width: 560px; margin: 6px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.electron-welcome-composer { box-shadow: 0 12px 40px oklch(0.04 0 0 / .11); }
+.electron-welcome-composer:focus-within { border-color: color-mix(in oklch, var(--blue) 38%, var(--line)); box-shadow: 0 14px 44px oklch(0.04 0 0 / .14); }
+
+.glass-page-shell { background: var(--surface); }
+.glass-page-shell::before, .glass-page-shell::after { display: none; }
+.glass-panel, .glass-panel-strong, .glass-card-static, .glass-card { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--surface-raised); border-color: var(--line); box-shadow: none; }
+.glass-card:hover { background: var(--surface-hover); box-shadow: none; transform: none; }
+.btn-ink { background: var(--text); color: var(--text-inverse); border-color: var(--text); box-shadow: none; }
+.btn-glass { background: transparent; color: var(--text-2); border-color: var(--line); box-shadow: none; }
+.btn-glass:hover { background: var(--surface-hover); color: var(--text); }
+
+@media (max-width: 1023px) {
+  .khadim-web-shell { grid-template-columns: minmax(0, 1fr); }
+  .khadim-web-sidebar { border: 0; overflow: visible; }
+  .khadim-web-workspace { grid-column: 1; }
+  .electron-header { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; padding-inline: 12px; }
+  .electron-header-menu { display: grid; }
+  .electron-header-logo { display: none; }
+  .electron-command-trigger { justify-self: center; width: min(100%, 420px); }
+  .electron-mode-nav { display: none; }
+}
+
+@media (max-width: 580px) {
+  .electron-command-trigger span { display: none; }
+  .electron-command-trigger { width: 38px; justify-content: center; border-color: transparent; background: transparent; }
+  .electron-command-trigger kbd { display: none; }
+  .electron-header-actions button:first-child { display: none; }
+  .electron-welcome { width: calc(100vw - 32px) !important; min-width: 0; max-width: calc(100vw - 32px) !important; padding-inline: 0 !important; }
+  .electron-welcome > * { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .electron-welcome-copy { padding-inline: 0; }
+  .electron-welcome-copy > div,
+  .electron-welcome-copy > div > div,
+  .electron-welcome-copy > div > div > div { width: 100%; min-width: 0; max-width: 100%; }
+  .electron-welcome-copy h1 { font-size: 24px; white-space: normal; }
+  .electron-welcome-copy p:not(.sr-only), .electron-starter-grid p { max-width: 100%; overflow-wrap: anywhere; }
+  .electron-welcome-composer { min-width: 0; max-width: 100%; }
+  .electron-welcome-composer > div:first-child { flex-wrap: wrap; gap: 10px; }
+  .electron-welcome-composer > div:first-child > div:last-child { min-width: 0; flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  .electron-welcome-composer > div:first-child > div:last-child > div:last-child { display: none; }
+  .electron-starter-grid { min-width: 0; max-width: 100%; }
+  .electron-starter-grid > button { min-width: 0; max-width: 100%; overflow: hidden; }
 }
 
 .scrollbar-thin {

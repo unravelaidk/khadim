@@ -9,14 +9,14 @@ interface SidebarNavigationProps {
 }
 
 const navItems = [
-  { id: "chat" as const, icon: LuSearch, label: "Chats" },
-  { id: "workspace" as const, icon: LuFolderKanban, label: "Workspace" },
+  { id: "chat" as const, icon: LuSearch, label: "Welcome" },
+  { id: "workspace" as const, icon: LuFolderKanban, label: "Projects" },
   { id: "settings" as const, icon: LuSettings2, label: "Settings" },
 ];
 
 export function SidebarNavigation({ currentView, onNavigate, isCollapsed = false }: SidebarNavigationProps) {
   return (
-    <nav className={`border-b border-[var(--glass-border)] ${isCollapsed ? "p-2" : "p-3"}`}>
+    <nav className={`electron-primary-nav ${isCollapsed ? "p-2" : "px-3 pb-4"}`}>
       <div className={`flex ${isCollapsed ? "flex-col items-stretch" : "flex-col gap-1"}`}>
         {navItems.map((item) => {
           const isActive = currentView === item.id;
@@ -27,11 +27,11 @@ export function SidebarNavigation({ currentView, onNavigate, isCollapsed = false
               key={item.id}
               onClick={() => onNavigate(item.id)}
               className={`
-                flex items-center gap-3 rounded-xl transition-all
-                ${isCollapsed ? "justify-center p-2.5 mx-auto w-11 h-11" : "px-3 py-2"}
+                relative flex items-center gap-3 rounded-lg transition-all
+                ${isCollapsed ? "justify-center p-2.5 mx-auto w-10 h-10" : "px-3 h-10"}
                 ${isActive 
-                  ? "bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 
-                  : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+                  ? "active bg-[var(--surface-hover)] text-[var(--text)]"
+                  : "text-[var(--text-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--text)]"
                 }
               `}
               title={isCollapsed ? item.label : undefined}

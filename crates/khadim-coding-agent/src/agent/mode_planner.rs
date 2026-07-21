@@ -208,10 +208,31 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task involves writing, modifying, or creating
     //    code files, use build mode" ──
     let code_creation_signals = [
-        "write", "create", "implement", "build", "add", "make", "generate",
-        "produce", "develop", "code", "program", "script", "function",
-        "module", "class", "method", "feature", "fix", "patch", "solve",
-        "install", "set up", "setup", "configure", "deploy",
+        "write",
+        "create",
+        "implement",
+        "build",
+        "add",
+        "make",
+        "generate",
+        "produce",
+        "develop",
+        "code",
+        "program",
+        "script",
+        "function",
+        "module",
+        "class",
+        "method",
+        "feature",
+        "fix",
+        "patch",
+        "solve",
+        "install",
+        "set up",
+        "setup",
+        "configure",
+        "deploy",
     ];
     let code_score = best_match_score(prompt, &code_creation_signals);
     if code_score > 0.0 {
@@ -221,9 +242,23 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task involves running commands and verifying
     //    results, use build mode" ──
     let file_mod_signals = [
-        "edit", "modify", "change", "update", "refactor", "rename", "move",
-        "delete", "remove", "replace", "insert", "append", "merge",
-        "refactor", "restructure", "reorganize", "migrate",
+        "edit",
+        "modify",
+        "change",
+        "update",
+        "refactor",
+        "rename",
+        "move",
+        "delete",
+        "remove",
+        "replace",
+        "insert",
+        "append",
+        "merge",
+        "refactor",
+        "restructure",
+        "reorganize",
+        "migrate",
     ];
     let file_mod_score = best_match_score(prompt, &file_mod_signals);
     if file_mod_score > 0.0 {
@@ -233,9 +268,24 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task has explicit success criteria or test
     //    commands, use build mode" ──
     let success_criteria_signals = [
-        "test", "verify", "check", "ensure", "validate", "confirm",
-        "should", "must", "expect", "assert", "pass", "fail", "correct",
-        "working", "works", "success", "requirement", "criteria",
+        "test",
+        "verify",
+        "check",
+        "ensure",
+        "validate",
+        "confirm",
+        "should",
+        "must",
+        "expect",
+        "assert",
+        "pass",
+        "fail",
+        "correct",
+        "working",
+        "works",
+        "success",
+        "requirement",
+        "criteria",
     ];
     let criteria_score = best_match_score(prompt, &success_criteria_signals);
     if criteria_score > 0.0 {
@@ -244,9 +294,23 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
 
     // ── NL Constraint: "If the task is debugging, use build mode" ──
     let debug_signals = [
-        "debug", "error", "bug", "crash", "traceback", "stack trace",
-        "exception", "fault", "issue", "problem", "broken", "doesn't work",
-        "not working", "failing", "failure", "wrong", "incorrect",
+        "debug",
+        "error",
+        "bug",
+        "crash",
+        "traceback",
+        "stack trace",
+        "exception",
+        "fault",
+        "issue",
+        "problem",
+        "broken",
+        "doesn't work",
+        "not working",
+        "failing",
+        "failure",
+        "wrong",
+        "incorrect",
     ];
     let debug_score = best_match_score(prompt, &debug_signals);
     if debug_score > 0.0 {
@@ -254,7 +318,13 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     }
 
     // ── NL Constraint: "If the task is refactoring, use build mode" ──
-    let refactor_signals = ["refactor", "restructure", "clean up", "cleanup", "reorganize"];
+    let refactor_signals = [
+        "refactor",
+        "restructure",
+        "clean up",
+        "cleanup",
+        "reorganize",
+    ];
     let refactor_score = best_match_score(prompt, &refactor_signals);
     if refactor_score > 0.0 {
         predicates.insert(PddlPredicate::TaskIsRefactoring, refactor_score);
@@ -262,8 +332,14 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
 
     // ── NL Constraint: "If the task is testing, use build mode" ──
     let test_signals = [
-        "test", "unit test", "integration test", "spec", "coverage",
-        "benchmark", "perf test", "load test",
+        "test",
+        "unit test",
+        "integration test",
+        "spec",
+        "coverage",
+        "benchmark",
+        "perf test",
+        "load test",
     ];
     let test_score = best_match_score(prompt, &test_signals);
     if test_score > 0.0 {
@@ -273,10 +349,24 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task requires planning before implementation,
     //    use plan mode" ──
     let plan_signals = [
-        "plan", "design", "architect", "architecture", "strategy",
-        "approach", "outline", "roadmap", "how would", "how should",
-        "what's the best way", "think about", "consider", "evaluate",
-        "compare", "analyze", "review", "assess",
+        "plan",
+        "design",
+        "architect",
+        "architecture",
+        "strategy",
+        "approach",
+        "outline",
+        "roadmap",
+        "how would",
+        "how should",
+        "what's the best way",
+        "think about",
+        "consider",
+        "evaluate",
+        "compare",
+        "analyze",
+        "review",
+        "assess",
     ];
     let plan_score = best_match_score(prompt, &plan_signals);
     if plan_score > 0.0 {
@@ -286,10 +376,25 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task requires exploring or understanding a
     //    codebase, use explore mode" ──
     let explore_signals = [
-        "explore", "understand", "explain", "how does", "how do",
-        "where is", "find", "search", "look at", "show me", "what does",
-        "walk through", "walkthrough", "overview", "map", "navigate",
-        "investigate", "examine", "inspect",
+        "explore",
+        "understand",
+        "explain",
+        "how does",
+        "how do",
+        "where is",
+        "find",
+        "search",
+        "look at",
+        "show me",
+        "what does",
+        "walk through",
+        "walkthrough",
+        "overview",
+        "map",
+        "navigate",
+        "investigate",
+        "examine",
+        "inspect",
     ];
     let explore_score = best_match_score(prompt, &explore_signals);
     if explore_score > 0.0 {
@@ -299,11 +404,27 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task is purely conversational or explanatory,
     //    use chat mode" ──
     let conversation_signals = [
-        "what is", "what are", "who is", "tell me about", "describe",
-        "define", "definition", "meaning", "concept", "difference between",
-        "compare", "explain why", "why does", "why do", "why is",
-        "can you explain", "help me understand", "i don't understand",
-        "confused about", "curious about", "wondering",
+        "what is",
+        "what are",
+        "who is",
+        "tell me about",
+        "describe",
+        "define",
+        "definition",
+        "meaning",
+        "concept",
+        "difference between",
+        "compare",
+        "explain why",
+        "why does",
+        "why do",
+        "why is",
+        "can you explain",
+        "help me understand",
+        "i don't understand",
+        "confused about",
+        "curious about",
+        "wondering",
     ];
     let conversation_score = best_match_score(prompt, &conversation_signals);
     if conversation_score > 0.0 {
@@ -313,8 +434,17 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task involves only reading and explaining code
     //    without modification, use chat mode" ──
     let question_signals = [
-        "?", "what", "why", "how come", "when does", "where does",
-        "is it", "does it", "can it", "should i", "would it",
+        "?",
+        "what",
+        "why",
+        "how come",
+        "when does",
+        "where does",
+        "is it",
+        "does it",
+        "can it",
+        "should i",
+        "would it",
     ];
     let question_score = best_match_score(prompt, &question_signals);
     if question_score > 0.0 {
@@ -323,8 +453,15 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
 
     // ── NL Constraint: "If the task is documentation, use chat mode" ──
     let doc_signals = [
-        "document", "documentation", "readme", "comment", "docstring",
-        "docs", "wiki", "guide", "tutorial",
+        "document",
+        "documentation",
+        "readme",
+        "comment",
+        "docstring",
+        "docs",
+        "wiki",
+        "guide",
+        "tutorial",
     ];
     let doc_score = best_match_score(prompt, &doc_signals);
     if doc_score > 0.0 {
@@ -334,9 +471,17 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
     // ── NL Constraint: "If the task is complex with multiple steps, prefer
     //    plan mode first" ──
     let complex_signals = [
-        "complex", "multiple steps", "step by step", "comprehensive",
-        "end-to-end", "full stack", "entire system", "redesign",
-        "from scratch", "ground up", "overhaul",
+        "complex",
+        "multiple steps",
+        "step by step",
+        "comprehensive",
+        "end-to-end",
+        "full stack",
+        "entire system",
+        "redesign",
+        "from scratch",
+        "ground up",
+        "overhaul",
     ];
     let complex_score = best_match_score(prompt, &complex_signals);
     if complex_score > 0.0 {
@@ -345,8 +490,16 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
 
     // ── NL Constraint: "If the task is simple, prefer build mode" ──
     let simple_signals = [
-        "simple", "quick", "just", "only", "minor", "small", "tiny",
-        "one-liner", "shortcut", "easy",
+        "simple",
+        "quick",
+        "just",
+        "only",
+        "minor",
+        "small",
+        "tiny",
+        "one-liner",
+        "shortcut",
+        "easy",
     ];
     let simple_score = best_match_score(prompt, &simple_signals);
     if simple_score > 0.0 {
@@ -355,9 +508,20 @@ pub fn analyze_prompt(predicates: &mut HashMap<PddlPredicate, f32>, prompt: &str
 
     // ── NL Constraint: "If the task has constraints, use build mode" ──
     let constraint_signals = [
-        "must not", "should not", "do not", "don't", "never",
-        "always", "only", "constraint", "requirement", "forbidden",
-        "allowed", "disallowed", "restriction", "limitation",
+        "must not",
+        "should not",
+        "do not",
+        "don't",
+        "never",
+        "always",
+        "only",
+        "constraint",
+        "requirement",
+        "forbidden",
+        "allowed",
+        "disallowed",
+        "restriction",
+        "limitation",
     ];
     let constraint_score = best_match_score(prompt, &constraint_signals);
     if constraint_score > 0.0 {
@@ -420,7 +584,10 @@ pub fn plan_mode(predicates: &HashMap<PddlPredicate, f32>) -> ModePlan {
         let specificity_bonus = matched.len() as f32 * 0.05;
         let final_score = confidence + specificity_bonus;
 
-        if best_plan.as_ref().map_or(true, |p| final_score > p.confidence) {
+        if best_plan
+            .as_ref()
+            .map_or(true, |p| final_score > p.confidence)
+        {
             best_plan = Some(ModePlan {
                 mode: action.target_mode,
                 confidence: final_score,

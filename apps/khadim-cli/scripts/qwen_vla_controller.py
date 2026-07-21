@@ -19,11 +19,11 @@ import argparse
 import base64
 import io
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,44 +140,29 @@ def capture_screenshot(path: str | None = None) -> tuple["Image.Image", str]:
 
     from PIL import Image  # type: ignore
 
-    tmp = Path(os.environ.get("TMPDIR", "/tmp")) / f"khadim-qwen-vla-{os.getpid()}.png"
-    # PyAutoGUI/mss can fail under Wayland/Xwayland authorization even when
-    # Khadim's native Rust screen_capture tool works. If the current CLI binary
-    # is available, use that durable capture path as another fallback.
-    khadim_bin = os.environ.get("KHADIM_CLI") or shutil.which("khadim")
-    if khadim_bin:
-        try:
-            subprocess.run(
-                [
-                    khadim_bin,
-                    "rpa",
-                    "tool",
-                    "screen_capture",
-                    json.dumps({"output_path": str(tmp), "backend": "xcap"}),
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            image = Image.open(tmp).convert("RGB")
-            return image, "khadim-screen_capture"
-        except Exception:
-            pass
+    # Reserve a unique file atomically, then close it before platform capture
+    # tools reopen it (required on Windows). Avoid predictable /tmp names that
+    # another local user could replace with a symlink.
+    with tempfile.NamedTemporaryFile(prefix="khadim-qwen-vla-", suffix=".png", delete=False) as handle:
+        tmp = Path(handle.name)
 
     commands = [
         ["gnome-screenshot", "-f", str(tmp)],
         ["spectacle", "-b", "-n", "-o", str(tmp)],
         ["import", "-window", "root", str(tmp)],
     ]
-    for cmd in commands:
-        if shutil.which(cmd[0]) is None:
-            continue
-        try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            image = Image.open(tmp).convert("RGB")
-            return image, cmd[0]
-        except Exception:
-            continue
+    try:
+        for cmd in commands:
+            if shutil.which(cmd[0]) is None:
+                continue
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                image = Image.open(tmp).convert("RGB")
+                return image, cmd[0]
+            except Exception:
+                continue
+    finally:
+        tmp.unlink(missing_ok=True)
     raise RuntimeError(
         "Could not capture the screen. Install pyautogui, mss, gnome-screenshot, spectacle, or ImageMagick import."
     )
@@ -222,7 +207,7 @@ def extract_action_json(text: str) -> dict[str, Any]:
     return value
 
 
-def load_model(model_id: str, device_map: str, torch_dtype: str):
+def load_model(model_id: str, revision: str, device_map: str, torch_dtype: str):
     try:
         import torch  # type: ignore
         from transformers import AutoModelForImageTextToText, AutoProcessor  # type: ignore
@@ -232,12 +217,20 @@ def load_model(model_id: str, device_map: str, torch_dtype: str):
         ) from exc
 
     dtype = getattr(torch, torch_dtype) if torch_dtype != "auto" else "auto"
-    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+    # Never execute Python supplied by a model repository. The Rust boundary
+    # additionally restricts model ids to an operator-controlled allowlist.
+    processor = AutoProcessor.from_pretrained(
+        model_id,
+        revision=revision,
+        trust_remote_code=False,
+    )
     model = AutoModelForImageTextToText.from_pretrained(
         model_id,
+        revision=revision,
         device_map=device_map,
         torch_dtype=dtype,
-        trust_remote_code=True,
+        trust_remote_code=False,
+        use_safetensors=True,
     )
     return processor, model
 
@@ -353,37 +346,11 @@ def scale_action_coordinates(action: Action, sent_size: tuple[int, int], screen_
 
 
 def execute_action(action: Action) -> None:
-    def run_khadim_tool(payload: dict[str, Any]) -> bool:
-        khadim_bin = os.environ.get("KHADIM_CLI") or shutil.which("khadim")
-        if not khadim_bin:
-            return False
-        try:
-            subprocess.run(
-                [khadim_bin, "rpa", "tool", "computer_input", json.dumps(payload)],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return True
-        except Exception:
-            return False
-
-    if action.action == "click" and run_khadim_tool({"action": "click", "x": action.x, "y": action.y, "button": action.button}):
-        return
-    if action.action == "move" and run_khadim_tool({"action": "move", "x": action.x, "y": action.y}):
-        return
-    if action.action == "type" and run_khadim_tool({"action": "type", "text": action.text or ""}):
-        return
-    if action.action == "key" and run_khadim_tool({"action": "key", "key": action.key}):
-        return
-    if action.action == "scroll" and run_khadim_tool({"action": "scroll", "amount": action.amount or 0}):
-        return
-
     try:
         import pyautogui  # type: ignore
     except Exception as exc:
         raise RuntimeError(
-            "Execution requires either Khadim CLI rpa tool computer_input on PATH/KHADIM_CLI or pyautogui: pip install pyautogui"
+            "Execution requires PyAutoGUI in the local helper environment: pip install pyautogui"
         ) from exc
 
     if action.action == "click":
@@ -404,10 +371,35 @@ def execute_action(action: Action) -> None:
         time.sleep(action.seconds)
 
 
+def resolve_goal(positional_goal: str | None, request_file: str | None) -> str:
+    """Load exactly one goal without placing long user input on the command line."""
+    if positional_goal and request_file:
+        raise ValueError("provide either a positional goal or --request-file, not both")
+    if request_file:
+        value = json.loads(Path(request_file).read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or not isinstance(value.get("goal"), str):
+            raise ValueError("request file must be a JSON object with a string 'goal'")
+        goal = value["goal"]
+    else:
+        goal = positional_goal
+    if not goal or not goal.strip():
+        raise ValueError("a non-empty goal is required")
+    return goal
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a tiny Qwen VLA desktop loop.")
-    parser.add_argument("goal", help="Natural-language desktop goal, e.g. 'click the wifi icon'.")
+    parser.add_argument("goal", nargs="?", help="Natural-language desktop goal, e.g. 'click the wifi icon'.")
+    parser.add_argument(
+        "--request-file",
+        help="UTF-8 JSON request containing {'goal': string}; avoids command-line length limits.",
+    )
     parser.add_argument("--model", default="Qwen/Qwen3.5-2B", help="Hugging Face model id.")
+    parser.add_argument(
+        "--revision",
+        required=True,
+        help="Immutable 40-hex Hugging Face commit approved by the Rust tool boundary.",
+    )
     parser.add_argument("--steps", type=int, default=3, help="Maximum observe/action iterations.")
     parser.add_argument("--execute", action="store_true", help="Actually run the returned actions. Default is dry-run.")
     parser.add_argument("--max-side", type=int, default=1280, help="Resize screenshots so the longest side is at most this many pixels.")
@@ -416,13 +408,19 @@ def main() -> int:
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--torch-dtype", default="auto", help="auto, float16, bfloat16, float32, etc.")
     args = parser.parse_args()
+    goal = resolve_goal(args.goal, args.request_file)
 
-    processor, model = load_model(args.model, args.device_map, args.torch_dtype)
+    processor, model = load_model(
+        args.model,
+        args.revision,
+        args.device_map,
+        args.torch_dtype,
+    )
 
     for step in range(1, args.steps + 1):
         image, backend = capture_screenshot(args.screenshot_path)
         data_url, original_size, sent_size = image_to_data_url(image, args.max_side)
-        action = model_action(processor, model, args.model, args.goal, data_url, args.max_new_tokens)
+        action = model_action(processor, model, args.model, goal, data_url, args.max_new_tokens)
         scale_action_coordinates(action, sent_size, original_size)
         print(json.dumps({
             "step": step,

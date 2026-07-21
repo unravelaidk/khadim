@@ -71,8 +71,7 @@ mod tests {
 
     #[test]
     fn with_workspace_sets_id() {
-        let session = KhadimSession::new(PathBuf::from("/tmp"))
-            .with_workspace("workspace-abc");
+        let session = KhadimSession::new(PathBuf::from("/tmp")).with_workspace("workspace-abc");
         assert_eq!(session.workspace_id, "workspace-abc");
     }
 
@@ -80,20 +79,22 @@ mod tests {
     fn with_system_prompt_stores_prompt() {
         let session = KhadimSession::new(PathBuf::from("/tmp"))
             .with_system_prompt(Some("You are a helper.".to_string()));
-        assert_eq!(session.system_prompt_override.as_deref(), Some("You are a helper."));
+        assert_eq!(
+            session.system_prompt_override.as_deref(),
+            Some("You are a helper.")
+        );
     }
 
     #[test]
     fn with_system_prompt_rejects_empty_string() {
-        let session = KhadimSession::new(PathBuf::from("/tmp"))
-            .with_system_prompt(Some("   ".to_string()));
+        let session =
+            KhadimSession::new(PathBuf::from("/tmp")).with_system_prompt(Some("   ".to_string()));
         assert!(session.system_prompt_override.is_none());
     }
 
     #[test]
     fn with_system_prompt_accepts_none() {
-        let session = KhadimSession::new(PathBuf::from("/tmp"))
-            .with_system_prompt(None);
+        let session = KhadimSession::new(PathBuf::from("/tmp")).with_system_prompt(None);
         assert!(session.system_prompt_override.is_none());
     }
 

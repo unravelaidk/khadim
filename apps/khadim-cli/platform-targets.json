@@ -1,0 +1,78 @@
+{
+  "linux-x64": {
+    "alias": "@unravelai/khadim-linux-x64",
+    "target": "x86_64-unknown-linux-gnu",
+    "artifact": "khadim-cli-linux-x86_64",
+    "artifact_file": "khadim-cli-linux-x86_64",
+    "os": "linux",
+    "cpu": "x64",
+    "binary": "khadim-cli",
+    "runner": "ubuntu-22.04",
+    "libc": "glibc",
+    "glibc_min": "2.35",
+    "strip": true,
+    "cache": true
+  },
+  "linux-arm64": {
+    "alias": "@unravelai/khadim-linux-arm64",
+    "target": "aarch64-unknown-linux-gnu",
+    "artifact": "khadim-cli-linux-aarch64",
+    "artifact_file": "khadim-cli-linux-aarch64",
+    "os": "linux",
+    "cpu": "arm64",
+    "binary": "khadim-cli",
+    "runner": "ubuntu-22.04-arm",
+    "libc": "glibc",
+    "glibc_min": "2.35",
+    "strip": false,
+    "cache": true
+  },
+  "darwin-x64": {
+    "alias": "@unravelai/khadim-darwin-x64",
+    "target": "x86_64-apple-darwin",
+    "artifact": "khadim-cli-macos-x86_64",
+    "artifact_file": "khadim-cli-macos-x86_64",
+    "os": "darwin",
+    "cpu": "x64",
+    "binary": "khadim-cli",
+    "runner": "macos-15-intel",
+    "strip": true,
+    "cache": true
+  },
+  "darwin-arm64": {
+    "alias": "@unravelai/khadim-darwin-arm64",
+    "target": "aarch64-apple-darwin",
+    "artifact": "khadim-cli-macos-aarch64",
+    "artifact_file": "khadim-cli-macos-aarch64",
+    "os": "darwin",
+    "cpu": "arm64",
+    "binary": "khadim-cli",
+    "runner": "macos-15",
+    "strip": true,
+    "cache": true
+  },
+  "win32-x64": {
+    "alias": "@unravelai/khadim-win32-x64",
+    "target": "x86_64-pc-windows-msvc",
+    "artifact": "khadim-cli-windows-x86_64",
+    "artifact_file": "khadim-cli-windows-x86_64.exe",
+    "os": "win32",
+    "cpu": "x64",
+    "binary": "khadim-cli.exe",
+    "runner": "windows-latest",
+    "strip": false,
+    "cache": true
+  },
+  "win32-arm64": {
+    "alias": "@unravelai/khadim-win32-arm64",
+    "target": "aarch64-pc-windows-msvc",
+    "artifact": "khadim-cli-windows-aarch64",
+    "artifact_file": "khadim-cli-windows-aarch64.exe",
+    "os": "win32",
+    "cpu": "arm64",
+    "binary": "khadim-cli.exe",
+    "runner": "windows-11-arm",
+    "strip": false,
+    "cache": false
+  }
+}

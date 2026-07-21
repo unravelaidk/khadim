@@ -1,13 +1,14 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { LuBrain, LuChevronDown, LuSearch, LuServer } from "react-icons/lu";
 import { getModelIconUrl } from "../../assets/model-icons";
+import type { ProviderType } from "../../hooks/useModelSettings";
 
 export enum ModelSelectorVariant {
   Switcher = "switcher",
   Picker = "picker",
 }
 
-export type ModelProvider = "openai" | "anthropic" | "openai-codex" | "openrouter" | "ollama" | "xai" | "groq" | "cerebras" | "mistral" | "minimax" | "zai" | "amazon-bedrock" | "azure-openai-responses" | "github-copilot" | "huggingface" | "vercel-ai-gateway" | "opencode" | "opencode-go" | "kimi-coding";
+export type ModelProvider = ProviderType;
 
 export interface ModelOption {
   id: string;
@@ -54,6 +55,9 @@ const PROVIDER_META: Record<ModelProvider, ProviderMeta> = {
   opencode: { label: "OpenCode" },
   "opencode-go": { label: "OpenCode Go" },
   "kimi-coding": { label: "Kimi" },
+  nvidia: { label: "NVIDIA" },
+  google: { label: "Google" },
+  "google-vertex": { label: "Google Vertex" },
 };
 
 function getProviderMeta(provider: ModelProvider): ProviderMeta {

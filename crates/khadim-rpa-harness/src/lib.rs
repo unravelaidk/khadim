@@ -8,20 +8,20 @@ use async_trait::async_trait;
 use khadim_ai_core::error::AppError;
 use khadim_ai_core::tools::{Tool, ToolDefinition, ToolResult};
 use serde_json::{json, Value};
+#[cfg(feature = "screen")]
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(feature = "screen")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn default_tools() -> Vec<Arc<dyn Tool>> {
-    let mut tools: Vec<Arc<dyn Tool>> = vec![
+    vec![
         Arc::new(RpaCapabilitiesTool),
         Arc::new(ScreenCaptureTool),
         Arc::new(ComputerInputTool),
+        Arc::new(VisualFindTool),
         Arc::new(AudioListenTool),
-    ];
-    #[cfg(feature = "rustautogui-backend")]
-    tools.push(Arc::new(VisualFindTool));
-    tools
+    ]
 }
 
 struct RpaCapabilitiesTool;
@@ -43,8 +43,16 @@ impl Tool for RpaCapabilitiesTool {
     }
 
     async fn execute(&self, _input: Value) -> Result<ToolResult, AppError> {
+        let native_backend_enabled = cfg!(feature = "screen")
+            || cfg!(feature = "input")
+            || cfg!(feature = "rustautogui-backend");
+        let summary = if native_backend_enabled {
+            "RPA harness loaded. See capability metadata for the native backends enabled in this build."
+        } else {
+            "RPA harness loaded. Tool boundaries are registered, but native desktop backends are not enabled in this build."
+        };
         Ok(ToolResult::with_metadata(
-            "RPA harness loaded. Screen capture, input control, and audio listening are registered as tool boundaries; platform implementations are not enabled in this build.",
+            summary,
             json!({
                 "harness": "rpa",
                 "capabilities": {
@@ -186,10 +194,8 @@ impl Tool for ComputerInputTool {
     }
 }
 
-#[cfg(feature = "rustautogui-backend")]
 struct VisualFindTool;
 
-#[cfg(feature = "rustautogui-backend")]
 #[async_trait]
 impl Tool for VisualFindTool {
     fn definition(&self) -> ToolDefinition {
@@ -298,7 +304,7 @@ fn new_rustautogui() -> Result<rustautogui::RustAutoGui, AppError> {
         .map_err(|error| AppError::io(format!("Failed to initialize RustAutoGUI: {error}")))
 }
 
-#[cfg(feature = "rustautogui-backend")]
+#[cfg(all(feature = "rustautogui-backend", feature = "screen"))]
 fn capture_screen_rustautogui(input: Value) -> Result<ToolResult, AppError> {
     let output_path = output_path(input.get("output_path").and_then(Value::as_str))?;
     if let Some(parent) = output_path.parent() {
@@ -334,7 +340,7 @@ fn capture_screen_rustautogui(input: Value) -> Result<ToolResult, AppError> {
     ))
 }
 
-#[cfg(not(feature = "rustautogui-backend"))]
+#[cfg(all(not(feature = "rustautogui-backend"), feature = "screen"))]
 fn capture_screen_rustautogui(_input: Value) -> Result<ToolResult, AppError> {
     Ok(unavailable_tool(
         "screen_capture",
@@ -342,7 +348,7 @@ fn capture_screen_rustautogui(_input: Value) -> Result<ToolResult, AppError> {
     ))
 }
 
-#[cfg(feature = "rustautogui-backend")]
+#[cfg(all(feature = "rustautogui-backend", feature = "input"))]
 fn control_computer_rustautogui(input: Value) -> Result<ToolResult, AppError> {
     let action = input
         .get("action")
@@ -457,7 +463,7 @@ fn control_computer_rustautogui(input: Value) -> Result<ToolResult, AppError> {
     }
 }
 
-#[cfg(not(feature = "rustautogui-backend"))]
+#[cfg(all(not(feature = "rustautogui-backend"), feature = "input"))]
 fn control_computer_rustautogui(_input: Value) -> Result<ToolResult, AppError> {
     Ok(unavailable_tool(
         "computer_input",
@@ -533,6 +539,14 @@ fn visual_find(input: Value) -> Result<ToolResult, AppError> {
             "matches": all_matches,
             "moved_mouse": move_mouse && best.is_some()
         }),
+    ))
+}
+
+#[cfg(not(feature = "rustautogui-backend"))]
+fn visual_find(_input: Value) -> Result<ToolResult, AppError> {
+    Ok(unavailable_tool(
+        "visual_find",
+        "Build khadim-rpa-harness with the `rustautogui-backend` feature.",
     ))
 }
 
@@ -936,6 +950,7 @@ fn output_path(requested: Option<&str>) -> Result<PathBuf, AppError> {
         .join(format!("screen-{millis}.png")))
 }
 
+#[cfg(feature = "input")]
 fn required_i32(input: &Value, key: &str) -> Result<i32, AppError> {
     let value = input
         .get(key)
@@ -944,6 +959,7 @@ fn required_i32(input: &Value, key: &str) -> Result<i32, AppError> {
     i32::try_from(value).map_err(|_| AppError::invalid_input(format!("{key} is out of range")))
 }
 
+#[cfg(any(feature = "screen", feature = "rustautogui-backend"))]
 fn required_u32(input: &Value, key: &str) -> Result<u32, AppError> {
     let value = input
         .get(key)
@@ -980,4 +996,57 @@ fn optional_region(input: &Value) -> Result<Option<(u32, u32, u32, u32)>, AppErr
         required_u32(input, "width")?,
         required_u32(input, "height")?,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_boundary_is_stable_across_backend_feature_sets() {
+        let names = default_tools()
+            .into_iter()
+            .map(|tool| tool.definition().name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            names,
+            vec![
+                "rpa_capabilities",
+                "screen_capture",
+                "computer_input",
+                "visual_find",
+                "audio_listen",
+            ]
+        );
+    }
+
+    #[cfg(all(
+        not(feature = "screen"),
+        not(feature = "input"),
+        not(feature = "rustautogui-backend")
+    ))]
+    #[tokio::test]
+    async fn headless_backends_fail_gracefully_instead_of_disappearing() {
+        for name in ["screen_capture", "computer_input", "visual_find"] {
+            let tool = default_tools()
+                .into_iter()
+                .find(|tool| tool.definition().name == name)
+                .expect("tool boundary must remain registered");
+            let result = tool
+                .execute(json!({}))
+                .await
+                .expect("disabled backends return structured tool results");
+
+            assert_eq!(
+                result
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("available"))
+                    .and_then(Value::as_bool),
+                Some(false),
+                "{name} must advertise that its native backend is unavailable"
+            );
+        }
+    }
 }

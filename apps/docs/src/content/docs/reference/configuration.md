@@ -10,7 +10,14 @@ single run.
 
 ## Provider defaults
 
-Set the default provider and model:
+Set the default provider and model from the CLI settings file:
+
+```bash
+khadim config set provider anthropic
+khadim config set model claude-sonnet-4
+```
+
+You can also set environment defaults:
 
 ```bash
 export KHADIM_PROVIDER=anthropic
@@ -25,7 +32,15 @@ khadim --provider openai --model gpt-4.1-mini
 
 ## Provider credentials
 
-Khadim reads provider API keys from standard environment variables.
+Store a provider credential without opening the TUI:
+
+```bash
+printf '%s' "$ANTHROPIC_API_KEY" | \
+  khadim config set api-key anthropic --stdin
+```
+
+Using `--stdin` keeps the key out of shell history and process arguments.
+Khadim also reads provider API keys from standard environment variables.
 
 | Provider | Environment variable |
 | --- | --- |
@@ -59,19 +74,56 @@ export OPENAI_API_KEY=local
 khadim --provider openai
 ```
 
-## Interactive settings
+## CLI and interactive settings
 
-Open settings inside the terminal UI:
+Inspect the settings available to non-interactive CLI runs:
+
+```bash
+khadim config show
+khadim config path
+```
+
+Open the same core provider settings inside the terminal UI:
 
 ```text
 /settings
 ```
 
 You can also press `F2`. The settings panel can store provider, model, API key,
-theme, and related preferences.
+theme, and related preferences. The terminal settings file is named
+`cli-settings.json` under the Khadim config directory. Khadim protects the
+directory and file with user-only permissions on supported platforms.
 
-Use `/config` to print the config directory path. The terminal settings file is
-stored under the Khadim config directory.
+Use `/config` to print the config directory path from the interactive TUI.
+
+## Web-search configuration
+
+Select and configure the web-search tool entirely from the CLI:
+
+```bash
+khadim search providers
+printf '%s' "$PARALLEL_API_KEY" | \
+  khadim search set-key parallel --stdin
+khadim search use parallel
+```
+
+`--search-provider NAME` remains a one-run override. Without the flag, runs use
+the provider saved by `khadim search use`.
+
+## Plugin configuration
+
+Khadim stores installed plugins under its platform data directory and keeps
+enabled state and configuration in a private CLI plugin settings file.
+
+```bash
+khadim plugin dir
+khadim plugin install ./automation-plugin
+khadim plugin config set automation-plugin endpoint https://api.example.com
+khadim plugin tools
+```
+
+For secret fields, pipe the value to `--stdin`. `plugin list`, `plugin inspect`,
+and JSON output report only whether each field is configured.
 
 ## OAuth providers
 

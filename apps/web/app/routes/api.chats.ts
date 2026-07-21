@@ -20,8 +20,20 @@ export async function action({ request }: ActionFunctionArgs) {
     const formData = await request.formData();
     const title = formData.get("title")?.toString() || "New Chat";
     const workspaceId = formData.get("workspaceId")?.toString() || null;
+    const requestedId = formData.get("id")?.toString();
+    if (requestedId && requestedId.length > 128) {
+      return Response.json({ error: "id is too long" }, { status: 400 });
+    }
 
-    const [chat] = await db.insert(chats).values({ title, workspaceId }).returning();
+    const [inserted] = await db.insert(chats).values({
+      ...(requestedId ? { id: requestedId } : {}), title, workspaceId,
+    }).onConflictDoNothing({ target: chats.id }).returning();
+    const chat = inserted ?? (requestedId
+      ? await db.query.chats.findFirst({ where: eq(chats.id, requestedId) })
+      : undefined);
+    if (!chat || chat.workspaceId !== workspaceId) {
+      return Response.json({ error: "Chat id is already used by another conversation" }, { status: 409 });
+    }
     return Response.json({ chat });
   }
 

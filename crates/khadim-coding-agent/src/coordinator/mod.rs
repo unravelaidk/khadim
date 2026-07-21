@@ -25,8 +25,10 @@ pub mod worker;
 pub use assign::WorkerAssignment;
 pub use lease::{Conflict, Lease, LeaseId, LeaseManager};
 pub use lease_guard::LeaseGuard;
-pub use search::{ProposerFn, Scorer, SearchMode, SelectedAction, Candidate};
-pub use worker::{spawn_worker, spawn_worker_with_runner, WorkerHandle, WorkerRunner, WorkerSpec, WriteScope};
+pub use search::{Candidate, ProposerFn, Scorer, SearchMode, SelectedAction};
+pub use worker::{
+    spawn_worker, spawn_worker_with_runner, WorkerHandle, WorkerRunner, WorkerSpec, WriteScope,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -85,9 +87,7 @@ pub struct DecomposedGoal {
 /// The decomposer closure: takes the user prompt and returns a list of
 /// decomposed goals. On any failure the caller falls back to
 /// [`GoalTracker::from_prompt`], so the closure may return `Err` freely.
-pub type Decomposer = Arc<
-    dyn Fn(&str) -> Result<Vec<DecomposedGoal>, AppError> + Send + Sync,
->;
+pub type Decomposer = Arc<dyn Fn(&str) -> Result<Vec<DecomposedGoal>, AppError> + Send + Sync>;
 
 /// The goal-verifier closure: given a goal id, its target files/symbol, and
 /// the worker's final summary, decide whether the goal is satisfied.
@@ -95,9 +95,8 @@ pub type Decomposer = Arc<
 /// The default implementation reparses target files via [`ParseCache`] and
 /// checks symbol existence (mirroring
 /// [`GoalTracker::update_from_tool_json_with_graph`]). Tests inject a stub.
-pub type GoalVerifier = Arc<
-    dyn Fn(&GoalBoard, GoalId, &str) -> BoxFuture<'static, bool> + Send + Sync,
->;
+pub type GoalVerifier =
+    Arc<dyn Fn(&GoalBoard, GoalId, &str) -> BoxFuture<'static, bool> + Send + Sync>;
 
 /// Run a prompt across multiple concurrent workers.
 ///
@@ -113,15 +112,7 @@ pub async fn run_multi_agent(
     config: MultiAgentConfig,
 ) -> Result<String, AppError> {
     run_multi_agent_with(
-        session,
-        prompt,
-        selection,
-        tx,
-        runtime,
-        config,
-        None,
-        None,
-        None,
+        session, prompt, selection, tx, runtime, config, None, None, None,
     )
     .await
 }
@@ -326,10 +317,8 @@ pub async fn run_multi_agent_with(
             };
 
             // Leases: one per target file (whole-file, span=None for v1).
-            let leases: Vec<(PathBuf, Option<khadim_code_graph::NodeSpan>)> = target_files
-                .iter()
-                .map(|f| (f.clone(), None))
-                .collect();
+            let leases: Vec<(PathBuf, Option<khadim_code_graph::NodeSpan>)> =
+                target_files.iter().map(|f| (f.clone(), None)).collect();
 
             let mode = resolve_worker_mode(&assignment.suggested_mode_name);
 
@@ -345,12 +334,11 @@ pub async fn run_multi_agent_with(
             // The worker module emits its own `worker_spawned` event; we emit
             // a complementary `worker_assigned` carrying the goal list.
             let _ = tx.send(
-                AgentStreamEvent::new("worker_assigned")
-                    .with_metadata(json!({
-                        "worker_id": worker_id,
-                        "goals": claimed,
-                        "wave": wave,
-                    })),
+                AgentStreamEvent::new("worker_assigned").with_metadata(json!({
+                    "worker_id": worker_id,
+                    "goals": claimed,
+                    "wave": wave,
+                })),
             );
 
             let handle = worker::spawn_worker_with_runner(
@@ -421,7 +409,8 @@ pub async fn run_multi_agent_with(
         }
 
         // For each goal claimed by a worker this wave, verify satisfaction.
-        let wave_worker_ids: Vec<String> = worker_summaries.iter().map(|(w, _)| w.clone()).collect();
+        let wave_worker_ids: Vec<String> =
+            worker_summaries.iter().map(|(w, _)| w.clone()).collect();
         let claimed_by_wave: Vec<GoalId> = board
             .goals
             .iter()
@@ -450,41 +439,33 @@ pub async fn run_multi_agent_with(
             if satisfied {
                 board.satisfy(gid);
                 let _ = tx.send(
-                    AgentStreamEvent::new("goal_satisfied")
-                        .with_metadata(json!({
-                            "goal_id": gid,
-                            "kind": board.goals[gid].goal.kind.label(),
-                            "description": board.goals[gid].goal.description,
-                        })),
+                    AgentStreamEvent::new("goal_satisfied").with_metadata(json!({
+                        "goal_id": gid,
+                        "kind": board.goals[gid].goal.kind.label(),
+                        "description": board.goals[gid].goal.description,
+                    })),
                 );
             } else {
                 let count = reassignments.entry(gid).or_insert(0);
                 if *count < config.max_reassignments {
                     *count += 1;
                     board.release(gid);
-                    let _ = tx.send(
-                        AgentStreamEvent::new("goal_reassigned")
-                            .with_metadata(json!({
-                                "goal_id": gid,
-                                "reassignment": *count,
-                                "max": config.max_reassignments,
-                            })),
-                    );
+                    let _ = tx.send(AgentStreamEvent::new("goal_reassigned").with_metadata(
+                        json!({
+                            "goal_id": gid,
+                            "reassignment": *count,
+                            "max": config.max_reassignments,
+                        }),
+                    ));
                 } else {
-                    let reason = format!(
-                        "not satisfied after {} reassignment(s)",
-                        *count
-                    );
+                    let reason = format!("not satisfied after {} reassignment(s)", *count);
                     board.block(gid, reason.clone());
-                    let _ = tx.send(
-                        AgentStreamEvent::new("goal_blocked")
-                            .with_metadata(json!({
-                                "goal_id": gid,
-                                "reason": reason,
-                                "kind": board.goals[gid].goal.kind.label(),
-                                "description": board.goals[gid].goal.description,
-                            })),
-                    );
+                    let _ = tx.send(AgentStreamEvent::new("goal_blocked").with_metadata(json!({
+                        "goal_id": gid,
+                        "reason": reason,
+                        "kind": board.goals[gid].goal.kind.label(),
+                        "description": board.goals[gid].goal.description,
+                    })));
                 }
             }
         }
@@ -506,7 +487,12 @@ pub async fn run_multi_agent_with(
 
     let mut summary = String::new();
     summary.push_str("Multi-agent run complete.\n\n");
-    summary.push_str(&format!("Goals: {} satisfied, {} blocked, {} total.\n", satisfied_count, blocked_count, board.total()));
+    summary.push_str(&format!(
+        "Goals: {} satisfied, {} blocked, {} total.\n",
+        satisfied_count,
+        blocked_count,
+        board.total()
+    ));
     if !worker_summaries.is_empty() {
         summary.push_str("\nWorker results:\n");
         for (wid, s) in &worker_summaries {
@@ -616,8 +602,12 @@ async fn default_decompose(
 
     let context = Context {
         messages: vec![
-            ChatMessage::System { content: system.to_string() },
-            ChatMessage::User { content: prompt.to_string() },
+            ChatMessage::System {
+                content: system.to_string(),
+            },
+            ChatMessage::User {
+                content: prompt.to_string(),
+            },
         ],
         tools: Vec::new(),
         session_id: None,
@@ -632,7 +622,9 @@ async fn default_decompose(
     } else if let Some(v) = try_repair_json(raw) {
         v
     } else {
-        return Err(AppError::invalid_input("decomposition output is not valid JSON"));
+        return Err(AppError::invalid_input(
+            "decomposition output is not valid JSON",
+        ));
     };
 
     parse_decomposed_goals(&value)
@@ -735,7 +727,12 @@ fn default_verifier() -> GoalVerifier {
                     bg.target_files.iter().any(|tf| {
                         let s = tf.display().to_string();
                         (lower.contains(&s.to_ascii_lowercase())
-                            || lower.contains(&tf.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default().to_ascii_lowercase()))
+                            || lower.contains(
+                                &tf.file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default()
+                                    .to_ascii_lowercase(),
+                            ))
                             && (lower.contains("done")
                                 || lower.contains("ok")
                                 || lower.contains("success")

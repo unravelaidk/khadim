@@ -1,7 +1,10 @@
 use crate::error::AppError;
 use futures_util::StreamExt;
 
-pub async fn for_each_sse_event<F>(response: reqwest::Response, mut on_event: F) -> Result<(), AppError>
+pub async fn for_each_sse_event<F>(
+    response: reqwest::Response,
+    mut on_event: F,
+) -> Result<(), AppError>
 where
     F: FnMut(String) -> Result<(), AppError>,
 {

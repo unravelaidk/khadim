@@ -14,43 +14,51 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLI_ROOT = SCRIPT_DIR.parent
 REPO_ROOT = CLI_ROOT.parent.parent
 NPM_NAME = "@unravelai/khadim"
 BINARY_NAME = "khadim-cli"
-
-PLATFORM_PACKAGES: dict[str, dict[str, str]] = {
-    "linux-x64": {
-        "alias": "@unravelai/khadim-linux-x64",
-        "target": "x86_64-unknown-linux-gnu",
-        "artifact": "khadim-cli-linux-x86_64",
-        "os": "linux",
-        "cpu": "x64",
-    },
-    "linux-arm64": {
-        "alias": "@unravelai/khadim-linux-arm64",
-        "target": "aarch64-unknown-linux-gnu",
-        "artifact": "khadim-cli-linux-aarch64",
-        "os": "linux",
-        "cpu": "arm64",
-    },
-    "darwin-x64": {
-        "alias": "@unravelai/khadim-darwin-x64",
-        "target": "x86_64-apple-darwin",
-        "artifact": "khadim-cli-macos-x86_64",
-        "os": "darwin",
-        "cpu": "x64",
-    },
-    "darwin-arm64": {
-        "alias": "@unravelai/khadim-darwin-arm64",
-        "target": "aarch64-apple-darwin",
-        "artifact": "khadim-cli-macos-aarch64",
-        "os": "darwin",
-        "cpu": "arm64",
-    },
+PLATFORM_TARGETS_PATH = CLI_ROOT / "platform-targets.json"
+NPM_API_BUILD_DIR = CLI_ROOT / "dist" / "npm-api"
+REQUIRED_PLATFORM_FIELDS = {
+    "alias",
+    "target",
+    "artifact",
+    "artifact_file",
+    "os",
+    "cpu",
+    "binary",
+    "runner",
+    "strip",
+    "cache",
 }
+
+
+def load_platform_packages() -> dict[str, dict[str, Any]]:
+    with open(PLATFORM_TARGETS_PATH, "r", encoding="utf-8") as file:
+        packages = json.load(file)
+    if not isinstance(packages, dict) or not packages:
+        raise RuntimeError(f"Invalid platform target manifest: {PLATFORM_TARGETS_PATH}")
+    for tag, config in packages.items():
+        if not isinstance(config, dict):
+            raise RuntimeError(f"Invalid platform target '{tag}': expected an object")
+        missing = REQUIRED_PLATFORM_FIELDS.difference(config)
+        if missing:
+            raise RuntimeError(
+                f"Invalid platform target '{tag}': missing {', '.join(sorted(missing))}"
+            )
+        if config["os"] == "linux":
+            if config.get("libc") != "glibc" or not config.get("glibc_min"):
+                raise RuntimeError(
+                    f"Invalid Linux platform target '{tag}': libc='glibc' and glibc_min are required"
+                )
+    return packages
+
+
+PLATFORM_PACKAGES = load_platform_packages()
 
 PACKAGE_CHOICES = ("main", "all", *PLATFORM_PACKAGES.keys())
 
@@ -112,22 +120,27 @@ def copy_common_files(staging_dir: Path) -> None:
         shutil.copy2(license_file, staging_dir / "LICENSE")
 
 
+def build_npm_api() -> None:
+    subprocess.run(
+        ["node", str(SCRIPT_DIR / "build_npm_api.mjs")],
+        cwd=CLI_ROOT,
+        check=True,
+    )
+
+
 def stage_main(staging_dir: Path, version: str) -> None:
+    build_npm_api()
     bin_dir = staging_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(CLI_ROOT / "bin" / "khadim.js", bin_dir / "khadim.js")
-    src_src = CLI_ROOT / "src"
-    ts_files = list(src_src.glob("*.ts"))
-    if ts_files:
-        src_dst = staging_dir / "src"
-        src_dst.mkdir(parents=True, exist_ok=True)
-        for f in ts_files:
-            shutil.copy2(f, src_dst / f.name)
+    shutil.copytree(NPM_API_BUILD_DIR, staging_dir / "dist")
+    shutil.copy2(PLATFORM_TARGETS_PATH, staging_dir / PLATFORM_TARGETS_PATH.name)
     copy_common_files(staging_dir)
 
     package_json = load_base_package_json()
     package_json.pop("private", None)
     package_json.pop("scripts", None)
+    package_json.pop("devDependencies", None)
     package_json["name"] = NPM_NAME
     package_json["version"] = version
     package_json["type"] = "module"
@@ -135,7 +148,21 @@ def stage_main(staging_dir: Path, version: str) -> None:
         "khadim": "bin/khadim.js",
         "khadim-cli": "bin/khadim.js",
     }
-    package_json["files"] = ["bin", "src"]
+    package_json["main"] = "./dist/index.js"
+    package_json["types"] = "./dist/index.d.ts"
+    package_json["exports"] = {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js",
+        },
+        "./package.json": "./package.json",
+    }
+    package_json["files"] = [
+        "bin",
+        "dist",
+        PLATFORM_TARGETS_PATH.name,
+    ]
     package_json["optionalDependencies"] = {
         config["alias"]: f"npm:{NPM_NAME}@{platform_version(version, tag)}"
         for tag, config in PLATFORM_PACKAGES.items()
@@ -144,20 +171,22 @@ def stage_main(staging_dir: Path, version: str) -> None:
     write_package_json(staging_dir, package_json)
 
 
-def find_artifact(artifact_dir: Path, artifact_name: str) -> Path:
-    candidates = [
-        artifact_dir / artifact_name,
-        artifact_dir / artifact_name / artifact_name,
-        artifact_dir / f"{artifact_name}.exe",
-        artifact_dir / artifact_name / f"{artifact_name}.exe",
-    ]
+def find_artifact(artifact_dir: Path, artifact_name: str, artifact_file: str) -> Path:
+    candidate_names = tuple(
+        dict.fromkeys((artifact_file, artifact_name, f"{artifact_name}.exe"))
+    )
+    candidates = [artifact_dir / name for name in candidate_names]
+    candidates.extend(artifact_dir / artifact_name / name for name in candidate_names)
     for candidate in candidates:
         if candidate.is_file():
             return candidate
 
-    matches = [path for path in artifact_dir.rglob("*") if path.is_file() and path.name in {artifact_name, f"{artifact_name}.exe"}]
-    if matches:
-        return matches[0]
+    for candidate_name in candidate_names:
+        matches = sorted(
+            path for path in artifact_dir.rglob(candidate_name) if path.is_file()
+        )
+        if matches:
+            return matches[0]
 
     raise RuntimeError(f"Unable to find artifact '{artifact_name}' under {artifact_dir}")
 
@@ -167,8 +196,10 @@ def stage_platform(staging_dir: Path, version: str, platform_tag: str, artifact_
         raise RuntimeError(f"--artifact-dir is required for platform package '{platform_tag}'")
 
     config = PLATFORM_PACKAGES[platform_tag]
-    artifact = find_artifact(artifact_dir.resolve(), config["artifact"])
-    binary_name = f"{BINARY_NAME}.exe" if config["os"] == "win32" else BINARY_NAME
+    artifact = find_artifact(
+        artifact_dir.resolve(), config["artifact"], config["artifact_file"]
+    )
+    binary_name = config["binary"]
     binary_dir = staging_dir / "vendor" / config["target"] / BINARY_NAME
     binary_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(artifact, binary_dir / binary_name)
@@ -187,6 +218,8 @@ def stage_platform(staging_dir: Path, version: str, platform_tag: str, artifact_
         "repository": base_package_json.get("repository"),
         "engines": base_package_json.get("engines", {"node": ">=18"}),
     }
+    if config.get("libc"):
+        package_json["libc"] = [config["libc"]]
     package_json = {key: value for key, value in package_json.items() if value is not None}
     write_package_json(staging_dir, package_json)
 

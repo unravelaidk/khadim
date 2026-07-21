@@ -108,14 +108,14 @@ impl LeaseGuard {
             let other = &c.conflicting_lease.worker_id;
             let file = c.file.display().to_string();
             let range = format!("{}..{}", c.range.start, c.range.end);
-            let _ = tx.send(
-                AgentStreamEvent::new("lease_conflict").with_metadata(serde_json::json!({
+            let _ = tx.send(AgentStreamEvent::new("lease_conflict").with_metadata(
+                serde_json::json!({
                     "worker_id": self.worker_id,
                     "other_worker_id": other,
                     "file": file,
                     "range": range,
-                })),
-            );
+                }),
+            ));
         }
     }
 }
@@ -179,7 +179,10 @@ mod tests {
         let new_src = "fn foo() { 99 }\nfn bar() { 2 }\n";
         std::fs::write(&file, new_src).unwrap();
         let conflicts = guard.check_after_edit(&file);
-        assert!(conflicts.is_empty(), "editing own lease should not conflict");
+        assert!(
+            conflicts.is_empty(),
+            "editing own lease should not conflict"
+        );
     }
 
     #[test]

@@ -1,8 +1,11 @@
+pub mod code_chrome;
 pub mod diff;
+pub mod gutter;
 pub mod helpers;
 pub mod highlight;
 pub mod markdown;
 pub mod paste;
+pub mod sidebar;
 pub mod table;
 pub mod theme;
 
@@ -27,54 +30,71 @@ use crate::ui::helpers::{
     count_wrapped_lines, cursor_to_row_col, hard_wrap_lines, shimmer_spans, truncate_str,
     wrap_text_to_width,
 };
-use crate::ui::highlight::highlight_code_block;
+
 use crate::ui::theme::{
     accent, accent_dim, border_error, border_idle, error, footer_text, md_heading, md_link,
     system_text, text_dim, text_muted, text_primary, thinking, tool_label, tool_text, user_bg,
 };
 
-/// Fast plain-text renderer for the currently-streaming assistant entry.
-/// Avoids expensive markdown parsing on every frame.
+/// Streaming assistant text: soft-wrap with the same thin margin as final
+/// markdown so the handoff when the stream ends is less jarring.
 fn render_streaming_text(text: &str, content_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    let indent = "  ";
-    let max_width = content_width.saturating_sub(2);
-
+    lines.push(Line::from(""));
+    // Match markdown prose margin: 1 col.
+    let max_width = content_width.saturating_sub(1).max(8);
+    let style = Style::default().fg(text_primary());
     for line in text.split('\n') {
         if line.is_empty() {
-            lines.push(Line::from(indent.to_string()));
+            lines.push(Line::from(Span::raw(" ")));
             continue;
         }
-        if line.chars().count() <= max_width {
-            lines.push(Line::from(vec![
-                Span::raw(indent.to_string()),
-                Span::raw(line.to_string()),
-            ]));
-            continue;
-        }
-        // Simple character-wrap for long lines
-        let mut chunk = String::new();
-        let mut col = 0;
-        for ch in line.chars() {
-            if col >= max_width {
-                lines.push(Line::from(vec![
-                    Span::raw(indent.to_string()),
-                    Span::raw(chunk),
-                ]));
-                chunk = String::new();
-                col = 0;
-            }
-            chunk.push(ch);
-            col += 1;
-        }
-        if !chunk.is_empty() {
-            lines.push(Line::from(vec![
-                Span::raw(indent.to_string()),
-                Span::raw(chunk),
-            ]));
+        for row in wrap_text_to_width(line, max_width) {
+            lines.push(Line::from(vec![Span::raw(" "), Span::styled(row, style)]));
         }
     }
     lines
+}
+
+/// True when the transcript has no real conversation yet (only bootstrap
+/// system rows / separators).
+fn is_welcome_state(app: &TuiApp) -> bool {
+    if app.pending || app.has_pending_question() {
+        return false;
+    }
+    app.entries.iter().all(|e| {
+        matches!(
+            e,
+            TranscriptEntry::System { .. } | TranscriptEntry::Separator
+        )
+    })
+}
+
+/// Recent sessions for the ops rail (uses the same cache as welcome).
+fn recent_session_rows(app: &TuiApp, current: Option<&str>) -> Vec<sidebar::SessionRow> {
+    let mut cache = app.recent_sessions_cache.borrow_mut();
+    if cache.is_none() {
+        *cache = Some(
+            crate::services::session_service::list_sessions()
+                .unwrap_or_default()
+                .into_iter()
+                .take(8)
+                .collect(),
+        );
+    }
+    cache
+        .as_ref()
+        .map(|list| {
+            list.iter()
+                .take(6)
+                .map(|s| sidebar::SessionRow {
+                    name: s.name.clone(),
+                    active: current == Some(s.name.as_str()),
+                    age: crate::services::session_service::format_age(s.updated_at_unix),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Render only the visible portion of the transcript (plus a small buffer).
@@ -108,13 +128,14 @@ pub fn render_transcript_viewport(
                 TranscriptEntry::AssistantText { text } => text,
                 _ => "",
             };
-            let lines = render_streaming_text(text, content_width.saturating_sub(2));
+            let lines = render_streaming_text(text, content_width);
             entry_heights.push(lines.len());
             streaming_lines = Some(lines);
         } else if matches!(entry, TranscriptEntry::ToolComplete { running: true, .. }) {
             // Running tool entries shimmer per tick — render fresh every frame
             // and skip the cache so the animation actually animates.
-            let lines = render_transcript_entry(entry, content_width, app.tick_count);
+            let lines =
+                render_transcript_entry(entry, content_width, app.tick_count, app.soft_wrap_code);
             entry_heights.push(lines.len());
             if cache.len() <= index {
                 cache.push(CachedTranscriptEntryRender::default());
@@ -131,7 +152,12 @@ pub fn render_transcript_viewport(
             if cached.width != width || cached.stamp != stamp {
                 cached.width = width;
                 cached.stamp = stamp;
-                cached.lines = render_transcript_entry(entry, content_width, app.tick_count);
+                cached.lines = render_transcript_entry(
+                    entry,
+                    content_width,
+                    app.tick_count,
+                    app.soft_wrap_code,
+                );
             }
             entry_heights.push(cached.lines.len());
         }
@@ -234,6 +260,7 @@ fn render_transcript_entry(
     entry: &TranscriptEntry,
     content_width: usize,
     tick: u64,
+    soft_wrap: bool,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
@@ -243,78 +270,60 @@ fn render_transcript_entry(
             // list-style system output (like /help) doesn't repeat " ℹ " on
             // every line.
             let is_list_row = text.is_empty() || text.starts_with(' ');
-            if is_list_row {
-                lines.push(Line::from(Span::styled(
-                    text.clone(),
-                    Style::default()
-                        .fg(system_text())
-                        .add_modifier(Modifier::DIM),
-                )));
+            let style = if is_list_row {
+                Style::default()
+                    .fg(system_text())
+                    .add_modifier(Modifier::DIM)
             } else {
-                // Header / inline notice.
-                lines.push(Line::from(Span::styled(
-                    text.clone(),
-                    Style::default()
-                        .fg(system_text())
-                        .add_modifier(Modifier::BOLD),
-                )));
+                Style::default()
+                    .fg(system_text())
+                    .add_modifier(Modifier::BOLD)
+            };
+            let wrap_w = content_width
+                .saturating_sub(if is_list_row { 0 } else { 0 })
+                .max(8);
+            for line in wrap_text_to_width(text, wrap_w) {
+                lines.push(Line::from(Span::styled(line, style)));
             }
         }
         TranscriptEntry::User { text } => {
             lines.push(Line::from(""));
-            for (i, line) in text.lines().enumerate() {
-                if i == 0 {
-                    lines.push(Line::from(vec![
+            let prefix_w = 3; // " ▸ "
+            let wrap_w = content_width.saturating_sub(prefix_w).max(8);
+            let user_style = Style::default()
+                .fg(text_primary())
+                .bg(user_bg())
+                .add_modifier(Modifier::BOLD);
+            let mut first = true;
+            for para in text.split('\n') {
+                let wrapped = if para.is_empty() {
+                    vec![String::new()]
+                } else {
+                    wrap_text_to_width(para, wrap_w)
+                };
+                for line in wrapped {
+                    let gutter = if first {
+                        first = false;
                         Span::styled(
                             " ▸ ",
                             Style::default().fg(accent()).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            line.to_string(),
-                            Style::default()
-                                .fg(text_primary())
-                                .bg(user_bg())
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                    ]));
-                } else {
-                    lines.push(Line::from(vec![
-                        Span::styled(
-                            "   ",
-                            Style::default().fg(accent()).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            line.to_string(),
-                            Style::default()
-                                .fg(text_primary())
-                                .bg(user_bg())
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                    ]));
+                        )
+                    } else {
+                        Span::styled("   ", Style::default().fg(accent()))
+                    };
+                    let body = if line.is_empty() {
+                        " ".to_string()
+                    } else {
+                        line
+                    };
+                    lines.push(Line::from(vec![gutter, Span::styled(body, user_style)]));
                 }
-            }
-            if text.ends_with('\n') {
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        "   ",
-                        Style::default().fg(accent()).add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        " ",
-                        Style::default()
-                            .fg(text_primary())
-                            .bg(user_bg())
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]));
             }
         }
         TranscriptEntry::AssistantText { text } => {
             lines.push(Line::from(""));
-            lines.extend(markdown::render_markdown(
-                text,
-                content_width.saturating_sub(2),
-            ));
+            // Full width — markdown applies its own thin margin; code is flush.
+            lines.extend(markdown::render_markdown(text, content_width));
         }
         TranscriptEntry::Thinking { text } => {
             let dim_italic = Style::default()
@@ -349,183 +358,22 @@ fn render_transcript_entry(
             diff_meta,
             running,
             step_id: _,
+            breadcrumb,
+            meta_chips,
         } => {
-            let accent_col = tool_accent(tool, *is_error);
-            // Hollow pip while running, solid pip when done.
-            let (pip, pip_col) = if *running {
-                ("◌", text_muted())
-            } else if *is_error {
-                ("●", error())
-            } else {
-                ("●", tool_label())
-            };
-            let glyph = tool_glyph(tool);
-            let tool_display = friendly_tool_display(tool);
-
-            // Header: `␣␣● ▸ read  src/main.rs`
-            //          ^   ^  ^      ^
-            //          pip glyph name subtitle (optional)
-            // While running, the tool name shimmers; everything else stays solid.
-            let mut header_spans: Vec<Span<'static>> = vec![
-                Span::styled("  ", Style::default()),
-                Span::styled(
-                    format!("{pip} "),
-                    Style::default().fg(pip_col).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!("{glyph} "),
-                    Style::default().fg(accent_col).add_modifier(Modifier::BOLD),
-                ),
-            ];
-            if *running {
-                header_spans.extend(shimmer_spans(&tool_display, tick, accent_col));
-            } else {
-                header_spans.push(Span::styled(
-                    tool_display.clone(),
-                    Style::default().fg(accent_col).add_modifier(Modifier::BOLD),
-                ));
-            }
-
-            if *running {
-                // While running we show: header + optional subtitle (the
-                // current content acts as a live status line). No body, no
-                // collapse hint — the entry will settle into its full form
-                // on completion.
-                let subtitle = content.trim();
-                if !subtitle.is_empty() {
-                    header_spans.push(Span::styled("  ", Style::default()));
-                    header_spans.push(Span::styled(
-                        truncate_str(subtitle, 60).to_string(),
-                        Style::default().fg(tool_text()),
-                    ));
-                }
-                lines.push(Line::from(header_spans));
-                lines.push(Line::from(""));
-            } else if *collapsed {
-                // Collapsed: show subtitle inline, then a dim hint for line count + key.
-                let subtitle = tool_subtitle(tool, content).unwrap_or_else(|| {
-                    truncate_str(content.lines().next().unwrap_or(""), 60).to_string()
-                });
-                let line_count = content.lines().count();
-                if !subtitle.is_empty() {
-                    header_spans.push(Span::styled("  ", Style::default()));
-                    header_spans.push(Span::styled(subtitle, Style::default().fg(tool_text())));
-                }
-                if line_count > 1 {
-                    header_spans.push(Span::styled(
-                        format!("  [+{} lines]", line_count.saturating_sub(1)),
-                        Style::default()
-                            .fg(text_muted())
-                            .add_modifier(Modifier::ITALIC),
-                    ));
-                }
-                header_spans.push(Span::styled(
-                    "  ctrl+o to expand",
-                    Style::default()
-                        .fg(text_muted())
-                        .add_modifier(Modifier::DIM),
-                ));
-                lines.push(Line::from(header_spans));
-                lines.push(Line::from(""));
-            } else {
-                // Expanded header: optionally append subtitle in muted color.
-                if let Some(sub) = tool_subtitle(tool, content) {
-                    header_spans.push(Span::styled("  ", Style::default()));
-                    header_spans.push(Span::styled(sub, Style::default().fg(tool_text())));
-                }
-                lines.push(Line::from(header_spans));
-
-                let max_lines = 20;
-                let total_lines = content.lines().count();
-
-                // Prefix every body line with a faint left bar for visual grouping.
-                let bar_prefix = || -> Vec<Span<'static>> {
-                    vec![
-                        Span::styled("  ", Style::default()),
-                        Span::styled(
-                            "│ ",
-                            Style::default()
-                                .fg(text_muted())
-                                .add_modifier(Modifier::DIM),
-                        ),
-                    ]
-                };
-
-                if let Some(meta) = diff_meta {
-                    let old_lines: Vec<&str> = meta.before.lines().collect();
-                    let new_lines: Vec<&str> = meta.after.lines().collect();
-                    let diff_lines =
-                        crate::ui::diff::render_simple_diff(&old_lines, &new_lines, content_width);
-                    let diff_total = diff_lines.len();
-                    for (i, line) in diff_lines.into_iter().enumerate() {
-                        if i >= max_lines {
-                            let mut spans = bar_prefix();
-                            spans.push(Span::styled(
-                                format!(
-                                    "⋯ {} more  ctrl+o to collapse",
-                                    diff_total.saturating_sub(max_lines)
-                                ),
-                                Style::default()
-                                    .fg(text_muted())
-                                    .add_modifier(Modifier::ITALIC),
-                            ));
-                            lines.push(Line::from(spans));
-                            break;
-                        }
-                        // Splice the bar prefix in front of the diff line's spans.
-                        let mut spans = bar_prefix();
-                        spans.extend(line.spans);
-                        lines.push(Line::from(spans));
-                    }
-                } else if tool == "read" && !content.is_empty() {
-                    let rendered = render_read_content(content, content_width);
-                    let rendered_total = rendered.len();
-                    for (i, line) in rendered.into_iter().enumerate() {
-                        if i >= max_lines {
-                            let mut spans = bar_prefix();
-                            spans.push(Span::styled(
-                                format!(
-                                    "⋯ {} more  ctrl+o to collapse",
-                                    rendered_total.saturating_sub(max_lines)
-                                ),
-                                Style::default()
-                                    .fg(text_muted())
-                                    .add_modifier(Modifier::ITALIC),
-                            ));
-                            lines.push(Line::from(spans));
-                            break;
-                        }
-                        let mut spans = bar_prefix();
-                        spans.extend(line.spans);
-                        lines.push(Line::from(spans));
-                    }
-                } else {
-                    let body_color = if *is_error { error() } else { tool_text() };
-                    for (i, line) in content.lines().enumerate() {
-                        if i >= max_lines {
-                            let mut spans = bar_prefix();
-                            spans.push(Span::styled(
-                                format!(
-                                    "⋯ {} more  ctrl+o to collapse",
-                                    total_lines.saturating_sub(max_lines)
-                                ),
-                                Style::default()
-                                    .fg(text_muted())
-                                    .add_modifier(Modifier::ITALIC),
-                            ));
-                            lines.push(Line::from(spans));
-                            break;
-                        }
-                        let mut spans = bar_prefix();
-                        spans.push(Span::styled(
-                            truncate_str(line, content_width.saturating_sub(4)).to_string(),
-                            Style::default().fg(body_color),
-                        ));
-                        lines.push(Line::from(spans));
-                    }
-                }
-                lines.push(Line::from(""));
-            }
+            lines.extend(render_tool_call(
+                tool,
+                content,
+                *is_error,
+                *collapsed,
+                diff_meta.as_ref(),
+                *running,
+                content_width,
+                tick,
+                breadcrumb.as_deref(),
+                meta_chips.as_deref(),
+                soft_wrap,
+            ));
         }
         TranscriptEntry::Error { text } => {
             lines.push(Line::from(vec![
@@ -557,6 +405,267 @@ fn render_transcript_entry(
     lines
 }
 
+/// Industrial tool-call card: pip · name · breadcrumb · chips.
+fn render_tool_call(
+    tool: &str,
+    content: &str,
+    is_error: bool,
+    collapsed: bool,
+    diff_meta: Option<&crate::domain::transcript::DiffMeta>,
+    running: bool,
+    content_width: usize,
+    tick: u64,
+    breadcrumb_meta: Option<&str>,
+    meta_chips: Option<&str>,
+    soft_wrap: bool,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let accent_col = tool_accent(tool, is_error);
+    let (pip, pip_col) = if running {
+        ("◉", accent_col)
+    } else if is_error {
+        ("✗", error())
+    } else {
+        ("●", tool_label())
+    };
+    let name = friendly_tool_display(tool);
+
+    let mut header: Vec<Span<'static>> = vec![Span::styled(
+        format!("{pip} "),
+        Style::default().fg(pip_col).add_modifier(Modifier::BOLD),
+    )];
+    // Only the *running* tool shimmers; completed rows stay solid.
+    if running {
+        header.extend(shimmer_spans(&name, tick, accent_col));
+    } else {
+        header.push(Span::styled(
+            name.clone(),
+            Style::default().fg(accent_col).add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    let breadcrumb = breadcrumb_meta
+        .map(|s| s.to_string())
+        .or_else(|| tool_breadcrumb(tool, content, diff_meta));
+    if let Some(ref bc) = breadcrumb {
+        header.push(Span::raw("  "));
+        header.push(Span::styled(
+            truncate_str(bc, content_width.saturating_sub(name.len() + 18)).to_string(),
+            Style::default().fg(tool_text()).add_modifier(Modifier::DIM),
+        ));
+    }
+
+    let mut chips = tool_chips(tool, content, diff_meta, is_error, running);
+    if let Some(extra) = meta_chips {
+        if !extra.is_empty() {
+            if chips.is_empty() {
+                chips = format!("· {extra}");
+            } else {
+                chips = format!("{chips} · {extra}");
+            }
+        }
+    }
+    if !chips.is_empty() {
+        header.push(Span::styled(
+            format!("  {chips}"),
+            Style::default().fg(text_muted()),
+        ));
+    }
+
+    lines.push(Line::from(header));
+    if running || collapsed {
+        return lines;
+    }
+
+    let max_lines = tool_body_max_lines(tool);
+    let rail = || {
+        Span::styled(
+            "│",
+            Style::default()
+                .fg(if is_error { error() } else { accent_col })
+                .add_modifier(Modifier::DIM),
+        )
+    };
+
+    if let Some(meta) = diff_meta {
+        let old_lines: Vec<&str> = meta.before.lines().collect();
+        let new_lines: Vec<&str> = meta.after.lines().collect();
+        let diff_lines = crate::ui::diff::render_simple_diff(
+            &old_lines,
+            &new_lines,
+            content_width.saturating_sub(1),
+            Some(meta.path.as_str()),
+        );
+        let total = diff_lines.len();
+        for (i, line) in diff_lines.into_iter().enumerate() {
+            if i >= max_lines {
+                lines.push(Line::from(vec![
+                    rail(),
+                    Span::styled(
+                        format!(" ⋯ +{}  ctrl+o", total.saturating_sub(max_lines)),
+                        Style::default()
+                            .fg(text_muted())
+                            .add_modifier(Modifier::DIM),
+                    ),
+                ]));
+                break;
+            }
+            let mut spans = vec![rail()];
+            spans.extend(line.spans);
+            lines.push(Line::from(spans));
+        }
+    } else if tool == "read" && !content.is_empty() {
+        let rendered = render_read_content(content, content_width.saturating_sub(1), soft_wrap);
+        let total = rendered.len();
+        for (i, line) in rendered.into_iter().enumerate() {
+            if i >= max_lines {
+                lines.push(Line::from(vec![
+                    rail(),
+                    Span::styled(
+                        format!(" ⋯ +{}  ctrl+o", total.saturating_sub(max_lines)),
+                        Style::default()
+                            .fg(text_muted())
+                            .add_modifier(Modifier::DIM),
+                    ),
+                ]));
+                break;
+            }
+            let mut spans = vec![rail()];
+            spans.extend(line.spans);
+            lines.push(Line::from(spans));
+        }
+    } else if !content.is_empty() {
+        let body_color = if is_error { error() } else { tool_text() };
+        let inner_w = content_width.saturating_sub(2).max(8);
+        let mut visual = 0usize;
+        let total = content.lines().count();
+        for line in content.lines() {
+            let rows = if soft_wrap {
+                wrap_text_to_width(line, inner_w)
+            } else {
+                vec![truncate_str(line, inner_w).to_string()]
+            };
+            for row in rows {
+                if visual >= max_lines {
+                    lines.push(Line::from(vec![
+                        rail(),
+                        Span::styled(
+                            format!(" ⋯ +{}  ctrl+o", total.saturating_sub(visual)),
+                            Style::default()
+                                .fg(text_muted())
+                                .add_modifier(Modifier::DIM),
+                        ),
+                    ]));
+                    return lines;
+                }
+                lines.push(Line::from(vec![
+                    rail(),
+                    Span::raw(" "),
+                    Span::styled(row, Style::default().fg(body_color)),
+                ]));
+                visual += 1;
+            }
+        }
+    }
+
+    lines
+}
+
+fn tool_body_max_lines(tool: &str) -> usize {
+    match tool {
+        "read" => 40,
+        "bash" => 16,
+        "edit" | "write" => 32,
+        "grep" | "glob" | "ls" => 20,
+        _ => 24,
+    }
+}
+
+fn tool_breadcrumb(
+    tool: &str,
+    content: &str,
+    diff_meta: Option<&crate::domain::transcript::DiffMeta>,
+) -> Option<String> {
+    if let Some(meta) = diff_meta {
+        return Some(meta.path.clone());
+    }
+    match tool {
+        "read" => {
+            // Prefer a path-like first line if present (not "  1: code").
+            content.lines().find_map(|l| {
+                let t = l.trim();
+                if t.is_empty() || t.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                    None
+                } else if t.contains('/') || t.ends_with(".rs") || t.ends_with(".ts") {
+                    Some(t.to_string())
+                } else {
+                    None
+                }
+            })
+        }
+        "bash" => content
+            .lines()
+            .next()
+            .map(|l| truncate_str(l.trim(), 48).to_string())
+            .filter(|s| !s.is_empty()),
+        "grep" | "glob" | "ls" | "web_search" => content
+            .lines()
+            .next()
+            .map(|l| truncate_str(l.trim(), 48).to_string())
+            .filter(|s| !s.is_empty()),
+        "delegate_to_agent" => content
+            .lines()
+            .next()
+            .map(|l| truncate_str(l.trim(), 40).to_string())
+            .filter(|s| !s.is_empty()),
+        _ => None,
+    }
+}
+
+fn tool_chips(
+    tool: &str,
+    content: &str,
+    diff_meta: Option<&crate::domain::transcript::DiffMeta>,
+    is_error: bool,
+    running: bool,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if running {
+        parts.push("…".into());
+    }
+    if is_error {
+        parts.push("err".into());
+    }
+    if let Some(meta) = diff_meta {
+        let s = crate::ui::diff::DiffStats::from_texts(&meta.before, &meta.after);
+        let chip = s.chip();
+        if !chip.is_empty() {
+            parts.push(chip);
+        }
+    } else {
+        let n = content.lines().filter(|l| !l.is_empty()).count();
+        if n > 1 {
+            parts.push(format!("{n}↕"));
+        }
+    }
+    // bash exit-ish: last line "exit N" if present
+    if tool == "bash" {
+        if let Some(last) = content.lines().rev().find(|l| !l.trim().is_empty()) {
+            let t = last.trim();
+            if let Some(rest) = t.strip_prefix("exit ") {
+                if rest.chars().all(|c| c.is_ascii_digit()) {
+                    parts.push(format!("${rest}"));
+                }
+            }
+        }
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("· {}", parts.join(" · "))
+    }
+}
+
 fn friendly_tool_display(tool: &str) -> String {
     match tool {
         "model" => "thinking".to_string(),
@@ -574,25 +683,6 @@ fn friendly_tool_display(tool: &str) -> String {
     }
 }
 
-/// Returns a unique single-char glyph for each known tool. Falls back to a
-/// generic dot for unknown tools so headers always line up visually.
-fn tool_glyph(tool: &str) -> &'static str {
-    match tool {
-        "read" => "▸",
-        "write" => "✎",
-        "edit" => "✎",
-        "bash" => "$",
-        "grep" => "⌕",
-        "glob" => "✱",
-        "ls" => "⌥",
-        "web_search" => "⌘",
-        "delegate_to_agent" => "⚑",
-        "question" => "?",
-        "model" => "✦",
-        _ => "•",
-    }
-}
-
 /// Per-tool accent color. Each accent is sourced from existing theme tokens so
 /// every theme automatically stays consistent — no new theme fields needed.
 fn tool_accent(tool: &str, is_error: bool) -> ratatui::style::Color {
@@ -607,26 +697,6 @@ fn tool_accent(tool: &str, is_error: bool) -> ratatui::style::Color {
         "delegate_to_agent" => md_heading(),
         "question" => system_text(),
         _ => tool_label(),
-    }
-}
-
-/// Extract a short, scannable subtitle for the tool header (path / command /
-/// query / etc.). Returns None if no meaningful subtitle can be derived.
-fn tool_subtitle(tool: &str, content: &str) -> Option<String> {
-    let first_line = content.lines().next()?.trim();
-    if first_line.is_empty() {
-        return None;
-    }
-    match tool {
-        // For read, the body is "  1: ...". Try to find a path on the first
-        // non-numbered line, otherwise no subtitle (the body itself is enough).
-        "read" => None,
-        // Bash content is the command output; we can't reliably recover the
-        // command, so use the first non-empty line as a hint.
-        "bash" => Some(truncate_str(first_line, 60).to_string()),
-        // Grep/glob/ls/web_search/agent: first line usually carries the
-        // matched path/query/result count.
-        _ => Some(truncate_str(first_line, 60).to_string()),
     }
 }
 
@@ -665,82 +735,91 @@ fn detect_lang_from_content(content: &str) -> Option<&str> {
     None
 }
 
-/// Render a `read` tool's file content with syntax highlighting and styled line numbers.
-/// Returned lines do NOT include any outer indent — callers prefix the body bar.
-fn render_read_content(content: &str, content_width: usize) -> Vec<Line<'static>> {
+/// Render a `read` tool's file content with syntax highlighting and Zed-style
+/// line numbers. Returned lines do NOT include outer indent — callers prefix
+/// the body bar (`│`).
+fn render_read_content(content: &str, content_width: usize, soft_wrap: bool) -> Vec<Line<'static>> {
+    use crate::ui::gutter::gutter_metrics;
+    let _ = soft_wrap; // reserved: hard-truncate mode for very wide lines
+
     let mut lines = Vec::new();
-    // Caller adds 4 cols of prefix ("  │ "); reserve them plus 5-col gutter.
-    let max_width = content_width.saturating_sub(9);
 
-    // Try to detect language from content.
-    let lang = detect_lang_from_content(content);
-    let highlighted = lang.and_then(|l| highlight_code_block(l, content));
+    // Strip tool "N: " prefixes; we re-render numbers ourselves.
+    let parsed: Vec<(Option<usize>, &str)> = content
+        .lines()
+        .map(|raw| {
+            if let Some(pos) = raw.find(": ") {
+                let num_part = &raw[..pos];
+                if let Ok(n) = num_part.parse::<usize>() {
+                    return (Some(n), &raw[pos + 2..]);
+                }
+            }
+            (None, raw)
+        })
+        .collect();
 
-    // Build a map: line index -> Vec<Span> for highlighted content.
+    let line_count = parsed.len().max(1);
+    // Available width for code+gutter after the tool body rail ("│" = 1).
+    let avail = content_width.saturating_sub(1);
+    let metrics = gutter_metrics(line_count, avail, 2);
+    let max_width = avail.saturating_sub(metrics.total()).max(8);
+
+    let lang = detect_lang_from_content(content).unwrap_or("");
+    let body_only: String = parsed
+        .iter()
+        .map(|(_, b)| *b)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let highlighted = crate::ui::highlight::highlight_code_block_auto(lang, &body_only);
     let highlighted_lines: Option<Vec<Vec<Span<'static>>>> =
         highlighted.map(|hl| hl.into_iter().map(|(_no, spans)| spans).collect());
 
-    for (i, raw) in content.lines().enumerate() {
-        // Parse "123: content" line-number prefix from read tool output.
-        let (num_str, body) = if let Some(pos) = raw.find(": ") {
-            let num_part = &raw[..pos];
-            if num_part.chars().all(|c| c.is_ascii_digit()) {
-                (Some(num_part), &raw[pos + 2..])
-            } else {
-                (None, raw)
-            }
-        } else {
-            (None, raw)
-        };
-
+    for (i, (num, body)) in parsed.into_iter().enumerate() {
         let mut spans: Vec<Span<'static>> = Vec::new();
 
-        if let Some(num) = num_str {
-            // Right-align line numbers in a 5-char gutter.
-            let gutter = format!("{num:>4} ");
-            spans.push(Span::styled(
-                gutter,
-                Style::default()
-                    .fg(text_muted())
-                    .add_modifier(Modifier::DIM),
-            ));
+        if metrics.digit_cols > 0 {
+            let n = num.unwrap_or(i + 1);
+            let num_style = if i == 0 {
+                crate::ui::code_chrome::line_number_active_style()
+            } else {
+                crate::ui::code_chrome::line_number_style()
+            };
+            spans.push(Span::styled(metrics.format(n), num_style));
+        }
 
-            if let Some(ref hl) = highlighted_lines {
-                if let Some(line_spans) = hl.get(i) {
-                    // Truncate spans to fit max_width while preserving styles.
-                    let mut col = 0;
-                    for span in line_spans {
-                        let text = span.content.to_string();
-                        let text_width = text.chars().count();
-                        if col + text_width > max_width {
-                            let take = max_width.saturating_sub(col);
-                            let trimmed: String = text.chars().take(take).collect();
-                            if !trimmed.is_empty() {
-                                spans.push(Span::styled(trimmed, span.style));
-                            }
-                            break;
+        let mut body_spans: Vec<Span<'static>> = Vec::new();
+        if let Some(ref hl) = highlighted_lines {
+            if let Some(line_spans) = hl.get(i) {
+                let mut col = 0;
+                for span in line_spans {
+                    let text = span.content.to_string();
+                    let text_width = text.chars().count();
+                    if col + text_width > max_width {
+                        let take = max_width.saturating_sub(col);
+                        let trimmed: String = text.chars().take(take).collect();
+                        if !trimmed.is_empty() {
+                            body_spans.push(Span::styled(trimmed, span.style));
                         }
-                        spans.push(span.clone());
-                        col += text_width;
+                        break;
                     }
-                } else {
-                    spans.push(Span::styled(
-                        truncate_str(body, max_width).to_string(),
-                        Style::default().fg(tool_text()),
-                    ));
+                    body_spans.push(span.clone());
+                    col += text_width;
                 }
             } else {
-                spans.push(Span::styled(
+                body_spans.push(Span::styled(
                     truncate_str(body, max_width).to_string(),
                     Style::default().fg(tool_text()),
                 ));
             }
         } else {
-            spans.push(Span::styled(
-                truncate_str(raw, max_width + 5).to_string(),
+            body_spans.push(Span::styled(
+                truncate_str(body, max_width).to_string(),
                 Style::default().fg(tool_text()),
             ));
         }
+        // Zed-style indent guides on leading whitespace.
+        body_spans = crate::ui::code_chrome::apply_indent_guides_to_spans(body_spans);
+        spans.extend(body_spans);
         lines.push(Line::from(spans));
     }
     lines
@@ -766,13 +845,12 @@ const WELCOME_LOGO: &[&str] = &[
     "░▀░▀░▀░▀░▀░▀░▀▀░░▀▀▀░▀░▀",
 ];
 
-/// Top→bottom gradient picker for the wordmark. Mirrors the splash so
-/// the two screens share a visual language.
-const fn welcome_logo_color(row: usize) -> Color {
+/// Top→bottom tint for the wordmark — theme-honest (no hardcoded neon index).
+fn welcome_logo_color(row: usize) -> Color {
     match row {
-        0 => Color::Indexed(87), // bright cyan
-        1 => Color::Indexed(81), // accent
-        _ => Color::Indexed(75), // mid
+        0 => accent(),
+        1 => accent_dim(),
+        _ => system_text(),
     }
 }
 
@@ -1025,7 +1103,10 @@ pub fn render_welcome(
         ),
         ("tip", "/sessions resumes a saved conversation"),
         ("tip", "drag a file path into the prompt to attach it"),
-        ("tip", "shift-tab cycles modes · /multi-agent for multi-agent"),
+        (
+            "tip",
+            "shift-tab cycles modes · /multi-agent for multi-agent",
+        ),
     ];
     let tip_idx = ((app.tick_count / 100) as usize) % tips.len();
     let (tip_label, tip_body) = tips[tip_idx];
@@ -1119,7 +1200,11 @@ pub fn render_footer(
     } else if mode == "auto" {
         "auto"
     } else if mode == "multi" {
-        "multi-agent"
+        if app.sidebar_hidden {
+            "multi·ops-off"
+        } else {
+            "multi-agent"
+        }
     } else {
         mode.as_str()
     };
@@ -2050,9 +2135,24 @@ pub fn render(
         ])
         .split(area);
 
-    let transcript_area = chunks[0];
+    let main_area = chunks[0];
     let composer_area = chunks[1];
     let footer_area = chunks[2];
+
+    // Horizontal split: transcript + optional multi-agent ops rail.
+    // Show whenever multi mode is on (not only during a run) so sessions
+    // stay visible as a control strip.
+    let show_sidebar = app.multi_agent_enabled() && !app.sidebar_hidden;
+    let rail_w = sidebar::sidebar_width(area.width, show_sidebar);
+    let (transcript_area, sidebar_area) = if rail_w > 0 {
+        let h = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(20), Constraint::Length(rail_w)])
+            .split(main_area);
+        (h[0], Some(h[1]))
+    } else {
+        (main_area, None)
+    };
 
     // Split composer into separator rule and text area.
     let separator_area = Rect {
@@ -2083,10 +2183,9 @@ pub fn render(
     let transcript_content_width = transcript_area.width.saturating_sub(1);
     let visible_height = transcript_area.height as usize;
 
-    // Empty-state: render the welcome screen instead of an empty paragraph
-    // so a fresh launch isn't a void. The composer stays where it is, so
-    // typing the first message naturally replaces this view.
-    let show_welcome = app.entries.is_empty() && !app.pending && !app.has_pending_question();
+    // Empty-state: welcome when the transcript has only bootstrap system
+    // noise (no user/assistant/tool turns yet).
+    let show_welcome = is_welcome_state(app);
 
     if show_welcome {
         app.content_lines.set(0);
@@ -2133,6 +2232,39 @@ pub fn render(
             };
             frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
         }
+    }
+
+    // ── Multi-agent ops rail ──────────────────────────────────────
+    if let Some(side) = sidebar_area {
+        let sessions = recent_session_rows(app, session_name);
+        sidebar::render_sidebar(
+            frame,
+            side,
+            &app.multi_ops,
+            &sessions,
+            app.worker_filter.as_deref(),
+        );
+    }
+
+    // Toast (copy / wrap / filter feedback)
+    if let Some(ref msg) = app.toast {
+        let tw = (msg.len() as u16 + 4).min(area.width.saturating_sub(2));
+        let toast_area = Rect {
+            x: area.x + area.width.saturating_sub(tw + 1),
+            y: area.y,
+            width: tw,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                format!(" {msg} "),
+                Style::default()
+                    .fg(accent())
+                    .bg(user_bg())
+                    .add_modifier(Modifier::BOLD),
+            ))),
+            toast_area,
+        );
     }
 
     // ── Composer separator (dim horizontal rule) ─────────────────

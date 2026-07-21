@@ -1,47 +1,42 @@
-import { LuMenu, LuSquarePen } from "react-icons/lu";
+import { LuBot, LuFileText, LuMenu, LuMessageCircle, LuSearch, LuSettings2, LuSquarePen } from "react-icons/lu";
 import KhadimLogo from "../../assets/Khadim-logo.svg";
 
 interface ChatHeaderProps {
   onOpenSidebar: () => void;
   onNewChat?: () => void;
+  currentView: "chat" | "workspace" | "settings";
+  onNavigate: (view: "chat" | "workspace" | "settings") => void;
+  onOpenCommandPalette: () => void;
 }
 
-export function ChatHeader({ onOpenSidebar, onNewChat }: ChatHeaderProps) {
+export function ChatHeader({ onOpenSidebar, onNewChat, currentView, onNavigate, onOpenCommandPalette }: ChatHeaderProps) {
   return (
-    <header className="lg:hidden relative z-30 flex items-center justify-between gap-3 px-4 pt-4 pb-2">
-      {/* Left: Menu trigger */}
+    <header className="electron-header">
       <button
         onClick={onOpenSidebar}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl glass-panel text-[var(--text-primary)] transition-all duration-200 hover:bg-[var(--glass-bg-strong)]"
+        className="electron-header-menu"
         aria-label="Open menu"
       >
-        <LuMenu className="w-[18px] h-[18px]" />
+        <LuMenu size={18} />
       </button>
-
-      {/* Center: Logo + wordmark */}
-      <div className="flex items-center gap-2 select-none">
-        <div className="w-7 h-7 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full">
+      <button className="electron-header-logo" onClick={() => onNavigate("chat")} aria-label="Khadim home">
+        <span>
           <KhadimLogo />
-        </div>
-        <span className="text-base font-bold tracking-tight text-[var(--text-primary)]">
-          Khadim
         </span>
+      </button>
+      <nav className="electron-mode-nav" aria-label="Work modes">
+        <button className={currentView === "chat" ? "active" : ""} onClick={() => onNavigate("chat")}><LuMessageCircle size={16} /><span>Chat</span></button>
+        <button className={currentView === "workspace" ? "active" : ""} onClick={() => onNavigate("workspace")}><LuBot size={16} /><span>Projects</span></button>
+        <button onClick={() => onNavigate("workspace")}><LuFileText size={16} /><span>Studio</span></button>
+      </nav>
+      <button className="electron-command-trigger" onClick={onOpenCommandPalette}>
+        <LuSearch size={15} /><span>Search chats, projects, and commands</span><kbd>Ctrl K</kbd>
+      </button>
+      <div className="electron-header-actions">
+        {onNewChat && <button onClick={onNewChat} aria-label="New chat" title="New chat"><LuSquarePen size={17} /></button>}
+        <button className={currentView === "settings" ? "active" : ""} onClick={() => onNavigate("settings")} aria-label="Settings"><LuSettings2 size={18} /></button>
+        <span className="electron-account-avatar">K</span>
       </div>
-
-      {/* Right: New chat */}
-      {onNewChat ? (
-        <button
-          onClick={onNewChat}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all duration-200 hover:bg-[#1c2214] hover:shadow-[var(--shadow-glass-md)]"
-          aria-label="New chat"
-          title="New chat"
-        >
-          <LuSquarePen className="w-4 h-4" />
-        </button>
-      ) : (
-        /* Spacer to keep logo centered */
-        <div className="w-9 shrink-0" />
-      )}
     </header>
   );
 }

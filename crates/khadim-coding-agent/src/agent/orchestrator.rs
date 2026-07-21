@@ -1,20 +1,24 @@
 use crate::agent::goal_tracker::GoalTracker;
 use crate::agent::mode_planner;
-use crate::agent::modes::{build_mode, chat_mode, explore_mode, plan_mode, sub_general_mode, sub_explore_mode, sub_review_mode};
+use crate::agent::modes::{
+    build_mode, chat_mode, explore_mode, plan_mode, sub_explore_mode, sub_general_mode,
+    sub_review_mode,
+};
 use crate::agent::session::KhadimSession;
 use crate::agent::types::{AgentId, AgentModeDefinition};
-use crate::coordinator::search::{self, ProposerFn, Scorer, SearchMode, SelectedAction};
-use khadim_ai_core::error::AppError;
+use crate::coordinator::search::{self, ProposerFn, Scorer, SearchMode};
 use crate::events::AgentStreamEvent;
 use crate::helpers::try_repair_json;
+use crate::runtime::AgentRuntime;
+use khadim_ai_core::error::AppError;
 use khadim_ai_core::types::{
     AssistantStreamEvent, ChatMessage, Context, ModelSelection, ToolCall, ToolFunction, ToolMessage,
 };
-use khadim_ai_core::ModelClient;
-use crate::runtime::AgentRuntime;
+use khadim_ai_core::{ModelClient, ModelExecutor};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 fn collect_quoted_segments(text: &str, delimiter: char) -> Vec<String> {
     let mut values = Vec::new();
@@ -77,24 +81,39 @@ pub(crate) fn extract_contract_summary(prompt: &str) -> Option<String> {
         let lower = line.to_ascii_lowercase();
         if lower.contains("store it in ") || lower.contains("save the results in") {
             for token in line.split_whitespace() {
-                let cleaned = token.trim_matches(|c: char| matches!(c, '`' | '"' | '\'' | ',' | '.' | ':' | ';' | ')' | '('));
+                let cleaned = token.trim_matches(|c: char| {
+                    matches!(c, '`' | '"' | '\'' | ',' | '.' | ':' | ';' | ')' | '(')
+                });
                 if cleaned.starts_with('/') || cleaned.starts_with("./") {
                     push_unique(&mut outputs, cleaned.to_string());
                 }
             }
         }
-        if lower.contains("do not edit") || lower.contains("don't edit") || lower.contains("only edits you may make") {
+        if lower.contains("do not edit")
+            || lower.contains("don't edit")
+            || lower.contains("only edits you may make")
+        {
             push_unique(&mut forbidden_edits, line.to_string());
         }
-        if lower.contains("you can only use") || lower.contains("you have access to") || lower.contains("dependencies") {
+        if lower.contains("you can only use")
+            || lower.contains("you have access to")
+            || lower.contains("dependencies")
+        {
             push_unique(&mut dependencies, line.to_string());
         }
-        if lower.starts_with("usage:") || lower.contains("we will test") || lower.contains("sanity check") {
+        if lower.starts_with("usage:")
+            || lower.contains("we will test")
+            || lower.contains("sanity check")
+        {
             push_unique(&mut commands, line.to_string());
         }
     }
 
-    if outputs.is_empty() && commands.is_empty() && forbidden_edits.is_empty() && dependencies.is_empty() {
+    if outputs.is_empty()
+        && commands.is_empty()
+        && forbidden_edits.is_empty()
+        && dependencies.is_empty()
+    {
         return None;
     }
 
@@ -153,7 +172,11 @@ pub fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
             ChatMessage::System { .. }
             | ChatMessage::User { .. }
             | ChatMessage::UserWithImages { .. } => {
-                flush_missing_tool_results(&mut repaired, &pending_tool_calls, &existing_tool_results);
+                flush_missing_tool_results(
+                    &mut repaired,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
                 pending_tool_calls.clear();
                 existing_tool_results.clear();
                 repaired.push(message);
@@ -163,7 +186,11 @@ pub fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
                 tool_calls,
                 ..
             } => {
-                flush_missing_tool_results(&mut repaired, &pending_tool_calls, &existing_tool_results);
+                flush_missing_tool_results(
+                    &mut repaired,
+                    &pending_tool_calls,
+                    &existing_tool_results,
+                );
                 pending_tool_calls.clear();
                 existing_tool_results.clear();
 
@@ -175,7 +202,10 @@ pub fn repair_session_messages(messages: &mut Vec<ChatMessage>) {
                     continue;
                 }
 
-                pending_tool_calls = tool_calls.iter().map(|tool_call| tool_call.id.clone()).collect();
+                pending_tool_calls = tool_calls
+                    .iter()
+                    .map(|tool_call| tool_call.id.clone())
+                    .collect();
                 repaired.push(message);
             }
             ChatMessage::Tool(tool) => {
@@ -211,6 +241,84 @@ fn make_event(session: &KhadimSession, event_type: &str) -> AgentStreamEvent {
     }
 }
 
+const MAX_LLM_ATTEMPTS: u32 = 3;
+
+async fn initialize_model_client(
+    selection: Option<ModelSelection>,
+    session: &KhadimSession,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+) -> Result<ModelClient, AppError> {
+    match ModelClient::from_selection(selection).await {
+        Ok(client) => Ok(client),
+        Err(err) => {
+            let _ = tx.send(
+                make_event(session, "error")
+                    .with_content(format!(
+                        "Failed to initialize model client: {}",
+                        err.message
+                    ))
+                    .with_metadata(json!({
+                        "kind": "llm_initialization_failure",
+                    })),
+            );
+            Err(err)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum LlmFailureDisposition {
+    RetryAfter(Duration),
+    Exhausted,
+}
+
+fn emit_llm_failure_event(
+    session: &KhadimSession,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    attempt_number: u32,
+    max_attempts: u32,
+    retry_base_delay: Duration,
+    err: &AppError,
+) -> LlmFailureDisposition {
+    assert!(
+        attempt_number > 0 && attempt_number <= max_attempts,
+        "LLM attempt must be within the configured attempt limit"
+    );
+
+    if attempt_number < max_attempts {
+        let _ = tx.send(
+            make_event(session, "step_update")
+                .with_content(format!(
+                    "LLM call failed (attempt {attempt_number}/{max_attempts}); retrying: {}",
+                    err.message
+                ))
+                .with_metadata(json!({
+                    "id": format!("llm-retry-{attempt_number}"),
+                    "title": format!("Retrying model call ({attempt_number}/{max_attempts})"),
+                    "tool": "model",
+                    "kind": "retry",
+                    "attempt": attempt_number,
+                    "max_attempts": max_attempts,
+                })),
+        );
+        let multiplier = 2u32.checked_pow(attempt_number).unwrap_or(u32::MAX);
+        LlmFailureDisposition::RetryAfter(retry_base_delay.saturating_mul(multiplier))
+    } else {
+        let _ = tx.send(
+            make_event(session, "error")
+                .with_content(format!(
+                    "LLM call failed after {attempt_number} attempts: {}",
+                    err.message
+                ))
+                .with_metadata(json!({
+                    "kind": "llm_failure",
+                    "attempts": attempt_number,
+                })),
+        );
+        LlmFailureDisposition::Exhausted
+    }
+}
+
 /// Automatically determine the best mode for a prompt using the PDDL-based planner.
 /// Returns the mode definition and a human-readable description of the reasoning.
 pub fn auto_select_mode(prompt: &str) -> (AgentModeDefinition, String) {
@@ -224,9 +332,7 @@ pub fn auto_select_mode(prompt: &str) -> (AgentModeDefinition, String) {
 }
 
 /// Tools that are safe to execute in parallel (read-only, no side effects between each other).
-const PARALLEL_SAFE_TOOLS: &[&str] = &[
-    "read", "ls", "grep", "glob", "web_search",
-];
+const PARALLEL_SAFE_TOOLS: &[&str] = &["read", "ls", "grep", "glob", "web_search"];
 
 /// Result of executing a single tool call.
 struct ToolExecResult {
@@ -367,15 +473,7 @@ async fn execute_tool_calls(
             let batch = &tool_calls[batch_start..i];
             let futures: Vec<_> = batch
                 .iter()
-                .map(|tc| {
-                    execute_single_tool(
-                        tc,
-                        runtime,
-                        tx,
-                        &session.workspace_id,
-                        &session.id,
-                    )
-                })
+                .map(|tc| execute_single_tool(tc, runtime, tx, &session.workspace_id, &session.id))
                 .collect();
 
             let results = futures::future::join_all(futures).await;
@@ -410,14 +508,8 @@ async fn execute_tool_calls(
         // Execute sequential tool (if we stopped on one)
         if i < tool_calls.len() {
             let tc = &tool_calls[i];
-            let result = execute_single_tool(
-                tc,
-                runtime,
-                tx,
-                &session.workspace_id,
-                &session.id,
-            )
-            .await;
+            let result =
+                execute_single_tool(tc, runtime, tx, &session.workspace_id, &session.id).await;
 
             if let Some(ref mut gt) = goal_tracker {
                 let newly = if let Some(cache) = parse_cache.as_mut() {
@@ -429,7 +521,11 @@ async fn execute_tool_calls(
                     )
                 } else {
                     let before: Vec<bool> = gt.goals.iter().map(|g| g.satisfied).collect();
-                    gt.update_from_tool_json(&tc.function.name, &tc.function.arguments, &result.content);
+                    gt.update_from_tool_json(
+                        &tc.function.name,
+                        &tc.function.arguments,
+                        &result.content,
+                    );
                     newly_satisfied_from_before(&before, gt)
                 };
                 emit_goal_satisfied_events(&newly, gt, session, tx);
@@ -491,8 +587,17 @@ fn emit_goal_satisfied_events(
 
 /// Configuration for the orchestrator loop.
 pub struct RunConfig {
+    /// Per-run sampling temperature override. `None` keeps the selected
+    /// agent mode's temperature.
+    pub temperature: Option<f32>,
     /// Maximum number of tool-call turns before stopping (default: 200).
     pub max_turns: usize,
+    /// Maximum number of attempts for each model call (default: 3).
+    /// Values below 1 are treated as 1.
+    pub max_llm_attempts: u32,
+    /// Base delay used for exponential model-call retry backoff (default: 1s).
+    /// Set to [`Duration::ZERO`] for deterministic runs that must not sleep.
+    pub llm_retry_base_delay: Duration,
     /// Interval (in turns) for injecting progress nudges (default: 6). Set to 0 to disable.
     pub nudge_interval: usize,
     /// Whether to inject contract summaries from the prompt (default: true).
@@ -513,7 +618,10 @@ pub struct RunConfig {
 impl Default for RunConfig {
     fn default() -> Self {
         Self {
+            temperature: None,
             max_turns: 200,
+            max_llm_attempts: MAX_LLM_ATTEMPTS,
+            llm_retry_base_delay: Duration::from_secs(1),
             nudge_interval: 6,
             extract_contracts: true,
             goal_tracking: true,
@@ -521,6 +629,10 @@ impl Default for RunConfig {
             search: SearchMode::default(),
         }
     }
+}
+
+fn sampling_temperature(config: &RunConfig, default: f32) -> f32 {
+    config.temperature.unwrap_or(default)
 }
 
 /// Run a prompt with automatic mode selection.
@@ -532,7 +644,15 @@ pub async fn run_prompt(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
 ) -> Result<String, AppError> {
     let runtime = AgentRuntime::new(&session.cwd);
-    run_prompt_with_runtime(session, prompt, selection, tx, runtime, RunConfig::default()).await
+    run_prompt_with_runtime(
+        session,
+        prompt,
+        selection,
+        tx,
+        runtime,
+        RunConfig::default(),
+    )
+    .await
 }
 
 /// Run a prompt with a pre-configured runtime (supports extra tools, plugins, etc.).
@@ -557,12 +677,15 @@ pub async fn run_prompt_with_runtime(
     // If the session has a system prompt override, use chat mode.
     // Otherwise, auto-select mode based on the prompt.
     let (mode, mode_reasoning) = if session.system_prompt_override.is_some() {
-        (chat_mode(), "Using system prompt override — chat mode".to_string())
+        (
+            chat_mode(),
+            "Using system prompt override — chat mode".to_string(),
+        )
     } else {
         auto_select_mode(prompt)
     };
 
-    let client = ModelClient::from_selection(selection).await?;
+    let client = initialize_model_client(selection, session, tx).await?;
 
     // Build the system prompt: override or mode-based
     let system_prompt = match &session.system_prompt_override {
@@ -580,16 +703,22 @@ pub async fn run_prompt_with_runtime(
     );
 
     if session.messages.is_empty() {
-        session.messages.push(ChatMessage::System { content: system_prompt });
+        session.messages.push(ChatMessage::System {
+            content: system_prompt,
+        });
     }
 
     if config.extract_contracts {
         if let Some(contract_summary) = extract_contract_summary(prompt) {
-            session.messages.push(ChatMessage::System { content: contract_summary });
+            session.messages.push(ChatMessage::System {
+                content: contract_summary,
+            });
         }
     }
 
-    session.messages.push(ChatMessage::User { content: prompt.to_string() });
+    session.messages.push(ChatMessage::User {
+        content: prompt.to_string(),
+    });
 
     let mut goal_tracker = if config.goal_tracking {
         let gt = GoalTracker::from_prompt(prompt);
@@ -631,21 +760,18 @@ pub async fn run_prompt_with_runtime(
     let scorer = Scorer;
     loop {
         if turn_index >= max_turns {
-            let _ = tx.send(
-                make_event(session, "error")
-                    .with_content(format!("Reached maximum turn limit ({max_turns}). Stopping.")),
-            );
-            let _ = tx.send(make_event(session, "done"));
-            return Ok("Reached max turn limit".to_string());
+            let message = format!("Reached maximum turn limit ({max_turns}). Stopping.");
+            let _ = tx.send(make_event(session, "error").with_content(message.clone()));
+            return Err(AppError::health(message));
         }
         if config.nudge_interval > 0 && turn_index > 0 && turn_index % config.nudge_interval == 0 {
             let nudge = goal_tracker
                 .as_ref()
                 .and_then(|gt| gt.nudge())
                 .unwrap_or_else(|| progress_nudge(turn_index));
-            session.messages.push(ChatMessage::System {
-                content: nudge,
-            });
+            session
+                .messages
+                .push(ChatMessage::System { content: nudge });
         }
 
         // ── WP6: propose-k search trigger ──────────────────────────────────
@@ -653,20 +779,19 @@ pub async fn run_prompt_with_runtime(
         // when goal tracking is on and we have a goal tracker + parse cache.
         if let (Some(gt), Some(pc)) = (goal_tracker.as_ref(), parse_cache.as_mut()) {
             let current_h = gt.heuristic();
-            if let Some(trigger) = search::should_engage(&config.search, &heuristic_history, current_h) {
+            if let Some(trigger) =
+                search::should_engage(&config.search, &heuristic_history, current_h)
+            {
                 // Emit search_engaged.
                 let stall_length = match &config.search {
                     SearchMode::Stalled { turns } => Some(*turns),
                     _ => None,
                 };
-                let _ = tx.send(
-                    make_event(session, "search_engaged")
-                        .with_metadata(json!({
-                            "turn": turn_index,
-                            "trigger": trigger,
-                            "stall_length": stall_length,
-                        })),
-                );
+                let _ = tx.send(make_event(session, "search_engaged").with_metadata(json!({
+                    "turn": turn_index,
+                    "trigger": trigger,
+                    "stall_length": stall_length,
+                })));
 
                 // Build the proposer on first engagement.
                 if proposer.is_none() {
@@ -687,7 +812,7 @@ pub async fn run_prompt_with_runtime(
                     gt,
                     pc,
                     tx,
-                    0.9,
+                    sampling_temperature(&config, 0.9),
                 )
                 .await?;
 
@@ -737,7 +862,9 @@ pub async fn run_prompt_with_runtime(
                 // If only a plan note, inject it as a system nudge and fall
                 // through to the normal LLM call.
                 if let Some(note) = action.plan_note {
-                    session.messages.push(ChatMessage::System { content: format!("[search note] {note}") });
+                    session.messages.push(ChatMessage::System {
+                        content: format!("[search note] {note}"),
+                    });
                 }
             }
         }
@@ -749,9 +876,7 @@ pub async fn run_prompt_with_runtime(
             session_id: Some(session.id.clone()),
         };
 
-        // Retry LLM calls up to 3 times on transient errors
         let mut retry_count = 0u32;
-        let max_retries = 3u32;
         let reply = loop {
             let stream_tx_inner = tx.clone();
             let thinking_id = format!("llm-thinking-{turn_index}");
@@ -763,123 +888,147 @@ pub async fn run_prompt_with_runtime(
 
             let _ = tx.send(make_event(session, "llm_call_start"));
             let result = client
-            .stream(
-                &context,
-                mode.temperature,
-                Arc::new(move |event| {
-                    let make_ev_inner = |etype: &str| -> AgentStreamEvent {
-                        if has_ws2 {
-                            AgentStreamEvent::scoped(&ws_id2, &sess_id2, etype)
-                        } else {
-                            AgentStreamEvent::new(etype)
-                        }
-                    };
+                .stream(
+                    &context,
+                    sampling_temperature(&config, mode.temperature),
+                    Arc::new(move |event| {
+                        let make_ev_inner = |etype: &str| -> AgentStreamEvent {
+                            if has_ws2 {
+                                AgentStreamEvent::scoped(&ws_id2, &sess_id2, etype)
+                            } else {
+                                AgentStreamEvent::new(etype)
+                            }
+                        };
 
-                    match event {
-                    AssistantStreamEvent::TextDelta(delta) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("text_delta").with_content(delta),
-                        );
-                    }
-                    AssistantStreamEvent::ThinkingStart => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_start")
-                                .with_content("Thinking")
-                                .with_metadata(json!({
-                                    "id": thinking_id,
-                                    "title": "Thinking",
-                                    "tool": "model",
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ThinkingDelta(delta) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_update")
-                                .with_content(delta)
-                                .with_metadata(json!({
-                                    "id": thinking_id,
-                                    "title": "Thinking",
-                                    "tool": "model",
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ThinkingEnd(content) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_complete")
-                                .with_content(content)
-                                .with_metadata(json!({
-                                    "id": thinking_id,
-                                    "title": "Thinking",
-                                    "tool": "model",
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ToolCallStart { id, name } => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_start")
-                                .with_content(format!("Preparing {name}"))
-                                .with_metadata(json!({
-                                    "id": id,
-                                    "title": format!("Preparing {name}"),
-                                    "tool": name,
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ToolCallDelta { id, name, arguments } => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_update")
-                                .with_content(arguments)
-                                .with_metadata(json!({
-                                    "id": id,
-                                    "title": format!("Preparing {name}"),
-                                    "tool": name,
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ToolCallEnd(tool_call) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_update")
-                                .with_content(tool_call.function.arguments)
-                                .with_metadata(json!({
-                                    "id": tool_call.id,
-                                    "title": format!("Preparing {}", tool_call.function.name),
-                                    "tool": tool_call.function.name,
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::Error(message) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("error").with_content(message),
-                        );
-                    }
-                    AssistantStreamEvent::Usage(usage) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("usage").with_metadata(json!({
-                                "input": usage.input,
-                                "output": usage.output,
-                                "cache_read": usage.cache_read,
-                                "cache_write": usage.cache_write,
-                            })),
-                        );
-                    }
-                    AssistantStreamEvent::Start | AssistantStreamEvent::TextStart | AssistantStreamEvent::TextEnd(_) | AssistantStreamEvent::Done => {}
-                }}),
-            )
-            .await;
+                        match event {
+                            AssistantStreamEvent::TextDelta(delta) => {
+                                let _ = stream_tx_inner
+                                    .send(make_ev_inner("text_delta").with_content(delta));
+                            }
+                            AssistantStreamEvent::ThinkingStart => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_start")
+                                        .with_content("Thinking")
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Thinking",
+                                            "tool": "model",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ThinkingDelta(delta) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(delta)
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Thinking",
+                                            "tool": "model",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ThinkingEnd(content) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_complete")
+                                        .with_content(content)
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Thinking",
+                                            "tool": "model",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ToolCallStart { id, name } => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_start")
+                                        .with_content(format!("Preparing {name}"))
+                                        .with_metadata(json!({
+                                            "id": id,
+                                            "title": format!("Preparing {name}"),
+                                            "tool": name,
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ToolCallDelta {
+                                id,
+                                name,
+                                arguments,
+                            } => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(arguments)
+                                        .with_metadata(json!({
+                                            "id": id,
+                                            "title": format!("Preparing {name}"),
+                                            "tool": name,
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ToolCallEnd(tool_call) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(tool_call.function.arguments)
+                                        .with_metadata(json!({
+                                            "id": tool_call.id,
+                                            "title": format!(
+                                                "Preparing {}",
+                                                tool_call.function.name
+                                            ),
+                                            "tool": tool_call.function.name,
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::Error(message) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(message)
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Model stream error",
+                                            "tool": "model",
+                                            "kind": "stream_error",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::Usage(usage) => {
+                                let _ = stream_tx_inner.send(make_ev_inner("usage").with_metadata(
+                                    json!({
+                                        "input": usage.input,
+                                        "output": usage.output,
+                                        "cache_read": usage.cache_read,
+                                        "cache_write": usage.cache_write,
+                                    }),
+                                ));
+                            }
+                            AssistantStreamEvent::Start
+                            | AssistantStreamEvent::TextStart
+                            | AssistantStreamEvent::TextEnd(_)
+                            | AssistantStreamEvent::Done => {}
+                        }
+                    }),
+                )
+                .await;
             let _ = tx.send(make_event(session, "llm_call_end"));
 
             match result {
                 Ok(reply) => break reply,
                 Err(err) => {
                     retry_count += 1;
-                    if retry_count >= max_retries {
-                        return Err(err);
+                    match emit_llm_failure_event(
+                        session,
+                        tx,
+                        retry_count,
+                        config.max_llm_attempts.max(1),
+                        config.llm_retry_base_delay,
+                        &err,
+                    ) {
+                        LlmFailureDisposition::RetryAfter(delay) => {
+                            if !delay.is_zero() {
+                                tokio::time::sleep(delay).await;
+                            }
+                        }
+                        LlmFailureDisposition::Exhausted => return Err(err),
                     }
-                    let _ = tx.send(
-                        make_event(session, "error")
-                            .with_content(format!("LLM error (retry {retry_count}/{max_retries}): {}", err.message)),
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(retry_count))).await;
                 }
             }
         };
@@ -895,7 +1044,15 @@ pub async fn run_prompt_with_runtime(
                 reasoning_content: reply.reasoning_content.clone(),
             });
 
-            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut(), parse_cache.as_mut()).await;
+            execute_tool_calls(
+                reply.tool_calls,
+                &runtime,
+                tx,
+                session,
+                goal_tracker.as_mut(),
+                parse_cache.as_mut(),
+            )
+            .await;
 
             // WP6: record the post-turn heuristic for stall detection.
             if let Some(gt) = goal_tracker.as_ref() {
@@ -931,13 +1088,17 @@ pub async fn run_prompt_with_explicit_mode(
     mode: AgentModeDefinition,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
 ) -> Result<String, AppError> {
-    // Save and clear any system prompt override so the explicit mode's prompt is used.
-    // take() returns the current value and sets the field to None in one step.
-    let saved_override = session.system_prompt_override.take();
     let runtime = AgentRuntime::new(&session.cwd);
-    let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, RunConfig::default()).await;
-    session.system_prompt_override = saved_override;
-    result
+    run_prompt_with_runtime_and_explicit_mode_and_config(
+        session,
+        prompt,
+        selection,
+        mode,
+        tx,
+        runtime,
+        RunConfig::default(),
+    )
+    .await
 }
 
 /// Run a prompt with an explicit mode and a pre-configured runtime.
@@ -950,10 +1111,16 @@ pub async fn run_prompt_with_runtime_and_explicit_mode(
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     runtime: AgentRuntime,
 ) -> Result<String, AppError> {
-    let saved_override = session.system_prompt_override.take();
-    let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, RunConfig::default()).await;
-    session.system_prompt_override = saved_override;
-    result
+    run_prompt_with_runtime_and_explicit_mode_and_config(
+        session,
+        prompt,
+        selection,
+        mode,
+        tx,
+        runtime,
+        RunConfig::default(),
+    )
+    .await
 }
 
 /// Run a prompt with an explicit mode, pre-configured runtime, and explicit
@@ -969,7 +1136,35 @@ pub async fn run_prompt_with_runtime_and_explicit_mode_and_config(
     config: RunConfig,
 ) -> Result<String, AppError> {
     let saved_override = session.system_prompt_override.take();
-    let result = run_prompt_inner(session, prompt, selection, tx, runtime, mode, config).await;
+    let result = match initialize_model_client(selection, session, tx).await {
+        Ok(client) => {
+            let executor: Arc<dyn ModelExecutor> = Arc::new(client);
+            run_prompt_inner(session, prompt, executor, tx, runtime, mode, config).await
+        }
+        Err(err) => Err(err),
+    };
+    session.system_prompt_override = saved_override;
+    result
+}
+
+/// Run an explicit-mode session with an injected model executor.
+///
+/// This is the durable session-level integration seam for tests and alternate
+/// model runtimes. It runs the same streaming, tool execution, retry, message,
+/// and terminal-event logic as the production explicit-mode wrappers.
+pub async fn run_prompt_with_model_executor(
+    session: &mut KhadimSession,
+    prompt: &str,
+    executor: Arc<dyn ModelExecutor>,
+    mode: AgentModeDefinition,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    runtime: AgentRuntime,
+    config: RunConfig,
+) -> Result<String, AppError> {
+    // Explicit modes deliberately ignore a session override for this run, but
+    // the caller's session setting must survive both success and failure.
+    let saved_override = session.system_prompt_override.take();
+    let result = run_prompt_inner(session, prompt, executor, tx, runtime, mode, config).await;
     session.system_prompt_override = saved_override;
     result
 }
@@ -978,13 +1173,12 @@ pub async fn run_prompt_with_runtime_and_explicit_mode_and_config(
 async fn run_prompt_inner(
     session: &mut KhadimSession,
     prompt: &str,
-    selection: Option<ModelSelection>,
+    client: Arc<dyn ModelExecutor>,
     tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
     runtime: AgentRuntime,
     mode: AgentModeDefinition,
     config: RunConfig,
 ) -> Result<String, AppError> {
-    let client = ModelClient::from_selection(selection).await?;
     let system_prompt = match &session.system_prompt_override {
         Some(override_prompt) => override_prompt.clone(),
         None => runtime.build_prompt(&mode),
@@ -993,16 +1187,22 @@ async fn run_prompt_inner(
     repair_session_messages(&mut session.messages);
 
     if session.messages.is_empty() {
-        session.messages.push(ChatMessage::System { content: system_prompt });
+        session.messages.push(ChatMessage::System {
+            content: system_prompt,
+        });
     }
 
     if config.extract_contracts {
         if let Some(contract_summary) = extract_contract_summary(prompt) {
-            session.messages.push(ChatMessage::System { content: contract_summary });
+            session.messages.push(ChatMessage::System {
+                content: contract_summary,
+            });
         }
     }
 
-    session.messages.push(ChatMessage::User { content: prompt.to_string() });
+    session.messages.push(ChatMessage::User {
+        content: prompt.to_string(),
+    });
 
     let mut goal_tracker = if config.goal_tracking {
         let gt = GoalTracker::from_prompt(prompt);
@@ -1037,21 +1237,18 @@ async fn run_prompt_inner(
     let mut turn_index: usize = 0;
     loop {
         if turn_index >= max_turns {
-            let _ = tx.send(
-                make_event(session, "error")
-                    .with_content(format!("Reached maximum turn limit ({max_turns}). Stopping.")),
-            );
-            let _ = tx.send(make_event(session, "done"));
-            return Ok("Reached max turn limit".to_string());
+            let message = format!("Reached maximum turn limit ({max_turns}). Stopping.");
+            let _ = tx.send(make_event(session, "error").with_content(message.clone()));
+            return Err(AppError::health(message));
         }
         if config.nudge_interval > 0 && turn_index > 0 && turn_index % config.nudge_interval == 0 {
             let nudge = goal_tracker
                 .as_ref()
                 .and_then(|gt| gt.nudge())
                 .unwrap_or_else(|| progress_nudge(turn_index));
-            session.messages.push(ChatMessage::System {
-                content: nudge,
-            });
+            session
+                .messages
+                .push(ChatMessage::System { content: nudge });
         }
 
         let context = Context {
@@ -1061,7 +1258,6 @@ async fn run_prompt_inner(
         };
 
         let mut retry_count = 0u32;
-        let max_retries = 3u32;
         let reply = loop {
             let stream_tx_inner = tx.clone();
             let thinking_id = format!("llm-thinking-{turn_index}");
@@ -1071,123 +1267,147 @@ async fn run_prompt_inner(
 
             let _ = tx.send(make_event(session, "llm_call_start"));
             let result = client
-            .stream(
-                &context,
-                mode.temperature,
-                Arc::new(move |event| {
-                    let make_ev_inner = |etype: &str| -> AgentStreamEvent {
-                        if has_ws {
-                            AgentStreamEvent::scoped(&ws_id, &sess_id, etype)
-                        } else {
-                            AgentStreamEvent::new(etype)
-                        }
-                    };
+                .stream(
+                    &context,
+                    sampling_temperature(&config, mode.temperature),
+                    Arc::new(move |event| {
+                        let make_ev_inner = |etype: &str| -> AgentStreamEvent {
+                            if has_ws {
+                                AgentStreamEvent::scoped(&ws_id, &sess_id, etype)
+                            } else {
+                                AgentStreamEvent::new(etype)
+                            }
+                        };
 
-                    match event {
-                    AssistantStreamEvent::TextDelta(delta) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("text_delta").with_content(delta),
-                        );
-                    }
-                    AssistantStreamEvent::ThinkingStart => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_start")
-                                .with_content("Thinking")
-                                .with_metadata(json!({
-                                    "id": thinking_id,
-                                    "title": "Thinking",
-                                    "tool": "model",
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ThinkingDelta(delta) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_update")
-                                .with_content(delta)
-                                .with_metadata(json!({
-                                    "id": thinking_id,
-                                    "title": "Thinking",
-                                    "tool": "model",
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ThinkingEnd(content) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_complete")
-                                .with_content(content)
-                                .with_metadata(json!({
-                                    "id": thinking_id,
-                                    "title": "Thinking",
-                                    "tool": "model",
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ToolCallStart { id, name } => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_start")
-                                .with_content(format!("Preparing {name}"))
-                                .with_metadata(json!({
-                                    "id": id,
-                                    "title": format!("Preparing {name}"),
-                                    "tool": name,
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ToolCallDelta { id, name, arguments } => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_update")
-                                .with_content(arguments)
-                                .with_metadata(json!({
-                                    "id": id,
-                                    "title": format!("Preparing {name}"),
-                                    "tool": name,
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::ToolCallEnd(tool_call) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("step_update")
-                                .with_content(tool_call.function.arguments)
-                                .with_metadata(json!({
-                                    "id": tool_call.id,
-                                    "title": format!("Preparing {}", tool_call.function.name),
-                                    "tool": tool_call.function.name,
-                                })),
-                        );
-                    }
-                    AssistantStreamEvent::Error(message) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("error").with_content(message),
-                        );
-                    }
-                    AssistantStreamEvent::Usage(usage) => {
-                        let _ = stream_tx_inner.send(
-                            make_ev_inner("usage").with_metadata(json!({
-                                "input": usage.input,
-                                "output": usage.output,
-                                "cache_read": usage.cache_read,
-                                "cache_write": usage.cache_write,
-                            })),
-                        );
-                    }
-                    AssistantStreamEvent::Start | AssistantStreamEvent::TextStart | AssistantStreamEvent::TextEnd(_) | AssistantStreamEvent::Done => {}
-                }}),
-            )
-            .await;
+                        match event {
+                            AssistantStreamEvent::TextDelta(delta) => {
+                                let _ = stream_tx_inner
+                                    .send(make_ev_inner("text_delta").with_content(delta));
+                            }
+                            AssistantStreamEvent::ThinkingStart => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_start")
+                                        .with_content("Thinking")
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Thinking",
+                                            "tool": "model",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ThinkingDelta(delta) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(delta)
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Thinking",
+                                            "tool": "model",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ThinkingEnd(content) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_complete")
+                                        .with_content(content)
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Thinking",
+                                            "tool": "model",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ToolCallStart { id, name } => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_start")
+                                        .with_content(format!("Preparing {name}"))
+                                        .with_metadata(json!({
+                                            "id": id,
+                                            "title": format!("Preparing {name}"),
+                                            "tool": name,
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ToolCallDelta {
+                                id,
+                                name,
+                                arguments,
+                            } => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(arguments)
+                                        .with_metadata(json!({
+                                            "id": id,
+                                            "title": format!("Preparing {name}"),
+                                            "tool": name,
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::ToolCallEnd(tool_call) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(tool_call.function.arguments)
+                                        .with_metadata(json!({
+                                            "id": tool_call.id,
+                                            "title": format!(
+                                                "Preparing {}",
+                                                tool_call.function.name
+                                            ),
+                                            "tool": tool_call.function.name,
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::Error(message) => {
+                                let _ = stream_tx_inner.send(
+                                    make_ev_inner("step_update")
+                                        .with_content(message)
+                                        .with_metadata(json!({
+                                            "id": thinking_id,
+                                            "title": "Model stream error",
+                                            "tool": "model",
+                                            "kind": "stream_error",
+                                        })),
+                                );
+                            }
+                            AssistantStreamEvent::Usage(usage) => {
+                                let _ = stream_tx_inner.send(make_ev_inner("usage").with_metadata(
+                                    json!({
+                                        "input": usage.input,
+                                        "output": usage.output,
+                                        "cache_read": usage.cache_read,
+                                        "cache_write": usage.cache_write,
+                                    }),
+                                ));
+                            }
+                            AssistantStreamEvent::Start
+                            | AssistantStreamEvent::TextStart
+                            | AssistantStreamEvent::TextEnd(_)
+                            | AssistantStreamEvent::Done => {}
+                        }
+                    }),
+                )
+                .await;
             let _ = tx.send(make_event(session, "llm_call_end"));
 
             match result {
                 Ok(reply) => break reply,
                 Err(err) => {
                     retry_count += 1;
-                    if retry_count >= max_retries {
-                        return Err(err);
+                    match emit_llm_failure_event(
+                        session,
+                        tx,
+                        retry_count,
+                        config.max_llm_attempts.max(1),
+                        config.llm_retry_base_delay,
+                        &err,
+                    ) {
+                        LlmFailureDisposition::RetryAfter(delay) => {
+                            if !delay.is_zero() {
+                                tokio::time::sleep(delay).await;
+                            }
+                        }
+                        LlmFailureDisposition::Exhausted => return Err(err),
                     }
-                    let _ = tx.send(
-                        make_event(session, "error")
-                            .with_content(format!("LLM error (retry {retry_count}/{max_retries}): {}", err.message)),
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(retry_count))).await;
                 }
             }
         };
@@ -1203,7 +1423,15 @@ async fn run_prompt_inner(
                 reasoning_content: reply.reasoning_content.clone(),
             });
 
-            execute_tool_calls(reply.tool_calls, &runtime, tx, session, goal_tracker.as_mut(), parse_cache.as_mut()).await;
+            execute_tool_calls(
+                reply.tool_calls,
+                &runtime,
+                tx,
+                session,
+                goal_tracker.as_mut(),
+                parse_cache.as_mut(),
+            )
+            .await;
 
             turn_index += 1;
             continue;
@@ -1224,5 +1452,168 @@ async fn run_prompt_inner(
         let final_text = reply.content;
         let _ = tx.send(make_event(session, "done"));
         return Ok(final_text);
+    }
+}
+
+#[cfg(test)]
+mod temperature_tests {
+    use super::*;
+
+    #[test]
+    fn per_run_temperature_overrides_mode_temperature_and_none_preserves_it() {
+        let mut config = RunConfig::default();
+        assert_eq!(sampling_temperature(&config, 0.4), 0.4);
+
+        config.temperature = Some(1.25);
+        assert_eq!(sampling_temperature(&config, 0.4), 1.25);
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn fail_once_then_succeed_emits_only_nonterminal_retry_event() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let disposition = emit_llm_failure_event(
+            &session,
+            &tx,
+            1,
+            3,
+            Duration::from_secs(1),
+            &AppError::health("temporary outage"),
+        );
+
+        assert_eq!(
+            disposition,
+            LlmFailureDisposition::RetryAfter(Duration::from_secs(2))
+        );
+
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let retry_events: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                event.event_type == "step_update"
+                    && event.metadata.as_ref().and_then(|value| value.get("kind"))
+                        == Some(&json!("retry"))
+            })
+            .collect();
+
+        assert_eq!(retry_events.len(), 1);
+        assert_eq!(retry_events[0].metadata.as_ref().unwrap()["attempt"], 1);
+        assert_eq!(
+            retry_events[0].metadata.as_ref().unwrap()["max_attempts"],
+            3
+        );
+        assert_eq!(retry_events[0].metadata.as_ref().unwrap()["tool"], "model");
+        assert_eq!(
+            retry_events[0].metadata.as_ref().unwrap()["id"],
+            "llm-retry-1"
+        );
+        assert_eq!(
+            retry_events[0].metadata.as_ref().unwrap()["title"],
+            "Retrying model call (1/3)"
+        );
+        assert!(events.iter().all(|event| event.event_type != "error"));
+    }
+
+    #[test]
+    fn always_fail_emits_one_terminal_error_after_retry_updates() {
+        let session = KhadimSession::new(PathBuf::from("/tmp"));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let errors = [
+            AppError::health("outage 1"),
+            AppError::health("outage 2"),
+            AppError::health("outage 3"),
+        ];
+        let dispositions: Vec<_> = errors
+            .iter()
+            .enumerate()
+            .map(|(index, err)| {
+                emit_llm_failure_event(
+                    &session,
+                    &tx,
+                    index as u32 + 1,
+                    3,
+                    Duration::from_secs(1),
+                    err,
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            dispositions,
+            vec![
+                LlmFailureDisposition::RetryAfter(Duration::from_secs(2)),
+                LlmFailureDisposition::RetryAfter(Duration::from_secs(4)),
+                LlmFailureDisposition::Exhausted,
+            ]
+        );
+
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let retry_events: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                event.event_type == "step_update"
+                    && event.metadata.as_ref().and_then(|value| value.get("kind"))
+                        == Some(&json!("retry"))
+            })
+            .collect();
+        let error_events: Vec<_> = events
+            .iter()
+            .filter(|event| event.event_type == "error")
+            .collect();
+
+        assert_eq!(retry_events.len(), 2);
+        assert_eq!(error_events.len(), 1);
+        assert_eq!(
+            error_events[0].content.as_deref(),
+            Some("LLM call failed after 3 attempts: outage 3")
+        );
+        assert_eq!(
+            error_events[0].metadata.as_ref().unwrap()["kind"],
+            "llm_failure"
+        );
+        assert_eq!(error_events[0].metadata.as_ref().unwrap()["attempts"], 3);
+        assert!(events.iter().all(|event| event.event_type != "done"));
+    }
+
+    #[tokio::test]
+    async fn model_client_initialization_failure_emits_one_terminal_error() {
+        let mut session = KhadimSession::new(PathBuf::from("/tmp"));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let selection = ModelSelection {
+            provider: "missing-key-test-provider".to_string(),
+            model_id: "test-model".to_string(),
+            display_name: None,
+            api_key: None,
+            base_url: None,
+        };
+
+        let result =
+            run_prompt_with_explicit_mode(&mut session, "hello", Some(selection), chat_mode(), &tx)
+                .await;
+
+        assert!(result.is_err());
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let error_events: Vec<_> = events
+            .iter()
+            .filter(|event| event.event_type == "error")
+            .collect();
+
+        assert_eq!(error_events.len(), 1);
+        assert!(error_events[0]
+            .content
+            .as_deref()
+            .unwrap()
+            .starts_with("Failed to initialize model client: Missing API key"));
+        assert_eq!(
+            error_events[0].metadata.as_ref().unwrap()["kind"],
+            "llm_initialization_failure"
+        );
+        assert!(events.iter().all(|event| event.event_type != "done"));
     }
 }

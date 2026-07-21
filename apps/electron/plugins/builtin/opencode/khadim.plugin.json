@@ -1,0 +1,72 @@
+{
+  "apiVersion": 1,
+  "id": "khadim.opencode",
+  "name": "OpenCode",
+  "version": "0.2.1",
+  "description": "Runs Khadim chats through an OpenCode server harness.",
+  "author": "Khadim contributors",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://opencode.ai/docs/server/",
+  "main": "dist/opencode.wasm",
+  "defaultEnabled": true,
+  "capabilities": ["harness"],
+  "permissions": {
+    "network": {
+      "allowedHosts": ["127.0.0.1", "localhost", "::1"],
+      "allowHttp": true
+    }
+  },
+  "config": [
+    {
+      "key": "binaryPath",
+      "label": "Binary path",
+      "description": "OpenCode executable used when Server URL is blank.",
+      "type": "string",
+      "default": "opencode"
+    },
+    {
+      "key": "baseUrl",
+      "label": "Server URL",
+      "description": "Leave blank to let Khadim start a local OpenCode server when needed.",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "label": "Username",
+      "description": "HTTP Basic Auth username. OpenCode defaults to opencode.",
+      "type": "string",
+      "default": "opencode"
+    },
+    {
+      "key": "password",
+      "label": "Server password",
+      "description": "The OPENCODE_SERVER_PASSWORD value, when authentication is enabled.",
+      "type": "secret"
+    },
+    {
+      "key": "agent",
+      "label": "OpenCode agent",
+      "description": "Optional OpenCode agent name, such as build or plan.",
+      "type": "string"
+    },
+    {
+      "key": "providerId",
+      "label": "OpenCode provider ID",
+      "description": "Optional provider override configured in OpenCode.",
+      "type": "string"
+    },
+    {
+      "key": "modelId",
+      "label": "OpenCode model ID",
+      "description": "Optional model override configured in OpenCode.",
+      "type": "string"
+    },
+    {
+      "key": "useKhadimModel",
+      "label": "Use Khadim model IDs",
+      "description": "Send the selected Khadim provider and model IDs when no OpenCode override is set.",
+      "type": "boolean",
+      "default": false
+    }
+  ]
+}

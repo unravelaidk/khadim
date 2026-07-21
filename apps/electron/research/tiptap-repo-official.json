@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_9f1ba9baf83f4004a47a8651b5344abf",
+  "session_id": "session_9f1ba9baf83f4004a47a8651b5344abf",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/ueberdosis/tiptap",
+      "title": "GitHub - ueberdosis/tiptap: The headless rich text editor framework for web artisans. \u00b7 GitHub",
+      "publish_date": "2026-07-15",
+      "excerpts": [
+        "# ueberdosis/tiptap\n- License: MIT license\n- Default branch: main\n- Created: 2018-08-20T19:58:58.000Z\n- Commits: 8,000\n\n## Top-level files\n- .changeset/\n- .github/\n- .husky/\n- .vscode/\n- agents/\n- demos/\n- packages-deprecated/\n- packages/\n- patches/\n- scripts/\n- skills/tiptap/\n- .coderabbit.yaml\n- .editorconfig\n- .fallowrc.json\n- .gitignore\n- .lintstagedrc.cjs\n- .npmrc\n- .oxfmtrc.json\n- AGENTS.md\n- CHANGELOG.md\n- CLAUDE.md\n- CONTRIBUTING.md\n- LICENSE.md\n- README.md\n- SCOPES.md\n- SECURITY.md\n- babel.config.js\n- commitlint.config.mjs\n- env.d.ts\n- package.json\n- playwright.config.ts\n- pnpm-lock.yaml\n- pnpm-workspace.yaml\n- tsconfig.build.json\n- tsconfig.json\n- turbo.json\n- vitest.config.ts\n\n...\n\n## README.md\n[LFX Health Score](https://insights.linuxfoundation.org/project/tiptap) [Build Status](https://github.com/ueberdosis/tiptap/actions/workflows/build.yml) [Version](https://www.npmjs.com/package/@tiptap/core) [Downloads](https://npmcharts.com/compare/@tiptap/core?minimal=true) [License](https://www.npmjs.com/package/@tiptap/core)\n\n...\n\n# Tiptap Editor\nThe Tiptap Editor is a headless, framework-agnostic rich text editor that's customizable and extendable through extensions. Its headless nature means it comes without a set user interface, offering full design freedom (for a jumpstart, see linked UI templates below).\nTiptap is based on the highly reliable [ProseMirror](https://prosemirror.net/) library.\n\n...\n\n## How does the Tiptap Editor work?\n* **Headless Framework:** Tiptap does not rely on a user interface. So there is no need for class overrides or code hacks. If you do need an example UI feel free to browse our UI templates linked below.\n* **Framework-agnostic:** The Tiptap Editor is designed to work across different frontend frameworks.\nThis means whether you're using Vue, React, or plain JavaScript, Tiptap integrates without compatibility issues.\n* **Extension based:** Extensions in Tiptap allow for a tailored editing experience, from simple text styling to advanced features like drag-and-drop block editing.\nYou have the option to choose from over 100 extensions available in the [documentation](https://tiptap.dev/docs/editor/extensions) and [community](https://github.com/ueberdosis/awesome-tiptap/) to enhance your editor's functionality.\n* **Customize your UX:** The editor was built to give you control to define your own [extensions](https://tiptap.dev/docs/editor/guide/custom-extensions) and [nodes](https://tiptap.dev/docs/editor/api/nodes) .\n\n### Editor Pro Extensions\nThe **Pro Extensions** are a set of advanced functionalities that enhance the capabilities of the Tiptap Editor. They are additional features that can be integrated into the base editor to provide more sophisticated editing options.\nKey functionalities include collaborative editing, commenting, versioning, document conversion and AI related features.\nReview the docs right [here](https://tiptap.dev/docs/editor/extensions) .\nPro Extensions need a valid subscription.\n\n...\n\n## Documentation\n### Examples, CodeSandbox and UI Templates\n* [Basic example of the Tiptap editor.](https://codesandbox.io/p/devbox/editor-9x9dkd?embed=1&file=%2Fsrc%2FApp.js)\n* [Collaboration ready Tiptap CodeSandbox](https://codesandbox.io/p/devbox/collaboration-4stk94)\n* React notion-like block editor template: [Demo](https://templates.tiptap.dev/)\n\n## About Tiptap\nTiptap is a collection of developer components based on open-source technology, forming the basis of our advanced, paid features. It includes the open-source editor component, collaboration features, Content AI, and Tiptap Cloud. We are developing open-source products that also shape our paid features.\n\n...\n\n## License\nThe MIT License (MIT). Please see [License File](https://github.com/ueberdosis/tiptap/blob/main/LICENSE.md) for more information."
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

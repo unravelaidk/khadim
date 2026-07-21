@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { db, messages, chats } from "../lib/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 // POST /api/messages - Create message
 export async function action({ request }: ActionFunctionArgs) {
@@ -14,6 +14,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const content = formData.get("content")?.toString() || "";
   const previewUrl = formData.get("previewUrl")?.toString();
   const thinkingStepsJson = formData.get("thinkingSteps")?.toString();
+  const requestedId = formData.get("id")?.toString();
 
   if (!chatId || !role) {
     return Response.json({ error: "chatId and role are required" }, { status: 400 });
@@ -28,13 +29,25 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
-  const [message] = await db.insert(messages).values({
+  if (requestedId && requestedId.length > 128) {
+    return Response.json({ error: "id is too long" }, { status: 400 });
+  }
+
+  const [inserted] = await db.insert(messages).values({
+    ...(requestedId ? { id: requestedId } : {}),
     chatId,
     role,
     content,
     previewUrl,
     thinkingSteps,
-  }).returning();
+  }).onConflictDoNothing({ target: messages.id }).returning();
+
+  const message = inserted ?? (requestedId
+    ? await db.query.messages.findFirst({ where: and(eq(messages.id, requestedId), eq(messages.chatId, chatId)) })
+    : undefined);
+  if (!message || message.role !== role || message.content !== content) {
+    return Response.json({ error: "Message id is already used by another turn" }, { status: 409 });
+  }
 
   // Update chat's updatedAt
   await db.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, chatId));

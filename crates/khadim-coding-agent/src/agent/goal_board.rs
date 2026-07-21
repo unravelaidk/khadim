@@ -136,7 +136,10 @@ impl GoalBoard {
 
     /// Heuristic value: count of goals that are NOT satisfied.
     pub fn heuristic(&self) -> usize {
-        self.goals.iter().filter(|g| !g.status.is_satisfied()).count()
+        self.goals
+            .iter()
+            .filter(|g| !g.status.is_satisfied())
+            .count()
     }
 
     /// Borrow a goal by id.
@@ -151,17 +154,18 @@ impl GoalBoard {
 
     /// Claim a goal for a worker. Returns [`ClaimError`] if the goal is not
     /// currently [`GoalStatus::Pending`].
-    pub fn claim(&mut self, goal_id: GoalId, worker_id: impl Into<String>) -> Result<(), ClaimError> {
+    pub fn claim(
+        &mut self,
+        goal_id: GoalId,
+        worker_id: impl Into<String>,
+    ) -> Result<(), ClaimError> {
         let worker_id = worker_id.into();
-        let goal = self
-            .goals
-            .get_mut(goal_id)
-            .ok_or(ClaimError {
-                goal_id,
-                current_status: GoalStatus::Blocked {
-                    reason: "no such goal".to_string(),
-                },
-            })?;
+        let goal = self.goals.get_mut(goal_id).ok_or(ClaimError {
+            goal_id,
+            current_status: GoalStatus::Blocked {
+                reason: "no such goal".to_string(),
+            },
+        })?;
         if !goal.status.is_pending() {
             return Err(ClaimError {
                 goal_id,
@@ -207,9 +211,11 @@ impl GoalBoard {
             .enumerate()
             .filter(|(_, g)| g.status.is_pending())
             .filter(|(_, g)| {
-                g.deps
-                    .iter()
-                    .all(|dep| self.goals.get(*dep).is_some_and(|d| d.status.is_satisfied()))
+                g.deps.iter().all(|dep| {
+                    self.goals
+                        .get(*dep)
+                        .is_some_and(|d| d.status.is_satisfied())
+                })
             })
             .map(|(id, _)| id)
             .collect()
@@ -272,7 +278,11 @@ mod tests {
     fn from_tracker_preserves_count_and_descriptions() {
         let tracker = sample_tracker();
         let n = tracker.total();
-        let descs: Vec<_> = tracker.goals.iter().map(|g| g.description.clone()).collect();
+        let descs: Vec<_> = tracker
+            .goals
+            .iter()
+            .map(|g| g.description.clone())
+            .collect();
         let board = GoalBoard::from_tracker(tracker);
         assert_eq!(board.total(), n);
         assert_eq!(board.goals_ref().len(), n);
@@ -365,15 +375,15 @@ mod tests {
         let tx2 = tx.clone();
 
         let t1 = thread::spawn(move || {
-            let r = tokio::runtime::Runtime::new().unwrap().block_on(async {
-                b1.write().await.claim(goal_id, "worker-a").is_ok()
-            });
+            let r = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(async { b1.write().await.claim(goal_id, "worker-a").is_ok() });
             let _ = tx.send(("a", r));
         });
         let t2 = thread::spawn(move || {
-            let r = tokio::runtime::Runtime::new().unwrap().block_on(async {
-                b2.write().await.claim(goal_id, "worker-b").is_ok()
-            });
+            let r = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(async { b2.write().await.claim(goal_id, "worker-b").is_ok() });
             let _ = tx2.send(("b", r));
         });
         t1.join().unwrap();

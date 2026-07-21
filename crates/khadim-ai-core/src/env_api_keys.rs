@@ -86,12 +86,7 @@ pub fn get_env_api_key(provider: &str) -> Option<String> {
         "minimax-cn" => std::env::var("MINIMAX_CN_API_KEY").ok(),
         "zai" => std::env::var("ZAI_API_KEY").ok(),
         "nvidia" => std::env::var("NVIDIA_API_KEY").ok(),
-        // Ollama Cloud (https://ollama.com) authenticates with an API key.
-        // A local Ollama server needs none, so treat an empty key as usable
-        // when OLLAMA_BASE_URL points somewhere other than the cloud.
-        "ollama" => std::env::var("OLLAMA_API_KEY")
-            .ok()
-            .or_else(|| std::env::var("OLLAMA_BASE_URL").ok().map(|_| String::new())),
+        "ollama" => std::env::var("OLLAMA_API_KEY").ok(),
         _ => None,
     }
 }
@@ -128,11 +123,11 @@ pub fn get_env_base_url(provider: &str) -> Option<String> {
         "minimax-cn" => Some("https://api.minimaxi.com/anthropic".to_string()),
         "zai" => Some("https://api.z.ai/api/coding/paas/v4".to_string()),
         "nvidia" => Some("https://integrate.api.nvidia.com/v1".to_string()),
-        // Ollama Cloud exposes an OpenAI-compatible API at /v1. OLLAMA_BASE_URL
-        // overrides it for a self-hosted/local server (e.g. http://localhost:11434/v1).
+        // Cloud models are accessed through the signed-in local daemon by default.
+        // Set OLLAMA_BASE_URL=https://ollama.com/v1 for direct API-key access.
         "ollama" => std::env::var("OLLAMA_BASE_URL")
             .ok()
-            .or_else(|| Some("https://ollama.com/v1".to_string())),
+            .or_else(|| Some("http://localhost:11434/v1".to_string())),
         _ => None,
     }
 }

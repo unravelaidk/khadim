@@ -14,9 +14,15 @@
 
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage } from "node:http";
-import { createInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
-import { resolveBinaryPath } from "./resolve-binary";
+import type { Readable } from "node:stream";
+import { resolveBinaryPath } from "./resolve-binary.js";
+
+const MAX_AGENT_EVENT_BYTES = 8 * 1024 * 1024;
+const MAX_NATIVE_TOOL_REQUEST_BYTES = 8 * 1024 * 1024;
+const MAX_STDERR_BYTES = 128 * 1024;
+const PARENT_WATCH_FD = 3;
+const PARENT_WATCH_GRACE_MS = 1_000;
 
 export interface AgentStreamEvent {
   workspace_id?: string | null;
@@ -49,6 +55,13 @@ export interface RunAgentOptions {
    */
   apiKey?: string;
   nativeTools?: NativeToolBridge[];
+  /**
+   * Override the executable used to run Khadim. This is useful for embedding a
+   * locally built binary or a process-boundary test double.
+   */
+  binaryPath?: string;
+  /** Arguments inserted before Khadim's CLI arguments (for example, a script passed to Node). */
+  binaryArgs?: string[];
 }
 
 export interface NativeToolBridge {
@@ -85,12 +98,22 @@ const PROVIDER_ENV_MAP: Record<string, string> = {
   ollama: "",
 };
 
+class RequestBodyTooLargeError extends Error {}
+
 async function readRequestBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_NATIVE_TOOL_REQUEST_BYTES) {
+      throw new RequestBodyTooLargeError(
+        `Native tool request exceeds ${MAX_NATIVE_TOOL_REQUEST_BYTES} bytes`,
+      );
+    }
+    chunks.push(bytes);
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks, totalBytes).toString("utf8");
 }
 
 async function createNativeToolServer(tools: NativeToolBridge[] | undefined): Promise<{ env: Record<string, string>; close: () => Promise<void> }> {
@@ -122,9 +145,18 @@ async function createNativeToolServer(tools: NativeToolBridge[] | undefined): Pr
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(result));
     } catch (error) {
-      res.writeHead(500, { "content-type": "application/json" });
+      const tooLarge = error instanceof RequestBodyTooLargeError;
+      res.writeHead(tooLarge ? 413 : 500, {
+        "connection": tooLarge ? "close" : "keep-alive",
+        "content-type": "application/json",
+      });
       res.end(JSON.stringify({ content: `Native tool failed: ${error instanceof Error ? error.message : String(error)}` }));
     }
+  });
+  const sockets = new Set<import("node:net").Socket>();
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -145,14 +177,26 @@ async function createNativeToolServer(tools: NativeToolBridge[] | undefined): Pr
     prompt_snippet: promptSnippet || `- ${name}: ${description}`,
   }));
 
+  let closePromise: Promise<void> | undefined;
+
   return {
     env: {
       KHADIM_NATIVE_TOOL_RPC_URL: `http://127.0.0.1:${address.port}`,
       KHADIM_NATIVE_TOOL_RPC_TOKEN: token,
       KHADIM_NATIVE_TOOLS: JSON.stringify(toolDefs),
     },
-    close: async () => {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+    close: () => {
+      closePromise ??= new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+        // Do not let an in-flight or keep-alive native-tool request retain the
+        // server after its owning agent stream has been abandoned.
+        for (const socket of sockets) socket.destroy();
+        server.closeAllConnections?.();
+      });
+      return closePromise;
     },
   };
 }
@@ -171,7 +215,13 @@ function buildEnv(opts: RunAgentOptions, extraEnv: Record<string, string> = {}):
 }
 
 function buildArgs(opts: RunAgentOptions): string[] {
-  const args: string[] = ["--json", "--prompt", opts.prompt];
+  const args: string[] = [
+    "--parent-watch-fd",
+    String(PARENT_WATCH_FD),
+    "--json",
+    "--prompt",
+    opts.prompt,
+  ];
   if (opts.cwd) args.unshift("--cwd", opts.cwd);
   if (opts.provider) args.unshift("--provider", opts.provider);
   if (opts.model) args.unshift("--model", opts.model);
@@ -181,11 +231,190 @@ function buildArgs(opts: RunAgentOptions): string[] {
   return args;
 }
 
-async function spawnBinary(opts: RunAgentOptions) {
-  return spawn(await resolveBinaryPath(), buildArgs(opts), {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: buildEnv(opts),
+interface BoundedByteTail {
+  bytes: Buffer;
+  truncated: boolean;
+}
+
+function appendBoundedTail(tail: BoundedByteTail, chunk: Buffer, limit: number): void {
+  if (chunk.length >= limit) {
+    tail.bytes = Buffer.from(chunk.subarray(chunk.length - limit));
+    tail.truncated = true;
+    return;
+  }
+
+  const combined = Buffer.concat([tail.bytes, chunk], tail.bytes.length + chunk.length);
+  if (combined.length > limit) {
+    tail.bytes = Buffer.from(combined.subarray(combined.length - limit));
+    tail.truncated = true;
+  } else {
+    tail.bytes = combined;
+  }
+}
+
+function formatStderr(tail: BoundedByteTail): string {
+  const content = tail.bytes.toString("utf8").trim();
+  if (!tail.truncated) return content;
+  return `[stderr truncated to final ${MAX_STDERR_BYTES} bytes]${content ? `\n${content}` : ""}`;
+}
+
+function parseAgentEvent(line: Buffer): AgentStreamEvent | undefined {
+  const withoutCarriageReturn = line.length > 0 && line[line.length - 1] === 0x0d
+    ? line.subarray(0, line.length - 1)
+    : line;
+  const text = withoutCarriageReturn.toString("utf8");
+  if (!text.trim()) return undefined;
+  try {
+    return JSON.parse(text) as AgentStreamEvent;
+  } catch {
+    // Preserve the existing contract: non-JSON stdout lines are ignored.
+    return undefined;
+  }
+}
+
+async function* readAgentEvents(stdout: Readable): AsyncGenerator<AgentStreamEvent> {
+  let pending = Buffer.allocUnsafe(64 * 1024);
+  let pendingLength = 0;
+
+  const append = (segment: Buffer) => {
+    const nextLength = pendingLength + segment.length;
+    if (nextLength > MAX_AGENT_EVENT_BYTES) {
+      throw new Error(
+        `khadim emitted an NDJSON event larger than ${MAX_AGENT_EVENT_BYTES} bytes without a newline`,
+      );
+    }
+    if (nextLength > pending.length) {
+      let capacity = pending.length;
+      while (capacity < nextLength) capacity = Math.min(capacity * 2, MAX_AGENT_EVENT_BYTES);
+      const grown = Buffer.allocUnsafe(capacity);
+      pending.copy(grown, 0, 0, pendingLength);
+      pending = grown;
+    }
+    segment.copy(pending, pendingLength);
+    pendingLength = nextLength;
+  };
+
+  for await (const rawChunk of stdout) {
+    const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+    let start = 0;
+    while (start < chunk.length) {
+      const newline = chunk.indexOf(0x0a, start);
+      const end = newline === -1 ? chunk.length : newline;
+      append(chunk.subarray(start, end));
+      if (newline === -1) break;
+
+      const event = parseAgentEvent(pending.subarray(0, pendingLength));
+      pendingLength = 0;
+      if (event) yield event;
+      start = newline + 1;
+    }
+  }
+
+  if (pendingLength > 0) {
+    const event = parseAgentEvent(pending.subarray(0, pendingLength));
+    if (event) yield event;
+  }
+}
+
+interface ChildOutcome {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
+}
+
+function observeChild(child: ReturnType<typeof spawn>): {
+  outcome: Promise<ChildOutcome>;
+  dispose: () => void;
+} {
+  let spawnError: Error | undefined;
+  let resolveOutcome!: (outcome: ChildOutcome) => void;
+  const outcome = new Promise<ChildOutcome>((resolve) => {
+    resolveOutcome = resolve;
   });
+
+  const onError = (error: Error) => {
+    spawnError = error;
+  };
+  const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
+    resolveOutcome({ code, signal, error: spawnError });
+  };
+
+  child.once("error", onError);
+  child.once("close", onClose);
+
+  return {
+    outcome,
+    dispose: () => {
+      child.removeListener("error", onError);
+      child.removeListener("close", onClose);
+    },
+  };
+}
+
+async function settlesWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<boolean> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), timeoutMs);
+        timeout.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function terminateAndReap(
+  child: ReturnType<typeof spawn>,
+  outcome: Promise<ChildOutcome>,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
+    await outcome;
+    return;
+  }
+
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // Escalation below handles kill races and unsupported graceful signals.
+  }
+  if (await settlesWithin(outcome, 3_000)) return;
+
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // The process may have exited between the deadline and escalation.
+  }
+  if (!(await settlesWithin(outcome, 3_000))) {
+    throw new Error(`Failed to terminate and reap khadim process${child.pid ? ` ${child.pid}` : ""}`);
+  }
+}
+
+interface DestroyableStream {
+  destroy: () => void;
+  destroyed?: boolean;
+}
+
+function closeParentWatch(parentWatch: DestroyableStream | undefined): void {
+  if (!parentWatch?.destroyed) parentWatch?.destroy();
+}
+
+async function terminateManagedTreeAndReap(
+  child: ReturnType<typeof spawn>,
+  outcome: Promise<ChildOutcome>,
+  parentWatch: DestroyableStream | undefined,
+): Promise<void> {
+  closeParentWatch(parentWatch);
+
+  // Give the Rust watcher time to observe EOF and hard-stop its process
+  // group/job. Directly signalling the CLI first can race that watcher on
+  // Unix and strand descendants in the managed group.
+  if (parentWatch && child.exitCode === null && child.signalCode === null && child.pid !== undefined) {
+    if (await settlesWithin(outcome, PARENT_WATCH_GRACE_MS)) return;
+  }
+  await terminateAndReap(child, outcome);
 }
 
 /** Run agent and collect all events. Returns accumulated output + event list. */
@@ -205,42 +434,94 @@ export async function runAgent(opts: RunAgentOptions): Promise<AgentResult> {
 
 /** Run agent as an async generator, yielding events as they arrive from stdout. */
 export async function* runAgentStream(opts: RunAgentOptions): AsyncGenerator<AgentStreamEvent> {
-  const binaryPath = await resolveBinaryPath();
-  const nativeToolServer = await createNativeToolServer(opts.nativeTools);
-  const child = spawn(binaryPath, buildArgs(opts), {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: buildEnv(opts, nativeToolServer.env),
-  });
+  opts.signal?.throwIfAborted();
+  const binaryPath = opts.binaryPath ?? await resolveBinaryPath();
+  opts.signal?.throwIfAborted();
 
-  let stderr = "";
+  let nativeToolServer: Awaited<ReturnType<typeof createNativeToolServer>> | undefined;
+  let child: ReturnType<typeof spawn> | undefined;
+  let childObservation: ReturnType<typeof observeChild> | undefined;
+  let parentWatch: DestroyableStream | undefined;
+  let abortHandler: (() => void) | undefined;
+  let termination: Promise<void> | undefined;
+  const stderr: BoundedByteTail = { bytes: Buffer.alloc(0), truncated: false };
+  let stderrHandler: ((chunk: Buffer) => void) | undefined;
 
-  child.stderr!.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString();
-  });
+  try {
+    nativeToolServer = await createNativeToolServer(opts.nativeTools);
+    opts.signal?.throwIfAborted();
 
-  if (opts.signal) {
-    opts.signal.addEventListener("abort", () => child.kill(), { once: true });
-  }
-
-  const rl = createInterface({ input: child.stdout!, crlfDelay: Infinity });
-  const exitPromise = new Promise<number>((resolve, reject) => {
-    child.on("error", reject);
-    child.on("exit", (code) => resolve(code ?? 1));
-  });
-
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    try {
-      yield JSON.parse(line) as AgentStreamEvent;
-    } catch {
-      // Skip non-JSON lines
+    child = spawn(binaryPath, [...(opts.binaryArgs ?? []), ...buildArgs(opts)], {
+      stdio: ["ignore", "pipe", "pipe", "pipe"],
+      env: buildEnv(opts, nativeToolServer.env),
+    });
+    childObservation = observeChild(child);
+    const inheritedWatch = child.stdio[PARENT_WATCH_FD];
+    if (!inheritedWatch || typeof inheritedWatch.destroy !== "function") {
+      throw new Error(`Failed to create parent lifecycle pipe on descriptor ${PARENT_WATCH_FD}`);
     }
-  }
+    parentWatch = inheritedWatch;
+    stderrHandler = (chunk: Buffer) => {
+      appendBoundedTail(stderr, chunk, MAX_STDERR_BYTES);
+    };
+    child.stderr!.on("data", stderrHandler);
 
-  const exitCode = await exitPromise;
-  await nativeToolServer.close();
+    abortHandler = () => {
+      termination ??= terminateManagedTreeAndReap(
+        child!,
+        childObservation!.outcome,
+        parentWatch,
+      );
+      // Observe the cleanup promise immediately; the generator awaits and
+      // reports it below after the stdout iterator has unwound.
+      void termination.catch(() => {});
+    };
+    if (opts.signal) {
+      opts.signal.addEventListener("abort", abortHandler, { once: true });
+      // Close the check/listener race if the signal aborted synchronously.
+      if (opts.signal.aborted) abortHandler();
+    }
 
-  if (exitCode !== 0) {
-    throw new Error(`khadim exited with code ${exitCode}${stderr ? `: ${stderr.trim()}` : ""}`);
+    for await (const event of readAgentEvents(child.stdout!)) {
+      yield event;
+    }
+
+    const outcome = await childObservation.outcome;
+    opts.signal?.throwIfAborted();
+    if (outcome.error) throw outcome.error;
+    if (outcome.code !== 0) {
+      const description = outcome.signal ? `signal ${outcome.signal}` : `code ${outcome.code ?? 1}`;
+      const stderrText = formatStderr(stderr);
+      throw new Error(`khadim exited with ${description}${stderrText ? `: ${stderrText}` : ""}`);
+    }
+  } finally {
+    if (opts.signal && abortHandler) {
+      opts.signal.removeEventListener("abort", abortHandler);
+    }
+    let cleanupError: unknown;
+    if (child && childObservation) {
+      try {
+        await (termination ?? terminateManagedTreeAndReap(
+          child,
+          childObservation.outcome,
+          parentWatch,
+        ));
+      } catch (error) {
+        cleanupError = error;
+      } finally {
+        if (stderrHandler) child.stderr?.removeListener("data", stderrHandler);
+        childObservation.dispose();
+      }
+    } else {
+      closeParentWatch(parentWatch);
+    }
+    if (nativeToolServer) {
+      try {
+        await nativeToolServer.close();
+      } catch (error) {
+        cleanupError ??= error;
+      }
+    }
+    if (cleanupError) throw cleanupError;
   }
 }

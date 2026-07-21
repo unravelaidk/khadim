@@ -11,6 +11,9 @@
     "docs:build": "bun --filter @khadim/docs build",
     "desktop:dev": "bun --filter @khadim/desktop tauri dev",
     "desktop:build": "bun --filter @khadim/desktop build",
+    "electron:dev": "bun --filter @khadim/electron dev",
+    "electron:build": "bun --filter @khadim/electron build",
+    "electron:package": "bun --filter @khadim/electron build:package",
     "plugins:build": "bun --filter '@khadim/plugin-*' build",
     "start": "bun --filter @khadim/web start",
     "typecheck": "bun --filter @khadim/web typecheck",
@@ -22,5 +25,8 @@
     "apps/*",
     "apps/desktop/plugins/*",
     "packages/*"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "^26.0.0"
+  }
 }

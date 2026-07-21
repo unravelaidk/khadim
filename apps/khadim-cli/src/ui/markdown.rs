@@ -28,22 +28,27 @@ use ratatui::text::{Line, Span, Text};
 use textwrap::{Options as WrapOptions, WordSplitter};
 use unicode_width::UnicodeWidthStr;
 
-use super::highlight::{highlight_code_block, normalize_lang};
+use super::code_chrome::{
+    apply_indent_guides_to_spans, line_number_active_style, line_number_style,
+};
+use super::gutter::gutter_metrics;
+use super::highlight::{highlight_code_block_auto, normalize_lang};
 use super::theme::{
     md_blockquote, md_bq_caution, md_bq_important, md_bq_note, md_bq_tip, md_bq_warning,
     md_code_bg, md_code_fg, md_heading, md_hr, md_image, md_link, md_list_bullet, md_strikethrough,
-    md_task_checked, md_task_unchecked,
+    md_task_checked, md_task_unchecked, text_muted,
 };
 
 // ── Public entry point ───────────────────────────────────────────────
 
 /// Render `md` into transcript lines, soft-wrapped at `width` columns.
 ///
-/// `width` is the total column budget the caller has — a 2-column gutter
-/// is reserved internally so output never sits flush against the edge.
+/// `width` is the full column budget. A thin 1-col prose margin is applied
+/// via prefixes (not by shrinking the wrap budget twice). Code blocks use
+/// a flush-left layout so content sits close to the edge (Zed-like density).
 pub fn render_markdown(md: &str, width: usize) -> Vec<Line<'static>> {
-    const GUTTER: usize = 2;
-    let wrap_width = width.saturating_sub(GUTTER).max(10);
+    // Use the full width; line prefixes are subtracted at wrap time.
+    let wrap_width = width.max(10);
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
@@ -497,38 +502,78 @@ where
                 .unwrap_or("")
                 .trim();
             let normalized = normalize_lang(lang);
+            // Compact language chip (industrial: label · n lines).
+            let n_lines = block.buffer.lines().count();
+            let mut chip = Line::default();
+            chip.push_span(Span::styled(
+                "┌ ",
+                Style::default()
+                    .fg(text_muted())
+                    .add_modifier(Modifier::DIM),
+            ));
             if !lang.is_empty() {
-                let mut line = Line::default();
-                line.push_span(Span::styled(
+                chip.push_span(Span::styled(
                     lang.to_string(),
-                    Style::default().add_modifier(Modifier::DIM),
+                    Style::default()
+                        .fg(md_code_fg())
+                        .add_modifier(Modifier::BOLD | Modifier::DIM),
                 ));
-                self.push_line(line);
+                chip.push_span(Span::styled(
+                    format!(" · {n_lines}"),
+                    Style::default()
+                        .fg(text_muted())
+                        .add_modifier(Modifier::DIM),
+                ));
+            } else {
+                chip.push_span(Span::styled(
+                    format!("code · {n_lines}"),
+                    Style::default()
+                        .fg(text_muted())
+                        .add_modifier(Modifier::DIM),
+                ));
             }
+            self.push_line(chip);
 
-            // Try syntax highlighting; fall back to plain theme-colored text.
-            let highlighted = (!lang.is_empty())
-                .then(|| highlight_code_block(normalized, &block.buffer))
-                .flatten();
+            // Syntax highlight + Zed-style gutter (digit-width column, 1-col pad).
+            // Line numbers live in the wrap *prefix* so wraps stay aligned and
+            // never insert a gap between the number and the code.
+            let highlighted = highlight_code_block_auto(normalized, &block.buffer);
+            let total = block.buffer.lines().count().max(1);
+            // wrap_width already excludes the top-level "  " chrome; metrics
+            // hide the gutter when there isn't room for ~20 cols of code.
+            let metrics = gutter_metrics(total, self.wrap_width, 2);
+            let code_bg = self.styles.code_block.bg;
 
             if let Some(lines) = highlighted {
-                for (_line_no, spans) in lines {
+                for (line_no, spans) in lines {
+                    // Theme code bg on tokens, then paint indent guides (Zed-like).
+                    let mut styled: Vec<Span<'static>> = spans
+                        .into_iter()
+                        .map(|span| {
+                            let mut style = span.style;
+                            if let Some(bg) = code_bg {
+                                style = style.bg(bg);
+                            }
+                            Span::styled(span.content.to_string(), style)
+                        })
+                        .collect();
+                    styled = apply_indent_guides_to_spans(styled);
                     let mut line = Line::default();
-                    // Re-apply the code-block background to every span so the
-                    // whole line has a uniform background even where syntax
-                    // tokens don't reach.
-                    for span in spans {
-                        let style = span.style.patch(self.styles.code_block);
-                        line.push_span(Span::styled(span.content.to_string(), style));
+                    for span in styled {
+                        line.push_span(span);
                     }
-                    self.push_code_line(line);
+                    self.push_code_line(line, Some(line_no), metrics);
                 }
             } else {
-                // Emit code lines verbatim — no wrapping, preserve whitespace.
-                for raw in block.buffer.lines() {
+                for (i, raw) in block.buffer.lines().enumerate() {
                     let mut line = Line::default();
-                    line.push_span(Span::styled(raw.to_string(), self.styles.code_block));
-                    self.push_code_line(line);
+                    for span in apply_indent_guides_to_spans(vec![Span::styled(
+                        raw.to_string(),
+                        self.styles.code_block,
+                    )]) {
+                        line.push_span(span);
+                    }
+                    self.push_code_line(line, Some(i + 1), metrics);
                 }
             }
         }
@@ -798,14 +843,56 @@ where
         self.pending_marker_line = false;
     }
 
-    /// Like `push_line` but flagged so the flush skips wrapping.
-    fn push_code_line(&mut self, line: Line<'static>) {
+    /// Code lines: flush-left (or list-indent only) + tight digit gutter.
+    /// No extra prose chrome — that was pushing code far from the edge.
+    fn push_code_line(
+        &mut self,
+        line: Line<'static>,
+        line_no: Option<usize>,
+        metrics: super::gutter::GutterMetrics,
+    ) {
         self.flush_current_line();
-        self.current_initial = self.prefix_spans(/*for_marker*/ false);
-        self.current_subsequent = self.current_initial.clone();
+
+        // Nested in a list/quote: keep structural indent only (no top chrome).
+        // Top-level: no leading spaces — line numbers (if any) start at col 0.
+        let in_structure = self.indents.iter().any(|c| c.is_list)
+            || self
+                .indents
+                .iter()
+                .any(|c| c.prefix.iter().any(|s| s.content.contains('▌')));
+        let base: Vec<Span<'static>> = if in_structure {
+            // Reuse prefix_spans but drop the thin prose margin (first span).
+            let mut p = self.prefix_spans(/*for_marker*/ false);
+            if p.first().is_some_and(|s| s.content == " ") {
+                p.remove(0);
+            }
+            p
+        } else {
+            Vec::new()
+        };
+
+        let mut initial = base.clone();
+        if let Some(n) = line_no {
+            if metrics.digit_cols > 0 {
+                let style = if n == 1 {
+                    line_number_active_style()
+                } else {
+                    line_number_style()
+                };
+                initial.push(Span::styled(metrics.format(n), style));
+            }
+        }
+
+        let mut cont = base;
+        if metrics.total() > 0 {
+            cont.push(Span::raw(metrics.blank()));
+        }
+
+        self.current_initial = initial;
+        self.current_subsequent = cont;
         self.current_style = line.style;
         self.current = Some(line);
-        self.current_in_code = true;
+        self.current_in_code = false;
     }
 
     fn push_span(&mut self, span: Span<'static>) {
@@ -875,8 +962,9 @@ where
     /// list's prefix.
     fn prefix_spans(&self, for_marker: bool) -> Vec<Span<'static>> {
         let mut out: Vec<Span<'static>> = Vec::new();
-        // Top-level gutter so content sits inside the chrome.
-        out.push(Span::raw("  "));
+        // Thin 1-col prose margin (was 2 — stacked with caller insets and
+        // pushed code far from the left edge).
+        out.push(Span::raw(" "));
 
         let last_marker_idx = if for_marker {
             self.indents.iter().enumerate().rev().find_map(|(i, c)| {
@@ -962,8 +1050,10 @@ fn wrap_styled_line(
     // Handle differing initial vs. subsequent widths by wrapping in two
     // passes: the first line uses `inner_initial`, the rest use
     // `inner_subsequent`.
+    // break_words(true): long tokens/URLs/code identifiers must not overflow
+    // the terminal; industrial density prefers wrap over horizontal clip.
     let opts_initial = WrapOptions::new(inner_initial.max(1))
-        .break_words(false)
+        .break_words(true)
         .word_splitter(WordSplitter::NoHyphenation);
     let first_pass = textwrap::wrap(&flat, &opts_initial);
 
@@ -976,7 +1066,7 @@ fn wrap_styled_line(
         let rest = skip_leading_spaces(&flat, consumed);
         if !rest.is_empty() {
             let opts_rest = WrapOptions::new(inner_subsequent.max(1))
-                .break_words(false)
+                .break_words(true)
                 .word_splitter(WordSplitter::NoHyphenation);
             for row in textwrap::wrap(rest, &opts_rest) {
                 rows.push(row.to_string());
@@ -1077,9 +1167,9 @@ mod tests {
     fn wraps_plain_text() {
         let out = render_markdown("This is a simple sentence that should wrap.", 18);
         let strs = lines_to_strings(&out);
-        // Each output starts with the 2-col gutter.
+        // Thin 1-col prose margin.
         for line in &strs {
-            assert!(line.starts_with("  "));
+            assert!(line.starts_with(' '), "line={line:?}");
         }
         assert!(strs.len() >= 2);
     }
@@ -1092,7 +1182,7 @@ mod tests {
         assert!(strs[0].contains("• first"));
         for cont in &strs[1..] {
             assert!(
-                cont.starts_with("    "),
+                cont.starts_with("   "),
                 "continuation should align: {cont:?}"
             );
         }
@@ -1106,10 +1196,10 @@ mod tests {
         let outer = strs.iter().find(|l| l.contains("outer")).unwrap();
         let inner = strs.iter().find(|l| l.contains("inner")).unwrap();
         let deeper = strs.iter().find(|l| l.contains("deeper")).unwrap();
-        // gutter 2 + marker indents = 2, 6, 10
-        assert!(outer.starts_with("  • "), "outer: {outer:?}");
-        assert!(inner.starts_with("      • "), "inner: {inner:?}");
-        assert!(deeper.starts_with("          • "), "deeper: {deeper:?}");
+        // thin margin 1 + marker indents ≈ 1, 5, 9
+        assert!(outer.starts_with(" • "), "outer: {outer:?}");
+        assert!(inner.starts_with("     • "), "inner: {inner:?}");
+        assert!(deeper.starts_with("         • "), "deeper: {deeper:?}");
     }
 
     #[test]
@@ -1122,26 +1212,42 @@ mod tests {
     }
 
     #[test]
-    fn does_not_split_long_url_token() {
-        // textwrap with NoHyphenation keeps URL-ish tokens intact.
+    fn long_url_token_wraps_without_overflow() {
+        // break_words(true): long URLs wrap rather than overflow the terminal.
         let url = "https://example.com/a/very/long/path/that/should/stay/on/one/line";
         let out = render_markdown(url, 30);
         let strs = lines_to_strings(&out);
+        let joined: String = strs.join("");
         assert!(
-            strs.iter().any(|l| l.contains(url)),
-            "URL was split: {strs:?}"
+            joined.contains("example.com"),
+            "URL missing after wrap: {strs:?}"
         );
+        // No single rendered line should exceed width by much (gutter + content).
+        for l in &strs {
+            assert!(
+                unicode_width::UnicodeWidthStr::width(l.as_str()) <= 34,
+                "line overflows: {l:?}"
+            );
+        }
     }
 
     #[test]
-    fn code_block_is_not_wrapped() {
+    fn code_block_wraps_long_lines() {
+        // Long code lines wrap with a continuation gutter (┊) instead of
+        // overflowing horizontally.
         let md =
             "```\nfn main() { println!(\"hi from a long line that exceeds the width\"); }\n```";
         let out = render_markdown(md, 20);
         let strs = lines_to_strings(&out);
-        assert!(strs
-            .iter()
-            .any(|l| l.contains("println!(\"hi from a long line that exceeds the width\")")));
+        let joined: String = strs.join("");
+        assert!(
+            joined.contains("println!") || joined.contains("main"),
+            "code content missing: {strs:?}"
+        );
+        assert!(
+            strs.len() >= 2,
+            "expected long code line to wrap into multiple rows: {strs:?}"
+        );
     }
 
     #[test]

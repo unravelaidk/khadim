@@ -29,19 +29,19 @@ fn never_satisfied() -> GoalVerifier {
 /// Build a stub worker runner that returns a fixed summary and emits a
 /// `text_delta` event.
 fn stub_runner(summary: &'static str) -> WorkerRunner {
-    Arc::new(
-        move |_session, _prompt, _selection, tx, _runtime, _mode| {
-            let summary = summary.to_string();
-            Box::pin(async move {
-                let _ = tx.send(AgentStreamEvent::new("text_delta").with_content(summary.clone()));
-                Ok(summary)
-            })
-        },
-    )
+    Arc::new(move |_session, _prompt, _selection, tx, _runtime, _mode| {
+        let summary = summary.to_string();
+        Box::pin(async move {
+            let _ = tx.send(AgentStreamEvent::new("text_delta").with_content(summary.clone()));
+            Ok(summary)
+        })
+    })
 }
 
 /// Collect all events from a channel into a Vec.
-async fn drain_events(rx: &mut tokio::sync::mpsc::UnboundedReceiver<AgentStreamEvent>) -> Vec<AgentStreamEvent> {
+async fn drain_events(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<AgentStreamEvent>,
+) -> Vec<AgentStreamEvent> {
     let mut events = Vec::new();
     while let Some(ev) = rx.recv().await {
         if ev.event_type == "done" {
@@ -93,16 +93,32 @@ async fn two_goal_prompt_two_workers_both_satisfied() {
 
     assert!(result.is_ok(), "run should succeed: {:?}", result.err());
     let summary = result.unwrap();
-    assert!(summary.contains("2 satisfied"), "summary should report 2 satisfied: {summary}");
-    assert!(summary.contains("0 blocked"), "no blocked goals in happy path: {summary}");
+    assert!(
+        summary.contains("2 satisfied"),
+        "summary should report 2 satisfied: {summary}"
+    );
+    assert!(
+        summary.contains("0 blocked"),
+        "no blocked goals in happy path: {summary}"
+    );
 
     let events = drain_events(&mut rx).await;
     // Expect: goal_heuristic, workers_assigned, worker_spawned (x2),
     // worker_done (x2), goal_satisfied (x2), multi_agent_done, done.
-    let spawned: Vec<_> = events.iter().filter(|e| e.event_type == "worker_spawned").collect();
-    assert!(spawned.len() >= 2, "expected >=2 worker_spawned events, got {}", spawned.len());
+    let spawned: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == "worker_spawned")
+        .collect();
+    assert!(
+        spawned.len() >= 2,
+        "expected >=2 worker_spawned events, got {}",
+        spawned.len()
+    );
 
-    let satisfied: Vec<_> = events.iter().filter(|e| e.event_type == "goal_satisfied").collect();
+    let satisfied: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == "goal_satisfied")
+        .collect();
     assert_eq!(satisfied.len(), 2, "expected 2 goal_satisfied events");
 
     let done = events.iter().any(|e| e.event_type == "done");
@@ -152,19 +168,39 @@ async fn unsatisfied_goal_reassigned_then_blocked() {
 
     assert!(result.is_ok(), "run should not error: {:?}", result.err());
     let summary = result.unwrap();
-    assert!(summary.contains("0 satisfied"), "no goals satisfied: {summary}");
+    assert!(
+        summary.contains("0 satisfied"),
+        "no goals satisfied: {summary}"
+    );
     assert!(summary.contains("1 blocked"), "one goal blocked: {summary}");
 
     let events = drain_events(&mut rx).await;
-    let reassigned: Vec<_> = events.iter().filter(|e| e.event_type == "goal_reassigned").collect();
-    assert!(!reassigned.is_empty(), "expected at least one goal_reassigned event");
+    let reassigned: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == "goal_reassigned")
+        .collect();
+    assert!(
+        !reassigned.is_empty(),
+        "expected at least one goal_reassigned event"
+    );
 
-    let blocked: Vec<_> = events.iter().filter(|e| e.event_type == "goal_blocked").collect();
+    let blocked: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == "goal_blocked")
+        .collect();
     assert_eq!(blocked.len(), 1, "expected one goal_blocked event");
 
     // The spawn count should be 2: initial + 1 reassignment.
-    let spawned: Vec<_> = events.iter().filter(|e| e.event_type == "worker_spawned").collect();
-    assert_eq!(spawned.len(), 2, "expected 2 worker_spawned (initial + reassignment), got {}", spawned.len());
+    let spawned: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == "worker_spawned")
+        .collect();
+    assert_eq!(
+        spawned.len(),
+        2,
+        "expected 2 worker_spawned (initial + reassignment), got {}",
+        spawned.len()
+    );
 }
 
 // ── No goals decomposed → graceful empty summary ──────────────────────────
@@ -241,11 +277,17 @@ async fn goal_with_unsatisfied_dep_is_not_ready() {
 
     assert!(result.is_ok());
     let summary = result.unwrap();
-    assert!(summary.contains("2 satisfied"), "both goals satisfied: {summary}");
+    assert!(
+        summary.contains("2 satisfied"),
+        "both goals satisfied: {summary}"
+    );
 
     let events = drain_events(&mut rx).await;
     // Goal 1 (deps=[0]) should only be assigned after goal 0 is satisfied.
     // We verify by checking that both goal_satisfied events appear.
-    let satisfied: Vec<_> = events.iter().filter(|e| e.event_type == "goal_satisfied").collect();
+    let satisfied: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == "goal_satisfied")
+        .collect();
     assert_eq!(satisfied.len(), 2, "both goals satisfied after dep gating");
 }

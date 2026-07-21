@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_8e435ab4e91248d393b29ad1f7e709b9",
+  "session_id": "session_8e435ab4e91248d393b29ad1f7e709b9",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/puckeditor/puck",
+      "title": "GitHub - puckeditor/puck: The visual editor for React. \u00b7 GitHub",
+      "publish_date": null,
+      "excerpts": [
+        "# puckeditor/puck\n- Page: GitHub repository\n- URL: https://github.com/puckeditor/puck\n- Description: The visual editor for React\n- Stars: 12,970\n- Forks: 933\n- Topics: react, builder, ai, drag-and-drop, page-builder, no-code, pagebuilder, visual-editor, nocode, draganddrop\n- License: MIT license\n- Default branch: main\n\n...\n\n## README.md\n\u2b50\ufe0f Enjoying Puck? Please [leave a star](https://github.com/puckeditor/puck) !\n[GIF showing a page being created in the Puck Editor, with components being added, arranged, and customized in real time](https://demo.puckeditor.com/edit)\n\n## What is Puck?\nPuck is a modular, open-source visual editor for React.js. You can use Puck to build custom drag-and-drop experiences with your own application and React components.\nBecause Puck is just a React component, it plays well with all React.js environments, including Next.js. You own your data and there\u2019s no vendor lock-in.\nPuck is also [licensed under MIT](https://github.com/puckeditor/puck?tab=MIT-1-ov-file) , making it suitable for both internal systems and commercial applications.\n\n...\n\n## Quick start\n```js\n// Editor.jsx\nimport { Puck } from \"@puckeditor/core\";\n\n// Create Puck component config\nconst config = {\n  components: {\n    HeadingBlock: {\n      fields: {\n        children: {\n          type: \"text\",\n        },\n      },\n      render: ({ children }) => {\n        return <h1>{children}</h1>;\n      },\n    },\n  },\n};\n\n// Describe the initial data\nconst initialData = {};\n\n// Save the data to your database\nconst save = (data) => {};\n\n// Render Puck editor\nexport function Editor() {\n  return <Puck config={config} data={initialData} onPublish={save} />;\n}\n```\nRender the page:\n```js\n// Page.jsx\nimport { Render } from \"@puckeditor/core\";\n\nexport function Page() {\n  return <Render config={config} data={data} />;\n}\n```\n\n## Recipes\nUse `create-puck-app` to quickly spin up a a pre-configured app based on our provided [recipes](https://github.com/puckeditor/puck/tree/main/recipes) :\n```shell\nnpx create-puck-app my-app\n```\nAvailable recipes include:\n\n...\n\n## Community\n* [Discord server](https://discord.gg/D9e4E3MQVZ) for discussions\n* [awesome-puck](https://github.com/puckeditor/awesome-puck) community repo for plugins, custom fields & more\n\n...\n\n## License\nMIT \u00a9 [The Puck Contributors](https://github.com/puckeditor/puck/graphs/contributors)"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

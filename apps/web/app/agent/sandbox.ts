@@ -136,11 +136,15 @@ export async function withSandboxProviderFallback<T>(
 
 export async function ensureSandbox(
   existingSandboxId?: string | null,
-  sandboxProvider: SandboxProvider = getSandboxProvider()
+  sandboxProvider?: SandboxProvider
 ) {
+  const runWithProvider = <T>(action: (provider: SandboxProvider) => Promise<T>) => (
+    sandboxProvider ? action(sandboxProvider) : withSandboxProviderFallback(action)
+  );
+
   if (!existingSandboxId) {
     const sandbox = await withTimeout(
-      withSandboxProviderFallback((provider) => provider.create({ lifetime: "15m" })),
+      runWithProvider((provider) => provider.create({ lifetime: "15m" })),
       "sandbox create"
     );
     return { sandbox, sandboxId: sandbox.id, reconnected: false };
@@ -148,7 +152,7 @@ export async function ensureSandbox(
 
   try {
     const sandbox = await withTimeout(
-      withSandboxProviderFallback((provider) => provider.connect({ id: existingSandboxId })),
+      runWithProvider((provider) => provider.connect({ id: existingSandboxId })),
       `sandbox connect (${existingSandboxId})`
     );
     // Note: Remote sandbox doesn't support extendLifetime - lifetime managed by server
@@ -156,7 +160,7 @@ export async function ensureSandbox(
   } catch (error) {
     console.warn(`[Sandbox] Failed to reconnect to ${existingSandboxId}:`, error);
     const sandbox = await withTimeout(
-      withSandboxProviderFallback((provider) => provider.create({ lifetime: "15m" })),
+      runWithProvider((provider) => provider.create({ lifetime: "15m" })),
       "sandbox create"
     );
     return { sandbox, sandboxId: sandbox.id, reconnected: false };

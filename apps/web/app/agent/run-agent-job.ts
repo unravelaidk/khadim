@@ -347,7 +347,8 @@ export async function runAgentJob(opts: RunAgentJobOptions): Promise<void> {
                 });
               }
             }
-            await updateStep(jobId, stepId, { status: "complete", result });
+            const isError = metadata.is_error === true || metadata.isError === true || metadata.status === "error";
+            await updateStep(jobId, stepId, { status: isError ? "error" : "complete", result });
             if (isSlide && fileContent) {
               await persistSlideDeck(chatId, fileContent);
               await broadcastJobEvent("slide_content", {
@@ -356,7 +357,15 @@ export async function runAgentJob(opts: RunAgentJobOptions): Promise<void> {
               });
               await broadcastJobEvent("file_written", { filename: filename || "index.html", content: fileContent, isSlide: true });
             }
-            await broadcastJobEvent("step_complete", { id: stepId, result, tool, filename, fileContent });
+            await broadcastJobEvent("step_complete", {
+              id: stepId,
+              result,
+              tool,
+              filename,
+              fileContent,
+              status: isError ? "error" : "complete",
+              isError,
+            });
           }
           break;
 
@@ -430,8 +439,6 @@ export async function runAgentJob(opts: RunAgentJobOptions): Promise<void> {
       // Not a slide
     }
 
-    await completeJob(jobId, finalContent, previewUrl);
-
     if (chatId) {
       await db.insert(messages).values({
         chatId,
@@ -439,8 +446,10 @@ export async function runAgentJob(opts: RunAgentJobOptions): Promise<void> {
         content: finalContent,
         previewUrl: previewUrl || undefined,
         thinkingSteps: [],
-      }).catch((err) => console.error("Error saving message:", err));
+      });
     }
+
+    await completeJob(jobId, finalContent, previewUrl);
   } catch (error) {
     if (error instanceof Error && (error.message === "AbortError" || error.name === "AbortError")) {
       await cancelJob(jobId);

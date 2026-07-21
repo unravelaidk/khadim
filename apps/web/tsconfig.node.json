@@ -6,6 +6,7 @@
     "app/agent/**/*.ts",
     "app/lib/agent-rpc.ts",
     "app/lib/agent-rpc-hono.ts",
+    "app/lib/agent-rpc-schemas.ts",
     "app/lib/agent-ws.ts",
     "app/lib/hono-node-ws.ts",
     "app/lib/job-manager.ts",

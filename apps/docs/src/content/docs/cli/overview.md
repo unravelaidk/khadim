@@ -1,6 +1,6 @@
 ---
 title: CLI overview
-description: The Khadim CLI coding agent — an interactive terminal AI assistant and batch automation tool.
+description: Interactive terminal assistance and headless batch automation with Khadim CLI.
 ---
 
 The Khadim CLI is the stable entry point for the Khadim platform. It connects
@@ -21,7 +21,9 @@ Or with bun:
 bun install -g @unravelai/khadim
 ```
 
-The package auto-detects your platform (Linux x64/arm64, macOS x64/arm64) and downloads the correct native binary. Re-run the install command to upgrade.
+The package auto-detects your platform (Linux x64/arm64 or macOS x64/arm64)
+and downloads the correct native binary. Re-run the install command to
+upgrade.
 
 See [Installation](../getting-started/installation/) for release downloads,
 installer script usage, and source builds.
@@ -143,11 +145,25 @@ export KHADIM_MODEL=claude-sonnet-4
 
 ### Persistent settings
 
-The TUI settings panel (F2) saves provider, model, API keys, and theme preferences to `~/.config/khadim/settings.json`.
+The TUI settings panel (`F2`) and `khadim config` save provider, model, API
+keys, and related preferences to `cli-settings.json` in the Khadim config
+directory.
+
+Configure search and plugins without opening the TUI:
+
+```bash
+khadim search providers
+khadim plugin list
+```
+
+See [Configuration](../reference/configuration/) for persistent provider,
+credential, search, and plugin commands.
 
 ## Provider support
 
-The CLI supports 19+ providers across major AI vendors. Use `khadim --providers` to list all available providers, and `khadim --models <provider>` to see models.
+The CLI supports 19+ providers across major AI vendors. Use
+`khadim --providers` to list all available providers and
+`khadim --models <provider>` to see models.
 
 ### OAuth providers
 

@@ -8,11 +8,20 @@
     "khadim": "bin/khadim.js",
     "khadim-cli": "bin/khadim.js"
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/npm-api/index.js",
+  "types": "./dist/npm-api/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/npm-api/index.d.ts",
+      "import": "./dist/npm-api/index.js",
+      "default": "./dist/npm-api/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "bin",
-    "src"
+    "dist",
+    "platform-targets.json"
   ],
   "engines": {
     "node": ">=18"
@@ -23,12 +32,21 @@
     "directory": "apps/khadim-cli"
   },
   "scripts": {
-    "build": "cargo build --manifest-path Cargo.toml",
-    "build:release": "cargo build --release --manifest-path Cargo.toml",
+    "build": "cargo build --no-default-features --manifest-path Cargo.toml && npm run build:npm-api",
+    "build:rpa": "cargo build --features native-rpa,rustautogui-backend --manifest-path Cargo.toml",
+    "build:release": "cargo build --release --no-default-features --manifest-path Cargo.toml",
+    "build:npm-api": "node scripts/build_npm_api.mjs",
     "dist:bin": "python3 scripts/build_dist_bin.py",
     "dist:npm": "python3 scripts/stage_npm_package.py --version $npm_package_version --package main",
     "dist": "npm run dist:bin && npm run dist:npm",
-    "dev": "cargo run --manifest-path Cargo.toml --",
-    "pack:npm": "npm run dist:npm"
+    "dev": "cargo run --no-default-features --manifest-path Cargo.toml --",
+    "dev:rpa": "cargo run --features native-rpa,rustautogui-backend --manifest-path Cargo.toml --",
+    "pack:npm": "npm run dist:npm",
+    "prepare": "npm run build:npm-api",
+    "test:packaging": "python3 -B -m unittest scripts/test_release_contract.py scripts/test_stage_npm_package.py && npm run build:npm-api && node --test scripts/test_run_agent.mjs scripts/test_local_launcher.mjs && node --test scripts/test_platform_targets.mjs scripts/test_npm_api.mjs scripts/test_release_smoke.mjs && bash scripts/test_install_targets.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.9.3"
   }
 }

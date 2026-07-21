@@ -23,6 +23,14 @@ pub struct StoredSettings {
     /// Custom system prompt override
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Persisted web-search provider used when a run does not pass
+    /// `--search-provider`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_provider: Option<String>,
+    /// Per-search-provider credentials. The containing settings file is
+    /// protected with user-only filesystem permissions.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub search_api_keys: HashMap<String, String>,
 }
 
 impl StoredSettings {

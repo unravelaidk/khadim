@@ -6,15 +6,16 @@ use std::path::PathBuf;
 const MAX_HISTORY: usize = 1000;
 
 pub fn history_path() -> Result<PathBuf, AppError> {
-    let dir = dirs::config_dir()
-        .map(|dir| dir.join("khadim"))
-        .ok_or_else(|| AppError::io("Cannot determine config directory"))?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir.join("cli-history.txt"))
+    Ok(crate::services::settings_service::khadim_config_dir()?.join("cli-history.txt"))
 }
 
 pub fn load_history() -> Result<Vec<String>, AppError> {
     let path = history_path()?;
+    if !crate::services::settings_service::secure_existing_private_file(&path)
+        .map_err(|err| AppError::io(format!("Failed to secure history file: {err}")))?
+    {
+        return Ok(Vec::new());
+    }
     let file = match fs::File::open(&path) {
         Ok(f) => f,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -38,11 +39,17 @@ pub fn append_history(prompt: &str) -> Result<(), AppError> {
         return Ok(());
     }
     let path = history_path()?;
+    // Harden legacy history before opening it, then harden the returned file
+    // again to cover the create path.
+    crate::services::settings_service::secure_existing_private_file(&path)
+        .map_err(|e| AppError::io(format!("Failed to secure history file: {e}")))?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
         .map_err(|e| AppError::io(format!("Failed to open history file: {e}")))?;
+    crate::services::settings_service::make_file_private(&file, &path)
+        .map_err(|e| AppError::io(format!("Failed to secure history file: {e}")))?;
     writeln!(file, "{prompt}")
         .map_err(|e| AppError::io(format!("Failed to write history: {e}")))?;
     Ok(())

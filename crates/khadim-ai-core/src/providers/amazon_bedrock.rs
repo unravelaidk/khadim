@@ -1,5 +1,5 @@
-use crate::error::AppError;
 use crate::env_api_keys::is_authenticated_placeholder;
+use crate::error::AppError;
 use crate::providers::usage::bedrock_usage;
 use crate::streaming::for_each_sse_event;
 use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
@@ -20,7 +20,16 @@ fn bearer_token(api_key: &str) -> Result<&str, AppError> {
 }
 
 fn endpoint(model: &Model, stream: bool) -> String {
-    format!("{}/model/{}/{}", model.base_url.trim_end_matches('/'), model.id, if stream { "converse-stream" } else { "converse" })
+    format!(
+        "{}/model/{}/{}",
+        model.base_url.trim_end_matches('/'),
+        model.id,
+        if stream {
+            "converse-stream"
+        } else {
+            "converse"
+        }
+    )
 }
 
 fn convert_messages(context: &Context) -> Vec<serde_json::Value> {
@@ -49,7 +58,9 @@ fn convert_messages(context: &Context) -> Vec<serde_json::Value> {
 }
 
 fn convert_tools(context: &Context) -> Option<serde_json::Value> {
-    if context.tools.is_empty() { return None; }
+    if context.tools.is_empty() {
+        return None;
+    }
     Some(json!({
         "tools": context.tools.iter().map(|tool| json!({
             "toolSpec": {"name": tool.name, "description": tool.description, "inputSchema": {"json": tool.parameters}}
@@ -58,35 +69,73 @@ fn convert_tools(context: &Context) -> Option<serde_json::Value> {
 }
 
 fn system_prompt(context: &Context) -> Option<Vec<serde_json::Value>> {
-    let text = context.messages.iter().filter_map(|message| match message {
-        crate::types::ChatMessage::System { content } => Some(content.as_str()),
-        _ => None,
-    }).collect::<Vec<_>>().join("\n\n");
-    if text.is_empty() { None } else { Some(vec![json!({"text": text})]) }
+    let text = context
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            crate::types::ChatMessage::System { content } => Some(content.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if text.is_empty() {
+        None
+    } else {
+        Some(vec![json!({"text": text})])
+    }
 }
 
 fn parse_converse_output(body: serde_json::Value) -> CompletionResponse {
     let mut content = String::new();
     let mut tool_calls = Vec::new();
-    let blocks = body.get("output").and_then(|v| v.get("message")).and_then(|v| v.get("content")).and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let blocks = body
+        .get("output")
+        .and_then(|v| v.get("message"))
+        .and_then(|v| v.get("content"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     for block in blocks {
-        if let Some(text) = block.get("text").and_then(|v| v.as_str()) { content.push_str(text); }
+        if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+            content.push_str(text);
+        }
         if let Some(tool_use) = block.get("toolUse") {
             tool_calls.push(ToolCall {
-                id: tool_use.get("toolUseId").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                id: tool_use
+                    .get("toolUseId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
                 call_type: "function".to_string(),
                 function: crate::types::ToolFunction {
-                    name: tool_use.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                    arguments: serde_json::to_string(&tool_use.get("input").cloned().unwrap_or_else(|| json!({}))).unwrap_or_else(|_| "{}".to_string()),
+                    name: tool_use
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    arguments: serde_json::to_string(
+                        &tool_use.get("input").cloned().unwrap_or_else(|| json!({})),
+                    )
+                    .unwrap_or_else(|_| "{}".to_string()),
                 },
             });
         }
     }
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
-    CompletionResponse { content, tool_calls, usage: bedrock_usage(&usage), reasoning_content: None }
+    CompletionResponse {
+        content,
+        tool_calls,
+        usage: bedrock_usage(&usage),
+        reasoning_content: None,
+    }
 }
 
-pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &str) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
+pub fn complete(
+    model: &Model,
+    context: &Context,
+    temperature: f32,
+    api_key: &str,
+) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
     let messages = convert_messages(context);
     let tools = convert_tools(context);
@@ -95,15 +144,38 @@ pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &st
     Box::pin(async move {
         let token = bearer_token(&api_key)?;
         let mut payload = json!({"messages": messages, "inferenceConfig": {"temperature": temperature, "maxTokens": model.max_tokens}});
-        if let Some(system) = system { payload["system"] = json!(system); }
-        if let Some(tools) = tools { payload["toolConfig"] = tools; }
-        let response = reqwest::Client::new().post(endpoint(&model, false)).bearer_auth(token).json(&payload).send().await?;
-        if !response.status().is_success() { let status=response.status(); let body=response.text().await.unwrap_or_default(); return Err(AppError::health(format!("Khadim Bedrock request failed: HTTP {status} - {body}"))); }
-        Ok(parse_converse_output(response.json().await.map_err(|err| AppError::health(format!("Failed to parse Bedrock response: {err}")))?))
+        if let Some(system) = system {
+            payload["system"] = json!(system);
+        }
+        if let Some(tools) = tools {
+            payload["toolConfig"] = tools;
+        }
+        let response = reqwest::Client::new()
+            .post(endpoint(&model, false))
+            .bearer_auth(token)
+            .json(&payload)
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AppError::health(format!(
+                "Khadim Bedrock request failed: HTTP {status} - {body}"
+            )));
+        }
+        Ok(parse_converse_output(response.json().await.map_err(
+            |err| AppError::health(format!("Failed to parse Bedrock response: {err}")),
+        )?))
     })
 }
 
-pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str, on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
+pub fn stream(
+    model: &Model,
+    context: &Context,
+    temperature: f32,
+    api_key: &str,
+    on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>,
+) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
     let messages = convert_messages(context);
     let tools = convert_tools(context);
@@ -112,18 +184,41 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
     Box::pin(async move {
         let token = bearer_token(&api_key)?;
         let mut payload = json!({"messages": messages, "inferenceConfig": {"temperature": temperature, "maxTokens": model.max_tokens}});
-        if let Some(system) = system { payload["system"] = json!(system); }
-        if let Some(tools) = tools { payload["toolConfig"] = tools; }
-        let response = reqwest::Client::new().post(endpoint(&model, true)).bearer_auth(token).json(&payload).send().await?;
-        if !response.status().is_success() { let status=response.status(); let body=response.text().await.unwrap_or_default(); return Err(AppError::health(format!("Khadim Bedrock streaming request failed: HTTP {status} - {body}"))); }
+        if let Some(system) = system {
+            payload["system"] = json!(system);
+        }
+        if let Some(tools) = tools {
+            payload["toolConfig"] = tools;
+        }
+        let response = reqwest::Client::new()
+            .post(endpoint(&model, true))
+            .bearer_auth(token)
+            .json(&payload)
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AppError::health(format!(
+                "Khadim Bedrock streaming request failed: HTTP {status} - {body}"
+            )));
+        }
         let mut content = String::new();
         let mut usage = Usage::default();
         let tool_calls = Vec::new();
         on_event(AssistantStreamEvent::Start);
         for_each_sse_event(response, |data| {
-            let payload = serde_json::from_str::<serde_json::Value>(&data).map_err(|err| AppError::health(format!("Failed to parse Bedrock event: {err}")))?;
-            if let Some(text) = payload.get("contentBlockDelta").and_then(|v| v.get("delta")).and_then(|v| v.get("text")).and_then(|v| v.as_str()) {
-                if content.is_empty() { on_event(AssistantStreamEvent::TextStart); }
+            let payload = serde_json::from_str::<serde_json::Value>(&data)
+                .map_err(|err| AppError::health(format!("Failed to parse Bedrock event: {err}")))?;
+            if let Some(text) = payload
+                .get("contentBlockDelta")
+                .and_then(|v| v.get("delta"))
+                .and_then(|v| v.get("text"))
+                .and_then(|v| v.as_str())
+            {
+                if content.is_empty() {
+                    on_event(AssistantStreamEvent::TextStart);
+                }
                 content.push_str(text);
                 on_event(AssistantStreamEvent::TextDelta(text.to_string()));
             }
@@ -132,9 +227,17 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
                 on_event(AssistantStreamEvent::Usage(usage.clone()));
             }
             Ok(())
-        }).await?;
-        if !content.is_empty() { on_event(AssistantStreamEvent::TextEnd(content.clone())); }
+        })
+        .await?;
+        if !content.is_empty() {
+            on_event(AssistantStreamEvent::TextEnd(content.clone()));
+        }
         on_event(AssistantStreamEvent::Done);
-        Ok(CompletionResponse { content, tool_calls, usage, reasoning_content: None })
+        Ok(CompletionResponse {
+            content,
+            tool_calls,
+            usage,
+            reasoning_content: None,
+        })
     })
 }

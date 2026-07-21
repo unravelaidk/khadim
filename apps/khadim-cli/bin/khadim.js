@@ -5,26 +5,27 @@ import { createInterface } from "node:readline/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+async function loadPlatformTargets() {
+  const candidates = [
+    "../dist/platform-targets.js", // staged/published package
+    "../dist/npm-api/platform-targets.js", // local npm API build
+    "../src/platform-targets.js", // npm link from a fresh checkout
+  ];
+  for (const candidate of candidates) {
+    const candidateUrl = new URL(candidate, import.meta.url);
+    if (!existsSync(fileURLToPath(candidateUrl))) continue;
+    return import(candidateUrl.href);
+  }
+  throw new Error(
+    `Khadim launcher support module was not built. Run \`npm run build:npm-api\` in ${path.dirname(fileURLToPath(import.meta.url))}.`,
+  );
+}
+
+const { assertRuntimeCompatibility, platformTarget } = await loadPlatformTargets();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
-
-const PLATFORM_PACKAGE_BY_TARGET = {
-  "x86_64-unknown-linux-gnu": "@unravelai/khadim-linux-x64",
-  "aarch64-unknown-linux-gnu": "@unravelai/khadim-linux-arm64",
-  "x86_64-apple-darwin": "@unravelai/khadim-darwin-x64",
-  "aarch64-apple-darwin": "@unravelai/khadim-darwin-arm64",
-};
-
-function currentTargetTriple() {
-  const { platform, arch } = process;
-  if (platform === "linux" && arch === "x64") return "x86_64-unknown-linux-gnu";
-  if (platform === "linux" && arch === "arm64") return "aarch64-unknown-linux-gnu";
-  if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin";
-  if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin";
-  throw new Error(`Unsupported platform: ${platform} (${arch})`);
-}
 
 function detectPackageManager() {
   const userAgent = process.env.npm_config_user_agent || "";
@@ -41,30 +42,40 @@ function reinstallHint() {
     : "npm install -g @unravelai/khadim@latest";
 }
 
-const targetTriple = currentTargetTriple();
-const platformPackage = PLATFORM_PACKAGE_BY_TARGET[targetTriple];
+const currentTarget = assertRuntimeCompatibility(platformTarget());
+const targetTriple = currentTarget.target;
+const platformPackage = currentTarget.alias;
 const rootPackageJson = require(path.join(__dirname, "..", "package.json"));
 const packageName = rootPackageJson.name ?? "@unravelai/khadim";
 const currentVersion = rootPackageJson.version ?? "0.0.0";
-const binaryName = process.platform === "win32" ? "khadim-cli.exe" : "khadim-cli";
-const localVendorRoot = path.join(__dirname, "..", "vendor");
+const binaryName = currentTarget.binary;
+const packageRoot = path.join(__dirname, "..");
+const localVendorRoot = path.join(packageRoot, "vendor");
 const localBinaryPath = path.join(localVendorRoot, targetTriple, "khadim-cli", binaryName);
+const localBinaryCandidates = [
+  localBinaryPath,
+  path.join(packageRoot, "target", "debug", binaryName),
+  path.join(packageRoot, "target", "release", binaryName),
+  path.join(packageRoot, "dist", "bin", binaryName),
+];
 
-let vendorRoot;
-try {
-  const packageJsonPath = require.resolve(`${platformPackage}/package.json`);
-  vendorRoot = path.join(path.dirname(packageJsonPath), "vendor");
-} catch {
-  if (existsSync(localBinaryPath)) {
-    vendorRoot = localVendorRoot;
-  } else {
-    throw new Error(`Missing optional dependency ${platformPackage}. Reinstall Khadim: ${reinstallHint()}`);
+let binaryPath = localBinaryCandidates.find((candidate) => existsSync(candidate));
+if (!binaryPath) {
+  try {
+    const packageJsonPath = require.resolve(`${platformPackage}/package.json`);
+    const vendorRoot = path.join(path.dirname(packageJsonPath), "vendor");
+    const installedBinaryPath = path.join(vendorRoot, targetTriple, "khadim-cli", binaryName);
+    if (existsSync(installedBinaryPath)) binaryPath = installedBinaryPath;
+  } catch {
+    // The actionable error below covers both an absent and an incomplete
+    // platform package while still allowing npm link/install -g from source.
   }
 }
 
-const binaryPath = path.join(vendorRoot, targetTriple, "khadim-cli", binaryName);
-if (!existsSync(binaryPath)) {
-  throw new Error(`Khadim native binary not found at ${binaryPath}. Reinstall Khadim: ${reinstallHint()}`);
+if (!binaryPath) {
+  throw new Error(
+    `Missing optional dependency ${platformPackage} and no local Khadim build was found. Run npm run build or reinstall Khadim: ${reinstallHint()}`,
+  );
 }
 
 function compareSemver(a, b) {
@@ -144,7 +155,10 @@ async function maybeAutoUpdate() {
     return;
   }
   console.error("Khadim updated successfully. Restarting with the updated CLI...");
-  const restarted = spawn(process.argv[1], process.argv.slice(2), { stdio: "inherit", env: { ...process.env, KHADIM_SKIP_RESTART_UPDATE: "1" } });
+  const restarted = spawn(process.execPath, [process.argv[1], ...process.argv.slice(2)], {
+    stdio: "inherit",
+    env: { ...process.env, KHADIM_SKIP_RESTART_UPDATE: "1" },
+  });
   restarted.on("error", (error) => {
     console.error(`Failed to restart Khadim: ${error.message}`);
     process.exit(1);
@@ -158,41 +172,85 @@ await maybeAutoUpdate();
 const env = { ...process.env };
 env[detectPackageManager() === "bun" ? "KHADIM_MANAGED_BY_BUN" : "KHADIM_MANAGED_BY_NPM"] = "1";
 
-const child = spawn(binaryPath, process.argv.slice(2), {
-  stdio: "inherit",
+const PARENT_WATCH_FD = 3;
+const child = spawn(binaryPath, [...process.argv.slice(2), "--parent-watch-fd", String(PARENT_WATCH_FD)], {
+  stdio: ["inherit", "inherit", "inherit", "pipe"],
   env,
 });
+const parentWatch = child.stdio[PARENT_WATCH_FD];
 
-child.on("error", (error) => {
-  console.error(error);
-  process.exit(1);
-});
-
-const forwardSignal = (signal) => {
-  if (child.killed) return;
-  try {
-    child.kill(signal);
-  } catch {
-    // Ignore races during shutdown.
-  }
-};
-
-["SIGINT", "SIGTERM", "SIGHUP"].forEach((signal) => {
-  process.on(signal, () => forwardSignal(signal));
-});
-
-const childResult = await new Promise((resolve) => {
-  child.on("exit", (code, signal) => {
-    if (signal) {
-      resolve({ type: "signal", signal });
-    } else {
-      resolve({ type: "code", exitCode: code ?? 1 });
-    }
+let childSettled = false;
+const childResultPromise = new Promise((resolve) => {
+  child.once("error", (error) => {
+    if (childSettled) return;
+    childSettled = true;
+    resolve({ type: "error", error });
+  });
+  child.once("exit", (code, signal) => {
+    if (childSettled) return;
+    childSettled = true;
+    if (signal) resolve({ type: "signal", signal });
+    else resolve({ type: "code", exitCode: code ?? 1 });
   });
 });
 
-if (childResult.type === "signal") {
-  process.kill(process.pid, childResult.signal);
+function closeParentWatch() {
+  if (parentWatch && !parentWatch.destroyed) parentWatch.destroy();
+}
+
+async function settlesWithin(promise, timeoutMs) {
+  let timeout;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise((resolve) => {
+        timeout = setTimeout(() => resolve(false), timeoutMs);
+        timeout.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function stopManagedChild(signal) {
+  closeParentWatch();
+  if (await settlesWithin(childResultPromise, 1_000)) return;
+  try {
+    child.kill(signal);
+  } catch {
+    // The child may have exited between the watcher deadline and fallback.
+  }
+  if (await settlesWithin(childResultPromise, 3_000)) return;
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // The child may have exited between the deadline and escalation.
+  }
+}
+
+let requestedSignal;
+let shutdownPromise;
+const signalHandlers = new Map();
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  const handler = () => {
+    requestedSignal ??= signal;
+    shutdownPromise ??= stopManagedChild(signal);
+    void shutdownPromise.catch((error) => console.error(`Failed to stop Khadim: ${error.message}`));
+  };
+  signalHandlers.set(signal, handler);
+  process.on(signal, handler);
+}
+
+const childResult = await childResultPromise;
+closeParentWatch();
+for (const [signal, handler] of signalHandlers) process.removeListener(signal, handler);
+
+if (childResult.type === "error") {
+  console.error(childResult.error);
+  process.exit(1);
+} else if (requestedSignal || childResult.type === "signal") {
+  process.kill(process.pid, requestedSignal ?? childResult.signal);
 } else {
   process.exit(childResult.exitCode);
 }

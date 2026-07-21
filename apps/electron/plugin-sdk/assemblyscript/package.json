@@ -1,0 +1,10 @@
+{
+  "name": "@khadim/plugin-sdk-assemblyscript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./assembly/index.ts",
+  "peerDependencies": {
+    "assemblyscript": "^0.28.0"
+  }
+}

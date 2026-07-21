@@ -4,33 +4,15 @@ import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { handleAgentRpc, type AgentRpcMethod, type AgentRpcResponse } from "./agent-rpc";
+import { jobMessageSchema, jobStartSchema, jobSteerSchema } from "./agent-rpc-schemas";
 
 const optionalString = z.string().min(1).optional();
 const nullableString = z.string().min(1).nullable().optional();
-
-const jobStartSchema = z.object({
-  prompt: optionalString,
-  sandboxId: optionalString,
-  chatId: optionalString,
-  sessionId: optionalString,
-  badges: optionalString,
-  systemPrompt: optionalString,
-  documentIds: z.array(z.string().min(1)).optional(),
-  agentMode: z.enum(["plan", "build", "chat"]).optional(),
-});
 
 const jobStopSchema = z.object({
   jobId: optionalString,
   chatId: nullableString,
   sessionId: optionalString,
-});
-
-const jobMessageSchema = z.object({
-  jobId: optionalString,
-  chatId: nullableString,
-  sessionId: optionalString,
-  prompt: optionalString,
-  systemPrompt: optionalString,
 });
 
 const jobGetParamSchema = z.object({
@@ -78,7 +60,7 @@ export const agentRpcApp = new Hono()
     const { body, status } = await dispatch("job.followUp", c.req.valid("json") as Record<string, unknown>);
     return c.json(body, status);
   })
-  .post("/job/steer", zValidator("json", jobMessageSchema), async (c) => {
+  .post("/job/steer", zValidator("json", jobSteerSchema), async (c) => {
     const { body, status } = await dispatch("job.steer", c.req.valid("json") as Record<string, unknown>);
     return c.json(body, status);
   })

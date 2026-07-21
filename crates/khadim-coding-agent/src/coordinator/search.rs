@@ -109,7 +109,10 @@ pub struct Candidate {
 ///
 /// Tests pass a stub; the real path uses [`make_model_proposer`].
 pub type ProposerFn = Arc<
-    dyn Fn(Context, f32) -> Pin<Box<dyn Future<Output = Result<CompletionResponse, AppError>> + Send>>
+    dyn Fn(
+            Context,
+            f32,
+        ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse, AppError>> + Send>>
         + Send
         + Sync,
 >;
@@ -125,7 +128,12 @@ pub type ProposerFn = Arc<
 pub struct Scorer;
 
 impl Scorer {
-    pub fn score(&self, candidate: &Candidate, goal_tracker: &GoalTracker, parse_cache: &mut ParseCache) -> f64 {
+    pub fn score(
+        &self,
+        candidate: &Candidate,
+        goal_tracker: &GoalTracker,
+        parse_cache: &mut ParseCache,
+    ) -> f64 {
         let goal_delta = score_goal_delta(candidate, goal_tracker);
         let precondition = score_precondition_validity(candidate, goal_tracker, parse_cache);
         let lease_compatibility = 0.0;
@@ -214,7 +222,9 @@ fn score_precondition_validity(
     for goal in goal_tracker.goals.iter().filter(|g| !g.satisfied) {
         if matches!(goal.kind, GoalKind::ModifyFile) {
             if let Some(symbol) = goal.symbol.as_ref() {
-                if args_text.contains(&goal.description) && parse_cache.function_exists(path, symbol) {
+                if args_text.contains(&goal.description)
+                    && parse_cache.function_exists(path, symbol)
+                {
                     score += 0.5;
                 }
             }
@@ -294,8 +304,7 @@ pub async fn propose_and_select(
             async move { proposer(ctx, temperature).await }
         })
         .collect();
-    let replies: Vec<Result<CompletionResponse, AppError>> =
-        futures::future::join_all(calls).await;
+    let replies: Vec<Result<CompletionResponse, AppError>> = futures::future::join_all(calls).await;
 
     // Parse each reply into a candidate (first usable candidate per reply).
     let mut candidates: Vec<Candidate> = Vec::with_capacity(k);
@@ -394,7 +403,9 @@ fn parse_candidate(reply: &CompletionResponse) -> Option<Candidate> {
     if raw.is_empty() {
         return None;
     }
-    let value: Value = serde_json::from_str(raw).ok().or_else(|| try_repair_json(raw))?;
+    let value: Value = serde_json::from_str(raw)
+        .ok()
+        .or_else(|| try_repair_json(raw))?;
 
     let action_type = value
         .get("action_type")
@@ -646,7 +657,8 @@ mod tests {
     #[test]
     fn parse_candidate_from_json_content() {
         let reply = CompletionResponse {
-            content: r#"{"action_type":"plan_note","plan_note":"try X","rationale":"because"}"#.to_string(),
+            content: r#"{"action_type":"plan_note","plan_note":"try X","rationale":"because"}"#
+                .to_string(),
             tool_calls: vec![],
             usage: Usage::default(),
             reasoning_content: None,
@@ -659,7 +671,8 @@ mod tests {
     #[test]
     fn parse_candidate_tolerates_truncated_json() {
         let reply = CompletionResponse {
-            content: r#"{"action_type":"tool_call","name":"write","arguments":{"path":"x.rs""#.to_string(),
+            content: r#"{"action_type":"tool_call","name":"write","arguments":{"path":"x.rs""#
+                .to_string(),
             tool_calls: vec![],
             usage: Usage::default(),
             reasoning_content: None,
@@ -739,7 +752,9 @@ mod tests {
 
     fn empty_context() -> Context {
         Context {
-            messages: vec![ChatMessage::User { content: "do it".to_string() }],
+            messages: vec![ChatMessage::User {
+                content: "do it".to_string(),
+            }],
             tools: vec![],
             session_id: None,
         }
@@ -799,14 +814,12 @@ mod tests {
 
     #[tokio::test]
     async fn propose_and_select_plan_note_when_no_tool() {
-        let gt = tracker_with(vec![make_goal(
-            GoalKind::General,
-            "do something",
-            None,
-        )]);
+        let gt = tracker_with(vec![make_goal(GoalKind::General, "do something", None)]);
         let mut cache = ParseCache::new();
         let reply = CompletionResponse {
-            content: r#"{"action_type":"plan_note","plan_note":"consider X","rationale":"because"}"#.to_string(),
+            content:
+                r#"{"action_type":"plan_note","plan_note":"consider X","rationale":"because"}"#
+                    .to_string(),
             tool_calls: vec![],
             usage: Usage::default(),
             reasoning_content: None,
@@ -826,7 +839,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(action.tool_call.is_none(), "plan_note should not produce a tool call");
+        assert!(
+            action.tool_call.is_none(),
+            "plan_note should not produce a tool call"
+        );
         assert_eq!(action.plan_note.as_deref(), Some("consider X"));
     }
 

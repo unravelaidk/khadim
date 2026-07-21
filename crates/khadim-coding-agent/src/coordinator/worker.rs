@@ -181,7 +181,14 @@ pub fn spawn_worker_with_runner(
             WriteScope::ReadOnly => "readonly".to_string(),
             WriteScope::All => "all".to_string(),
             WriteScope::Paths(paths) => {
-                format!("paths:{}", paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(","))
+                format!(
+                    "paths:{}",
+                    paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
             }
         };
 
@@ -206,17 +213,16 @@ pub fn spawn_worker_with_runner(
                         Err(conflict) => {
                             // Release any leases already claimed for this worker.
                             m.release_worker(&spec.worker_id);
-                            let _ = tx.send(
-                                AgentStreamEvent::new("worker_blocked")
-                                    .with_metadata(json!({
-                                        "worker_id": spec.worker_id,
-                                        "file": conflict.file.display().to_string(),
-                                        "reason": format!(
-                                            "lease conflict with worker '{}'",
-                                            conflict.conflicting_lease.worker_id
-                                        ),
-                                    })),
-                            );
+                            let _ = tx.send(AgentStreamEvent::new("worker_blocked").with_metadata(
+                                json!({
+                                    "worker_id": spec.worker_id,
+                                    "file": conflict.file.display().to_string(),
+                                    "reason": format!(
+                                        "lease conflict with worker '{}'",
+                                        conflict.conflicting_lease.worker_id
+                                    ),
+                                }),
+                            ));
                             return Err(AppError::invalid_input(format!(
                                 "worker '{}' blocked: could not claim lease on {} (conflicts with worker '{}')",
                                 spec.worker_id,
@@ -258,16 +264,15 @@ pub fn spawn_worker_with_runner(
         // Hand a clone of the inner sender to the runner; keep the original so we
         // can drop it (signaling the forwarder) once the run completes.
         let runner_inner_sender = inner_sender.clone();
-        let result = runner
-            .as_ref()(
-                session,
-                spec.task.clone(),
-                selection,
-                runner_inner_sender,
-                runtime,
-                spec.mode.clone(),
-            )
-            .await;
+        let result = runner.as_ref()(
+            session,
+            spec.task.clone(),
+            selection,
+            runner_inner_sender,
+            runtime,
+            spec.mode.clone(),
+        )
+        .await;
 
         // Drop the last sender so the forwarder's recv loop terminates.
         drop(inner_sender);
@@ -311,26 +316,25 @@ pub fn spawn_worker_with_runner(
 }
 
 fn default_runner(max_turns: Option<usize>) -> WorkerRunner {
-    Arc::new(
-        move |mut session,
-         prompt,
-         selection,
-         tx,
-         runtime,
-         mode| {
-            let max_turns = max_turns;
-            Box::pin(async move {
-                let mut config = crate::agent::orchestrator::RunConfig::default();
-                if let Some(mt) = max_turns {
-                    config.max_turns = mt;
-                }
-                crate::agent::orchestrator::run_prompt_with_runtime_and_explicit_mode_and_config(
-                    &mut session, &prompt, selection, mode, &tx, runtime, config,
-                )
-                .await
-            })
-        },
-    )
+    Arc::new(move |mut session, prompt, selection, tx, runtime, mode| {
+        let max_turns = max_turns;
+        Box::pin(async move {
+            let mut config = crate::agent::orchestrator::RunConfig::default();
+            if let Some(mt) = max_turns {
+                config.max_turns = mt;
+            }
+            crate::agent::orchestrator::run_prompt_with_runtime_and_explicit_mode_and_config(
+                &mut session,
+                &prompt,
+                selection,
+                mode,
+                &tx,
+                runtime,
+                config,
+            )
+            .await
+        })
+    })
 }
 
 // ── Path guard decorator ────────────────────────────────────────────────────
@@ -362,17 +366,18 @@ impl PathGuard {
 }
 
 fn normalize(path: &Path) -> PathBuf {
-    path.components().fold(PathBuf::new(), |mut acc, component| {
-        use std::path::Component;
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                acc.pop();
+    path.components()
+        .fold(PathBuf::new(), |mut acc, component| {
+            use std::path::Component;
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    acc.pop();
+                }
+                other => acc.push(other.as_os_str()),
             }
-            other => acc.push(other.as_os_str()),
-        }
-        acc
-    })
+            acc
+        })
 }
 
 /// A `Tool` decorator enforcing a path guard on a single `path` field.
@@ -411,7 +416,9 @@ impl khadim_ai_core::tools::Tool for PathGuardedTool {
         let raw = input
             .get(self.path_field)
             .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::invalid_input(format!("missing '{}' field", self.path_field)))?;
+            .ok_or_else(|| {
+                AppError::invalid_input(format!("missing '{}' field", self.path_field))
+            })?;
         let candidate = Path::new(raw);
         let target = if candidate.is_absolute() {
             candidate.to_path_buf()
@@ -470,7 +477,9 @@ mod tests {
         let res = guarded.execute(outside).await;
         assert!(res.is_err(), "write outside scope should be rejected");
         let err = res.unwrap_err();
-        assert!(err.message.contains("outside the worker's allowed write scope"));
+        assert!(err
+            .message
+            .contains("outside the worker's allowed write scope"));
     }
 
     #[test]
@@ -492,15 +501,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentStreamEvent>();
 
-        let runner: WorkerRunner = Arc::new(
-            |_session, _prompt, _selection, tx, _runtime, _mode| {
+        let runner: WorkerRunner =
+            Arc::new(|_session, _prompt, _selection, tx, _runtime, _mode| {
                 Box::pin(async move {
                     let _ = tx.send(AgentStreamEvent::new("text_delta").with_content("hello"));
                     let _ = tx.send(AgentStreamEvent::new("text_delta").with_content(" world"));
                     Ok("findings: hello world".to_string())
                 })
-            },
-        );
+            });
 
         let handle = spawn_worker_with_runner(
             WorkerSpec {
@@ -531,7 +539,9 @@ mod tests {
             .find(|e| e.event_type == "worker_spawned")
             .expect("worker_spawned emitted");
         assert_eq!(
-            spawned.metadata.as_ref().unwrap()["worker_id"].as_str().unwrap(),
+            spawned.metadata.as_ref().unwrap()["worker_id"]
+                .as_str()
+                .unwrap(),
             "w1"
         );
 
@@ -629,7 +639,12 @@ mod tests {
         let mut spawned_ids = Vec::new();
         while let Ok(ev) = rx.try_recv() {
             if ev.event_type == "worker_spawned" {
-                spawned_ids.push(ev.metadata.unwrap()["worker_id"].as_str().unwrap().to_string());
+                spawned_ids.push(
+                    ev.metadata.unwrap()["worker_id"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                );
             }
         }
         assert!(spawned_ids.contains(&"w-a".to_string()));
@@ -653,9 +668,14 @@ mod tests {
         assert!(inside_res.is_ok(), "write inside scope should succeed");
 
         let outside_res = write.execute(outside).await;
-        assert!(outside_res.is_err(), "write outside scope should be rejected");
+        assert!(
+            outside_res.is_err(),
+            "write outside scope should be rejected"
+        );
         let err = outside_res.unwrap_err();
-        assert!(err.message.contains("outside the worker's allowed write scope"));
+        assert!(err
+            .message
+            .contains("outside the worker's allowed write scope"));
     }
 
     // ── WP4: lease claim/release integration ───────────────────────────────
@@ -668,11 +688,10 @@ mod tests {
         let mgr = Arc::new(std::sync::Mutex::new(LeaseManager::new()));
 
         let file = tmp.path().join("lib.rs");
-        let runner: WorkerRunner = Arc::new(
-            move |_session, _prompt, _selection, _tx, _runtime, _mode| {
+        let runner: WorkerRunner =
+            Arc::new(move |_session, _prompt, _selection, _tx, _runtime, _mode| {
                 Box::pin(async move { Ok("done".to_string()) })
-            },
-        );
+            });
 
         let spec = WorkerSpec {
             worker_id: "w-lease".to_string(),
@@ -706,13 +725,15 @@ mod tests {
 
         let file = tmp.path().join("lib.rs");
         // Pre-claim the file so the worker's claim fails.
-        mgr.lock().unwrap().claim("other", file.clone(), None).unwrap();
+        mgr.lock()
+            .unwrap()
+            .claim("other", file.clone(), None)
+            .unwrap();
 
-        let runner: WorkerRunner = Arc::new(
-            move |_session, _prompt, _selection, _tx, _runtime, _mode| {
+        let runner: WorkerRunner =
+            Arc::new(move |_session, _prompt, _selection, _tx, _runtime, _mode| {
                 Box::pin(async move { Ok("should not run".to_string()) })
-            },
-        );
+            });
 
         let spec = WorkerSpec {
             worker_id: "w-blocked".to_string(),
@@ -757,15 +778,14 @@ mod tests {
         let mgr = Arc::new(std::sync::Mutex::new(LeaseManager::new()));
 
         let file = tmp.path().join("lib.rs");
-        let runner: WorkerRunner = Arc::new(
-            move |_session, _prompt, _selection, _tx, _runtime, _mode| {
+        let runner: WorkerRunner =
+            Arc::new(move |_session, _prompt, _selection, _tx, _runtime, _mode| {
                 Box::pin(async move {
                     // Sleep forever so the worker can be aborted mid-run.
                     tokio::time::sleep(Duration::from_secs(60)).await;
                     Ok("never".to_string())
                 })
-            },
-        );
+            });
 
         let spec = WorkerSpec {
             worker_id: "w-abort".to_string(),
@@ -787,11 +807,7 @@ mod tests {
 
         // Give the worker a moment to claim the lease and start running.
         tokio::time::sleep(Duration::from_millis(50)).await;
-        assert_eq!(
-            mgr.lock().unwrap().len(),
-            1,
-            "lease claimed while running"
-        );
+        assert_eq!(mgr.lock().unwrap().len(), 1, "lease claimed while running");
 
         // Abort the worker.
         handle.join.abort();
@@ -805,6 +821,9 @@ mod tests {
         // runner does not execute. The caller is responsible for cleanup.
         // Here we verify the contract: after abort, explicitly release.
         mgr.lock().unwrap().release_worker("w-abort");
-        assert!(mgr.lock().unwrap().is_empty(), "leases released after explicit cleanup");
+        assert!(
+            mgr.lock().unwrap().is_empty(),
+            "leases released after explicit cleanup"
+        );
     }
 }

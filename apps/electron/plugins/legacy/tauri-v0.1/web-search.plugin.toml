@@ -1,0 +1,11 @@
+[plugin]
+name = "Web Search"
+version = "0.1.0"
+description = "Search the web using DuckDuckGo"
+author = "Khadim"
+license = "MIT"
+wasm = "plugin.wasm"
+
+[permissions]
+http = true
+allowed_hosts = ["*.duckduckgo.com"]

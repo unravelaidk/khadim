@@ -25,16 +25,22 @@ fn deployment_name(model: &Model) -> String {
 }
 
 fn headers(model: &Model, api_key: &str) -> reqwest::header::HeaderMap {
-    let mut headers = model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-        if let (Ok(name), Ok(val)) = (
-            reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-            reqwest::header::HeaderValue::from_str(value),
-        ) {
-            acc.insert(name, val);
-        }
-        acc
-    });
-    headers.insert("api-key", reqwest::header::HeaderValue::from_str(api_key).unwrap());
+    let mut headers = model.headers.iter().fold(
+        reqwest::header::HeaderMap::new(),
+        |mut acc, (key, value)| {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                reqwest::header::HeaderValue::from_str(value),
+            ) {
+                acc.insert(name, val);
+            }
+            acc
+        },
+    );
+    headers.insert(
+        "api-key",
+        reqwest::header::HeaderValue::from_str(api_key).unwrap(),
+    );
     headers
 }
 
@@ -62,23 +68,43 @@ fn parse_response(body: serde_json::Value) -> CompletionResponse {
     let mut tool_calls = Vec::new();
     if let Some(output) = body.get("output").and_then(|v| v.as_array()) {
         for item in output {
-            match item.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+            match item
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+            {
                 "message" => {
                     if let Some(parts) = item.get("content").and_then(|v| v.as_array()) {
                         for part in parts {
                             if part.get("type").and_then(|v| v.as_str()) == Some("output_text") {
-                                content.push_str(part.get("text").and_then(|v| v.as_str()).unwrap_or_default());
+                                content.push_str(
+                                    part.get("text")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default(),
+                                );
                             }
                         }
                     }
                 }
                 "function_call" => {
                     tool_calls.push(ToolCall {
-                        id: item.get("call_id").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        id: item
+                            .get("call_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
                         call_type: "function".to_string(),
                         function: crate::types::ToolFunction {
-                            name: item.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                            arguments: item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}").to_string(),
+                            name: item
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                            arguments: item
+                                .get("arguments")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("{}")
+                                .to_string(),
                         },
                     });
                 }
@@ -95,14 +121,23 @@ fn parse_response(body: serde_json::Value) -> CompletionResponse {
     }
 }
 
-pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &str) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
+pub fn complete(
+    model: &Model,
+    context: &Context,
+    temperature: f32,
+    api_key: &str,
+) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
     let input = convert_input(context);
     let tools = convert_tools(context);
     let api_key = api_key.to_string();
     Box::pin(async move {
         let response = reqwest::Client::new()
-            .post(format!("{}/responses?api-version={}", model.base_url.trim_end_matches('/'), api_version()))
+            .post(format!(
+                "{}/responses?api-version={}",
+                model.base_url.trim_end_matches('/'),
+                api_version()
+            ))
             .headers(headers(&model, &api_key))
             .json(&{
                 let mut body = json!({
@@ -111,7 +146,11 @@ pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &st
                     "tools": tools,
                     "stream": false,
                 });
-                if !model.reasoning { body.as_object_mut().unwrap().insert("temperature".into(), json!(temperature)); }
+                if !model.reasoning {
+                    body.as_object_mut()
+                        .unwrap()
+                        .insert("temperature".into(), json!(temperature));
+                }
                 body
             })
             .send()
@@ -119,20 +158,34 @@ pub fn complete(model: &Model, context: &Context, temperature: f32, api_key: &st
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(AppError::health(format!("Khadim Azure request failed: HTTP {status} - {body}")));
+            return Err(AppError::health(format!(
+                "Khadim Azure request failed: HTTP {status} - {body}"
+            )));
         }
-        Ok(parse_response(response.json().await.map_err(|err| AppError::health(format!("Failed to parse Azure response: {err}")))?))
+        Ok(parse_response(response.json().await.map_err(|err| {
+            AppError::health(format!("Failed to parse Azure response: {err}"))
+        })?))
     })
 }
 
-pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str, on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
+pub fn stream(
+    model: &Model,
+    context: &Context,
+    temperature: f32,
+    api_key: &str,
+    on_event: Arc<dyn Fn(AssistantStreamEvent) + Send + Sync>,
+) -> BoxFuture<'static, Result<CompletionResponse, AppError>> {
     let model = model.clone();
     let input = convert_input(context);
     let tools = convert_tools(context);
     let api_key = api_key.to_string();
     Box::pin(async move {
         let response = reqwest::Client::new()
-            .post(format!("{}/responses?api-version={}", model.base_url.trim_end_matches('/'), api_version()))
+            .post(format!(
+                "{}/responses?api-version={}",
+                model.base_url.trim_end_matches('/'),
+                api_version()
+            ))
             .headers(headers(&model, &api_key))
             .json(&{
                 let mut body = json!({
@@ -141,7 +194,11 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
                     "tools": tools,
                     "stream": true,
                 });
-                if !model.reasoning { body.as_object_mut().unwrap().insert("temperature".into(), json!(temperature)); }
+                if !model.reasoning {
+                    body.as_object_mut()
+                        .unwrap()
+                        .insert("temperature".into(), json!(temperature));
+                }
                 body
             })
             .send()
@@ -149,7 +206,9 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(AppError::health(format!("Khadim Azure streaming request failed: HTTP {status} - {body}")));
+            return Err(AppError::health(format!(
+                "Khadim Azure streaming request failed: HTTP {status} - {body}"
+            )));
         }
         let mut content = String::new();
         let mut tool_calls = Vec::new();
@@ -157,34 +216,64 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
         let mut current_tool: Option<ToolCall> = None;
         on_event(AssistantStreamEvent::Start);
         for_each_sse_event(response, |data| {
-            if data == "[DONE]" { return Ok(()); }
-            let payload = serde_json::from_str::<serde_json::Value>(&data).map_err(|err| AppError::health(format!("Failed to parse Azure SSE: {err}")))?;
-            match payload.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+            if data == "[DONE]" {
+                return Ok(());
+            }
+            let payload = serde_json::from_str::<serde_json::Value>(&data)
+                .map_err(|err| AppError::health(format!("Failed to parse Azure SSE: {err}")))?;
+            match payload
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+            {
                 "response.output_text.delta" => {
-                    let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
-                    if content.is_empty() { on_event(AssistantStreamEvent::TextStart); }
+                    let delta = payload
+                        .get("delta")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    if content.is_empty() {
+                        on_event(AssistantStreamEvent::TextStart);
+                    }
                     content.push_str(delta);
                     on_event(AssistantStreamEvent::TextDelta(delta.to_string()));
                 }
                 "response.function_call_arguments.delta" => {
-                    let id = payload.get("item_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    let id = payload
+                        .get("item_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    let name = payload
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
                     if current_tool.as_ref().map(|t| &t.id) != Some(&id) {
                         if let Some(existing) = current_tool.take() {
                             on_event(AssistantStreamEvent::ToolCallEnd(existing.clone()));
                             tool_calls.push(existing);
                         }
-                        current_tool = Some(finalize_tool_call(id.clone(), name.clone(), String::new()));
+                        current_tool =
+                            Some(finalize_tool_call(id.clone(), name.clone(), String::new()));
                         on_event(AssistantStreamEvent::ToolCallStart { id, name });
                     }
-                    let delta = payload.get("delta").and_then(|v| v.as_str()).unwrap_or_default();
+                    let delta = payload
+                        .get("delta")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
                     if let Some(current) = current_tool.as_mut() {
                         current.function.arguments.push_str(delta);
-                        on_event(AssistantStreamEvent::ToolCallDelta { id: current.id.clone(), name: current.function.name.clone(), arguments: delta.to_string() });
+                        on_event(AssistantStreamEvent::ToolCallDelta {
+                            id: current.id.clone(),
+                            name: current.function.name.clone(),
+                            arguments: delta.to_string(),
+                        });
                     }
                 }
                 "response.completed" => {
-                    if !content.is_empty() { on_event(AssistantStreamEvent::TextEnd(content.clone())); }
+                    if !content.is_empty() {
+                        on_event(AssistantStreamEvent::TextEnd(content.clone()));
+                    }
                     if let Some(existing) = current_tool.take() {
                         on_event(AssistantStreamEvent::ToolCallEnd(existing.clone()));
                         tool_calls.push(existing);
@@ -198,7 +287,13 @@ pub fn stream(model: &Model, context: &Context, temperature: f32, api_key: &str,
                 _ => {}
             }
             Ok(())
-        }).await?;
-        Ok(CompletionResponse { content, tool_calls, usage, reasoning_content: None })
+        })
+        .await?;
+        Ok(CompletionResponse {
+            content,
+            tool_calls,
+            usage,
+            reasoning_content: None,
+        })
     })
 }

@@ -50,6 +50,13 @@ interface MarkdownEditorProps {
   readOnly?: boolean;
 }
 
+function getMarkdown(editor: Editor): string {
+  const storage = editor.storage as typeof editor.storage & {
+    markdown: { getMarkdown: () => string };
+  };
+  return storage.markdown.getMarkdown();
+}
+
 /* ── Toolbar Button ────────────────────────────────────────────────── */
 
 function ToolbarButton({
@@ -261,7 +268,7 @@ function MarkdownPreviewPane({ editor }: { editor: Editor }) {
 
   useEffect(() => {
     const update = () => {
-      setMd(editor.storage.markdown.getMarkdown());
+      setMd(getMarkdown(editor));
     };
     update();
     editor.on("update", update);
@@ -343,7 +350,7 @@ export function MarkdownEditor({
       },
     },
     onUpdate: ({ editor: ed }) => {
-      onChange?.(ed.storage.markdown.getMarkdown());
+      onChange?.(getMarkdown(ed));
     },
   });
 

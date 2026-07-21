@@ -282,27 +282,27 @@ export function WelcomeScreen({
   };
 
   return (
-    <div className="mx-auto flex min-h-[60vh] w-full max-w-5xl flex-col items-center justify-start space-y-4 px-3 pb-12 pt-14 sm:space-y-6 sm:px-4 sm:pt-8 md:px-6 animate-in fade-in duration-700">
-      <div className="relative w-full rounded-3xl glass-card-static px-4 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7">
+    <div className="electron-welcome mx-auto flex min-h-[60vh] w-full max-w-[860px] flex-col items-center justify-center px-6 pb-16 animate-in fade-in duration-300">
+      <div className="electron-welcome-copy relative w-full px-4 py-5">
         <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-col items-center gap-4 md:flex-row">
-            <div className="mb-2 h-20 w-20 shrink-0 sm:mb-2 sm:h-20 sm:w-20 lg:mb-0 lg:h-32 lg:w-32 animate-float [&>svg]:w-full [&>svg]:h-full">
+            <div className="h-[30px] w-[30px] shrink-0 [&>svg]:w-full [&>svg]:h-full">
               <KhadimLogo />
             </div>
             <div className="space-y-1 text-center md:text-left">
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{greeting}</p>
-              <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl md:text-3xl">What do you want to build?</h1>
-              <p className="text-sm text-[var(--text-secondary)] md:text-base">Start with a prompt, then refine with quick actions and files.</p>
+              <p className="sr-only">{greeting}</p>
+              <h1>Where should we begin?</h1>
+              <p>Ask anything, create something useful, or let Khadim handle a task for you.</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="group relative z-50 mx-auto flex w-full max-w-[96vw] flex-col rounded-3xl glass-panel-strong transition-all duration-300 sm:max-w-none">
+      <div className="electron-welcome-composer group relative z-50 mx-auto flex w-full flex-col rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] transition-all duration-200">
 
-        <div className="flex items-center justify-between rounded-t-3xl border-b border-[var(--glass-border)] px-4 py-3 sm:px-6 md:px-8">
+        <div className="flex items-center justify-between rounded-t-2xl border-b border-[var(--line)] px-4 py-3">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
-            <LuSparkles className="h-4 w-4 text-[var(--text-primary)]" />
+            <LuSparkles className="h-4 w-4 text-[var(--blue)]" />
             Ask Khadim
           </div>
           <div className="flex items-center gap-3">
@@ -419,10 +419,10 @@ export function WelcomeScreen({
               ? "Describe what you want..."
               : "Awaiting instructions..."
           }
-            className={`w-full resize-y bg-transparent px-4 text-base leading-relaxed transition-all placeholder:text-[var(--text-muted)] focus:outline-none sm:px-6 md:px-8 md:text-lg text-[var(--text-primary)] ${
+              className={`w-full resize-y bg-transparent px-4 text-sm leading-relaxed transition-all placeholder:text-[var(--text-3)] focus:outline-none sm:px-5 text-[var(--text)] ${
               activeBadges.length > 0
-                ? "min-h-20 md:min-h-32 pt-4"
-                : "min-h-24 md:min-h-40 pt-5 md:pt-8"
+                ? "min-h-20 pt-4"
+                : "min-h-[104px] pt-5"
             }`}
             style={{ maxHeight: "50vh" }}
         />
@@ -482,8 +482,8 @@ export function WelcomeScreen({
           className="hidden"
         />
 
-        <div className="rounded-b-3xl border-t border-[var(--glass-border)] px-3 py-3 sm:px-5 sm:py-4">
-          <div className="flex items-center justify-between gap-3 rounded-2xl glass-panel px-3 py-2 sm:px-4">
+        <div className="rounded-b-2xl border-t border-[var(--line)] px-3 py-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 sm:gap-2.5">
               <button
                 type="button"
@@ -511,7 +511,7 @@ export function WelcomeScreen({
               type="button"
               onClick={handleSend}
               disabled={!input.trim() && attachedFiles.length === 0}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-full btn-ink transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg btn-ink transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
               aria-label="Send prompt"
             >
               <LuSend className="h-5 w-5" />
@@ -536,36 +536,35 @@ export function WelcomeScreen({
         </div>
       </div>
 
-      <div className="mt-4 w-full sm:mt-6 md:mt-8">
-        <div className="w-full rounded-3xl glass-card-static px-4 py-4 sm:px-6 sm:py-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="inline-flex items-center gap-2 text-lg font-medium text-[var(--text-primary)]">
-              <LuSparkles className="h-4 w-4 text-[var(--text-primary)]" />
-              <span>Try these examples</span>
+      <div className="mt-5 w-full">
+        <div className="w-full">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--text-3)]">
+              <span>Start with an idea</span>
             </div>
             <button
               type="button"
               onClick={handleSwitchExamples}
-              className="inline-flex items-center gap-2 rounded-full btn-glass px-3 py-1.5 text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg btn-glass px-2.5 py-1.5 text-xs font-medium transition-colors"
             >
               <LuRefreshCcw className="h-4 w-4" />
               Switch
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {currentExamples.map((idea) => (
+          <div className="electron-starter-grid grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {currentExamples.slice(0, 4).map((idea) => (
               <button
                 key={idea.title}
                 type="button"
                 onClick={() => applyStarterPrompt(idea.prompt)}
-                className="group rounded-2xl glass-card p-4 text-left"
+                className="group rounded-xl border border-[var(--line)] bg-transparent p-3 text-left transition-colors hover:bg-[var(--surface-raised)]"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
-                  <h3 className="text-lg font-semibold leading-tight text-[var(--text-primary)]">{idea.title}</h3>
+                  <h3 className="text-xs font-semibold leading-tight text-[var(--text)]">{idea.title}</h3>
                   <LuArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text-primary)]" />
                 </div>
-                <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{idea.description}</p>
+                <p className="text-[10px] leading-relaxed text-[var(--text-3)]">{idea.description}</p>
               </button>
             ))}
           </div>

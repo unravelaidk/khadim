@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { hc } from "hono/client";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import type { AgentConfig, Message, PendingQuestion, ThinkingStepData } from "../../../types/chat";
 import type { SlideTemplate, SlideTheme } from "../../../types/slides";
 import type { AttachedFile } from "../WelcomeScreen";
@@ -46,7 +46,7 @@ export type ActiveBadge = {
 
 interface UseAgentBuilderOptions {
   initialChatId?: string;
-  initialView?: "chat" | "workspace";
+  initialView?: "chat" | "workspace" | "settings";
   initialWorkspaceId?: string | null;
 }
 
@@ -161,6 +161,7 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   };
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [sessionState, setSessionState] = useState<AgentSessionState>(createEmptyAgentSessionState());
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -198,6 +199,15 @@ export function useAgentBuilder({ initialChatId, initialView = "chat", initialWo
   const [isModelUpdating, setIsModelUpdating] = useState(false);
   const [webBrowsingEnabled, setWebBrowsingEnabled] = useState(true);
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_WEB_SYSTEM_PROMPT);
+
+  useEffect(() => {
+    const requestedView = new URLSearchParams(location.search).get("view");
+    if (requestedView === "settings") {
+      setCurrentView("settings");
+    } else if (currentView === "settings") {
+      setCurrentView(location.pathname.startsWith("/workspace") ? "workspace" : "chat");
+    }
+  }, [location.pathname, location.search]);
 
   const currentChatKey = getChatStateKey(chatId);
   const currentChatState = selectChatRuntime(sessionState, chatId);
@@ -638,7 +648,15 @@ ${content}${isTruncated ? "\n...[truncated]" : ""}`
 
     if (view === "workspace") {
       navigate(selectedWorkspaceId ? `/workspace/${selectedWorkspaceId}` : "/workspace");
+      return;
     }
+
+    // Settings remains in the mounted shell so draft and live session state
+    // survive, while a query parameter gives Back/Forward and refresh an
+    // explicit view identity without switching route modules.
+    const search = new URLSearchParams(location.search);
+    search.set("view", "settings");
+    navigate(`${location.pathname}?${search.toString()}`);
   };
 
   // Track whether the user is near the bottom of the chat scroll container.

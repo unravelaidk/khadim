@@ -14,6 +14,7 @@ interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
   refreshKey?: number;
+  onOpenCommandPalette?: () => void;
 }
 
 export function Sidebar({
@@ -26,6 +27,7 @@ export function Sidebar({
   isOpen = false,
   onClose,
   refreshKey = 0,
+  onOpenCommandPalette,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -49,26 +51,35 @@ export function Sidebar({
         onClick={handleOverlayClick}
       />
 
-      {/* Sidebar */}
       <aside className={`
-        fixed z-50 transition-transform duration-300 ease-out
+        electron-sidebar fixed z-50 transition-transform duration-300 ease-out
         ${isOpen ? "translate-x-0" : "-translate-x-full"}
         lg:relative lg:translate-x-0
-        ${isCollapsed ? "lg:w-[72px]" : "lg:w-[292px]"}
-        w-[292px] h-[calc(100vh-32px)] lg:my-4 lg:ml-4 top-0 lg:top-auto left-0 lg:left-auto
+        ${isCollapsed ? "lg:w-[64px]" : "lg:w-[282px]"}
+        w-[282px] h-dvh lg:h-full top-0 lg:top-auto left-0 lg:left-auto
       `}>
-        <div className="h-full glass-panel-strong flex flex-col rounded-[2rem] overflow-hidden border border-[var(--glass-border-strong)] pointer-events-auto">
+        <div className="h-full flex flex-col overflow-hidden pointer-events-auto">
           {/* Header */}
           <SidebarHeader 
-            onCreateWorkspace={onNewChat} 
+            onCreateWorkspace={() => {
+              onNewChat();
+              onClose?.();
+            }}
             isCollapsed={isCollapsed}
             onToggleCollapse={handleToggleCollapse}
+            onOpenCommandPalette={onOpenCommandPalette ? () => {
+              onClose?.();
+              onOpenCommandPalette();
+            } : undefined}
           />
 
           {/* Navigation */}
           <SidebarNavigation 
             currentView={currentView} 
-            onNavigate={onNavigate}
+            onNavigate={(view) => {
+              onNavigate(view);
+              onClose?.();
+            }}
             isCollapsed={isCollapsed}
           />
 

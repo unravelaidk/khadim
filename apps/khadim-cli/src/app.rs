@@ -215,6 +215,16 @@ pub struct TuiApp {
     pub kill_buffer: String,
     // ── Question tool state ──
     pub pending_question: Option<crate::domain::question::PendingQuestionState>,
+    // ── Multi-agent instrument rail ──
+    pub multi_ops: crate::ui::sidebar::MultiAgentOps,
+    /// When true, force-hide the ops sidebar even in multi mode.
+    pub sidebar_hidden: bool,
+    /// Soft-wrap code/tool bodies (true) vs hard truncate (false).
+    pub soft_wrap_code: bool,
+    /// Filter transcript tool/worker events to this worker id (multi-agent).
+    pub worker_filter: Option<String>,
+    /// Flash message after copy, etc.
+    pub toast: Option<String>,
 }
 
 impl TuiApp {
@@ -309,6 +319,11 @@ impl TuiApp {
             last_window_size: (0, 0),
             kill_buffer: String::new(),
             pending_question: None,
+            multi_ops: crate::ui::sidebar::MultiAgentOps::default(),
+            sidebar_hidden: false,
+            soft_wrap_code: true,
+            worker_filter: None,
+            toast: None,
         }
     }
 
@@ -375,6 +390,9 @@ impl TuiApp {
     }
 
     pub fn submit_user_prompt(&mut self, prompt: &str) {
+        if self.multi_agent_enabled() {
+            self.multi_ops.reset_for_run();
+        }
         self.entries.push(TranscriptEntry::User {
             text: prompt.to_string(),
         });
@@ -427,6 +445,13 @@ impl TuiApp {
     }
 
     pub fn apply_event(&mut self, event: AgentStreamEvent) {
+        // Feed multi-agent instrument rail (sidebar) before transcript handling.
+        self.multi_ops.apply_event(
+            &event.event_type,
+            event.content.as_deref(),
+            event.metadata.as_ref(),
+        );
+
         match event.event_type.as_str() {
             "llm_call_start" => {
                 self.usage_current_call = Some(UsageSnapshot::default());
@@ -503,6 +528,8 @@ impl TuiApp {
                             diff_meta: None,
                             running: true,
                             step_id: step_id.clone(),
+                            breadcrumb: None,
+                            meta_chips: None,
                         });
                     }
                 }
@@ -567,7 +594,8 @@ impl TuiApp {
                     self.status = "idle".into();
                 } else {
                     self.status = "idle".into();
-                    let diff_meta = event.metadata.as_ref().and_then(|m| {
+                    let meta = event.metadata.as_ref();
+                    let diff_meta = meta.and_then(|m| {
                         let path = m.get("path")?.as_str()?.to_string();
                         let before = m.get("before")?.as_str()?.to_string();
                         let after = m.get("after")?.as_str()?.to_string();
@@ -576,6 +604,29 @@ impl TuiApp {
                             before,
                             after,
                         })
+                    });
+                    let breadcrumb = meta.and_then(|m| {
+                        m.get("path")
+                            .or_else(|| m.get("command"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    });
+                    let meta_chips = meta.and_then(|m| {
+                        let mut parts = Vec::new();
+                        if let Some(code) = m.get("exit_code").and_then(|v| v.as_i64()) {
+                            parts.push(format!("${code}"));
+                        }
+                        if m.get("timed_out").and_then(|v| v.as_bool()) == Some(true) {
+                            parts.push("timeout".into());
+                        }
+                        if let Some(n) = m.get("lines").and_then(|v| v.as_u64()) {
+                            parts.push(format!("{n}↕"));
+                        }
+                        if parts.is_empty() {
+                            None
+                        } else {
+                            Some(parts.join(" · "))
+                        }
                     });
 
                     // Promote the running entry for this call into its
@@ -613,6 +664,8 @@ impl TuiApp {
                             is_error: e,
                             diff_meta: dm,
                             running: r,
+                            breadcrumb: bc,
+                            meta_chips: mc,
                             ..
                         } = &mut self.entries[idx]
                         {
@@ -620,6 +673,8 @@ impl TuiApp {
                             *e = is_error;
                             *dm = diff_meta;
                             *r = false;
+                            *bc = breadcrumb;
+                            *mc = meta_chips;
                         }
                     } else {
                         self.entries.push(TranscriptEntry::ToolComplete {
@@ -630,6 +685,8 @@ impl TuiApp {
                             diff_meta,
                             running: false,
                             step_id,
+                            breadcrumb,
+                            meta_chips,
                         });
                     }
                 }
@@ -728,28 +785,51 @@ impl TuiApp {
             }
             "workers_assigned" => {
                 if let Some(metadata) = &event.metadata {
-                    if let Some(assignments) = metadata.get("assignments").and_then(|v| v.as_array()) {
-                        let lines: Vec<String> = assignments.iter().map(|a| {
-                            let wi = a.get("worker_index").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let mode = a.get("mode").and_then(|v| v.as_str()).unwrap_or("?");
-                            let goals = a.get("goals").and_then(|v| v.as_array())
-                                .map(|g| g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>())
-                                .unwrap_or_default();
-                            format!("  [worker-{wi}] mode={mode} goals={goals:?}")
-                        }).collect();
+                    if let Some(assignments) =
+                        metadata.get("assignments").and_then(|v| v.as_array())
+                    {
+                        let lines: Vec<String> = assignments
+                            .iter()
+                            .map(|a| {
+                                let wi =
+                                    a.get("worker_index").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let mode = a.get("mode").and_then(|v| v.as_str()).unwrap_or("?");
+                                let goals = a
+                                    .get("goals")
+                                    .and_then(|v| v.as_array())
+                                    .map(|g| {
+                                        g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>()
+                                    })
+                                    .unwrap_or_default();
+                                format!("  [worker-{wi}] mode={mode} goals={goals:?}")
+                            })
+                            .collect();
                         self.entries.push(TranscriptEntry::System {
-                            text: format!("[multi-agent] Assigned {} worker(s):\n{}", assignments.len(), lines.join("\n")),
+                            text: format!(
+                                "[multi-agent] Assigned {} worker(s):\n{}",
+                                assignments.len(),
+                                lines.join("\n")
+                            ),
                         });
                     }
                 }
             }
             "worker_spawned" | "worker_assigned" => {
                 if let Some(metadata) = &event.metadata {
-                    let wid = metadata.get("worker_id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let goals = metadata.get("goals").and_then(|v| v.as_array())
+                    let wid = metadata
+                        .get("worker_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let goals = metadata
+                        .get("goals")
+                        .and_then(|v| v.as_array())
                         .map(|g| g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>())
                         .unwrap_or_default();
-                    let label = if event.event_type == "worker_spawned" { "spawned" } else { "assigned" };
+                    let label = if event.event_type == "worker_spawned" {
+                        "spawned"
+                    } else {
+                        "assigned"
+                    };
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [{wid}] {label} goals {goals:?}"),
                     });
@@ -759,11 +839,19 @@ impl TuiApp {
                 // Forwarded inner event — render text_delta inline into the
                 // assistant entry; other inner types are noise in the TUI.
                 if let Some(metadata) = &event.metadata {
-                    let inner = metadata.get("inner_event_type").and_then(|v| v.as_str()).unwrap_or("");
-                    let inner_content = metadata.get("inner_content").and_then(|v| v.as_str()).unwrap_or("");
+                    let inner = metadata
+                        .get("inner_event_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let inner_content = metadata
+                        .get("inner_content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     if inner == "text_delta" && !inner_content.is_empty() {
                         self.ensure_assistant_entry();
-                        if let Some(TranscriptEntry::AssistantText { text }) = self.entries.last_mut() {
+                        if let Some(TranscriptEntry::AssistantText { text }) =
+                            self.entries.last_mut()
+                        {
                             text.push_str(inner_content);
                         }
                     }
@@ -771,8 +859,14 @@ impl TuiApp {
             }
             "worker_done" => {
                 if let Some(metadata) = &event.metadata {
-                    let wid = metadata.get("worker_id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let summary = metadata.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+                    let wid = metadata
+                        .get("worker_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let summary = metadata
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [{wid}] done: {summary}"),
                     });
@@ -780,7 +874,10 @@ impl TuiApp {
             }
             "worker_failed" => {
                 if let Some(metadata) = &event.metadata {
-                    let wid = metadata.get("worker_id").and_then(|v| v.as_str()).unwrap_or("?");
+                    let wid = metadata
+                        .get("worker_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
                     let err = metadata.get("error").and_then(|v| v.as_str()).unwrap_or("");
                     self.entries.push(TranscriptEntry::Error {
                         text: format!("  [{wid}] failed: {err}"),
@@ -789,8 +886,14 @@ impl TuiApp {
             }
             "worker_blocked" => {
                 if let Some(metadata) = &event.metadata {
-                    let wid = metadata.get("worker_id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let reason = metadata.get("reason").and_then(|v| v.as_str()).unwrap_or("lease conflict");
+                    let wid = metadata
+                        .get("worker_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let reason = metadata
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("lease conflict");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [{wid}] blocked: {reason}"),
                     });
@@ -798,8 +901,14 @@ impl TuiApp {
             }
             "goal_satisfied" => {
                 if let Some(metadata) = &event.metadata {
-                    let gid = metadata.get("goal_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let desc = metadata.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                    let gid = metadata
+                        .get("goal_id")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let desc = metadata
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  ✓ goal {gid} satisfied: {desc}"),
                     });
@@ -807,8 +916,14 @@ impl TuiApp {
             }
             "goal_reassigned" => {
                 if let Some(metadata) = &event.metadata {
-                    let gid = metadata.get("goal_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let n = metadata.get("reassignment").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let gid = metadata
+                        .get("goal_id")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let n = metadata
+                        .get("reassignment")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  ↻ goal {gid} reassigned (attempt {n})"),
                     });
@@ -816,8 +931,14 @@ impl TuiApp {
             }
             "goal_blocked" => {
                 if let Some(metadata) = &event.metadata {
-                    let gid = metadata.get("goal_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let reason = metadata.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+                    let gid = metadata
+                        .get("goal_id")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let reason = metadata
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  ✗ goal {gid} blocked: {reason}"),
                     });
@@ -825,8 +946,14 @@ impl TuiApp {
             }
             "lease_conflict" => {
                 if let Some(metadata) = &event.metadata {
-                    let wid = metadata.get("worker_id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let other = metadata.get("other_worker_id").and_then(|v| v.as_str()).unwrap_or("?");
+                    let wid = metadata
+                        .get("worker_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let other = metadata
+                        .get("other_worker_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
                     let file = metadata.get("file").and_then(|v| v.as_str()).unwrap_or("");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [lease] {wid} conflicts with {other} on {file}"),
@@ -835,7 +962,10 @@ impl TuiApp {
             }
             "cbs_resolution" => {
                 if let Some(metadata) = &event.metadata {
-                    let reason = metadata.get("reason").and_then(|v| v.as_str()).unwrap_or("cbs");
+                    let reason = metadata
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("cbs");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [cbs] resolution: {reason}"),
                     });
@@ -848,8 +978,11 @@ impl TuiApp {
             }
             "search_candidates" => {
                 if let Some(metadata) = &event.metadata {
-                    let count = metadata.get("candidates").and_then(|v| v.as_array())
-                        .map(|a| a.len()).unwrap_or(0);
+                    let count = metadata
+                        .get("candidates")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0);
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [search] {count} candidate(s)"),
                     });
@@ -857,7 +990,9 @@ impl TuiApp {
             }
             "multi_agent_done" => {
                 if let Some(content) = event.content {
-                    self.entries.push(TranscriptEntry::AssistantText { text: content.clone() });
+                    self.entries.push(TranscriptEntry::AssistantText {
+                        text: content.clone(),
+                    });
                 }
             }
             _ => {}
@@ -1096,6 +1231,75 @@ impl TuiApp {
                 *collapsed = self.tools_collapsed;
             }
         }
+    }
+
+    pub fn toggle_soft_wrap(&mut self) {
+        self.soft_wrap_code = !self.soft_wrap_code;
+        self.toast = Some(if self.soft_wrap_code {
+            "soft-wrap on".into()
+        } else {
+            "soft-wrap off (truncate)".into()
+        });
+        // Bust render cache so wrap mode applies immediately.
+        self.transcript_render_cache.borrow_mut().clear();
+    }
+
+    /// Copy the last expanded tool body or assistant code-ish text to clipboard.
+    pub fn copy_last_tool_or_code(&mut self) {
+        let text = self.entries.iter().rev().find_map(|e| match e {
+            TranscriptEntry::ToolComplete {
+                content,
+                running: false,
+                ..
+            } if !content.is_empty() => Some(content.clone()),
+            TranscriptEntry::AssistantText { text } if !text.is_empty() => Some(text.clone()),
+            _ => None,
+        });
+        match text {
+            Some(t) => match arboard::Clipboard::new() {
+                Ok(mut cb) => {
+                    if cb.set_text(t).is_ok() {
+                        self.toast = Some("copied".into());
+                    } else {
+                        self.toast = Some("copy failed".into());
+                    }
+                }
+                Err(_) => self.toast = Some("clipboard unavailable".into()),
+            },
+            None => self.toast = Some("nothing to copy".into()),
+        }
+    }
+
+    pub fn cycle_worker_filter(&mut self) {
+        let ids: Vec<String> = self
+            .multi_ops
+            .workers
+            .iter()
+            .map(|w| w.id.clone())
+            .collect();
+        if ids.is_empty() {
+            self.worker_filter = None;
+            self.toast = Some("no workers".into());
+            return;
+        }
+        self.worker_filter = match &self.worker_filter {
+            None => Some(ids[0].clone()),
+            Some(cur) => {
+                if let Some(i) = ids.iter().position(|id| id == cur) {
+                    if i + 1 < ids.len() {
+                        Some(ids[i + 1].clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(ids[0].clone())
+                }
+            }
+        };
+        self.toast = Some(match &self.worker_filter {
+            Some(id) => format!("filter: {id}"),
+            None => "filter: all".into(),
+        });
     }
 
     // ── Settings panel: focus navigation ─────────────────────────────
@@ -1477,6 +1681,8 @@ impl TuiApp {
                 diff_meta: None,
                 running: false,
                 step_id: String::new(),
+                breadcrumb: None,
+                meta_chips: None,
             });
         }
 
@@ -1504,6 +1710,8 @@ impl TuiApp {
                     diff_meta: None,
                     running: false,
                     step_id: String::new(),
+                    breadcrumb: None,
+                    meta_chips: None,
                 });
             }
             let _ = state
@@ -1579,14 +1787,24 @@ mod tests {
             prompt: None,
             provider: None,
             model: None,
+            temperature: None,
+            base_url: None,
+            search_provider: None,
+            ignore_saved_api_key: false,
+            parent_watch_fd: None,
             session: None,
+            delete_session: None,
             system_prompt: None,
             harness: Harness::default(),
             verbose: false,
             json: false,
             list_providers: None,
             list_models: None,
+            codex_auth: None,
+            admin_command: None,
             multi_agent: false,
+            tool_groups: None,
+            skill_dirs: Vec::new(),
         };
         let app_service = AppService::new(config.clone(), StoredSettings::default(), worker_tx);
         TuiApp::new(&config, &app_service)

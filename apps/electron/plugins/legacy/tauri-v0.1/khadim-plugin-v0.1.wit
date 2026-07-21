@@ -1,0 +1,95 @@
+// Restored from apps/desktop/src-tauri/wit/khadim-plugin.wit at 64312d4.
+package khadim:plugin@0.1.0;
+
+type json = string;
+
+record tool-param {
+    name: string,
+    description: string,
+    param-type: string,
+    required: bool,
+    default-value: option<json>,
+}
+
+record tool-def {
+    name: string,
+    description: string,
+    params: list<tool-param>,
+    prompt-snippet: string,
+}
+
+record tool-result {
+    content: string,
+    is-error: bool,
+    metadata: option<json>,
+}
+
+record plugin-info {
+    name: string,
+    version: string,
+    description: string,
+    author: string,
+    license: option<string>,
+    homepage: option<string>,
+    min-host-version: option<string>,
+}
+
+record config-field {
+    key: string,
+    description: string,
+    field-type: string,
+    required: bool,
+    default-value: option<string>,
+}
+
+interface host-fs {
+    read-file: func(path: string) -> result<string, string>;
+    write-file: func(path: string, content: string) -> result<_, string>;
+    list-dir: func(path: string) -> result<list<string>, string>;
+    path-exists: func(path: string) -> result<bool, string>;
+    file-info: func(path: string) -> result<json, string>;
+}
+
+interface host-http {
+    request: func(
+        method: string,
+        url: string,
+        headers: option<json>,
+        body: option<string>,
+    ) -> result<tuple<u16, string>, string>;
+}
+
+interface host-log {
+    debug: func(msg: string);
+    info: func(msg: string);
+    warn: func(msg: string);
+    error: func(msg: string);
+}
+
+interface host-store {
+    get: func(key: string) -> option<string>;
+    set: func(key: string, value: string);
+    delete: func(key: string);
+    list-keys: func(prefix: string) -> list<string>;
+}
+
+interface host-config {
+    get: func(key: string) -> option<string>;
+}
+
+interface guest-plugin {
+    info: func() -> plugin-info;
+    config-schema: func() -> list<config-field>;
+    initialize: func(config: json) -> result<_, string>;
+    list-tools: func() -> list<tool-def>;
+    execute-tool: func(tool-name: string, args: json) -> tool-result;
+}
+
+world khadim-plugin {
+    import host-fs;
+    import host-http;
+    import host-log;
+    import host-store;
+    import host-config;
+    export guest-plugin;
+}

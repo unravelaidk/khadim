@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_c4fde1c0abeb4f74b04b530e45b041d4",
+  "session_id": "session_c4fde1c0abeb4f74b04b530e45b041d4",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/codesandbox/sandpack",
+      "title": "GitHub - codesandbox/sandpack: A component toolkit for creating live-running code editing experiences, using the power of CodeSandbox. \u00b7 GitHub",
+      "publish_date": "2025-02-14",
+      "excerpts": [
+        "# codesandbox/sandpack\n- Topics: playground, documentation, reactjs, sandbox, live-coding, hacktoberfest, sandpack\n- License: Apache-2.0 license\n- Default branch: main\n- Created: 2021-02-19T08:06:29.000Z\n- Commits: 1,142\n\n...\n\n# Sandpack\nSandpack is a component toolkit for creating your own live running code editing experience powered by CodeSandbox.\n[Learn more about Sandpack](https://sandpack.codesandbox.io/)\n[Edit in CodeSandbox](https://codesandbox.io/p/github/codesandbox/sandpack)\n\n## Sandpack Client\nThis is a small foundation package that sits on top of the bundler. It is\nframework agnostic and facilitates the handshake between your context and the bundler iframe.\n[Read more](https://sandpack.codesandbox.io/docs/advanced-usage/client)"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

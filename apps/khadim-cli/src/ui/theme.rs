@@ -31,6 +31,8 @@ pub fn set_current_theme(family: Option<String>, variant: Option<String>) {
     unsafe {
         CURRENT_THEME = Some(colors);
     }
+    // Keep syntax highlighting palette in sync with the UI theme.
+    crate::ui::highlight::set_highlight_theme(family, variant);
 }
 
 // ── Dynamic color accessor functions ──────────────────────────────────────────

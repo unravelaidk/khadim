@@ -25,3 +25,6 @@ rustautogui-opencl = ["rustautogui-backend", "rustautogui/opencl"]
 
 [lib]
 crate-type = ["lib"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

@@ -1,0 +1,511 @@
+# Studio implementation plan and research handoff
+
+This document gives the next agent the current state, architecture decisions,
+research record, and ordered implementation plan for Khadim Studio. Start here
+before changing artifact persistence, the design editor, preview execution, or
+agent-assisted editing.
+
+<!-- prettier-ignore -->
+> [!IMPORTANT]
+> The current implementation is an Electron prototype in `apps/electron`. The
+> repository-level product context still describes the older Tauri desktop app.
+> Don't copy Tauri-specific assumptions into this package without checking the
+> Electron code.
+
+## Product outcome
+
+Studio is a local-first workspace where you can create and edit three artifact
+families without leaving the project:
+
+- **Documents** provide structured text editing and reliable page-based PDF
+  output.
+- **Websites** combine visual React composition, source files, responsive
+  preview, and PDF output.
+- **Canvases** provide an infinite spatial editor for diagrams and sketches.
+
+Chat and Studio share the same project, selected agent, selected model, and run
+engine. An agent edit must update the open artifact in place and preserve
+unrelated content.
+
+## Current implementation
+
+The current branch already has the core artifact and website-editor path. Treat
+the following behavior as working unless a focused test proves otherwise:
+
+- Artifacts use a versioned, project-owned schema with `document`, `site`, and
+  `canvas` kinds.
+- A website stores editable files, a generated preview, and a Puck visual
+  document in one `web-project` content record. New websites default to a real
+  React Router v7 project with Vite scripts, browser route modules, and a
+  standard `index.html` entry.
+- Puck provides visual component selection, drag-and-drop composition, viewport
+  controls, and direct inline text editing.
+- The Puck registry now includes constrained section, stack, columns, spacer,
+  navigation, image, card, text, and button primitives. Nested slot content is
+  regenerated into both managed React source and printable HTML.
+- Puck and the generated React project use the same semantic CSS classes. The
+  Design iframe receives the artifact's local CSS files, so a Monaco stylesheet
+  edit updates Design as well as Preview without leaking artifact styles into
+  Khadim's renderer document.
+- Monaco provides the source editor and uses a Khadim artifact URI for each
+  model.
+- Opening an artifact keeps the main project chat on the left and the editor
+  on the right. Studio doesn't render a separate transcript or composer. The
+  main chat preserves message history, tool activity, attachments, model and
+  tool controls, run states, and keyboard behavior. While an artifact is open,
+  prompts from this composer target that artifact through the normal run path.
+  The divider supports pointer and keyboard resizing. At compact widths, the
+  chat stacks above the editor.
+- Preview is the default website surface. Design, Code, and Split remain one
+  click away, so source editing is available without making code the primary
+  Studio view.
+- React preview materializes the artifact file map in an isolated temporary
+  directory, runs an atomic Vite build, and serves the result from a supervised
+  loopback-only origin. Each successful update returns a revisioned URL.
+- The supervised runtime supports both legacy React projects and the React
+  Router v7 template. It supplies Khadim's packaged React, React Router, and
+  Vite dependencies, and doesn't execute artifact-authored Vite configuration.
+- Project storage accepts the `react-router` framework discriminator. A new
+  default website now survives its first save and reopens with the same file
+  map, visual document, and preview metadata.
+- Electron packaging stages Bun beside `khadim-cli` in the application
+  resources. `KHADIM_BUN_BINARY` can provide a release-specific binary, and
+  the staging script otherwise discovers Bun from `PATH`.
+- The preview `iframe` is sandboxed and supports responsive, desktop, tablet,
+  and mobile sizes. One persistent browser bar keeps the address, reload, build
+  status, and viewport controls readable while only the artifact page scales.
+  Device previews fit by width and scroll from the top. Clicking a live local
+  address opens it through Electron's protocol-validated system-browser bridge.
+  The app CSP permits HTTPS images in chat Markdown, but keeps scripts and
+  arbitrary connections self-hosted and limits frames to self-hosted and
+  `127.0.0.1` origins. The separate preview CSP still blocks external
+  connections and object embedding.
+- Closing an artifact or quitting the app stops its preview server and removes
+  the temporary project. Compile failures keep the last successful preview
+  visible, show a specific error, and link back to the affected Monaco file.
+- New documents use one HTML source for direct page editing, Monaco source,
+  scripts-disabled preview, agent revisions, persistence, and PDF export. Page
+  size and orientation add an authoritative final `@page` rule.
+- PDF export renders a safe artifact representation in a hidden Electron window
+  and calls `webContents.printToPDF`.
+- Selecting a Puck component exposes **Ask {agent}**. It opens a compact
+  floating design chat instead of expanding a sidebar or shrinking the canvas.
+- The design chat displays the active model, accepts the user's instruction,
+  reports starting, running, complete, and error states, and remains open while
+  the agent works.
+- Agent edits use the normal run path. The run snapshot records the selected
+  agent, model, harness, and tools before the main process starts the CLI.
+- A targeted edit returns an `<artifact-edit>` JSON block. For a selected Puck
+  component, `componentPatches` updates only that component by ID. Khadim
+  applies a complete edit block as soon as it arrives in the text stream,
+  records the edit in the main chat tool timeline, and removes the raw JSON
+  from the visible response. Puck synchronizes the changed visual document
+  into its live store without remounting the editor.
+- An unreadable optional web-search credential no longer prevents the selected
+  model from starting. The run falls back to DuckDuckGo, records the fallback
+  as a completed web-search tool event, and keeps the configured provider
+  selected so the user can reconnect it from **Apps**.
+- Compact layouts keep the application grid, composer, sidebar overlay, and
+  stacked Studio within the viewport after the desktop-density style pass.
+- The renderer root now focuses on application orchestration. Chat composition,
+  attachment presentation, tool activity, capabilities, settings, theme
+  application, dialog focus, model branding, and message parsing live in
+  focused modules under `src/renderer/src`. Preserve these seams when adding
+  new chat or Studio behavior instead of moving feature state back into
+  `App.tsx`.
+
+The latest completed checks on July 18, 2026, were `237` passing tests, a clean
+TypeScript check, and a successful production build. A packaging smoke check
+also staged and executed Bun `1.3.13` beside the Khadim CLI slot. Packaged
+Electron audits verified the main-chat and artifact split, light and dark
+desktop layouts, the compact stacked layout, a live loopback React preview,
+the complete Puck block registry, direct document editing and persistence, and
+immediate server
+shutdown after leaving Studio. A live configured-model run also verified that
+an unreadable Parallel credential falls back without blocking chat, and a fresh
+React Router v7 artifact verified preview startup, durable save, and cleanup.
+A live Electron renderer probe also verified that an HTTPS chat image loads
+under the scoped app CSP after the frontend module extraction. Focused renderer
+tests verify that a changed artifact stylesheet replaces the CSS inside Puck's
+iframe and that Puck blocks preserve the generated project's CSS hooks. Desktop
+and compact visual audits also verify the browser preview's responsive page,
+fixed browser controls, clickable local address, and top-aligned mobile view.
+
+## Current artifact structure
+
+The discriminated content union is the right boundary. Metadata, provenance,
+and lifecycle stay common, while each editor owns its serializable content.
+
+```text
+Artifact
+├── identity: id, projectId, schemaVersion
+├── metadata: title, kind, lifecycle, createdAt, updatedAt
+├── provenance: conversationId, messageId, runId
+└── content
+    ├── document-html: authored HTML + baseline + page settings
+    ├── tiptap: legacy structured document + page settings
+    ├── html: static HTML + baseline HTML
+    ├── web-project
+    │   ├── framework, entryFile
+    │   ├── files, baselineFiles
+    │   ├── previewHtml, baselinePreviewHtml
+    │   └── visual: Puck data + editor identifier
+    └── excalidraw: scene elements
+```
+
+Keep this rule: the visual model is canonical for visually managed React
+components, the file map is canonical for source-only files, and the rendered
+preview is derived output. Don't make three independently editable sources of
+truth.
+
+Before adding real Excalidraw persistence, extend its content with serializable
+`appState` and binary-file metadata. Store large binary assets outside
+`artifacts.json` and reference them by stable local IDs.
+
+## Editor structure
+
+The editor uses one stable workspace shell with mode-specific tools. It does not
+open each editor in a modal.
+
+```text
+Studio workspace
+├── conversation pane: the existing main chat surface and composer
+├── accessible resizable divider
+└── editor pane
+    ├── header: back, artifact identity, save state, PDF export
+    ├── context bar: artifact-specific working modes
+    └── active surface
+        ├── Design: Puck canvas + component action + floating AI chat
+        ├── Code or Source: compact file tree + Monaco
+        ├── Write: directly editable, sandboxed HTML page
+        ├── Preview: responsive browser frame
+        └── Split: source and preview
+```
+
+The AI chat is a temporary parallel surface, not a permanent inspector. It
+opens from the selected component, overlays the upper-right canvas edge, has no
+scrim, and closes back to the same spatial context. Direct manipulation remains
+the fastest path: click text and type; use the agent only for broader changes.
+
+## Research conclusions
+
+Parallel Web research was re-run on July 18, 2026, against primary project
+documentation and repositories. No academic sources are relevant because these
+are software integration and license decisions. React Router now presents v8
+as its current release, but v7 remains an intentional Khadim template boundary
+and has an official non-breaking path to v8.
+
+### Puck for React visual composition
+
+Use Puck as the visual composition layer, not as the entire artifact runtime.
+Puck is an MIT-licensed, modular React visual editor that accepts application
+components and keeps the data under application control. Its documented model
+supports component configuration, rich-text editing, data migration, viewports,
+permissions, overlay portals, and UI overrides. This matches Khadim's need for
+a branded editor and component-scoped agent actions without adopting a hosted
+builder platform. See the [Puck repository](https://github.com/puckeditor/puck)
+and [Puck documentation](https://puckeditor.com/docs).
+
+### Monaco for source editing
+
+Use Monaco as a code-editor component rather than embedding VS Code, Zed, or an
+Atom-style desktop shell. Monaco is MIT licensed, browser-native, and built from
+VS Code sources. Its model/editor/provider separation maps well to Khadim's
+file-backed artifacts. Give every file a stable virtual URI, preserve view
+state per file, and dispose models when an artifact closes. Monaco's own guide
+also notes that URI choice affects TypeScript import resolution and JSON schema
+selection. See the [Monaco repository](https://github.com/microsoft/monaco-editor)
+and [official Monaco site](https://microsoft.github.io/monaco-editor).
+
+### Excalidraw for the canvas
+
+Replace the current SVG canvas placeholder with the official Excalidraw React
+package. The repository and package are MIT licensed. The package exports an
+embeddable React component, requires its CSS import, and fills a parent with a
+non-zero height. Integrate the package client-side, persist scene data through
+Khadim, and keep Khadim's artifact header and agent controls outside the
+Excalidraw surface. See the
+[Excalidraw package guide](https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw)
+and [Excalidraw license](https://github.com/excalidraw/excalidraw/blob/master/LICENSE).
+
+### Vite for executable web-project previews
+
+Use Vite when Studio needs real React module execution, imports, assets,
+and hot updates. The Vite JavaScript API exposes typed `createServer` and
+`build` entry points, including middleware mode. Run this lifecycle in the main
+process or a supervised child process, bind it to one artifact workspace, and
+serve the preview through a constrained local origin. Don't run an unrestricted
+dev server inside the renderer. See the
+[Vite JavaScript API](https://vite.dev/guide/api-javascript).
+
+### React Router v7 and bundled Bun
+
+Use React Router v7 Data Mode as the default website project boundary. The
+starter uses `createBrowserRouter`, route modules, and `RouterProvider`, and it
+ships the usual Vite project files. This gives the user a portable React Router
+project without requiring the preview runtime to import authored route modules
+in Electron's privileged main process. See the
+[React Router Data Mode documentation](https://reactrouter.com/start/data/custom)
+and the
+[React Router route configuration guide](https://reactrouter.com/start/data/routing).
+
+Don't enable React Router Framework Mode in the supervised preview yet. Its SPA
+build can pre-render by importing route modules during the build. Artifact and
+agent-authored code is untrusted, so route execution must remain in the
+sandboxed browser preview until Khadim moves builds into the isolated runner.
+
+Bundle Bun with Khadim instead of asking the user to install it. The packaging
+stage copies a platform Bun executable into the same resource directory as the
+Khadim CLI. Generated projects include normal `bun run dev` and
+`bun run build` compatible scripts, while the in-app preview continues to use
+the supervised Vite JavaScript API. See the
+[Bun standalone executable documentation](https://bun.sh/docs/bundler/executables).
+
+### Codex-style browser workbench
+
+Keep the main chat visible beside the live preview. Don't create a second
+Studio-specific transcript or composer. The Codex app treats the browser as a
+shared user-and-agent view inside the thread, supports rendered-state review,
+and keeps source changes available without turning the browser into a separate
+application. Khadim follows the same spatial model while retaining its own
+artifact modes and local-first runtime. See the Codex app
+[browser documentation](https://developers.openai.com/codex/app/browser) and
+[feature overview](https://developers.openai.com/codex/app/features).
+
+### Electron for PDF output
+
+Keep PDF generation in the Electron main process. `webContents.printToPDF`
+returns a `Promise<Buffer>` and supports background graphics, page size,
+margins, CSS page size, tagged PDF, and document outlines. Render a controlled
+artifact document in a hidden, sandboxed window, wait for load completion, then
+print and destroy the window. See the
+[Electron `webContents` documentation](https://www.electronjs.org/docs/latest/api/web-contents#contentsprinttopdfoptions).
+
+### Rejected directions
+
+The research and product constraints rule out these directions for now:
+
+- Don't use GrapesJS. The user rejected its product and licensing direction,
+  and Puck fits React component ownership more directly.
+- Don't embed VS Code, Zed, or Atom. Khadim needs a focused source editor, not a
+  second application shell or extension host.
+- Don't make raw generated HTML the only website format. Keep static HTML as a
+  supported artifact, but use file-backed projects for React and future
+  frameworks.
+- Don't build a canvas engine from scratch. Embed Excalidraw and own only the
+  persistence, artifact lifecycle, agent bridge, and Khadim-specific chrome.
+
+## Ordered implementation plan
+
+Work in the following order. Keep each phase independently testable and don't
+start the next runtime layer while the current interaction is unreliable.
+
+### Phase 0: verify the component AI loop
+
+This is the immediate next task because the implementation is new and the
+headless screenshot audit was incomplete.
+
+1. Open a React artifact with a configured model.
+2. Select each component type and confirm **Ask {agent}** opens the chat.
+3. Submit an instruction and verify the saved `AgentRun` contains the active
+   model and selected agent.
+4. ~~Feed a real successful `<artifact-edit>` response and confirm the selected
+   component changes without replacing siblings.~~
+5. Verify launch failure, run failure, invalid edit JSON, artifact closure, and
+   project switching.
+6. Capture light, dark, compact-width, reduced-motion, and increased-contrast
+   screenshots.
+7. ~~Add a renderer workflow test for the complete Studio-to-agent-to-patch
+   path.~~
+
+Exit this phase only when the user can see a clear starting state within one
+frame, a persistent running state, and either an applied change or a specific
+error in the same panel.
+
+### Phase 1: deepen the Puck editor
+
+After the agent loop is reliable, turn the starter Puck configuration into a
+real design system.
+
+1. ~~Extract the Puck component registry from `PuckSurface.tsx`.~~
+2. ~~Add layout primitives: section, stack, columns, spacer, image, card, and
+   navigation.~~
+3. ~~Add style fields through constrained tokens instead of arbitrary CSS
+   text.~~
+4. Add component migrations so saved visual documents survive registry changes.
+5. ~~Add keyboard behavior: Enter sends to the agent, Shift+Enter inserts a
+   line, Escape closes the panel, and focus returns to the selected
+   component.~~
+6. Add undo/redo coverage for direct edits and agent-applied edits.
+7. Preserve the canvas viewport and selected component after an agent patch.
+
+Exit this phase when common landing-page layouts can be built without opening
+the source editor and remain editable after restart.
+
+### Phase 2: add a supervised Vite preview runtime
+
+Use Vite to execute file-backed React artifacts without weakening Electron's
+renderer boundary.
+
+The React and React Router v7 slices are complete. `ArtifactPreviewRuntime`
+performs an atomic Vite build instead of leaving a dependency optimizer or
+watcher alive. It serves built files through a loopback-only HTTP server, swaps
+revisions only after successful compilation, and owns temporary-directory
+cleanup. Typed IPC connects this lifecycle to the renderer. Static HTML
+continues to use the scripts-disabled `srcDoc` path.
+
+1. Define an artifact runtime service in the main process.
+2. Materialize an artifact's file map in a dedicated temporary directory.
+3. Start one constrained Vite server per active preview or reuse a supervised
+   server with explicit artifact routing.
+4. Return a local preview URL through typed IPC.
+5. Stop watchers and child processes when the artifact, project, or application
+   closes.
+6. Surface compile errors in Preview and map them back to Monaco files.
+7. Add tests for imports, CSS, assets, runtime cleanup, port collision, and
+   malformed projects.
+
+Exit this phase when a multi-file React artifact with imports and CSS renders
+the same in Preview and PDF preparation.
+
+### Phase 3: complete the remaining editor placeholders
+
+Integrate maintained libraries after the website path is stable.
+
+1. Replace `CanvasEditor` with `@excalidraw/excalidraw` and persist elements,
+   app state, and binary files.
+2. Harden the HTML document editor with selection-scoped agent patches,
+   revision history, and long-document pagination fixtures.
+3. Add agent patch protocols for canvas selections.
+4. Add export fixtures for long documents, complex canvases, and compiled
+   web-project print styles.
+
+Exit this phase when all three artifact kinds support direct editing, targeted
+agent editing, persistence, reload, and PDF output.
+
+### Phase 4: harden artifact lifecycle
+
+Finish the local-first product boundary after editor behavior is complete.
+
+1. Store large artifact assets outside the JSON collection with atomic writes.
+2. Add schema migrations for Puck data, Excalidraw scenes, and document nodes.
+3. Add revision history and restore points before every agent edit.
+4. Add explicit dirty, saving, saved, conflict, and recovery states.
+5. Add import and export bundles that include files, visual data, and assets.
+6. Add artifact-level permissions for tools, network access, and external URLs.
+
+Exit this phase when a crash or failed agent edit cannot destroy the last saved
+artifact revision.
+
+## Guardrails
+
+These constraints protect the local-first and agentic architecture:
+
+- Keep artifact ownership scoped to one project.
+- Keep credentials out of artifact files and renderer messages.
+- Treat preview HTML, React source, and agent output as untrusted input.
+- Use typed IPC for runtime and export operations.
+- Preserve artifact identity, provenance, baselines, and schema version during
+  agent edits.
+- Prefer targeted patches over whole-artifact replacement.
+- Record the model, agent, tools, and harness on every run before execution.
+- Keep direct editing available even when no model is configured.
+- Keep temporary panels non-blocking and avoid canvas-resizing inspectors for
+  short tasks.
+
+## Key files
+
+Use these files as the starting map for the next implementation session:
+
+- [`puck-config.tsx`](../src/renderer/src/studio/puck-config.tsx) owns the Puck
+  component registry and constrained visual tokens.
+- [`PuckSurface.tsx`](../src/renderer/src/studio/PuckSurface.tsx) owns the Puck
+  surface, component action, and floating AI panel.
+- [`BrowserPreview.tsx`](../src/renderer/src/studio/BrowserPreview.tsx) owns the
+  browser chrome, live address action, runtime feedback, responsive viewport,
+  and device scaling.
+- [`StudioWorkspace.tsx`](../src/renderer/src/studio/StudioWorkspace.tsx) owns
+  workspace modes, Monaco, preview sizing, and editor routing.
+- [`studio-agent-edit.ts`](../src/renderer/src/studio/studio-agent-edit.ts) owns
+  the agent prompt, edit validation, and targeted patch application.
+- [`web-project.ts`](../src/renderer/src/studio/web-project.ts) derives managed
+  React source and safe preview HTML from Puck data.
+- [`artifact-preview-runtime.ts`](../src/main/artifact-preview-runtime.ts)
+  validates and materializes React projects, runs Vite builds, serves revisioned
+  loopback previews, and cleans up runtime state.
+- [`artifact-model.ts`](../src/renderer/src/artifact-model.ts) creates and
+  updates artifact records and owns the default React Router v7 template.
+- [`Composer.tsx`](../src/renderer/src/chat/Composer.tsx) owns chat input,
+  attachments, agent and model selection, tools, skills, and usage display.
+- [`ToolActivityGroup.tsx`](../src/renderer/src/chat/ToolActivityGroup.tsx) owns
+  the visible tool timeline and structured result details.
+- [`AppsView.tsx`](../src/renderer/src/capabilities/AppsView.tsx) owns search,
+  Discord, skills, and planned capability presentation.
+- [`SettingsDialogs.tsx`](../src/renderer/src/settings/SettingsDialogs.tsx) owns
+  settings and account dialogs without coupling their local state to the app
+  root.
+- [`message-content.ts`](../src/renderer/src/chat/message-content.ts) owns
+  artifact-edit and legacy attachment parsing for visible chat messages.
+- [`bun-target.mjs`](../scripts/bun-target.mjs) resolves the platform Bun
+  executable and its packaged destination.
+- [`stage-sidecar.mjs`](../scripts/stage-sidecar.mjs) stages the Khadim CLI and
+  bundled Bun runtime for Electron Builder.
+- [`artifact-export.ts`](../src/shared/artifact-export.ts) renders artifacts for
+  PDF.
+- [`project-store.ts`](../src/main/project-store.ts) validates and persists
+  project artifacts.
+- [`App.tsx`](../src/renderer/src/App.tsx) orchestrates project, chat, run, and
+  Studio state and connects artifact edits to the selected agent and model run.
+
+## Verification commands
+
+Run these checks from `apps/electron` after every complete vertical slice:
+
+```bash
+bun run test -- tests/unit/renderer/PuckSurface.test.tsx
+bun run test -- tests/unit/renderer/PuckDataSync.test.tsx
+bun run test -- tests/unit/renderer/studio-agent-edit.test.ts
+bun run test -- tests/integration/main/artifact-preview-runtime.test.ts
+bun run test -- tests/e2e/renderer/app-workflows.e2e.test.tsx
+bun run test -- tests/unit/scripts/bun-target.test.mjs
+bun run typecheck
+bun run test
+bun run build
+```
+
+For UI changes, also run the Electron app and inspect the Studio at desktop and
+compact widths. Automated DOM tests don't validate Puck overlay placement,
+canvas occlusion, focus restoration, or preview scale.
+
+## Sources
+
+The research uses primary software documentation and repositories. Academic
+sources were not applicable to these integration decisions.
+
+- [Puck repository and MIT license](https://github.com/puckeditor/puck)
+- [Puck documentation](https://puckeditor.com/docs)
+- [Monaco Editor repository and MIT license](https://github.com/microsoft/monaco-editor)
+- [Monaco Editor official site](https://microsoft.github.io/monaco-editor)
+- [Excalidraw React package guide](https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw)
+- [Excalidraw MIT license](https://github.com/excalidraw/excalidraw/blob/master/LICENSE)
+- [Vite JavaScript API](https://vite.dev/guide/api-javascript)
+- [React Router Data Mode](https://reactrouter.com/start/data/custom)
+- [React Router route configuration](https://reactrouter.com/start/data/routing)
+- [Bun standalone executables](https://bun.sh/docs/bundler/executables)
+- [Electron `webContents.printToPDF` API](https://www.electronjs.org/docs/latest/api/web-contents#contentsprinttopdfoptions)
+
+## Next steps
+
+Continue from the verified website and HTML-document runtime. Complete the
+remaining work in this order:
+
+1. Feed the last successful runtime output into PDF preparation so Preview and
+   export use the same compiled website.
+2. Add Puck migrations for saved component documents and preserve selection and
+   viewport state across agent patches.
+3. Add file creation, rename, and deletion to the source workspace while
+   preserving the artifact path validation boundary.
+4. Add long-document pagination and PDF fixtures, plus selection-scoped
+   document agent edits.
+5. Replace the canvas placeholder with Excalidraw after the website and document
+   paths remain stable under these changes.

@@ -1,19 +1,29 @@
-import KhadimLogo from "../../assets/Khadim-logo.svg";
-import { LuPanelLeftClose, LuPanelLeftOpen, LuSquarePen } from "react-icons/lu";
+import { LuPanelLeftClose, LuPanelLeftOpen, LuSearch, LuSquarePen } from "react-icons/lu";
 
 interface SidebarHeaderProps {
   onCreateWorkspace: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
-export function SidebarHeader({ onCreateWorkspace, isCollapsed = false, onToggleCollapse }: SidebarHeaderProps) {
+export function SidebarHeader({ onCreateWorkspace, isCollapsed = false, onToggleCollapse, onOpenCommandPalette }: SidebarHeaderProps) {
   if (isCollapsed) {
     return (
-      <div className="flex flex-col items-center gap-2 px-2 py-3 border-b border-[var(--glass-border)]">
+      <div className="electron-sidebar-title flex flex-col items-center gap-2 px-2 py-3">
+        {onOpenCommandPalette && (
+          <button
+            onClick={onOpenCommandPalette}
+            className="electron-icon-button flex h-9 w-9 items-center justify-center"
+            title="Search commands (Ctrl/⌘ K)"
+            aria-label="Open command palette"
+          >
+            <LuSearch className="w-[18px] h-[18px]" />
+          </button>
+        )}
         <button
           onClick={onToggleCollapse}
-          className="hidden lg:flex w-11 h-11 items-center justify-center rounded-2xl btn-glass transition-all hover:scale-105"
+          className="electron-icon-button hidden lg:flex w-9 h-9 items-center justify-center"
           title="Expand sidebar"
           aria-label="Expand sidebar"
         >
@@ -24,18 +34,13 @@ export function SidebarHeader({ onCreateWorkspace, isCollapsed = false, onToggle
   }
 
   return (
-    <div className="border-b border-[var(--glass-border)] p-4">
+    <div className="electron-sidebar-title px-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full">
-            <KhadimLogo />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-[var(--text-primary)]">Khadim</span>
-        </div>
+        <span>Project</span>
         
         <div className="flex items-center gap-1.5">
           <button 
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)] transition-all hover:bg-[#1c2214] hover:shadow-[var(--shadow-glass-md)]"
+            className="electron-icon-button w-8 h-8 flex items-center justify-center"
             onClick={onCreateWorkspace}
             title="New Chat"
             aria-label="New Chat"
@@ -45,7 +50,7 @@ export function SidebarHeader({ onCreateWorkspace, isCollapsed = false, onToggle
           {onToggleCollapse && (
             <button
               onClick={onToggleCollapse}
-              className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl btn-glass transition-colors"
+              className="electron-icon-button hidden lg:flex h-8 w-8 items-center justify-center"
               title="Collapse sidebar"
               aria-label="Collapse sidebar"
             >

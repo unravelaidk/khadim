@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-16T00:00:00.000Z",
+  "title": "Design System: Khadim Electron",
+  "extensions": {
+    "colorMeta": {
+      "shell": { "role": "neutral", "displayName": "Deep Shell", "canonical": "oklch(0.105 0.006 255)", "tonalRamp": ["oklch(0.105 0.006 255)", "oklch(0.135 0.007 255)", "oklch(0.17 0.009 255)", "oklch(0.205 0.012 255)"] },
+      "native-startup-shell": { "role": "neutral", "displayName": "Native Startup Shell", "canonical": "#1a1c20", "tonalRamp": [] },
+      "action-blue": { "role": "primary", "displayName": "Action Blue", "canonical": "oklch(0.74 0.145 235)", "tonalRamp": ["oklch(0.255 0.045 235)", "oklch(0.53 0.17 240)", "oklch(0.74 0.145 235)", "oklch(0.9 0.055 235)"] },
+      "success": { "role": "semantic", "displayName": "Ready Green", "canonical": "oklch(0.72 0.12 155)", "tonalRamp": [] },
+      "danger": { "role": "semantic", "displayName": "Failure Coral", "canonical": "oklch(0.72 0.16 25)", "tonalRamp": [] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Top-level pages and empty-state prompts only." },
+      "body": { "displayName": "Body", "purpose": "Messages and explanatory product copy up to 70ch." },
+      "label": { "displayName": "Label", "purpose": "Sentence-case controls, navigation, and metadata." },
+      "metadata": { "displayName": "Metadata", "purpose": "Persistent supporting text at an 11px minimum." },
+      "code": { "displayName": "Code", "purpose": "Paths, shortcuts, source, and machine output." }
+    },
+    "elevation": {
+      "control": "0 2px 8px color-mix(in oklch, var(--shadow-color) 42%, transparent)",
+      "popover": "0 16px 46px var(--shadow-color)",
+      "modal": "0 28px 80px color-mix(in oklch, var(--shadow-color) 78%, transparent)"
+    },
+    "motion": {
+      "instant": "100ms",
+      "state": "200ms",
+      "panel": "220ms",
+      "easeOutQuint": "cubic-bezier(0.22, 1, 0.36, 1)"
+    },
+    "breakpoints": {
+      "compact": "841px",
+      "mobile": "560px"
+    },
+    "narrative": {
+      "northStar": "Quiet Command Center",
+      "rules": [
+        "Routine chrome stays neutral.",
+        "Action Blue is the only routine accent.",
+        "Persistent surfaces are flat by default.",
+        "Linux frost only samples Khadim's own atmosphere, never the desktop.",
+        "Product labels use sentence case and normal tracking.",
+        "Secondary workspaces share one header, primary-action, and divided-row grammar."
+      ],
+      "dos": [
+        "Use atmospheric color only around creation, onboarding, and generated work.",
+        "Keep interaction transitions between 140ms and 240ms.",
+        "Preserve familiar desktop and keyboard affordances."
+      ],
+      "donts": [
+        "Do not use glassmorphism as the default material.",
+        "Do not use identical icon-heading-description card grids.",
+        "Do not exceed a 16px radius on persistent product surfaces.",
+        "Do not use gradients for text or routine controls."
+      ]
+    }
+  }
+}

@@ -82,6 +82,9 @@ const SESSION_EVENT_STREAM_PREFIX = "agent:session:events:";
 const SESSION_SNAPSHOT_PREFIX = "agent:session:snapshot:";
 const SESSION_SEQUENCE_PREFIX = "agent:session:sequence:";
 const SESSION_EVENT_STREAM_MAX_LEN = 1000;
+// Client retry state is persisted on disk by the desktop host, so request/job
+// receipts must outlive short Redis stream/session windows.
+const JOB_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export type { AgentJob, AgentJobStep, JobEvent };
 
@@ -253,11 +256,104 @@ export async function createJob(id: string, chatId: string, sessionId = "default
     updatedAt: new Date().toISOString(),
   };
   
-  await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+  await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
   await touchActiveJob(job);
   await syncSessionSnapshot(job.sessionId);
   console.log(`[JobManager] Created job ${id} for chat ${chatId}`);
   return job;
+}
+
+/** Atomically claim a client-supplied job id so concurrent retries start once. */
+export async function claimJob(
+  id: string,
+  chatId: string,
+  sessionId: string,
+  requestFingerprint: string,
+): Promise<{ job: AgentJob; created: boolean }> {
+  const now = new Date().toISOString();
+  const claimToken = crypto.randomUUID();
+  const job: AgentJob = {
+    id,
+    chatId,
+    sessionId,
+    status: "running",
+    steps: [],
+    finalContent: "",
+    previewUrl: null,
+    sandboxId: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now,
+    requestFingerprint,
+    launchState: "claiming",
+    claimExpiresAt: new Date(Date.now() + 30_000).toISOString(),
+    claimToken,
+  };
+  const key = JOB_PREFIX + id;
+  const serialized = JSON.stringify(job);
+  let claimed = await redis.set(key, serialized, "EX", JOB_TTL_SECONDS, "NX");
+  if (!claimed) {
+    const raw = await redis.get(key);
+    const staleClaim = raw ? JSON.parse(raw) as AgentJob : null;
+    if (staleClaim?.launchState === "claiming"
+      && staleClaim.requestFingerprint === requestFingerprint
+      && Date.parse(staleClaim.claimExpiresAt ?? "") <= Date.now()) {
+      const replaced = await redis.eval(
+        "local value = redis.call('GET', KEYS[1]); if value == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]); return 1 end; return 0",
+        1,
+        key,
+        raw!,
+        serialized,
+        String(JOB_TTL_SECONDS),
+      );
+      claimed = replaced === 1 ? "OK" : null;
+    }
+  }
+  if (!claimed) {
+    const existing = await getJob(id);
+    if (!existing) throw new Error("The idempotent job claim expired before it could be recovered.");
+    return { job: existing, created: false };
+  }
+  try {
+    await touchActiveJob(job);
+    await syncSessionSnapshot(job.sessionId);
+    const owned = await redis.get(key);
+    const ownedJob = owned ? JSON.parse(owned) as AgentJob : null;
+    if (ownedJob?.claimToken !== claimToken) {
+      const winner = await getJob(id);
+      if (!winner) throw new Error("The job claim changed ownership before launch.");
+      return { job: winner, created: false };
+    }
+    console.log(`[JobManager] Claimed job ${id} for chat ${chatId}`);
+    return { job, created: true };
+  } catch (error) {
+    // No runner has started yet. Release the claim so the same idempotent
+    // request can repair a partial indexing failure immediately.
+    await redis.eval(
+      "local value = redis.call('GET', KEYS[1]); if value == ARGV[1] then return redis.call('DEL', KEYS[1]) end; return 0",
+      1,
+      key,
+      serialized,
+    );
+    await Promise.allSettled([
+      redis.zrem(getActiveSessionJobsKey(chatId, sessionId), id),
+      redis.zrem(getActiveJobsBySessionKey(sessionId), id),
+    ]);
+    await syncSessionSnapshot(sessionId).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function markJobStarted(id: string, requestFingerprint: string, claimToken: string): Promise<void> {
+  const result = await redis.eval(
+    "local raw = redis.call('GET', KEYS[1]); if not raw then return 0 end; local job = cjson.decode(raw); if job.requestFingerprint ~= ARGV[1] or job.claimToken ~= ARGV[2] then return -1 end; job.launchState = 'started'; job.claimExpiresAt = nil; redis.call('SET', KEYS[1], cjson.encode(job), 'EX', ARGV[3]); return 1",
+    1,
+    JOB_PREFIX + id,
+    requestFingerprint,
+    claimToken,
+    String(JOB_TTL_SECONDS),
+  );
+  if (result !== 1) throw new Error("The launched job claim could not be promoted.");
 }
 
 export async function getJob(id: string): Promise<AgentJob | null> {
@@ -355,7 +451,7 @@ export async function updateJob(id: string, updates: Partial<AgentJob>): Promise
   const job = await getJob(id);
   if (job) {
     Object.assign(job, updates, { updatedAt: new Date().toISOString() });
-    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
     await touchActiveJob(job);
     await syncSessionSnapshot(job.sessionId);
   }
@@ -366,7 +462,7 @@ export async function addStep(jobId: string, step: AgentJobStep): Promise<void> 
   if (job) {
     job.steps.push(step);
     job.updatedAt = new Date().toISOString();
-    await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", 3600);
+    await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
     await touchActiveJob(job);
     await syncSessionSnapshot(job.sessionId);
   }
@@ -383,7 +479,7 @@ export async function updateStep(
     if (step) {
       Object.assign(step, updates);
       job.updatedAt = new Date().toISOString();
-      await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", 3600);
+      await redis.set(JOB_PREFIX + jobId, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
       await touchActiveJob(job);
       await syncSessionSnapshot(job.sessionId);
     }
@@ -401,7 +497,7 @@ export async function completeJob(
     job.finalContent = finalContent;
     job.previewUrl = previewUrl;
     job.updatedAt = new Date().toISOString();
-    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
     await touchActiveJob(job);
     
     // Broadcast completion to local subscribers
@@ -422,7 +518,7 @@ export async function failJob(id: string, error: string): Promise<void> {
     job.status = "error";
     job.error = error;
     job.updatedAt = new Date().toISOString();
-    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
     await touchActiveJob(job);
     
     await broadcast(id, {
@@ -441,7 +537,7 @@ export async function cancelJob(id: string): Promise<void> {
   if (job) {
     job.status = "cancelled";
     job.updatedAt = new Date().toISOString();
-    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", 3600);
+    await redis.set(JOB_PREFIX + id, JSON.stringify(job), "EX", JOB_TTL_SECONDS);
     await touchActiveJob(job);
     
     // Broadcast cancellation (as error type 'cancelled' for now to fit existing frontend)

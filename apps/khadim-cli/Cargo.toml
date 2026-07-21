@@ -11,15 +11,46 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 dirs = "6"
 env_logger = "0.11"
 image = "0.25"
+libc = "0.2"
+log = "0.4"
 openssl = { version = "0.10", features = ["vendored"] }
 khadim-ai-core = { version = "0.1.0", path = "../../crates/khadim-ai-core" }
 khadim-coding-agent = { version = "0.1.0", path = "../../crates/khadim-coding-agent" }
-khadim-rpa-harness = { version = "0.1.0", path = "../../crates/khadim-rpa-harness", features = ["screen", "input", "rustautogui-backend"] }
+khadim-rpa-harness = { version = "0.1.0", path = "../../crates/khadim-rpa-harness", default-features = false }
 pulldown-cmark = { version = "0.13.3", default-features = false }
 ratatui = "0.30"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+tempfile = "3"
 tokio = { version = "1", features = ["full"] }
+toml = "1"
 unicode-width = "0.2"
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width", "smawk"] }
+url = "2"
+wasmtime = "43"
+
+[features]
+# Release/npm binaries stay loadable on headless systems. Desktop backends pull
+# in platform GUI libraries and therefore must be selected deliberately.
+default = []
+native-rpa = [
+    "khadim-rpa-harness/screen",
+    "khadim-rpa-harness/input",
+]
+rustautogui-backend = [
+    "native-rpa",
+    "khadim-rpa-harness/rustautogui-backend",
+]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }

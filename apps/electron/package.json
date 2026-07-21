@@ -1,0 +1,107 @@
+{
+  "name": "@khadim/electron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Khadim consumer desktop app",
+  "homepage": "https://github.com/unravelaidk/khadim",
+  "author": {
+    "name": "hananinas",
+    "email": "hanani.nas@gmail.com"
+  },
+  "license": "AGPL-3.0-only",
+  "desktopName": "com.khadim.consumer",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && electron-vite build",
+    "sidecar:stage": "node scripts/stage-sidecar.mjs",
+    "plugins:build": "node scripts/build-plugins.mjs",
+    "build:package": "bun run sidecar:stage && bun run plugins:build && bun run build && electron-builder",
+    "build:package:dir": "bun run sidecar:stage && bun run plugins:build && bun run build && electron-builder --dir",
+    "preview": "electron-vite preview"
+  },
+  "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.2.6",
+    "@fontsource-variable/source-serif-4": "^5.2.9",
+    "@khadim/credential-vault": "workspace:*",
+    "@monaco-editor/react": "^4.7.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@puckeditor/core": "^0.22.2",
+    "discord.js": "^14.22.1",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "react-router": "7.14.1",
+    "react-syntax-highlighter": "^16.1.1",
+    "remark-gfm": "^4.0.1",
+    "vite": "^7.3.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.19.17",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "daisyui": "^5.6.18",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "happy-dom": "^18.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  },
+  "build": {
+    "appId": "com.khadim.consumer",
+    "productName": "Khadim",
+    "executableName": "khadim",
+    "artifactName": "Khadim-${version}.${arch}.${ext}",
+    "icon": "resources/icon.png",
+    "files": [
+      "out/**",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "asarUnpack": [
+      "node_modules/electron-liquid-glass/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "plugins/builtin",
+        "to": "plugins",
+        "filter": ["**/khadim.plugin.json", "**/dist/*.wasm"]
+      },
+      {
+        "from": "build/sidecar",
+        "to": "bin",
+        "filter": ["khadim-cli", "khadim-cli.exe", "bun", "bun.exe"]
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "linux": {
+      "target": ["AppImage", "rpm"],
+      "category": "Utility",
+      "syncDesktopName": true
+    },
+    "mac": {
+      "target": ["dmg"]
+    }
+  },
+  "optionalDependencies": {
+    "electron-liquid-glass": "^1.1.1"
+  }
+}

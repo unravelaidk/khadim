@@ -6,8 +6,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
-import { resolveBinaryPath } from "./resolve-binary";
+import { resolveBinaryPath } from "./resolve-binary.js";
+
+const MAX_STDERR_BYTES = 128 * 1024;
+const MAX_STDOUT_BYTES = 8 * 1024 * 1024;
 
 export interface ProviderInfo {
   id: string;
@@ -26,26 +28,53 @@ async function spawnAndReadJson(args: string[]): Promise<any> {
     env: { ...process.env },
   });
 
-  let stdout = "";
-  let stderr = "";
+  let stdout = Buffer.alloc(0);
+  let stdoutTooLarge = false;
+  let stderr = Buffer.alloc(0);
+  let stderrTruncated = false;
 
   child.stdout!.on("data", (chunk: Buffer) => {
-    stdout += chunk.toString();
+    if (stdoutTooLarge) return;
+    if (stdout.length + chunk.length > MAX_STDOUT_BYTES) {
+      stdoutTooLarge = true;
+      child.kill();
+      return;
+    }
+    stdout = Buffer.concat([stdout, chunk], stdout.length + chunk.length);
   });
   child.stderr!.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString();
+    if (chunk.length >= MAX_STDERR_BYTES) {
+      stderr = Buffer.from(chunk.subarray(chunk.length - MAX_STDERR_BYTES));
+      stderrTruncated = true;
+      return;
+    }
+    const combined = Buffer.concat([stderr, chunk], stderr.length + chunk.length);
+    if (combined.length > MAX_STDERR_BYTES) {
+      stderr = Buffer.from(combined.subarray(combined.length - MAX_STDERR_BYTES));
+      stderrTruncated = true;
+    } else {
+      stderr = combined;
+    }
   });
 
   return new Promise<any>((resolve, reject) => {
     child.on("close", (code) => {
+      if (stdoutTooLarge) {
+        reject(new Error(`khadim catalog output exceeded ${MAX_STDOUT_BYTES} bytes`));
+        return;
+      }
       if (code !== 0) {
-        reject(new Error(`khadim exited with code ${code}${stderr ? `: ${stderr.trim()}` : ""}`));
+        const stderrText = stderr.toString("utf8").trim();
+        const detail = stderrTruncated
+          ? `[stderr truncated to final ${MAX_STDERR_BYTES} bytes]${stderrText ? `\n${stderrText}` : ""}`
+          : stderrText;
+        reject(new Error(`khadim exited with code ${code}${detail ? `: ${detail}` : ""}`));
         return;
       }
       try {
-        resolve(JSON.parse(stdout.trim()));
+        resolve(JSON.parse(stdout.toString("utf8").trim()));
       } catch {
-        reject(new Error(`Failed to parse khadim output: ${stdout.slice(0, 200)}`));
+        reject(new Error(`Failed to parse khadim output: ${stdout.toString("utf8", 0, 200)}`));
       }
     });
     child.on("error", reject);

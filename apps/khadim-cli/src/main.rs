@@ -9,7 +9,7 @@ mod tools;
 mod ui;
 
 use app::TuiApp;
-use args::{parse_args, CliConfig};
+use args::{parse_args, CliConfig, CodexAuthCommand};
 use domain::commands::CommandPickerKind;
 use domain::events::WorkerEvent;
 use domain::login::LoginPhase;
@@ -20,10 +20,14 @@ use khadim_ai_core::error::AppError;
 use services::app_service::{AppService, CommandResult};
 use services::catalog_service;
 use services::settings_service::load_settings;
+use std::io::Write;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
+    let raw_args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    let json_requested = raw_args.iter().any(|arg| arg == "--json");
+    let delete_session_requested = raw_args.iter().any(|arg| arg == "--delete-session");
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info");
     }
@@ -31,9 +35,50 @@ async fn main() {
 
     let result = async {
         let config = parse_args()?;
-        let settings = load_settings()?;
+        infrastructure::parent_watch::install(config.parent_watch_fd)?;
+        if let Some(command) = config.codex_auth {
+            run_codex_auth(command, config.json).await?;
+            return Ok(());
+        }
+        if let Some(key) = config.delete_session.as_deref() {
+            let deleted = services::session_service::delete_session_by_key(key)?;
+            if config.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "operation": "delete_session",
+                        "session": key,
+                        "deleted": deleted,
+                    })
+                );
+            } else if deleted {
+                println!("Deleted session '{key}'.");
+            } else {
+                println!("Session '{key}' is already absent.");
+            }
+            return Ok(());
+        }
+        let mut settings = load_settings()?;
+        if let Some(command) = config.admin_command.clone() {
+            services::admin_service::run(command, config.json, &mut settings)?;
+            return Ok(());
+        }
+        services::search_service::configure_run_environment(
+            config.search_provider.as_deref(),
+            &settings,
+        )?;
 
-        // Kick off NVIDIA and OpenRouter model autodiscovery in the background
+        if config.list_providers.as_deref() == Some("catalog") {
+            let catalog = khadim_ai_core::models::fetch_remote_catalog().await?;
+            println!("{}", serde_json::to_string(&catalog).unwrap_or_default());
+            return Ok(());
+        }
+
+        // Kick off dynamic model discovery in the background.
+        tokio::spawn(async move {
+            let _ = khadim_ai_core::models::refresh_openai_codex_models().await;
+        });
         tokio::spawn(async move {
             let _ = khadim_ai_core::models::refresh_nvidia_models(None).await;
         });
@@ -63,6 +108,9 @@ async fn main() {
         }
 
         if let Some(provider) = config.list_models.clone() {
+            if provider == "openai-codex" {
+                let _ = khadim_ai_core::models::refresh_openai_codex_models().await;
+            }
             let entries: Vec<serde_json::Value> = catalog_service::models_for_provider(&provider)
                 .into_iter()
                 .map(|(id, name)| {
@@ -80,14 +128,8 @@ async fn main() {
             // Batch mode
             let json = config.json;
             let (worker_tx, _worker_rx) = tokio::sync::mpsc::unbounded_channel::<WorkerEvent>();
-            let app_service = AppService::new(config, settings, worker_tx);
-            match app_service.run_batch(&prompt, json).await {
-                Ok(()) => Ok(()),
-                Err(error) => {
-                    eprintln!("agent error (non-fatal): {}", error.message);
-                    Ok(())
-                }
-            }
+            let mut app_service = AppService::new(config, settings, worker_tx);
+            app_service.run_batch(&prompt, json).await
         } else {
             tui(config, settings).await
         }
@@ -95,9 +137,86 @@ async fn main() {
     .await;
 
     if let Err(error) = result {
-        eprintln!("error: {}", error.message);
+        if json_requested {
+            let operation = delete_session_requested.then_some("delete_session");
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "ok": false,
+                    "operation": operation,
+                    "error": error,
+                })
+            );
+        } else {
+            eprintln!("error: {}", error.message);
+        }
         std::process::exit(1);
     }
+}
+
+async fn run_codex_auth(command: CodexAuthCommand, json: bool) -> Result<(), AppError> {
+    match command {
+        CodexAuthCommand::Status => {
+            let connected = khadim_ai_core::oauth::has_openai_codex_auth().await?;
+            if json {
+                println!("{}", serde_json::json!({ "connected": connected }));
+            } else if connected {
+                println!("OpenAI Codex is connected.");
+            } else {
+                println!("OpenAI Codex is not connected.");
+            }
+        }
+        CodexAuthCommand::Login { open_browser } => {
+            let session = khadim_ai_core::oauth::start_openai_codex_login().await?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "event": "authorization",
+                        "authUrl": session.auth_url,
+                    })
+                );
+                std::io::stdout().flush().map_err(AppError::from)?;
+            } else {
+                println!(
+                    "Open this URL to sign in with ChatGPT:\n\n{}\n",
+                    session.auth_url
+                );
+            }
+            if open_browser {
+                if let Err(error) = infrastructure::browser::open_url(&session.auth_url) {
+                    eprintln!("Could not open the system browser: {error}");
+                }
+            }
+
+            for _ in 0..150 {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let status =
+                    khadim_ai_core::oauth::get_openai_codex_login_status(&session.session_id)
+                        .await?;
+                match status.status.as_str() {
+                    "connected" => {
+                        if json {
+                            println!("{}", serde_json::json!({ "event": "connected" }));
+                        } else {
+                            println!("OpenAI Codex connected successfully.");
+                        }
+                        return Ok(());
+                    }
+                    "failed" => {
+                        return Err(AppError::health(
+                            status
+                                .error
+                                .unwrap_or_else(|| "Codex login failed".to_string()),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            return Err(AppError::health("Codex login timed out. Please try again."));
+        }
+    }
+    Ok(())
 }
 
 // ── Settings panel action helpers ────────────────────────────────────
@@ -772,6 +891,22 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                     KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.toggle_tool_collapse();
                     }
+                    KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        // Toggle multi-agent ops sidebar (hidden under 100 cols anyway).
+                        app.sidebar_hidden = !app.sidebar_hidden;
+                    }
+                    KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.toggle_soft_wrap();
+                    }
+                    KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.copy_last_tool_or_code();
+                    }
+                    KeyCode::Char('f')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && app.multi_agent_enabled() =>
+                    {
+                        app.cycle_worker_filter();
+                    }
                     KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.input.clear();
                         app.cursor = 0;
@@ -1324,6 +1459,9 @@ async fn tui(config: CliConfig, stored_settings: StoredSettings) -> Result<(), A
                                     });
                                     app.entries.push(TranscriptEntry::Separator);
                                     tokio::spawn(async move {
+                                        let _ =
+                                            khadim_ai_core::models::refresh_openai_codex_models()
+                                                .await;
                                         let _ =
                                             khadim_ai_core::models::refresh_openrouter_models(None)
                                                 .await;

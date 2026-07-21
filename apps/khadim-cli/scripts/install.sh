@@ -10,6 +10,7 @@ BINARY_NAME="khadim-cli"
 COMMAND_NAME="khadim"
 NPM_PACKAGE="${KHADIM_CLI_NPM_PACKAGE:-@unravelai/khadim}"
 CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
+MIN_GLIBC_VERSION="2.35"
 
 # Colors
 RED='\033[0;31m'
@@ -49,6 +50,100 @@ detect_arch() {
     arm64|aarch64) echo "aarch64";;
     *)             echo "unknown";;
   esac
+}
+
+detect_linux_libc() {
+  local output=""
+  if output=$(getconf GNU_LIBC_VERSION 2>/dev/null); then
+    case "$output" in
+      glibc\ *) echo "glibc:${output#glibc }"; return 0 ;;
+    esac
+  fi
+
+  output=$(ldd --version 2>&1 || true)
+  case "$output" in
+    *musl*) echo "musl"; return 0 ;;
+  esac
+  local first_line="${output%%$'\n'*}"
+  case "$first_line" in
+    *GLIBC*|*"GNU libc"*|*"GNU C Library"*)
+      if [[ "$first_line" =~ ([0-9]+\.[0-9]+)$ ]]; then
+        echo "glibc:${BASH_REMATCH[1]}"
+        return 0
+      fi
+      ;;
+  esac
+
+  local loader
+  for loader in /lib/ld-musl-*.so.1 /lib64/ld-musl-*.so.1; do
+    if [ -e "$loader" ]; then
+      echo "musl"
+      return 0
+    fi
+  done
+
+  echo "unknown"
+}
+
+version_at_least() {
+  local actual="$1"
+  local minimum="$2"
+  local actual_major="${actual%%.*}"
+  local actual_rest="${actual#*.}"
+  local actual_minor="${actual_rest%%.*}"
+  local minimum_major="${minimum%%.*}"
+  local minimum_rest="${minimum#*.}"
+  local minimum_minor="${minimum_rest%%.*}"
+
+  case "${actual_major}:${actual_minor}:${minimum_major}:${minimum_minor}" in
+    *[!0-9:]*) return 1 ;;
+  esac
+  [ "$actual_major" -gt "$minimum_major" ] \
+    || { [ "$actual_major" -eq "$minimum_major" ] && [ "$actual_minor" -ge "$minimum_minor" ]; }
+}
+
+check_linux_binary_compatibility() {
+  local os="$1"
+  local libc="${2:-$(detect_linux_libc)}"
+  if [ "$os" != "linux" ]; then
+    return 0
+  fi
+
+  case "$libc" in
+    glibc:*)
+      local version="${libc#glibc:}"
+      if version_at_least "$version" "$MIN_GLIBC_VERSION"; then
+        return 0
+      fi
+      error "Khadim prebuilt Linux binaries require glibc ${MIN_GLIBC_VERSION}+; found glibc ${version}."
+      ;;
+    musl)
+      error "Khadim prebuilt Linux binaries require glibc ${MIN_GLIBC_VERSION}+; musl-based distributions such as Alpine are not supported."
+      ;;
+    *)
+      error "Khadim could not verify glibc ${MIN_GLIBC_VERSION}+ on this Linux host; refusing to install a potentially incompatible GNU binary."
+      ;;
+  esac
+  info "Build for this host instead with: KHADIM_CLI_INSTALL_METHOD=source $0"
+  return 1
+}
+
+binary_filename() {
+  if [ "$1" = "windows" ]; then
+    echo "${BINARY_NAME}.exe"
+  else
+    echo "$BINARY_NAME"
+  fi
+}
+
+release_asset_name() {
+  local os="$1"
+  local arch="$2"
+  local suffix=""
+  if [ "$os" = "windows" ]; then
+    suffix=".exe"
+  fi
+  echo "${BINARY_NAME}-${os}-${arch}${suffix}"
 }
 
 check_command() {
@@ -206,7 +301,7 @@ install_from_source() {
   fi
 
   info "Building khadim-cli (this may take a few minutes)..."
-  if ! cargo build --release --manifest-path "$source_dir/apps/khadim-cli/Cargo.toml"; then
+  if ! cargo build --release --no-default-features --manifest-path "$source_dir/apps/khadim-cli/Cargo.toml"; then
     error "Build failed."
     if [ "$using_local" -eq 0 ]; then
       error "Ensure you have the required system dependencies (e.g., libssl-dev on Debian/Ubuntu)."
@@ -214,8 +309,10 @@ install_from_source() {
     exit 1
   fi
 
+  local binary_file
+  binary_file=$(binary_filename "$(detect_os)")
   local built_binary
-  built_binary="$source_dir/apps/khadim-cli/target/release/$BINARY_NAME"
+  built_binary="$source_dir/apps/khadim-cli/target/release/$binary_file"
 
   if [ ! -f "$built_binary" ]; then
     error "Build completed but binary not found at expected path: $built_binary"
@@ -223,10 +320,10 @@ install_from_source() {
   fi
 
   ensure_dir "$INSTALL_DIR"
-  cp "$built_binary" "$INSTALL_DIR/$BINARY_NAME"
-  chmod +x "$INSTALL_DIR/$BINARY_NAME"
+  cp "$built_binary" "$INSTALL_DIR/$binary_file"
+  chmod +x "$INSTALL_DIR/$binary_file"
 
-  success "Built and installed $BINARY_NAME to $INSTALL_DIR"
+  success "Built and installed $binary_file to $INSTALL_DIR"
 }
 
 install_prebuilt() {
@@ -234,7 +331,10 @@ install_prebuilt() {
   local os="$2"
   local arch="$3"
 
-  local asset_name="${BINARY_NAME}-${os}-${arch}"
+  local asset_name
+  asset_name=$(release_asset_name "$os" "$arch")
+  local binary_file
+  binary_file=$(binary_filename "$os")
   local download_url
 
   if [ "$version" = "latest" ]; then
@@ -249,7 +349,7 @@ install_prebuilt() {
   tmpdir=$(mktemp -d)
   trap "cleanup_tmpdir '$tmpdir'" EXIT
 
-  local downloaded="$tmpdir/$BINARY_NAME"
+  local downloaded="$tmpdir/$binary_file"
 
   local download_success=0
   if check_command curl; then
@@ -271,10 +371,10 @@ install_prebuilt() {
   fi
 
   ensure_dir "$INSTALL_DIR"
-  cp "$downloaded" "$INSTALL_DIR/$BINARY_NAME"
-  chmod +x "$INSTALL_DIR/$BINARY_NAME"
+  cp "$downloaded" "$INSTALL_DIR/$binary_file"
+  chmod +x "$INSTALL_DIR/$binary_file"
 
-  success "Downloaded and installed $BINARY_NAME to $INSTALL_DIR"
+  success "Downloaded and installed $binary_file to $INSTALL_DIR"
 }
 
 main() {
@@ -291,7 +391,12 @@ main() {
     info "Will attempt to build from source instead."
     install_from_source
   else
-    case "${KHADIM_CLI_INSTALL_METHOD:-npm}" in
+    local install_method="${KHADIM_CLI_INSTALL_METHOD:-npm}"
+    if [ "$install_method" != "source" ] \
+      && ! check_linux_binary_compatibility "$os"; then
+      exit 1
+    fi
+    case "$install_method" in
       npm)
         install_from_npm "${KHADIM_CLI_VERSION:-latest}"
         ;;
@@ -309,13 +414,16 @@ main() {
     esac
   fi
 
-  if [ -f "$INSTALL_DIR/$BINARY_NAME" ] && ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
+  local binary_file
+  binary_file=$(binary_filename "$os")
+
+  if [ -f "$INSTALL_DIR/$binary_file" ] && ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
     add_to_path "$INSTALL_DIR"
   fi
 
   local installed_command=""
-  if [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then
-    installed_command="$INSTALL_DIR/$BINARY_NAME"
+  if [ -x "$INSTALL_DIR/$binary_file" ]; then
+    installed_command="$INSTALL_DIR/$binary_file"
   elif check_command "$COMMAND_NAME"; then
     installed_command="$COMMAND_NAME"
   elif check_command "$BINARY_NAME"; then
@@ -330,7 +438,7 @@ main() {
     version=$($installed_command --version 2>/dev/null || echo "unknown")
     info "Installed version: $version"
 
-    if [ "$installed_command" = "$INSTALL_DIR/$BINARY_NAME" ] && ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
+    if [ "$installed_command" = "$INSTALL_DIR/$binary_file" ] && ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
       warn "$INSTALL_DIR is not in your PATH"
       info "Add it to your PATH or run: export PATH=\"$INSTALL_DIR:\$PATH\""
     fi
@@ -348,4 +456,6 @@ main() {
   fi
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -16,27 +16,54 @@ permissions:
   id-token: write
 
 jobs:
-  build-cli:
-    name: Build CLI binaries
-    runs-on: ${{ matrix.os }}
+  prepare-cli-matrix:
+    name: Prepare CLI release matrix
+    runs-on: ubuntu-latest
     env:
       TAG_NAME: ${{ inputs.tag || github.ref_name }}
+    outputs:
+      matrix: ${{ steps.release-matrix.outputs.matrix }}
+      version: ${{ steps.release-matrix.outputs.version }}
+      commit: ${{ steps.checkout-tag.outputs.commit }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify and checkout requested tag
+        id: checkout-tag
+        shell: bash
+        run: |
+          git rev-parse --verify "refs/tags/${TAG_NAME}" >/dev/null 2>&1 || {
+            echo "Tag '${TAG_NAME}' does not exist."
+            exit 1
+          }
+          git checkout "refs/tags/${TAG_NAME}"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify versions and build matrix from platform manifest
+        id: release-matrix
+        shell: bash
+        run: |
+          python3 apps/khadim-cli/scripts/release_contract.py --tag "$TAG_NAME"
+          matrix="$(python3 apps/khadim-cli/scripts/release_contract.py \
+            --tag "$TAG_NAME" \
+            --matrix)"
+          version="${TAG_NAME#cli-v}"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  build-cli:
+    name: Build CLI binaries
+    needs: prepare-cli-matrix
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAG_NAME: ${{ inputs.tag || github.ref_name }}
+      RELEASE_VERSION: ${{ needs.prepare-cli-matrix.outputs.version }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: khadim-cli-linux-x86_64
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            artifact_name: khadim-cli-linux-aarch64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: khadim-cli-macos-x86_64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: khadim-cli-macos-aarch64
+      matrix: ${{ fromJSON(needs.prepare-cli-matrix.outputs.matrix) }}
 
     steps:
       - name: Checkout repository
@@ -54,7 +81,13 @@ jobs:
 
       - name: Checkout requested tag
         shell: bash
-        run: git checkout "refs/tags/${TAG_NAME}"
+        run: |
+          git checkout "refs/tags/${TAG_NAME}"
+          actual_commit="$(git rev-parse HEAD)"
+          if [[ "$actual_commit" != "${{ needs.prepare-cli-matrix.outputs.commit }}" ]]; then
+            echo "Tag moved during release: expected ${{ needs.prepare-cli-matrix.outputs.commit }}, got $actual_commit"
+            exit 1
+          fi
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -62,6 +95,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build
+        if: matrix.cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/khadim-cli -> target
@@ -89,29 +123,64 @@ jobs:
 
       - name: Build CLI binary
         run: |
-          cargo build --release --manifest-path apps/khadim-cli/Cargo.toml --target ${{ matrix.target }}
+          cargo build --locked --release --no-default-features --manifest-path apps/khadim-cli/Cargo.toml --target ${{ matrix.target }}
+
+      - name: Verify headless dependency graph
+        shell: bash
+        run: bash apps/khadim-cli/scripts/check_headless_cargo_graph.sh
+
+      - name: Verify headless Linux runtime boundary
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bash apps/khadim-cli/scripts/check_headless_linux_binary.sh \
+            "apps/khadim-cli/target/${{ matrix.target }}/release/${{ matrix.binary }}"
 
       - name: Strip binary
-        if: matrix.target != 'aarch64-unknown-linux-gnu'
+        if: matrix.strip
         run: |
-          strip apps/khadim-cli/target/${{ matrix.target }}/release/khadim-cli
+          strip apps/khadim-cli/target/${{ matrix.target }}/release/${{ matrix.binary }}
 
       - name: Rename binary
+        shell: bash
         run: |
-          cp apps/khadim-cli/target/${{ matrix.target }}/release/khadim-cli ${{ matrix.artifact_name }}
+          cp "apps/khadim-cli/target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.artifact_file }}"
+
+      - name: Execute uploaded binary on its native runner
+        shell: pwsh
+        run: |
+          if ("${{ runner.os }}" -cne "${{ matrix.runner_os }}") {
+            throw "Target ${{ matrix.tag }} requires ${{ matrix.runner_os }}, but runner OS is ${{ runner.os }}"
+          }
+          if ("${{ runner.arch }}" -cne "${{ matrix.runner_arch }}") {
+            throw "Target ${{ matrix.tag }} requires ${{ matrix.runner_arch }}, but runner architecture is ${{ runner.arch }}"
+          }
+
+          $artifact = Join-Path $env:GITHUB_WORKSPACE "${{ matrix.artifact_file }}"
+          $output = (& $artifact --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native artifact exited with code $LASTEXITCODE"
+          }
+          $expected = "khadim-cli $env:RELEASE_VERSION"
+          if ($output -cne $expected) {
+            throw "Unexpected native artifact version: expected '$expected', got '$output'"
+          }
+          Write-Host "Verified native artifact: $output"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_file }}
+          if-no-files-found: error
 
   publish-release:
     name: Publish CLI release
     runs-on: ubuntu-latest
-    needs: build-cli
+    needs: [prepare-cli-matrix, build-cli]
     env:
       TAG_NAME: ${{ inputs.tag || github.ref_name }}
+      RELEASE_VERSION: ${{ needs.prepare-cli-matrix.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -120,7 +189,13 @@ jobs:
 
       - name: Checkout requested tag
         shell: bash
-        run: git checkout "refs/tags/${TAG_NAME}"
+        run: |
+          git checkout "refs/tags/${TAG_NAME}"
+          actual_commit="$(git rev-parse HEAD)"
+          if [[ "$actual_commit" != "${{ needs.prepare-cli-matrix.outputs.commit }}" ]]; then
+            echo "Tag moved during release: expected ${{ needs.prepare-cli-matrix.outputs.commit }}, got $actual_commit"
+            exit 1
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -138,15 +213,35 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           scope: "@unravelai"
 
+      - name: Install locked npm API build dependencies
+        run: npm ci --prefix apps/khadim-cli --workspaces=false --ignore-scripts
+
+      - name: Test npm platform packaging
+        run: npm --prefix apps/khadim-cli run test:packaging
+
       - name: Stage npm tarballs
         shell: bash
         run: |
           set -euo pipefail
-          version="${TAG_NAME#cli-v}"
           python3 apps/khadim-cli/scripts/stage_npm_package.py \
-            --version "$version" \
+            --version "$RELEASE_VERSION" \
             --package all \
             --artifact-dir artifacts
+
+      - name: Smoke installed npm API and native launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          platform_tag="$(node --input-type=module --eval '
+            import { platformTarget } from "./apps/khadim-cli/src/platform-targets.js";
+            process.stdout.write(platformTarget().tag);
+          ')"
+          npm_dir="apps/khadim-cli/dist/npm"
+          node apps/khadim-cli/scripts/smoke_npm_release.mjs \
+            --version "$RELEASE_VERSION" \
+            --platform-tag "$platform_tag" \
+            --main-tarball "$npm_dir/khadim-cli-npm-${RELEASE_VERSION}.tgz" \
+            --platform-tarball "$npm_dir/khadim-cli-npm-${platform_tag}-${RELEASE_VERSION}.tgz"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
@@ -155,7 +250,7 @@ jobs:
           files: |
             artifacts/**/*
             apps/khadim-cli/dist/npm/*.tgz
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
 
       - name: Publish npm packages
         shell: bash
@@ -167,7 +262,7 @@ jobs:
             echo "Missing NPM_TOKEN repository secret."
             exit 1
           fi
-          version="${TAG_NAME#cli-v}"
+          version="$RELEASE_VERSION"
           npm_tag="latest"
           if [[ "$version" == *-* ]]; then
             npm_tag="${version#*-}"
@@ -202,8 +297,16 @@ jobs:
           }
 
           npm_dir="apps/khadim-cli/dist/npm"
-          publish_tarball "$npm_dir/khadim-cli-npm-linux-x64-${version}.tgz" "linux-x64"
-          publish_tarball "$npm_dir/khadim-cli-npm-linux-arm64-${version}.tgz" "linux-arm64"
-          publish_tarball "$npm_dir/khadim-cli-npm-darwin-x64-${version}.tgz" "darwin-x64"
-          publish_tarball "$npm_dir/khadim-cli-npm-darwin-arm64-${version}.tgz" "darwin-arm64"
+          while IFS= read -r platform_tag; do
+            publish_tarball "$npm_dir/khadim-cli-npm-${platform_tag}-${version}.tgz" "$platform_tag"
+          done < <(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          targets = json.loads(
+              Path("apps/khadim-cli/platform-targets.json").read_text(encoding="utf-8")
+          )
+          print("\n".join(targets))
+          PY
+          )
           publish_tarball "$npm_dir/khadim-cli-npm-${version}.tgz" "$npm_tag"

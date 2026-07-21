@@ -1,4 +1,5 @@
 import { createId } from "@paralleldrive/cuid2";
+import { createHash } from "node:crypto";
 import { getActiveModel } from "../agent/model-manager";
 import { selectAgent, type AgentMode } from "../agent/router";
 import { resolveApiKeyForBridge } from "../agent/models";
@@ -6,16 +7,18 @@ import type { ProviderType } from "../agent/models";
 import { loadSkills } from "../agent/skills";
 import { startJob } from "../agent/stream-utils";
 import { decoratePromptWithBadges } from "./badges";
-import { loadChatHistory } from "./chat-history";
+import { formatChatHistoryForPrompt, loadChatHistory, withoutLatestPersistedUserTurn } from "./chat-history";
 import { abortJob } from "./job-cancel";
 import { buildUploadedDocumentsContext } from "./uploaded-documents";
 import {
   cancelJob,
+  claimJob,
   createJob,
   getJob,
   getJobsByChatId,
   getSessionEventsSince,
   getSessionSnapshot,
+  markJobStarted,
 } from "./job-manager";
 import type { AgentJob } from "../types/agent";
 
@@ -119,6 +122,9 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         systemPrompt?: string;
         documentIds?: string[];
         agentMode?: AgentMode;
+        requestId?: string;
+        currentTurnId?: string;
+        currentTurnPersisted?: boolean;
       };
       let prompt = asString(params.prompt);
       const sessionId = asString(params.sessionId) || "default";
@@ -135,6 +141,41 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         return failure(400, "Prompt is required");
       }
 
+      const jobId = createId();
+      const resolvedChatId = asString(params.chatId) || "default";
+      const requestId = asString(params.requestId);
+      if (requestId && requestId.length > 128) return failure(400, "requestId is too long");
+      const requestFingerprint = fingerprint({
+        method: "job.start",
+        chatId: resolvedChatId,
+        sessionId,
+        prompt,
+        agentMode,
+        systemPrompt: asString(params.systemPrompt) ?? null,
+        badges: asString(params.badges) ?? null,
+        documentIds: Array.isArray(params.documentIds) ? params.documentIds : [],
+        sandboxId: asString(params.sandboxId) ?? null,
+        currentTurnId: asString(params.currentTurnId) ?? null,
+        currentTurnPersisted: params.currentTurnPersisted === true,
+      });
+      if (requestId) {
+        const existing = await getJob(requestId);
+        if (existing) {
+          if (!isJobVisibleToSession(existing, resolvedChatId, sessionId)) {
+            return failure(409, "requestId is already used by another run");
+          }
+          if (existing.requestFingerprint !== requestFingerprint) {
+            return failure(409, "requestId does not match the original run request");
+          }
+          if (existing.launchState === "claiming") {
+            if (Date.parse(existing.claimExpiresAt ?? "") > Date.now()) {
+              return failure(425, "The run is still being claimed; retry shortly");
+            }
+          } else {
+            return success({ jobId: existing.id, chatId: existing.chatId, sessionId: existing.sessionId, agentMode, agentName: agentMode });
+          }
+        }
+      }
       const activeModel = await getActiveModel();
       if (!activeModel) {
         return failure(400, "No active model configured. Add one in Settings first.");
@@ -144,27 +185,44 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         activeModel.provider as ProviderType,
         activeModel.apiKey,
       );
-
-      const jobId = createId();
-      const resolvedChatId = asString(params.chatId) || "default";
       const uploadedDocumentsContext = Array.isArray(params.documentIds) && params.documentIds.length > 0
         ? await buildUploadedDocumentsContext(resolvedChatId, params.documentIds)
         : "";
-      await createJob(jobId, resolvedChatId, sessionId);
-
+      const resolvedJobId = requestId || jobId;
       const skillsContent = await loadSkills();
-      const history = params.chatId ? await loadChatHistory(params.chatId) : [];
+      const currentTurnId = asString(params.currentTurnId);
+      const history = params.chatId ? await loadChatHistory(params.chatId, { excludeMessageId: currentTurnId }) : [];
 
       // Build context-aware prompt for the native binary
       const contextParts: string[] = [];
       if (skillsContent) contextParts.push(skillsContent);
       if (uploadedDocumentsContext) contextParts.push(uploadedDocumentsContext);
+      const historyContext = formatChatHistoryForPrompt(currentTurnId
+        ? history
+        : withoutLatestPersistedUserTurn(history, params.currentTurnPersisted === true));
+      if (historyContext) contextParts.push(historyContext);
       const fullPrompt = contextParts.length > 0
         ? `${contextParts.join("\n\n")}\n\n---\n\nUser request: ${prompt}`
         : prompt;
 
-      startJob(jobId, {
-        jobId,
+      if (requestId) {
+        const claim = await claimJob(resolvedJobId, resolvedChatId, sessionId, requestFingerprint);
+        if (!claim.created) {
+          if (!isJobVisibleToSession(claim.job, resolvedChatId, sessionId)
+            || claim.job.requestFingerprint !== requestFingerprint) {
+            return failure(409, "requestId does not match the original run request");
+          }
+          if (claim.job.launchState === "claiming") {
+            return failure(425, "The run is still being claimed; retry shortly");
+          }
+          return success({ jobId: claim.job.id, chatId: claim.job.chatId, sessionId: claim.job.sessionId, agentMode, agentName: agentMode });
+        }
+      } else {
+        await createJob(resolvedJobId, resolvedChatId, sessionId);
+      }
+
+      startJob(resolvedJobId, {
+        jobId: resolvedJobId,
         chatId: resolvedChatId,
         sessionId,
         prompt: fullPrompt,
@@ -173,9 +231,15 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         apiKey: apiKey || undefined,
         systemPrompt: asString(params.systemPrompt),
       });
+      if (requestId) {
+        const claimToken = (await getJob(resolvedJobId))?.claimToken;
+        if (claimToken) await markJobStarted(resolvedJobId, requestFingerprint, claimToken).catch((error) => {
+          console.error("Failed to promote launched job claim:", error);
+        });
+      }
 
       return success({
-        jobId,
+        jobId: resolvedJobId,
         chatId: resolvedChatId,
         sessionId,
         agentMode,
@@ -184,13 +248,45 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
     }
 
     case "job.followUp": {
-      const params = request.params as { jobId?: string; chatId?: string | null; sessionId?: string; prompt?: string; systemPrompt?: string };
+      const params = request.params as {
+        jobId?: string; chatId?: string | null; sessionId?: string; prompt?: string; systemPrompt?: string;
+        requestId?: string; currentTurnId?: string; currentTurnPersisted?: boolean;
+      };
       const prompt = asString(params.prompt);
       if (!prompt) return failure(400, "prompt is required");
 
       const chatId = asString(params.chatId) || "default";
       const sessionId = asString(params.sessionId) || "default";
 
+      const requestId = asString(params.requestId);
+      if (requestId && requestId.length > 128) return failure(400, "requestId is too long");
+      const requestFingerprint = fingerprint({
+        method: "job.followUp",
+        chatId,
+        sessionId,
+        prompt,
+        systemPrompt: asString(params.systemPrompt) ?? null,
+        currentTurnId: asString(params.currentTurnId) ?? null,
+        currentTurnPersisted: params.currentTurnPersisted === true,
+      });
+      if (requestId) {
+        const existing = await getJob(requestId);
+        if (existing) {
+          if (!isJobVisibleToSession(existing, chatId, sessionId)) {
+            return failure(409, "requestId is already used by another run");
+          }
+          if (existing.requestFingerprint !== requestFingerprint) {
+            return failure(409, "requestId does not match the original run request");
+          }
+          if (existing.launchState === "claiming") {
+            if (Date.parse(existing.claimExpiresAt ?? "") > Date.now()) {
+              return failure(425, "The run is still being claimed; retry shortly");
+            }
+          } else {
+            return success({ jobId: existing.id, chatId: existing.chatId, sessionId: existing.sessionId });
+          }
+        }
+      }
       const activeModel = await getActiveModel();
       if (!activeModel) return failure(400, "No active model configured");
 
@@ -198,20 +294,48 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
         activeModel.provider as ProviderType,
         activeModel.apiKey,
       );
+      const newJobId = requestId || createId();
+      const currentTurnId = asString(params.currentTurnId);
+      const history = await loadChatHistory(chatId, { excludeMessageId: currentTurnId });
+      const historyContext = formatChatHistoryForPrompt(currentTurnId
+        ? history
+        : withoutLatestPersistedUserTurn(history, params.currentTurnPersisted === true));
+      const contextualPrompt = historyContext
+        ? `${historyContext}\n\n---\n\nCurrent user follow-up: ${prompt}`
+        : `[Follow-up]\n${prompt}`;
 
-      const newJobId = createId();
-      await createJob(newJobId, chatId, sessionId);
+      if (requestId) {
+        const claim = await claimJob(newJobId, chatId, sessionId, requestFingerprint);
+        if (!claim.created) {
+          if (!isJobVisibleToSession(claim.job, chatId, sessionId)
+            || claim.job.requestFingerprint !== requestFingerprint) {
+            return failure(409, "requestId does not match the original run request");
+          }
+          if (claim.job.launchState === "claiming") {
+            return failure(425, "The run is still being claimed; retry shortly");
+          }
+          return success({ jobId: claim.job.id, chatId: claim.job.chatId, sessionId: claim.job.sessionId });
+        }
+      } else {
+        await createJob(newJobId, chatId, sessionId);
+      }
 
       startJob(newJobId, {
         jobId: newJobId,
         chatId,
         sessionId,
-        prompt: `[Follow-up]\n${prompt}`,
+        prompt: contextualPrompt,
         provider: activeModel.provider,
         model: activeModel.model,
         apiKey: apiKey || undefined,
         systemPrompt: asString(params.systemPrompt),
       });
+      if (requestId) {
+        const claimToken = (await getJob(newJobId))?.claimToken;
+        if (claimToken) await markJobStarted(newJobId, requestFingerprint, claimToken).catch((error) => {
+          console.error("Failed to promote launched job claim:", error);
+        });
+      }
 
       return success({ jobId: newJobId, chatId, sessionId });
     }
@@ -270,4 +394,8 @@ export async function handleAgentRpc(request: AgentRpcRequest): Promise<AgentRpc
   }
 
   return failure(400, `Unsupported method: ${request.method}`);
+}
+
+function fingerprint(command: Record<string, unknown>): string {
+  return createHash("sha256").update(JSON.stringify(command)).digest("hex");
 }

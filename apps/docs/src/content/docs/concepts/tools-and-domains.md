@@ -77,10 +77,15 @@ Memory tools include `memory_search`, `memory_save`, `memory_delete`,
 Plugins are sandboxed WebAssembly modules. A plugin declares its metadata,
 tools, permissions, config fields, and optional UI contribution in a manifest.
 
-Plugin tools are namespaced to avoid collisions with built-in tools:
+Plugin tools are namespaced to avoid collisions with built-in tools. The CLI
+normalizes punctuation to underscores when it exposes a plugin tool:
 
 ```text
-plugin.{plugin-id}.{tool-name}
+plugin_{plugin_id}_{tool_name}
 ```
+
+Use `khadim plugin install`, `khadim plugin tools`, and the other
+`khadim plugin` commands to manage and inspect plugins without a graphical
+app. Enabled tools join the same runtime as built-in tools.
 
 Read [Plugin SDK](../plugins/overview/) to build one.

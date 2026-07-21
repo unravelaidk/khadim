@@ -33,6 +33,7 @@ skills-lock.json
 .idea
 .vscode
 .claude
+.codex
 .khadim-worktrees/
 .agents/
 .pi/
@@ -44,3 +45,12 @@ skills-lock.json
 
 # Khadim video (local only)
 khadim-video/
+
+# Local caches and generated application output
+.tmp/
+**/__pycache__/
+*.py[cod]
+apps/*/.expo/
+apps/electron/out/
+apps/electron/node-compile-cache/
+apps/electron/electron.vite.config.*.mjs

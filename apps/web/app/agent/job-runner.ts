@@ -132,7 +132,12 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
         failSandboxStep: async (message) => {
           sandboxId = null;
           await updateStep(jobId, "sandbox", { status: "error", result: message });
-          await broadcastJobEvent("step_complete", { id: "sandbox", result: message });
+          await broadcastJobEvent("step_complete", {
+            id: "sandbox",
+            result: message,
+            status: "error",
+            isError: true,
+          });
         },
         broadcastToolEvent: async (event) => {
           await broadcastJobEvent(event.type, event.data ?? {});
@@ -482,25 +487,21 @@ export async function runAgentJob(params: RunAgentJobParams): Promise<void> {
       throw new Error("Slide generation finished without producing a presentation.");
     }
 
-    await completeJob(jobId, finalContent, previewUrl);
-
     if (chatId) {
-      try {
-        await db.insert(messages).values({
-          chatId,
-          role: "assistant",
-          content: finalContent,
-          previewUrl: previewUrl || undefined,
-          thinkingSteps: collectedSteps,
-        });
+      await db.insert(messages).values({
+        chatId,
+        role: "assistant",
+        content: finalContent,
+        previewUrl: previewUrl || undefined,
+        thinkingSteps: collectedSteps,
+      });
 
-        if (sandboxId) {
-          await db.update(chats).set({ sandboxId }).where(eq(chats.id, chatId));
-        }
-      } catch (dbError) {
-        console.error("Error saving to database:", dbError);
+      if (sandboxId) {
+        await db.update(chats).set({ sandboxId }).where(eq(chats.id, chatId));
       }
     }
+
+    await completeJob(jobId, finalContent, previewUrl);
 
     if (sandboxId) {
       scheduleSandboxCleanup(chatId, sandboxId);

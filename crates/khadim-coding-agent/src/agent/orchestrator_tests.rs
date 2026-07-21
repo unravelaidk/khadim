@@ -13,8 +13,12 @@ fn repair_empty_messages_is_noop() {
 #[test]
 fn repair_normal_conversation_is_unchanged() {
     let mut messages = vec![
-        ChatMessage::System { content: "You are helpful.".to_string() },
-        ChatMessage::User { content: "Hello".to_string() },
+        ChatMessage::System {
+            content: "You are helpful.".to_string(),
+        },
+        ChatMessage::User {
+            content: "Hello".to_string(),
+        },
         ChatMessage::Assistant {
             content: Some("Hi!".to_string()),
             tool_calls: vec![],
@@ -29,7 +33,9 @@ fn repair_normal_conversation_is_unchanged() {
 #[test]
 fn repair_adds_stub_for_missing_tool_result() {
     let mut messages = vec![
-        ChatMessage::User { content: "do it".to_string() },
+        ChatMessage::User {
+            content: "do it".to_string(),
+        },
         ChatMessage::Assistant {
             content: None,
             tool_calls: vec![ToolCall {
@@ -54,7 +60,9 @@ fn repair_adds_stub_for_missing_tool_result() {
 #[test]
 fn repair_does_not_duplicate_present_tool_result() {
     let mut messages = vec![
-        ChatMessage::User { content: "do it".to_string() },
+        ChatMessage::User {
+            content: "do it".to_string(),
+        },
         ChatMessage::Assistant {
             content: None,
             tool_calls: vec![ToolCall {
@@ -83,7 +91,9 @@ fn repair_does_not_duplicate_present_tool_result() {
 #[test]
 fn repair_drops_empty_assistant_message() {
     let mut messages = vec![
-        ChatMessage::User { content: "hi".to_string() },
+        ChatMessage::User {
+            content: "hi".to_string(),
+        },
         ChatMessage::Assistant {
             content: None,
             tool_calls: vec![],
@@ -95,7 +105,10 @@ fn repair_drops_empty_assistant_message() {
         .iter()
         .filter(|m| matches!(m, ChatMessage::Assistant { .. }))
         .count();
-    assert_eq!(assistant_count, 0, "empty assistant message should be dropped");
+    assert_eq!(
+        assistant_count, 0,
+        "empty assistant message should be dropped"
+    );
 }
 
 // ── extract_contract_summary ───────────────────────────────────────────────
@@ -128,7 +141,6 @@ fn contract_captures_do_not_edit_constraint() {
 
 #[test]
 fn contract_captures_we_will_test_command() {
-    let summary =
-        extract_contract_summary("We will test this with: cargo test --lib").unwrap();
+    let summary = extract_contract_summary("We will test this with: cargo test --lib").unwrap();
     assert!(summary.contains("checks:"), "got: {summary}");
 }

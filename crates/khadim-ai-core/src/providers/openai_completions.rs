@@ -1,11 +1,11 @@
 use crate::error::AppError;
 use crate::providers::request_headers::build_copilot_dynamic_headers;
-use crate::providers::transform_messages::{finalize_tool_call, to_openai_messages, to_openai_tools};
+use crate::providers::transform_messages::{
+    finalize_tool_call, to_openai_messages, to_openai_tools,
+};
 use crate::providers::usage::openai_completions_usage;
 use crate::streaming::for_each_sse_event;
-use crate::types::{
-    AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage,
-};
+use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -15,16 +15,22 @@ use std::sync::Arc;
 /// When the provider is `github-copilot`, injects the dynamic headers
 /// (`X-Initiator`, `Openai-Intent`, `Copilot-Vision-Request`) that Copilot
 /// requires on every request.
-fn build_openai_headers(model: &Model, messages: &[crate::types::ChatMessage]) -> reqwest::header::HeaderMap {
-    let mut headers = model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-        if let (Ok(name), Ok(val)) = (
-            reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-            reqwest::header::HeaderValue::from_str(value),
-        ) {
-            acc.insert(name, val);
-        }
-        acc
-    });
+fn build_openai_headers(
+    model: &Model,
+    messages: &[crate::types::ChatMessage],
+) -> reqwest::header::HeaderMap {
+    let mut headers = model.headers.iter().fold(
+        reqwest::header::HeaderMap::new(),
+        |mut acc, (key, value)| {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                reqwest::header::HeaderValue::from_str(value),
+            ) {
+                acc.insert(name, val);
+            }
+            acc
+        },
+    );
 
     if model.provider == "github-copilot" {
         for (key, value) in build_copilot_dynamic_headers(messages) {
@@ -39,7 +45,9 @@ fn build_openai_headers(model: &Model, messages: &[crate::types::ChatMessage]) -
 
     // OpenRouter requires these headers for rankings and rate-limits.
     if model.provider == "openrouter" {
-        if let Ok(val) = reqwest::header::HeaderValue::from_str("https://github.com/unravel-ai/khadim") {
+        if let Ok(val) =
+            reqwest::header::HeaderValue::from_str("https://github.com/unravel-ai/khadim")
+        {
             headers.insert("HTTP-Referer", val);
         }
         if let Ok(val) = reqwest::header::HeaderValue::from_str("Khadim") {
@@ -109,11 +117,17 @@ pub fn complete(
             "stream": false,
         });
         if !model.reasoning {
-            payload.as_object_mut().unwrap().insert("temperature".into(), json!(temperature));
+            payload
+                .as_object_mut()
+                .unwrap()
+                .insert("temperature".into(), json!(temperature));
         }
 
         let response = client
-            .post(format!("{}/chat/completions", model.base_url.trim_end_matches('/')))
+            .post(format!(
+                "{}/chat/completions",
+                model.base_url.trim_end_matches('/')
+            ))
             .bearer_auth(api_key)
             .headers(headers)
             .json(&payload)
@@ -160,7 +174,12 @@ pub fn complete(
 
         let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
 
-        Ok(CompletionResponse { content, tool_calls, usage: openai_completions_usage(&usage), reasoning_content })
+        Ok(CompletionResponse {
+            content,
+            tool_calls,
+            usage: openai_completions_usage(&usage),
+            reasoning_content,
+        })
     })
 }
 
@@ -192,11 +211,17 @@ pub fn stream(
             "stream_options": { "include_usage": true },
         });
         if !model.reasoning {
-            payload.as_object_mut().unwrap().insert("temperature".into(), json!(temperature));
+            payload
+                .as_object_mut()
+                .unwrap()
+                .insert("temperature".into(), json!(temperature));
         }
 
         let response = client
-            .post(format!("{}/chat/completions", model.base_url.trim_end_matches('/')))
+            .post(format!(
+                "{}/chat/completions",
+                model.base_url.trim_end_matches('/')
+            ))
             .bearer_auth(api_key)
             .headers(headers)
             .json(&payload)
@@ -228,7 +253,11 @@ pub fn stream(
                 AppError::health(format!("Failed to parse OpenAI streaming event: {err}"))
             })?;
 
-            if let Some(raw_usage) = payload.get("usage").cloned().or_else(|| choice_usage(&payload)) {
+            if let Some(raw_usage) = payload
+                .get("usage")
+                .cloned()
+                .or_else(|| choice_usage(&payload))
+            {
                 usage = openai_completions_usage(&raw_usage);
                 on_event(AssistantStreamEvent::Usage(usage.clone()));
             }
@@ -311,7 +340,11 @@ pub fn stream(
                     }
                 }
 
-                if choice.get("finish_reason").and_then(|value| value.as_str()).is_some() {
+                if choice
+                    .get("finish_reason")
+                    .and_then(|value| value.as_str())
+                    .is_some()
+                {
                     if !final_reasoning.is_empty() {
                         on_event(AssistantStreamEvent::ThinkingEnd(final_reasoning.clone()));
                     }
@@ -336,7 +369,11 @@ pub fn stream(
             content: final_content,
             tool_calls,
             usage,
-            reasoning_content: if final_reasoning.is_empty() { None } else { Some(final_reasoning) },
+            reasoning_content: if final_reasoning.is_empty() {
+                None
+            } else {
+                Some(final_reasoning)
+            },
         })
     })
 }

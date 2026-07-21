@@ -142,7 +142,11 @@ impl LeaseManager {
                 // Report the union of all changed ranges (or 0..0 if empty).
                 if let Some(first) = changed_ranges.first() {
                     let start = first.start;
-                    let end = changed_ranges.iter().map(|r| r.end).max().unwrap_or(first.end);
+                    let end = changed_ranges
+                        .iter()
+                        .map(|r| r.end)
+                        .max()
+                        .unwrap_or(first.end);
                     found_range = Some(start..end);
                 } else {
                     found_range = Some(0..0);
@@ -166,8 +170,7 @@ impl LeaseManager {
                 // existing lease's byte range even without a span on the edit.
                 if found_range.is_none() {
                     for cr in changed_ranges {
-                        if ex_span.byte_range.start <= cr.start
-                            && ex_span.byte_range.end >= cr.end
+                        if ex_span.byte_range.start <= cr.start && ex_span.byte_range.end >= cr.end
                         {
                             found_range = Some(cr.start..cr.end);
                             break;
@@ -322,21 +325,18 @@ mod tests {
         let mut mgr = LeaseManager::new();
         let f = PathBuf::from("src/lib.rs");
         // Existing: an impl block covering bytes 0..200.
-        let impl_span = span_with_path(0, 200, vec![
-            ("source_file", 0),
-            ("impl_item", 0),
-        ]);
+        let impl_span = span_with_path(0, 200, vec![("source_file", 0), ("impl_item", 0)]);
         // New: a method inside the impl, bytes 20..80 (within 0..200) but
         // non-overlapping byte ranges are impossible here since it's inside.
         // Use a method whose byte range is WITHIN the impl but disjoint in
         // the *byte range* sense is impossible; instead test a sibling method
         // outside the impl byte range to confirm ancestry is the trigger.
         // Actually for ancestry we need the method path to be a descendant.
-        let method_span = span_with_path(20, 80, vec![
-            ("source_file", 0),
-            ("impl_item", 0),
-            ("function_item", 1),
-        ]);
+        let method_span = span_with_path(
+            20,
+            80,
+            vec![("source_file", 0), ("impl_item", 0), ("function_item", 1)],
+        );
         mgr.claim("w1", f.clone(), Some(impl_span)).unwrap();
         // Method is a descendant of impl → conflict via ancestry.
         let res = mgr.claim("w2", f.clone(), Some(method_span));
@@ -382,11 +382,7 @@ mod tests {
         mgr.claim("w2", f.clone(), Some(span(200, 300))).unwrap();
 
         // w2 edits into w1's region (bytes 40..60).
-        let conflicts = mgr.check_edit(
-            "w2",
-            &f,
-            &[ChangedRange::new(40, 60)],
-        );
+        let conflicts = mgr.check_edit("w2", &f, &[ChangedRange::new(40, 60)]);
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflicting_lease.worker_id, "w1");
         assert_eq!(conflicts[0].range, 40..60);

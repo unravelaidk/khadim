@@ -1,0 +1,33 @@
+package khadim:plugin@1.0.0;
+
+interface guest {
+  /// JSON is the stable payload format for the core ABI. Language SDKs map
+  /// their native data types to this string at the WebAssembly boundary.
+  type json = string;
+
+  record plugin-info {
+    id: string,
+    name: string,
+    version: string,
+    api-version: u32,
+  }
+
+  record harness-capability {
+    id: string,
+    name: string,
+    description: string,
+    icon: option<string>,
+  }
+
+  record capabilities {
+    harnesses: list<harness-capability>,
+  }
+
+  info: func() -> plugin-info;
+  capabilities: func() -> capabilities;
+  call: func(operation: string, input: json) -> result<json, string>;
+}
+
+world khadim-plugin {
+  export guest;
+}

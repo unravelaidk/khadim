@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_9bee9c9929a9484096f6338c0e1a1ae8",
+  "session_id": "session_9bee9c9929a9484096f6338c0e1a1ae8",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/excalidraw/excalidraw",
+      "title": "GitHub - excalidraw/excalidraw: Virtual whiteboard for sketching hand-drawn like diagrams \u00b7 GitHub",
+      "publish_date": null,
+      "excerpts": [
+        "# excalidraw/excalidraw\n## Features\nThe Excalidraw editor (npm package) supports:\n* \ud83d\udcaf Free & open-source.\n* \ud83c\udfa8 Infinite, canvas-based whiteboard.\n* \u270d\ufe0f Hand-drawn like style.\n* \ud83c\udf13 Dark mode.\n* \ud83c\udfd7\ufe0f Customizable.\n* \ud83d\udcf7 Image support.\n* \ud83d\ude00 Shape libraries support.\n* \ud83c\udf10 Localization (i18n) support.\n* \ud83d\uddbc\ufe0f Export to PNG, SVG & clipboard.\n* \ud83d\udcbe Open format - export drawings as an `.excalidraw` json file.\n* \u2692\ufe0f Wide range of tools - rectangle, circle, diamond, arrow, line, free-draw, eraser...\n* \u27a1\ufe0f Arrow-binding & labeled arrows.\n* \ud83d\udd19 Undo / Redo.\n* \ud83d\udd0d Zoom and panning support.\n\n## Excalidraw.com\nThe app hosted at [excalidraw.com](https://excalidraw.com/) is a minimal showcase of what you can build with Excalidraw. Its [source code](https://github.com/excalidraw/excalidraw/tree/master/excalidraw-app) is part of this repository as well, and the app features:\n* \ud83d\udce1 PWA support (works offline).\n* \ud83e\udd3c Real-time collaboration.\n* \ud83d\udd12 End-to-end encryption.\n* \ud83d\udcbe Local-first support (autosaves to the browser).\n* \ud83d\udd17 Shareable links (export to a readonly link you can share with others).\nWe'll be adding these features as drop-in plugins for the npm package in the future."
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

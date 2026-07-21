@@ -135,15 +135,15 @@ export function SidebarChatList({
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      <div className="px-4 py-2 border-b border-[var(--glass-border)]">
+      <div className="electron-history-label px-6 pb-2 pt-1">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">Recent chats</span>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]" style={{ opacity: 0.6 }}>
+            <span>Recent</span>
+            <p className="text-[10px] font-normal normal-case tracking-normal text-[var(--text-3)]">
               {currentView === "workspace" && selectedWorkspaceId ? "Workspace chats" : "Unified inbox"}
             </p>
           </div>
-          <span className="text-xs text-[var(--text-muted)]">{chats.length}</span>
+          <span className="text-[10px] text-[var(--text-3)]">{chats.length}</span>
         </div>
       </div>
 
@@ -167,7 +167,7 @@ export function SidebarChatList({
             </button>
           </div>
         ) : (
-          <div className="py-2 space-y-0.5">
+          <div className="electron-history-list py-1 space-y-0.5">
             {chats.map((chat) => {
               const isSelected = chat.id === selectedChatId;
 
@@ -179,10 +179,10 @@ export function SidebarChatList({
                         if (onClose) onClose();
                       }}
                       className={`
-                      w-full flex items-center gap-2 px-3 py-2 text-left rounded-xl transition-all
+                      w-full flex items-center gap-2 px-3 py-2.5 text-left rounded-lg transition-all
                       ${isSelected 
-                        ? "border border-black/80 bg-[#10150a] text-[var(--text-inverse)] shadow-[var(--shadow-glass-sm)]" 
-                        : "text-[var(--text-secondary)] hover:bg-[var(--glass-bg-strong)] hover:text-[var(--text-primary)]"
+                        ? "bg-[var(--surface-hover)] text-[var(--text)] font-semibold"
+                        : "text-[var(--text-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--text)]"
                       }
                     `}
                   >

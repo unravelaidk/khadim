@@ -82,8 +82,16 @@ impl GoalTracker {
             let ctx = prefix_context(prompt, &path, 80);
             let ctx_lower = ctx.to_ascii_lowercase();
 
-            let create_score = last_keyword_pos(&ctx_lower, &["create", "write", "add", "generate", "produce", "new file"]);
-            let modify_score = last_keyword_pos(&ctx_lower, &["edit", "modify", "update", "change", "fix", "refactor", "patch"]);
+            let create_score = last_keyword_pos(
+                &ctx_lower,
+                &["create", "write", "add", "generate", "produce", "new file"],
+            );
+            let modify_score = last_keyword_pos(
+                &ctx_lower,
+                &[
+                    "edit", "modify", "update", "change", "fix", "refactor", "patch",
+                ],
+            );
 
             if modify_score > create_score {
                 goals.push(Goal::new(GoalKind::ModifyFile, path));
@@ -219,9 +227,7 @@ impl GoalTracker {
                 GoalKind::RunCommand => {
                     if tool_name == "bash" {
                         let goal_lower = goal.description.to_ascii_lowercase();
-                        if args_lower.contains(&goal_lower)
-                            || result_lower.contains(&goal_lower)
-                        {
+                        if args_lower.contains(&goal_lower) || result_lower.contains(&goal_lower) {
                             goal.satisfied = true;
                         }
                     }
@@ -366,7 +372,11 @@ impl GoalTracker {
 
         // Collect newly-satisfied indices.
         let mut newly = Vec::new();
-        for (i, (was, now)) in before.iter().zip(self.goals.iter().map(|g| g.satisfied)).enumerate() {
+        for (i, (was, now)) in before
+            .iter()
+            .zip(self.goals.iter().map(|g| g.satisfied))
+            .enumerate()
+        {
             if !*was && now {
                 newly.push(i);
             }
@@ -531,12 +541,7 @@ fn last_keyword_pos(text: &str, keywords: &[&str]) -> Option<usize> {
 fn extract_command_directives(lower: &str) -> Vec<String> {
     let mut cmds = Vec::new();
     let patterns = [
-        "run ",
-        "execute ",
-        "start ",
-        "launch ",
-        "compile ",
-        "build ",
+        "run ", "execute ", "start ", "launch ", "compile ", "build ",
     ];
 
     for pat in patterns {
@@ -575,9 +580,7 @@ fn extract_verify_directives(lower: &str) -> Vec<String> {
                 let phrase = rest
                     .trim_matches(|c: char| matches!(c, '`' | '"' | '\'' | ',' | '.' | ';'))
                     .trim();
-                if !phrase.is_empty()
-                    && phrase.len() < 200
-                    && !items.contains(&phrase.to_string())
+                if !phrase.is_empty() && phrase.len() < 200 && !items.contains(&phrase.to_string())
                 {
                     items.push(phrase.to_string());
                 }
@@ -705,7 +708,11 @@ mod tests {
         .to_string();
         let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
         assert!(newly.is_empty(), "no goals should be newly satisfied");
-        assert_eq!(tracker.heuristic(), 1, "goal must remain unsatisfied without the symbol");
+        assert_eq!(
+            tracker.heuristic(),
+            1,
+            "goal must remain unsatisfied without the symbol"
+        );
         assert!(!tracker.goals[0].satisfied);
     }
 
@@ -750,7 +757,11 @@ mod tests {
         })
         .to_string();
         let newly = tracker.update_from_tool_json_with_graph("write", &args, "ok", &mut cache);
-        assert_eq!(newly, vec![0], "heuristic should stand for unsupported lang");
+        assert_eq!(
+            newly,
+            vec![0],
+            "heuristic should stand for unsupported lang"
+        );
         assert!(tracker.goals[0].satisfied);
     }
 

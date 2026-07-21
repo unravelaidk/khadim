@@ -1,9 +1,11 @@
 ---
-title: Plugin SDK Overview
-description: Build sandboxed Khadim plugins as WebAssembly modules and ship new tools into the desktop app.
+title: Plugin SDK overview
+description: Build sandboxed WebAssembly tools for Khadim CLI and desktop surfaces.
 ---
 
-Khadim plugins let you add new tools to the app without changing the core runtime. A plugin is packaged as a WebAssembly module plus a `plugin.toml` manifest that describes metadata, config, permissions, and optional desktop UI tabs.
+Khadim plugins let you add tools without changing the core runtime. A plugin
+package contains a WebAssembly module and a `plugin.toml` manifest that
+describes metadata, configuration, permissions, and optional desktop UI tabs.
 
 ## What a plugin contains
 
@@ -19,6 +21,20 @@ Khadim plugins let you add new tools to the app without changing the core runtim
 - Use host capabilities such as HTTP or filesystem access when permissions allow it.
 - Add desktop sidebar/content tabs by registering custom elements from a plugin UI bundle.
 - Stay isolated from the main application process behind a narrow host API.
+
+## CLI management
+
+Install, configure, and inspect plugin tools directly from the terminal:
+
+```bash
+khadim plugin install ./my-plugin
+khadim plugin list
+khadim plugin tools
+khadim plugin run plugin_my_plugin_greet '{"name":"Ada"}'
+```
+
+Enabled plugins load automatically in interactive and headless CLI agent runs.
+Use `khadim plugin config set PLUGIN KEY --stdin` for secret values.
 
 ## Plugin author workflow
 

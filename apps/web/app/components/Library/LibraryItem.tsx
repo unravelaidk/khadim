@@ -1,7 +1,7 @@
 import type { Workspace } from "../workspace/workspace-types";
 import { countFiles } from "../workspace/workspace-types";
 import { DropdownRoot, DropdownTrigger, DropdownContent, DropdownItem } from "../ui/dropdown-menu";
-import { LuFolder, LuMoreVertical, LuStar, LuTrash2, LuClock } from "react-icons/lu";
+import { LuEllipsisVertical, LuFolder, LuStar, LuTrash2, LuClock } from "react-icons/lu";
 
 interface LibraryItemProps {
   workspace: Workspace;
@@ -27,7 +27,7 @@ export function LibraryItem({ workspace, onClick, viewMode = "grid", onToggleFav
     <div onClick={(e) => e.stopPropagation()}>
       <DropdownRoot>
         <DropdownTrigger className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-strong)] transition-colors">
-          <LuMoreVertical className="w-4 h-4" />
+          <LuEllipsisVertical className="w-4 h-4" />
         </DropdownTrigger>
         <DropdownContent align={align}>
           <DropdownItem onClick={onToggleFavorite}>

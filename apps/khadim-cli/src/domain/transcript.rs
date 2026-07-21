@@ -39,6 +39,12 @@ pub enum TranscriptEntry {
         /// call so they share a single transcript entry.
         #[serde(default)]
         step_id: String,
+        /// UI breadcrumb from tool metadata (path, command, …).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        breadcrumb: Option<String>,
+        /// Extra chips from metadata (exit code, line count, …).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        meta_chips: Option<String>,
     },
     Error {
         text: String,

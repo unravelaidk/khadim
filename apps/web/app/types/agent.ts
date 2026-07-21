@@ -22,6 +22,10 @@ export interface AgentJob {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  requestFingerprint?: string;
+  launchState?: "claiming" | "started";
+  claimExpiresAt?: string;
+  claimToken?: string;
 }
 
 export interface JobEvent {

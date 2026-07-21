@@ -13,7 +13,7 @@ const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTHORIZE_URL: &str = "https://auth.openai.com/oauth/authorize";
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
-const SCOPE: &str = "openid profile email offline_access";
+const SCOPE: &str = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 const JWT_CLAIM_PATH: &str = "https://api.openai.com/auth";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +63,11 @@ fn auth_file() -> Result<PathBuf, AppError> {
         .map(|dir| dir.join("khadim"))
         .ok_or_else(|| AppError::io("Cannot determine desktop data directory"))?;
     std::fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    }
     Ok(dir.join("auth.json"))
 }
 
@@ -72,7 +77,9 @@ fn read_auth_file() -> Result<HashMap<String, OAuthCredentials>, AppError> {
         Ok(content) => serde_json::from_str(&content)
             .map_err(|err| AppError::io(format!("Failed to parse desktop auth file: {err}"))),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
-        Err(err) => Err(AppError::io(format!("Failed to read desktop auth file: {err}"))),
+        Err(err) => Err(AppError::io(format!(
+            "Failed to read desktop auth file: {err}"
+        ))),
     }
 }
 
@@ -80,7 +87,29 @@ fn write_auth_file(auth: &HashMap<String, OAuthCredentials>) -> Result<(), AppEr
     let path = auth_file()?;
     let content = serde_json::to_string_pretty(auth)
         .map_err(|err| AppError::io(format!("Failed to encode desktop auth file: {err}")))?;
-    std::fs::write(path, format!("{content}\n"))?;
+    let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+    let mut options = std::fs::OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let result = (|| -> Result<(), AppError> {
+        let mut file = options.open(&temporary)?;
+        file.write_all(format!("{content}\n").as_bytes())?;
+        file.sync_all()?;
+        #[cfg(windows)]
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        std::fs::rename(&temporary, &path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result?;
     Ok(())
 }
 
@@ -92,7 +121,8 @@ fn random_url_safe(len: usize) -> String {
 
 fn pkce_pair() -> (String, String) {
     let verifier = random_url_safe(32);
-    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(Sha256::digest(verifier.as_bytes()));
     (verifier, challenge)
 }
 
@@ -105,13 +135,18 @@ fn decode_account_id(access_token: &str) -> Result<String, AppError> {
         .decode(parts[1])
         .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(parts[1]))
         .map_err(|err| AppError::invalid_input(format!("Failed to decode access token: {err}")))?;
-    let json = serde_json::from_slice::<serde_json::Value>(&decoded)
-        .map_err(|err| AppError::invalid_input(format!("Failed to parse access token payload: {err}")))?;
+    let json = serde_json::from_slice::<serde_json::Value>(&decoded).map_err(|err| {
+        AppError::invalid_input(format!("Failed to parse access token payload: {err}"))
+    })?;
     json.get(JWT_CLAIM_PATH)
         .and_then(|value| value.get("chatgpt_account_id"))
         .and_then(|value| value.as_str())
         .map(ToOwned::to_owned)
         .ok_or_else(|| AppError::invalid_input("Failed to extract account ID from access token"))
+}
+
+pub fn openai_codex_account_id(access_token: &str) -> Result<String, AppError> {
+    decode_account_id(access_token)
 }
 
 async fn exchange_code(code: &str, verifier: &str) -> Result<OAuthCredentials, AppError> {
@@ -130,15 +165,26 @@ async fn exchange_code(code: &str, verifier: &str) -> Result<OAuthCredentials, A
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(AppError::health(format!("Codex token exchange failed: HTTP {status} - {body}")));
+        return Err(AppError::health(format!(
+            "Codex token exchange failed: HTTP {status} - {body}"
+        )));
     }
     let json = response
         .json::<serde_json::Value>()
         .await
         .map_err(|err| AppError::health(format!("Failed to parse Codex token response: {err}")))?;
-    let access = json.get("access_token").and_then(|value| value.as_str()).ok_or_else(|| AppError::health("Codex token response missing access_token"))?;
-    let refresh = json.get("refresh_token").and_then(|value| value.as_str()).ok_or_else(|| AppError::health("Codex token response missing refresh_token"))?;
-    let expires_in = json.get("expires_in").and_then(|value| value.as_i64()).ok_or_else(|| AppError::health("Codex token response missing expires_in"))?;
+    let access = json
+        .get("access_token")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| AppError::health("Codex token response missing access_token"))?;
+    let refresh = json
+        .get("refresh_token")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| AppError::health("Codex token response missing refresh_token"))?;
+    let expires_in = json
+        .get("expires_in")
+        .and_then(|value| value.as_i64())
+        .ok_or_else(|| AppError::health("Codex token response missing expires_in"))?;
     Ok(OAuthCredentials {
         access: access.to_string(),
         refresh: refresh.to_string(),
@@ -161,15 +207,25 @@ async fn refresh_token(credentials: &OAuthCredentials) -> Result<OAuthCredential
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(AppError::health(format!("Codex token refresh failed: HTTP {status} - {body}")));
+        return Err(AppError::health(format!(
+            "Codex token refresh failed: HTTP {status} - {body}"
+        )));
     }
-    let json = response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|err| AppError::health(format!("Failed to parse Codex refresh response: {err}")))?;
-    let access = json.get("access_token").and_then(|value| value.as_str()).ok_or_else(|| AppError::health("Codex refresh response missing access_token"))?;
-    let refresh = json.get("refresh_token").and_then(|value| value.as_str()).unwrap_or(credentials.refresh.as_str());
-    let expires_in = json.get("expires_in").and_then(|value| value.as_i64()).ok_or_else(|| AppError::health("Codex refresh response missing expires_in"))?;
+    let json = response.json::<serde_json::Value>().await.map_err(|err| {
+        AppError::health(format!("Failed to parse Codex refresh response: {err}"))
+    })?;
+    let access = json
+        .get("access_token")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| AppError::health("Codex refresh response missing access_token"))?;
+    let refresh = json
+        .get("refresh_token")
+        .and_then(|value| value.as_str())
+        .unwrap_or(credentials.refresh.as_str());
+    let expires_in = json
+        .get("expires_in")
+        .and_then(|value| value.as_i64())
+        .ok_or_else(|| AppError::health("Codex refresh response missing expires_in"))?;
     Ok(OAuthCredentials {
         access: access.to_string(),
         refresh: refresh.to_string(),
@@ -180,7 +236,10 @@ async fn refresh_token(credentials: &OAuthCredentials) -> Result<OAuthCredential
 
 fn cleanup_sessions() {
     let cutoff = chrono::Utc::now().timestamp_millis() - 15 * 60 * 1000;
-    sessions().lock().unwrap().retain(|_, session| session.updated_at >= cutoff);
+    sessions()
+        .lock()
+        .unwrap()
+        .retain(|_, session| session.updated_at >= cutoff);
 }
 
 fn parse_authorization_input(input: &str) -> (Option<String>, Option<String>) {
@@ -190,8 +249,14 @@ fn parse_authorization_input(input: &str) -> (Option<String>, Option<String>) {
     }
 
     if let Ok(url) = reqwest::Url::parse(trimmed) {
-        let code = url.query_pairs().find(|(key, _)| key == "code").map(|(_, value)| value.to_string());
-        let state = url.query_pairs().find(|(key, _)| key == "state").map(|(_, value)| value.to_string());
+        let code = url
+            .query_pairs()
+            .find(|(key, _)| key == "code")
+            .map(|(_, value)| value.to_string());
+        let state = url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| value.to_string());
         return (code, state);
     }
 
@@ -201,8 +266,14 @@ fn parse_authorization_input(input: &str) -> (Option<String>, Option<String>) {
 
     if trimmed.contains("code=") {
         if let Ok(url) = reqwest::Url::parse(&format!("http://localhost/auth/callback?{trimmed}")) {
-            let code = url.query_pairs().find(|(key, _)| key == "code").map(|(_, value)| value.to_string());
-            let state = url.query_pairs().find(|(key, _)| key == "state").map(|(_, value)| value.to_string());
+            let code = url
+                .query_pairs()
+                .find(|(key, _)| key == "code")
+                .map(|(_, value)| value.to_string());
+            let state = url
+                .query_pairs()
+                .find(|(key, _)| key == "state")
+                .map(|(_, value)| value.to_string());
             return (code, state);
         }
     }
@@ -232,6 +303,7 @@ fn spawn_callback_server(session_id: String, state: String, verifier: String) {
             Ok(listener) => listener,
             Err(err) => {
                 if let Some(session) = sessions().lock().unwrap().get_mut(&session_id) {
+                    session.status = "failed".to_string();
                     session.error = Some(format!("Failed to bind local callback server: {err}"));
                     session.updated_at = chrono::Utc::now().timestamp_millis();
                 }
@@ -245,7 +317,9 @@ fn spawn_callback_server(session_id: String, state: String, verifier: String) {
             };
             // Read only the HTTP request line (don't wait for EOF which blocks forever)
             let reader = BufReader::new(&stream);
-            let first_line = reader.lines().next()
+            let first_line = reader
+                .lines()
+                .next()
                 .and_then(|line| line.ok())
                 .unwrap_or_default();
             let path = first_line.split_whitespace().nth(1).unwrap_or("/");
@@ -355,10 +429,16 @@ pub async fn start_openai_codex_login() -> Result<CodexSessionInfo, AppError> {
         },
     );
     spawn_callback_server(session_id.clone(), state, verifier);
-    Ok(CodexSessionInfo { session_id, auth_url })
+    Ok(CodexSessionInfo {
+        session_id,
+        auth_url,
+    })
 }
 
-pub async fn submit_openai_codex_manual_code(session_id: &str, input: &str) -> Result<(), AppError> {
+pub async fn submit_openai_codex_manual_code(
+    session_id: &str,
+    input: &str,
+) -> Result<(), AppError> {
     let session = sessions()
         .lock()
         .unwrap()
@@ -366,7 +446,9 @@ pub async fn submit_openai_codex_manual_code(session_id: &str, input: &str) -> R
         .cloned()
         .ok_or_else(|| AppError::not_found("Codex login session not found or expired"))?;
     if session.status != "pending" {
-        return Err(AppError::invalid_input("Codex login session is no longer waiting for a code"));
+        return Err(AppError::invalid_input(
+            "Codex login session is no longer waiting for a code",
+        ));
     }
     let (code, state) = parse_authorization_input(input);
     if let Some(state) = state {
@@ -387,7 +469,9 @@ pub async fn submit_openai_codex_manual_code(session_id: &str, input: &str) -> R
     Ok(())
 }
 
-pub async fn get_openai_codex_login_status(session_id: &str) -> Result<CodexLoginStatusResponse, AppError> {
+pub async fn get_openai_codex_login_status(
+    session_id: &str,
+) -> Result<CodexLoginStatusResponse, AppError> {
     cleanup_sessions();
     let session = sessions()
         .lock()
@@ -442,10 +526,7 @@ pub async fn start_copilot_device_flow() -> Result<CopilotDeviceCode, AppError> 
     let response = client
         .post(COPILOT_DEVICE_CODE_URL)
         .header("Accept", "application/json")
-        .form(&[
-            ("client_id", COPILOT_CLIENT_ID),
-            ("scope", "read:user"),
-        ])
+        .form(&[("client_id", COPILOT_CLIENT_ID), ("scope", "read:user")])
         .send()
         .await?;
 
@@ -495,10 +576,9 @@ pub async fn poll_copilot_device_flow(
             .send()
             .await?;
 
-        let json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|err| AppError::health(format!("Failed to parse token poll response: {err}")))?;
+        let json: serde_json::Value = response.json().await.map_err(|err| {
+            AppError::health(format!("Failed to parse token poll response: {err}"))
+        })?;
 
         if let Some(error) = json.get("error").and_then(|v| v.as_str()) {
             match error {
@@ -582,13 +662,11 @@ pub async fn get_copilot_api_key() -> Result<String, AppError> {
     }
 
     let auth = read_auth_file()?;
-    let credentials = auth
-        .get(copilot_auth_key())
-        .ok_or_else(|| {
-            AppError::invalid_input(
-                "GitHub Copilot is not connected. Use /login copilot to authenticate.",
-            )
-        })?;
+    let credentials = auth.get(copilot_auth_key()).ok_or_else(|| {
+        AppError::invalid_input(
+            "GitHub Copilot is not connected. Use /login copilot to authenticate.",
+        )
+    })?;
 
     get_copilot_session_token(&credentials.access).await
 }
@@ -613,10 +691,9 @@ async fn get_copilot_session_token(github_token: &str) -> Result<String, AppErro
         )));
     }
 
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|err| AppError::health(format!("Failed to parse Copilot token response: {err}")))?;
+    let json: serde_json::Value = response.json().await.map_err(|err| {
+        AppError::health(format!("Failed to parse Copilot token response: {err}"))
+    })?;
 
     json.get("token")
         .and_then(|v| v.as_str())

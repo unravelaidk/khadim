@@ -7,31 +7,34 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertRuntimeCompatibility,
+  platformTarget,
+} from "./platform-targets.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 
-const PLATFORM_PACKAGE_BY_TARGET: Record<string, string> = {
-  "x86_64-unknown-linux-gnu": "@unravelai/khadim-linux-x64",
-  "aarch64-unknown-linux-gnu": "@unravelai/khadim-linux-arm64",
-  "x86_64-apple-darwin": "@unravelai/khadim-darwin-x64",
-  "aarch64-apple-darwin": "@unravelai/khadim-darwin-arm64",
-};
+export function resolvePackageRoot(moduleDirectory = __dirname): string {
+  const parent = path.dirname(moduleDirectory);
+  return path.basename(moduleDirectory) === "npm-api" && path.basename(parent) === "dist"
+    ? path.resolve(moduleDirectory, "..", "..")
+    : parent;
+}
 
-function currentTargetTriple(): string {
-  const { platform, arch } = process;
-  if (platform === "linux" && arch === "x64") return "x86_64-unknown-linux-gnu";
-  if (platform === "linux" && arch === "arm64") return "aarch64-unknown-linux-gnu";
-  if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin";
-  if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin";
-  throw new Error(`Unsupported platform: ${platform} (${arch})`);
+export function currentTargetTriple(
+  platform = process.platform,
+  arch = process.arch,
+): string {
+  return platformTarget(platform, arch).target;
 }
 
 export async function resolveBinaryPath(): Promise<string> {
-  const targetTriple = currentTargetTriple();
-  const platformPackage = PLATFORM_PACKAGE_BY_TARGET[targetTriple];
-  const binaryName = process.platform === "win32" ? "khadim-cli.exe" : "khadim-cli";
+  const currentTarget = assertRuntimeCompatibility(platformTarget());
+  const targetTriple = currentTarget.target;
+  const platformPackage = currentTarget.alias;
+  const binaryName = currentTarget.binary;
 
   // Try optional dependency npm package
   try {
@@ -46,19 +49,20 @@ export async function resolveBinaryPath(): Promise<string> {
   }
 
   // Try local vendor directory (dev/staging)
-  const localVendorRoot = path.join(__dirname, "..", "vendor");
+  const packageRoot = resolvePackageRoot();
+  const localVendorRoot = path.join(packageRoot, "vendor");
   const localBinaryPath = path.join(localVendorRoot, targetTriple, "khadim-cli", binaryName);
   if (existsSync(localBinaryPath)) {
     return localBinaryPath;
   }
 
   // Dev mode: check cargo target dir (cargo build output)
-  const devBinaryPath = path.join(__dirname, "..", "target", "debug", binaryName);
+  const devBinaryPath = path.join(packageRoot, "target", "debug", binaryName);
   if (existsSync(devBinaryPath)) {
     return devBinaryPath;
   }
 
-  const releaseBinaryPath = path.join(__dirname, "..", "target", "release", binaryName);
+  const releaseBinaryPath = path.join(packageRoot, "target", "release", binaryName);
   if (existsSync(releaseBinaryPath)) {
     return releaseBinaryPath;
   }

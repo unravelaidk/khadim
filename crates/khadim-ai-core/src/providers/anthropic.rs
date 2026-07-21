@@ -4,9 +4,7 @@ use crate::providers::transform_messages::{
 };
 use crate::providers::usage::anthropic_usage;
 use crate::streaming::for_each_sse_event;
-use crate::types::{
-    AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage,
-};
+use crate::types::{AssistantStreamEvent, CompletionResponse, Context, Model, ToolCall, Usage};
 use futures_util::future::BoxFuture;
 use serde_json::json;
 use std::sync::Arc;
@@ -64,15 +62,18 @@ pub fn complete(
 
         let request = client
             .post(format!("{base_url}/messages"))
-            .headers(model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(value),
-                ) {
-                    acc.insert(name, val);
-                }
-                acc
-            }))
+            .headers(model.headers.iter().fold(
+                reqwest::header::HeaderMap::new(),
+                |mut acc, (key, value)| {
+                    if let (Ok(name), Ok(val)) = (
+                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                        reqwest::header::HeaderValue::from_str(value),
+                    ) {
+                        acc.insert(name, val);
+                    }
+                    acc
+                },
+            ))
             .header("anthropic-version", api_version);
 
         let response = if model.provider == "anthropic" {
@@ -85,11 +86,7 @@ pub fn complete(
         } else {
             // Third-party providers (opencode, kimi-coding, minimax, etc.)
             // use Bearer token authentication
-            request
-                .bearer_auth(api_key)
-                .json(&payload)
-                .send()
-                .await?
+            request.bearer_auth(api_key).json(&payload).send().await?
         };
 
         if !response.status().is_success() {
@@ -101,7 +98,9 @@ pub fn complete(
         }
 
         let body = response.json::<serde_json::Value>().await.map_err(|err| {
-            AppError::health(format!("Failed to parse Anthropic completion response: {err}"))
+            AppError::health(format!(
+                "Failed to parse Anthropic completion response: {err}"
+            ))
         })?;
 
         let mut content = String::new();
@@ -116,10 +115,18 @@ pub fn complete(
                     }
                     Some("tool_use") => {
                         tool_calls.push(ToolCall {
-                            id: block.get("id").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
+                            id: block
+                                .get("id")
+                                .and_then(|value| value.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
                             call_type: "function".to_string(),
                             function: crate::types::ToolFunction {
-                                name: block.get("name").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
+                                name: block
+                                    .get("name")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or_default()
+                                    .to_string(),
                                 arguments: serde_json::to_string(
                                     &block.get("input").cloned().unwrap_or_else(|| json!({})),
                                 )
@@ -134,7 +141,12 @@ pub fn complete(
 
         let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
 
-        Ok(CompletionResponse { content, tool_calls, usage: anthropic_usage(&usage), reasoning_content: None })
+        Ok(CompletionResponse {
+            content,
+            tool_calls,
+            usage: anthropic_usage(&usage),
+            reasoning_content: None,
+        })
     })
 }
 
@@ -177,15 +189,18 @@ pub fn stream(
 
         let request = client
             .post(format!("{base_url}/messages"))
-            .headers(model.headers.iter().fold(reqwest::header::HeaderMap::new(), |mut acc, (key, value)| {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(value),
-                ) {
-                    acc.insert(name, val);
-                }
-                acc
-            }))
+            .headers(model.headers.iter().fold(
+                reqwest::header::HeaderMap::new(),
+                |mut acc, (key, value)| {
+                    if let (Ok(name), Ok(val)) = (
+                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                        reqwest::header::HeaderValue::from_str(value),
+                    ) {
+                        acc.insert(name, val);
+                    }
+                    acc
+                },
+            ))
             .header("anthropic-version", api_version);
 
         let response = if model.provider == "anthropic" {
@@ -198,11 +213,7 @@ pub fn stream(
         } else {
             // Third-party providers (opencode, kimi-coding, minimax, etc.)
             // use Bearer token authentication
-            request
-                .bearer_auth(api_key)
-                .json(&payload)
-                .send()
-                .await?
+            request.bearer_auth(api_key).json(&payload).send().await?
         };
 
         if !response.status().is_success() {
@@ -224,7 +235,11 @@ pub fn stream(
                 AppError::health(format!("Failed to parse Anthropic streaming event: {err}"))
             })?;
 
-            match payload.get("type").and_then(|value| value.as_str()).unwrap_or_default() {
+            match payload
+                .get("type")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+            {
                 "message_start" => {
                     if let Some(raw_usage) = payload.get("message").and_then(|v| v.get("usage")) {
                         usage = anthropic_usage(raw_usage);
@@ -233,14 +248,30 @@ pub fn stream(
                 }
                 "content_block_start" => {
                     let index = payload.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let block = payload.get("content_block").cloned().unwrap_or_else(|| json!({}));
-                    match block.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+                    let block = payload
+                        .get("content_block")
+                        .cloned()
+                        .unwrap_or_else(|| json!({}));
+                    match block
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                    {
                         "text" => on_event(AssistantStreamEvent::TextStart),
                         "thinking" => on_event(AssistantStreamEvent::ThinkingStart),
                         "tool_use" => {
-                            let id = block.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                            let name = block.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                            current_tool = Some(finalize_tool_call(id.clone(), name.clone(), String::new()));
+                            let id = block
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let name = block
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            current_tool =
+                                Some(finalize_tool_call(id.clone(), name.clone(), String::new()));
                             let _ = index;
                             on_event(AssistantStreamEvent::ToolCallStart { id, name });
                         }
@@ -249,7 +280,11 @@ pub fn stream(
                 }
                 "content_block_delta" => {
                     let delta = payload.get("delta").cloned().unwrap_or_else(|| json!({}));
-                    match delta.get("type").and_then(|v| v.as_str()).unwrap_or_default() {
+                    match delta
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                    {
                         "text_delta" => {
                             if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
                                 final_content.push_str(text);
@@ -262,7 +297,9 @@ pub fn stream(
                             }
                         }
                         "input_json_delta" => {
-                            if let Some(partial_json) = delta.get("partial_json").and_then(|v| v.as_str()) {
+                            if let Some(partial_json) =
+                                delta.get("partial_json").and_then(|v| v.as_str())
+                            {
                                 if let Some(current) = current_tool.as_mut() {
                                     current.function.arguments.push_str(partial_json);
                                     on_event(AssistantStreamEvent::ToolCallDelta {
@@ -288,10 +325,13 @@ pub fn stream(
                     if let Some(raw_usage) = payload.get("usage") {
                         // Anthropic deltas are partial: preserve fields from
                         // message_start unless the delta explicitly updates them.
-                        if let Some(input) = raw_usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                        if let Some(input) = raw_usage.get("input_tokens").and_then(|v| v.as_u64())
+                        {
                             usage.input = input;
                         }
-                        if let Some(output) = raw_usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                        if let Some(output) =
+                            raw_usage.get("output_tokens").and_then(|v| v.as_u64())
+                        {
                             usage.output = output;
                         }
                         if let Some(cache_read) = raw_usage

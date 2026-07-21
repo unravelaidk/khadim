@@ -1,3 +1,14 @@
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+/// Display width of a string (CJK-aware).
+fn disp_width(s: &str) -> usize {
+    UnicodeWidthStr::width(s)
+}
+
+fn char_disp_width(ch: char) -> usize {
+    UnicodeWidthChar::width(ch).unwrap_or(1)
+}
+
 /// Calculate how many visual lines a string takes when wrapped at `width` columns.
 pub fn count_wrapped_lines(text: &str, width: usize) -> u16 {
     if width == 0 || text.is_empty() {
@@ -8,9 +19,9 @@ pub fn count_wrapped_lines(text: &str, width: usize) -> u16 {
         if line.is_empty() {
             lines += 1;
         } else {
-            let line_len = line.chars().count();
+            let line_len = disp_width(line).max(1);
             lines += (line_len / width) as u16;
-            if line_len % width != 0 || line_len == 0 {
+            if line_len % width != 0 {
                 lines += 1;
             }
         }
@@ -34,23 +45,19 @@ pub fn cursor_to_row_col(text: &str, cursor: usize, width: usize) -> (u16, u16) 
             row += 1;
             col = 0;
         } else {
-            // Wrap BEFORE placing a character that would overflow, so a line
-            // that is exactly `width` characters wide stays on one row.
-            if col + 1 > width as u16 {
+            let w = char_disp_width(ch) as u16;
+            if col + w > width as u16 {
                 row += 1;
                 col = 0;
             }
-            col += 1;
+            col += w;
         }
     }
 
-    // Cursor at end
     (row, col)
 }
 
-/// Hard-wrap `text` into visual lines of at most `width` characters,
-/// splitting at newlines and then at the width boundary.
-/// This must stay in sync with [`count_wrapped_lines`] and [`cursor_to_row_col`].
+/// Hard-wrap `text` into visual lines of at most `width` display columns.
 pub fn hard_wrap_lines(text: &str, width: usize) -> Vec<String> {
     if width == 0 {
         return vec![text.to_string()];
@@ -61,13 +68,21 @@ pub fn hard_wrap_lines(text: &str, width: usize) -> Vec<String> {
             lines.push(String::new());
             continue;
         }
-        let chars: Vec<char> = line.chars().collect();
-        for chunk in chars.chunks(width) {
-            lines.push(chunk.iter().collect());
+        let mut cur = String::new();
+        let mut cur_w = 0usize;
+        for ch in line.chars() {
+            let w = char_disp_width(ch);
+            if cur_w + w > width && !cur.is_empty() {
+                lines.push(std::mem::take(&mut cur));
+                cur_w = 0;
+            }
+            cur.push(ch);
+            cur_w += w;
+        }
+        if !cur.is_empty() || line.is_empty() {
+            lines.push(cur);
         }
     }
-    // str::split('\n') on a trailing-\n string already yields a trailing empty
-    // slice, but if the input is completely empty we need one empty line.
     if lines.is_empty() {
         lines.push(String::new());
     }

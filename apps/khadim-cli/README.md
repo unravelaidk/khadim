@@ -18,6 +18,8 @@ It is the stable coding-focused entry point for Khadim.
 - Provider and model switching across OpenAI, Anthropic, Gemini, Groq, xAI,
   OpenRouter, Mistral, Copilot, Codex, Cerebras, and more.
 - OAuth login for supported coding providers such as Copilot and Codex.
+- CLI-only provider, search, credential, and plugin configuration.
+- Sandboxed WASM plugin tools in interactive and headless runs.
 - TypeScript SDK entry points for embedding the same coding agent in apps.
 
 ## Installation
@@ -44,6 +46,11 @@ npm install @unravelai/khadim
 Prebuilt binaries are also available from the
 [Khadim releases page](https://github.com/unravelaidk/khadim/releases) for
 `cli-v*` tags.
+
+Linux npm and release binaries target GNU libc 2.35 or newer (the Ubuntu 22.04
+baseline). Alpine and other musl-based distributions are not compatible with
+those GNU binaries; install from source there with
+`KHADIM_CLI_INSTALL_METHOD=source`.
 
 ## Documentation
 
@@ -152,6 +159,38 @@ Use OAuth-backed coding providers from the terminal UI:
 /login
 ```
 
+## Terminal-only configuration
+
+Configure persistent defaults without opening the TUI:
+
+```bash
+khadim config set provider anthropic
+khadim config set model claude-sonnet-4
+printf '%s' "$ANTHROPIC_API_KEY" | \
+  khadim config set api-key anthropic --stdin
+```
+
+Select a web-search provider:
+
+```bash
+khadim search providers
+printf '%s' "$EXA_API_KEY" | khadim search set-key exa --stdin
+khadim search use exa
+```
+
+Install and manage a WASM tool plugin:
+
+```bash
+khadim plugin install ./my-plugin
+khadim plugin list
+khadim plugin tools
+khadim plugin disable my-plugin
+```
+
+Add `--json` to configuration, search, and plugin commands when you need
+machine-readable output. Use the `--stdin` form for credentials and secret
+plugin fields so their values don't appear in shell history.
+
 ## SDK
 
 Use the package from TypeScript when you want the same coding agent inside an
@@ -173,8 +212,21 @@ for await (const event of runAgentStream({
 
 ## RPA preview
 
-The CLI also includes preview harnesses for desktop and assistant automation.
-The coding harness is the stable path.
+The CLI registers preview harnesses for desktop and assistant automation. The
+prebuilt release/npm binary keeps those tool boundaries available, but leaves
+native screen and input backends disabled so the CLI can also start on
+headless Linux hosts. The coding harness is the stable path.
+
+Build from source with native desktop backends when the machine will run RPA:
+
+```bash
+cargo build --release --manifest-path apps/khadim-cli/Cargo.toml \
+  --features native-rpa,rustautogui-backend
+```
+
+`native-rpa` enables xcap screen capture and enigo input. The additional
+`rustautogui-backend` feature enables the X11-oriented alternative backend and
+visual template matching.
 
 ```bash
 khadim rpa exec "inspect the current screen"

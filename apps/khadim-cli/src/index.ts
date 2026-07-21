@@ -8,8 +8,13 @@
  *   const { output } = await runAgent({ prompt: "summarize this repo" });
  */
 
-export { runAgent, runAgentStream } from "./run-agent";
-export type { AgentStreamEvent, AgentResult, RunAgentOptions } from "./run-agent";
-export { resolveBinaryPath } from "./resolve-binary";
-export { getProviders, getModels } from "./catalog";
-export type { ProviderInfo, ModelInfo } from "./catalog";
+export { runAgent, runAgentStream } from "./run-agent.js";
+export type {
+  AgentStreamEvent,
+  AgentResult,
+  NativeToolBridge,
+  RunAgentOptions,
+} from "./run-agent.js";
+export { resolveBinaryPath } from "./resolve-binary.js";
+export { getProviders, getModels } from "./catalog.js";
+export type { ProviderInfo, ModelInfo } from "./catalog.js";

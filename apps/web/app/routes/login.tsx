@@ -71,7 +71,7 @@ export default function Login() {
     try {
       const result =
         mode === "signup"
-          ? await authClient.signUp.email({ name, email, password, rememberMe: true })
+          ? await authClient.signUp.email({ name, email, password })
           : await authClient.signIn.email({ email, password, rememberMe: true });
 
       if (result.error) {

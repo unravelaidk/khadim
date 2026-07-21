@@ -17,7 +17,15 @@ pub fn start_oauth_login(provider_id: &str, worker_tx: &UnboundedSender<WorkerEv
                             device_code: Some(device_code.user_code.clone()),
                             message: "Open the URL below and enter the code to authorize.".into(),
                         });
-                        open_url(&device_code.verification_uri);
+                        if let Err(error) = open_url(&device_code.verification_uri) {
+                            let _ = tx.send(WorkerEvent::LoginProgress {
+                                url: Some(device_code.verification_uri.clone()),
+                                device_code: Some(device_code.user_code.clone()),
+                                message: format!(
+                                    "Could not open the system browser ({error}). Open the URL manually and enter the code."
+                                ),
+                            });
+                        }
 
                         let _ = tx.send(WorkerEvent::LoginProgress {
                             url: None,
@@ -64,7 +72,15 @@ pub fn start_oauth_login(provider_id: &str, worker_tx: &UnboundedSender<WorkerEv
                             device_code: None,
                             message: "Open the URL below to authorize.".into(),
                         });
-                        open_url(&session_info.auth_url);
+                        if let Err(error) = open_url(&session_info.auth_url) {
+                            let _ = tx.send(WorkerEvent::LoginProgress {
+                                url: Some(session_info.auth_url.clone()),
+                                device_code: None,
+                                message: format!(
+                                    "Could not open the system browser ({error}). Open the URL manually to continue."
+                                ),
+                            });
+                        }
 
                         let _ = tx.send(WorkerEvent::LoginProgress {
                             url: None,
@@ -80,9 +96,12 @@ pub fn start_oauth_login(provider_id: &str, worker_tx: &UnboundedSender<WorkerEv
                             .await
                             {
                                 Ok(status) if status.status == "connected" => {
+                                    let _ =
+                                        khadim_ai_core::models::refresh_openai_codex_models().await;
                                     let _ = tx.send(WorkerEvent::LoginComplete {
                                         success: true,
-                                        message: "✓ OpenAI Codex connected!".into(),
+                                        message: "✓ OpenAI Codex connected and models updated!"
+                                            .into(),
                                     });
                                     return;
                                 }
