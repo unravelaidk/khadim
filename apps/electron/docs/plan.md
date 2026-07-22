@@ -254,17 +254,22 @@ validated data; workspace gestures produce reversible document changes; and
 editable, viewer, and export renderers consume the same model independently.
 
 Khadim now follows that boundary for prototype interactions. Primitive and
-component layers can persist click and hover triggers for page navigation,
-previous-screen navigation, and protocol-validated external URLs. The Studio
-player interprets those records without changing static SVG or PDF export.
+component layers can persist click, hover, and timed triggers for page
+navigation, previous-screen navigation, protocol-validated external URLs, and
+page-backed overlays. Overlays support nine anchor positions, optional dimmed
+backgrounds, outside-click dismissal, nested stacks, toggle and close actions,
+and the same transitions as page navigation. The Studio player interprets
+those records without changing static SVG or PDF export.
 Page deletion removes incoming links so saved artifacts cannot retain broken
 destinations. Instant, dissolve, and directional slide transitions store their
 duration and easing with the interaction. The preview is a modal interaction
 boundary: editor shortcuts are suspended, background controls are inert, focus
-is trapped and restored, hover interactions remain keyboard operable, and
-hotspots respect hidden ancestors, masks, and clipped frames. Persistence
-rejects malformed actions, unsafe URL protocols, duplicate triggers, and stale
-page destinations. Pages can be reordered and nominate an explicit prototype
+is trapped and restored, overlays move focus into their active layer, hover
+interactions remain keyboard operable, and hotspots respect hidden ancestors,
+masks, and clipped frames. Escape closes the top overlay before it exits the
+preview. Persistence rejects malformed actions, unsafe URL protocols, invalid
+delay and overlay options, duplicate triggers, and stale page destinations.
+Pages can be reordered and nominate an explicit prototype
 start screen; deleting that screen chooses a valid fallback and undo restores
 the prior flow. The page rail renders bounded, idle-updated thumbnails so scene
 edits stay visually navigable without regenerating every preview during a
@@ -522,7 +527,7 @@ the same in Preview and PDF preparation.
 
 1. Extract semantic canvas commands and grouped undo transactions from
    `CanvasEditor`, then index geometry for large-scene hit testing and snapping.
-2. Add prototype overlay actions and selection-aware agent patch protocols.
+2. Add selection-aware agent patch protocols for prototype interactions.
 3. Harden the HTML document editor with selection-scoped agent patches,
    revision history, and long-document pagination fixtures.
 4. Add export fixtures for long documents, complex multi-page canvases, and compiled

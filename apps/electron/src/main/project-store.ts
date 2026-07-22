@@ -314,11 +314,17 @@ function hasCanvasParentCycle(nodes: Record<string, unknown>[]): boolean {
 function isCanvasPrototypeInteraction(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const interaction = value as Record<string, unknown>;
-  if (!isBoundedString(interaction.id, 240) || !["click", "hover"].includes(String(interaction.trigger)) || !["navigate", "back", "open-url"].includes(String(interaction.action))) return false;
-  if (interaction.action === "navigate" && (!isBoundedString(interaction.destinationPageId, 240) || interaction.url !== undefined)) return false;
-  if (interaction.action === "back" && (interaction.destinationPageId !== undefined || interaction.url !== undefined || interaction.transition !== undefined)) return false;
+  if (!isBoundedString(interaction.id, 240) || !["click", "hover", "after-delay"].includes(String(interaction.trigger)) || !["navigate", "back", "open-url", "open-overlay", "toggle-overlay", "close-overlay"].includes(String(interaction.action))) return false;
+  if (interaction.trigger === "after-delay") {
+    if (!isFiniteCanvasNumber(interaction.delay, 0, 60_000)) return false;
+  } else if (interaction.delay !== undefined) return false;
+  const opensDestination = interaction.action === "navigate" || interaction.action === "open-overlay" || interaction.action === "toggle-overlay";
+  if (interaction.action === "navigate" && (!isBoundedString(interaction.destinationPageId, 240) || interaction.url !== undefined || interaction.overlay !== undefined)) return false;
+  if (interaction.action === "back" || interaction.action === "close-overlay") {
+    if (interaction.destinationPageId !== undefined || interaction.url !== undefined || interaction.transition !== undefined || interaction.overlay !== undefined) return false;
+  }
   if (interaction.action === "open-url") {
-    if (interaction.destinationPageId !== undefined || interaction.transition !== undefined) return false;
+    if (interaction.destinationPageId !== undefined || interaction.transition !== undefined || interaction.overlay !== undefined) return false;
     if (interaction.url !== undefined) {
       if (!isBoundedString(interaction.url, 2_048)) return false;
       try {
@@ -329,8 +335,14 @@ function isCanvasPrototypeInteraction(value: unknown): boolean {
       }
     }
   }
+  if (interaction.action === "open-overlay" || interaction.action === "toggle-overlay") {
+    if (!isBoundedString(interaction.destinationPageId, 240) || interaction.url !== undefined || typeof interaction.overlay !== "object" || interaction.overlay === null || Array.isArray(interaction.overlay)) return false;
+    const overlay = interaction.overlay as Record<string, unknown>;
+    if (!["center", "top-left", "top-center", "top-right", "center-left", "center-right", "bottom-left", "bottom-center", "bottom-right"].includes(String(overlay.position))
+      || !["none", "dim"].includes(String(overlay.background)) || typeof overlay.closeOnOutsideClick !== "boolean") return false;
+  }
   if (interaction.transition !== undefined) {
-    if (interaction.action !== "navigate" || typeof interaction.transition !== "object" || interaction.transition === null || Array.isArray(interaction.transition)) return false;
+    if (!opensDestination || typeof interaction.transition !== "object" || interaction.transition === null || Array.isArray(interaction.transition)) return false;
     const transition = interaction.transition as Record<string, unknown>;
     if (!["instant", "dissolve", "slide"].includes(String(transition.type)) || !isFiniteCanvasNumber(transition.duration, 0, 5_000) || !["linear", "ease", "ease-in", "ease-out", "ease-in-out"].includes(String(transition.easing))) return false;
     if (transition.direction !== undefined && !["left", "right", "up", "down"].includes(String(transition.direction))) return false;
@@ -376,7 +388,7 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
   if (element.textAlign !== undefined && !["left", "center", "right"].includes(String(element.textAlign))) return false;
   if (element.layoutPosition !== undefined && !["static", "absolute"].includes(String(element.layoutPosition))) return false;
   if (element.interactions !== undefined) {
-    if (!allowComponent || !Array.isArray(element.interactions) || element.interactions.length > 2 || !element.interactions.every(isCanvasPrototypeInteraction)) return false;
+    if (!allowComponent || !Array.isArray(element.interactions) || element.interactions.length > 3 || !element.interactions.every(isCanvasPrototypeInteraction)) return false;
     const interactions = element.interactions as Array<Record<string, unknown>>;
     if (new Set(interactions.map((interaction) => interaction.id)).size !== interactions.length || new Set(interactions.map((interaction) => interaction.trigger)).size !== interactions.length) return false;
   }
@@ -571,7 +583,7 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
     if (validatePrototypeDestinations) {
       const pageIds = new Set(pages.map((page) => page.id as string));
       if (data.prototypeStartPageId !== undefined && (!isBoundedString(data.prototypeStartPageId, 240) || !pageIds.has(data.prototypeStartPageId))) return false;
-      const destinations = pages.flatMap((page) => (page.elements as Array<Record<string, unknown>>).flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => interaction.action === "navigate" ? [interaction.destinationPageId as string] : []) ?? []));
+      const destinations = pages.flatMap((page) => (page.elements as Array<Record<string, unknown>>).flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => ["navigate", "open-overlay", "toggle-overlay"].includes(String(interaction.action)) ? [interaction.destinationPageId as string] : []) ?? []));
       if (destinations.some((destination) => !pageIds.has(destination))) return false;
     }
     const activePage = pages.find((page) => page.id === data.activePageId);

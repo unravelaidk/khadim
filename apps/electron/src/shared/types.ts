@@ -475,8 +475,8 @@ export interface CanvasLayoutGrid {
   margin?: number;
 }
 
-export type CanvasPrototypeTrigger = "click" | "hover";
-export type CanvasPrototypeAction = "navigate" | "back" | "open-url";
+export type CanvasPrototypeTrigger = "click" | "hover" | "after-delay";
+export type CanvasPrototypeAction = "navigate" | "back" | "open-url" | "open-overlay" | "toggle-overlay" | "close-overlay";
 
 export interface CanvasPrototypeTransition {
   type: "instant" | "dissolve" | "slide";
@@ -485,14 +485,22 @@ export interface CanvasPrototypeTransition {
   direction?: "left" | "right" | "up" | "down";
 }
 
+export interface CanvasPrototypeOverlay {
+  position: "center" | "top-left" | "top-center" | "top-right" | "center-left" | "center-right" | "bottom-left" | "bottom-center" | "bottom-right";
+  background: "none" | "dim";
+  closeOnOutsideClick: boolean;
+}
+
 /** A serializable prototype link owned by a canvas layer. */
 export interface CanvasPrototypeInteraction {
   id: string;
   trigger: CanvasPrototypeTrigger;
   action: CanvasPrototypeAction;
+  delay?: number;
   destinationPageId?: string;
   url?: string;
   transition?: CanvasPrototypeTransition;
+  overlay?: CanvasPrototypeOverlay;
 }
 
 export interface CanvasPrimitiveElement {

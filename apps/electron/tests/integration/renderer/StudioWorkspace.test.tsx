@@ -784,6 +784,99 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(within(preview).getByAltText("Details prototype screen")).toBeInTheDocument();
   });
 
+  it("authors overlay actions and delayed triggers in the prototype inspector", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-prototype-authoring", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const target = { id: "target", type: "rectangle" as const, name: "Prototype target", x: 80, y: 80, width: 180, height: 64, color: "#2563eb" };
+    artifact.content.pages = [
+      { id: "home", name: "Home", frame: { width: 960, height: 600 }, elements: [target], appState },
+      { id: "details", name: "Details", frame: { width: 400, height: 260 }, elements: [], appState },
+    ];
+    artifact.content.activePageId = "home";
+    artifact.content.elements = [target];
+    artifact.content.appState = appState;
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    const addInteraction = screen.getByRole("button", { name: "Interaction" });
+    await user.click(addInteraction);
+    await user.click(addInteraction);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Interaction 2 action" }), "open-overlay");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Interaction 2 overlay position" }), "bottom-right");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Interaction 2 overlay background" }), "none");
+    await user.click(screen.getByRole("checkbox", { name: "Interaction 2 close outside" }));
+    await user.click(addInteraction);
+    expect(addInteraction).toBeDisabled();
+    await user.clear(screen.getByRole("spinbutton", { name: "Interaction 3 delay" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Interaction 3 delay" }), "750");
+
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].interactions).toEqual([
+      expect.objectContaining({ trigger: "click", action: "navigate", destinationPageId: "details" }),
+      expect.objectContaining({ trigger: "hover", action: "open-overlay", destinationPageId: "details", overlay: { position: "bottom-right", background: "none", closeOnOutsideClick: false } }),
+      expect.objectContaining({ trigger: "after-delay", delay: 750, action: "navigate", destinationPageId: "details" }),
+    ]);
+  });
+
+  it("opens accessible prototype overlays and restores focus when they close", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-prototype-overlay", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const open = { id: "open", type: "rectangle" as const, name: "Open preferences", x: 80, y: 80, width: 180, height: 64, color: "#2563eb", interactions: [{ id: "open-modal", trigger: "click" as const, action: "open-overlay" as const, destinationPageId: "modal", overlay: { position: "center" as const, background: "dim" as const, closeOnOutsideClick: true }, transition: { type: "dissolve" as const, duration: 120, easing: "ease-out" as const } }] };
+    const close = { id: "close", type: "rectangle" as const, name: "Save preferences", x: 40, y: 120, width: 160, height: 52, color: "#2563eb", interactions: [{ id: "close-modal", trigger: "click" as const, action: "close-overlay" as const }] };
+    artifact.content.pages = [
+      { id: "home", name: "Home", frame: { width: 960, height: 600 }, elements: [open], appState },
+      { id: "modal", name: "Preferences", frame: { width: 400, height: 260 }, elements: [close], appState },
+    ];
+    artifact.content.activePageId = "home";
+    artifact.content.elements = [open];
+    artifact.content.appState = appState;
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Play prototype" }));
+    const preview = screen.getByRole("dialog", { name: "Canvas prototype preview" });
+    const openHotspot = within(preview).getByRole("button", { name: "Run Open preferences click interaction" });
+    await user.click(openHotspot);
+    expect(within(preview).getByRole("region", { name: "Preferences overlay" })).toBeInTheDocument();
+    expect(preview.querySelector(".canvas-prototype-screen")).toHaveAttribute("inert");
+    const closeHotspot = within(preview).getByRole("button", { name: "Run Save preferences click interaction" });
+    await waitFor(() => expect(closeHotspot).toHaveFocus());
+    await user.click(closeHotspot);
+    expect(within(preview).queryByRole("region", { name: "Preferences overlay" })).toBeNull();
+    await waitFor(() => expect(openHotspot).toHaveFocus());
+
+    await user.click(openHotspot);
+    await user.click(within(preview).getByRole("button", { name: "Close Preferences overlay" }));
+    expect(within(preview).queryByRole("region", { name: "Preferences overlay" })).toBeNull();
+    await user.click(openHotspot);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Canvas prototype preview" })).toBeInTheDocument();
+    expect(within(preview).queryByRole("region", { name: "Preferences overlay" })).toBeNull();
+  });
+
+  it("runs delayed prototype interactions without exposing a false hotspot", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-prototype-timer", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const timer = { id: "timer", type: "rectangle" as const, name: "Loading indicator", x: 80, y: 80, width: 180, height: 64, color: "#2563eb", interactions: [{ id: "finish-loading", trigger: "after-delay" as const, delay: 0, action: "navigate" as const, destinationPageId: "ready", transition: { type: "instant" as const, duration: 0, easing: "linear" as const } }] };
+    artifact.content.pages = [
+      { id: "loading", name: "Loading", frame: { width: 960, height: 600 }, elements: [timer], appState },
+      { id: "ready", name: "Ready", frame: { width: 960, height: 600 }, elements: [], appState },
+    ];
+    artifact.content.activePageId = "loading";
+    artifact.content.elements = [timer];
+    artifact.content.appState = appState;
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Play prototype" }));
+    const preview = screen.getByRole("dialog", { name: "Canvas prototype preview" });
+    expect(within(preview).queryByRole("button", { name: /Loading indicator/ })).toBeNull();
+    await waitFor(() => expect(within(preview).getByAltText("Ready prototype screen")).toBeInTheDocument());
+  });
+
   it("restores blank page names instead of emitting invalid canvas data", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-page-name", "2026-07-22T10:00:00.000Z");
     const onChange = vi.fn();

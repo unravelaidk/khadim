@@ -889,15 +889,16 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   function addPrototypeInteraction(): void {
     if (!selectedNode) return;
-    const trigger = (["click", "hover"] as const).find((candidate) => !selectedNode.interactions?.some((interaction) => interaction.trigger === candidate));
+    const trigger = (["click", "hover", "after-delay"] as const).find((candidate) => !selectedNode.interactions?.some((interaction) => interaction.trigger === candidate));
     if (!trigger) return;
     const destination = pages.find((page) => page.id !== activePageId)?.id;
     const interaction: CanvasPrototypeInteraction = {
       id: crypto.randomUUID(),
       trigger,
       action: destination ? "navigate" : "back",
+      delay: trigger === "after-delay" ? 500 : undefined,
       destinationPageId: destination,
-      transition: { type: "dissolve", duration: 180, easing: "ease-out" },
+      transition: destination ? { type: "dissolve", duration: 180, easing: "ease-out" } : undefined,
     };
     patchSelected({ interactions: [...(selectedNode.interactions ?? []), interaction] });
   }
@@ -2721,18 +2722,30 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             </div>;
           })}{selectedNode.componentRole === "instance" && Object.keys(selectedNode.overrides ?? {}).length > 0 && <button className="canvas-reset-overrides" type="button" onClick={resetSelectedOverrides}>Reset overrides</button>}</section>}
           <section className="canvas-inspector-section canvas-prototype-section">
-            <h3><span>Prototype</span><button type="button" disabled={usedPrototypeTriggers.size >= 2} onClick={addPrototypeInteraction}><Plus size={12} /> Interaction</button></h3>
+            <h3><span>Prototype</span><button type="button" disabled={usedPrototypeTriggers.size >= 3} onClick={addPrototypeInteraction}><Plus size={12} /> Interaction</button></h3>
             {(selectedNode.interactions ?? []).map((interaction, index) => <div className="canvas-prototype-interaction" key={interaction.id}>
               <header><strong>Interaction {index + 1}</strong><button type="button" aria-label={`Delete interaction ${index + 1}`} onClick={() => removePrototypeInteraction(interaction.id)}><Trash size={12} /></button></header>
               <div className="canvas-typography-fields">
-                <label><span>Trigger</span><select aria-label={`Interaction ${index + 1} trigger`} value={interaction.trigger} onChange={(event) => patchPrototypeInteraction(interaction.id, { trigger: event.target.value as CanvasPrototypeInteraction["trigger"] })}><option value="click" disabled={interaction.trigger !== "click" && usedPrototypeTriggers.has("click")}>On click</option><option value="hover" disabled={interaction.trigger !== "hover" && usedPrototypeTriggers.has("hover")}>On hover</option></select></label>
+                <label><span>Trigger</span><select aria-label={`Interaction ${index + 1} trigger`} value={interaction.trigger} onChange={(event) => {
+                  const trigger = event.target.value as CanvasPrototypeInteraction["trigger"];
+                  patchPrototypeInteraction(interaction.id, { trigger, delay: trigger === "after-delay" ? interaction.delay ?? 500 : undefined });
+                }}><option value="click" disabled={interaction.trigger !== "click" && usedPrototypeTriggers.has("click")}>On click</option><option value="hover" disabled={interaction.trigger !== "hover" && usedPrototypeTriggers.has("hover")}>On hover</option><option value="after-delay" disabled={interaction.trigger !== "after-delay" && usedPrototypeTriggers.has("after-delay")}>After delay</option></select></label>
                 <label><span>Action</span><select aria-label={`Interaction ${index + 1} action`} value={interaction.action} onChange={(event) => {
                   const action = event.target.value as CanvasPrototypeInteraction["action"];
-                  const destinationPageId = action === "navigate" ? interaction.destinationPageId ?? pages.find((page) => page.id !== activePageId)?.id : undefined;
-                  patchPrototypeInteraction(interaction.id, { action, destinationPageId, url: action === "open-url" ? interaction.url : undefined, transition: action === "navigate" ? interaction.transition ?? { type: "dissolve", duration: 180, easing: "ease-out" } : undefined });
-                }}><option value="navigate">Navigate to</option><option value="back">Previous screen</option><option value="open-url">Open URL</option></select></label>
+                  const opensDestination = action === "navigate" || action === "open-overlay" || action === "toggle-overlay";
+                  const opensOverlay = action === "open-overlay" || action === "toggle-overlay";
+                  const destinationPageId = opensDestination ? interaction.destinationPageId ?? pages.find((page) => page.id !== activePageId)?.id : undefined;
+                  patchPrototypeInteraction(interaction.id, {
+                    action,
+                    destinationPageId,
+                    url: action === "open-url" ? interaction.url : undefined,
+                    transition: opensDestination ? interaction.transition ?? { type: "dissolve", duration: 180, easing: "ease-out" } : undefined,
+                    overlay: opensOverlay ? interaction.overlay ?? { position: "center", background: "dim", closeOnOutsideClick: true } : undefined,
+                  });
+                }}><option value="navigate">Navigate to</option><option value="open-overlay">Open overlay</option><option value="toggle-overlay">Toggle overlay</option><option value="close-overlay">Close overlay</option><option value="back">Previous screen</option><option value="open-url">Open URL</option></select></label>
               </div>
-              {interaction.action === "navigate" && <label><span>Destination</span><select aria-label={`Interaction ${index + 1} destination`} value={interaction.destinationPageId ?? ""} onChange={(event) => patchPrototypeInteraction(interaction.id, { destinationPageId: event.target.value || undefined })}><option value="">Choose a page</option>{pages.filter((page) => page.id !== activePageId).map((page) => <option value={page.id} key={page.id}>{page.name}</option>)}</select></label>}
+              {interaction.trigger === "after-delay" && <label><span>Delay (ms)</span><input aria-label={`Interaction ${index + 1} delay`} type="number" min="0" max="60000" step="50" value={interaction.delay ?? 500} onChange={(event) => patchPrototypeInteraction(interaction.id, { delay: Math.max(0, Math.min(60_000, Number(event.target.value))) })} /></label>}
+              {(interaction.action === "navigate" || interaction.action === "open-overlay" || interaction.action === "toggle-overlay") && <label><span>Destination</span><select aria-label={`Interaction ${index + 1} destination`} value={interaction.destinationPageId ?? ""} onChange={(event) => patchPrototypeInteraction(interaction.id, { destinationPageId: event.target.value || undefined })}><option value="">Choose a page</option>{pages.filter((page) => page.id !== activePageId).map((page) => <option value={page.id} key={page.id}>{page.name}</option>)}</select></label>}
               {interaction.action === "open-url" && <label><span>URL</span><input key={`${interaction.id}:${interaction.url ?? ""}`} aria-label={`Interaction ${index + 1} URL`} type="url" defaultValue={interaction.url ?? ""} placeholder="https://example.com" onBlur={(event) => {
                 const value = event.currentTarget.value.trim();
                 if (!value) { patchPrototypeInteraction(interaction.id, { url: undefined }); return; }
@@ -2742,13 +2755,17 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
                   else event.currentTarget.value = interaction.url ?? "";
                 } catch { event.currentTarget.value = interaction.url ?? ""; }
               }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>}
-              {interaction.action === "navigate" && <div className="canvas-typography-fields">
+              {(interaction.action === "open-overlay" || interaction.action === "toggle-overlay") && <><div className="canvas-typography-fields">
+                <label><span>Position</span><select aria-label={`Interaction ${index + 1} overlay position`} value={interaction.overlay?.position ?? "center"} onChange={(event) => patchPrototypeInteraction(interaction.id, { overlay: { ...(interaction.overlay ?? { background: "dim", closeOnOutsideClick: true }), position: event.target.value as NonNullable<CanvasPrototypeInteraction["overlay"]>["position"] } })}><option value="center">Center</option><option value="top-left">Top left</option><option value="top-center">Top</option><option value="top-right">Top right</option><option value="center-left">Left</option><option value="center-right">Right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom</option><option value="bottom-right">Bottom right</option></select></label>
+                <label><span>Background</span><select aria-label={`Interaction ${index + 1} overlay background`} value={interaction.overlay?.background ?? "dim"} onChange={(event) => patchPrototypeInteraction(interaction.id, { overlay: { ...(interaction.overlay ?? { position: "center", closeOnOutsideClick: true }), background: event.target.value as "none" | "dim" } })}><option value="dim">Dim</option><option value="none">None</option></select></label>
+              </div><label className="canvas-toggle-row"><input aria-label={`Interaction ${index + 1} close outside`} type="checkbox" checked={interaction.overlay?.closeOnOutsideClick ?? true} onChange={(event) => patchPrototypeInteraction(interaction.id, { overlay: { ...(interaction.overlay ?? { position: "center", background: "dim" }), closeOnOutsideClick: event.target.checked } })} /><span>Close when clicking outside</span></label></>}
+              {(interaction.action === "navigate" || interaction.action === "open-overlay" || interaction.action === "toggle-overlay") && <div className="canvas-typography-fields">
                 <label><span>Transition</span><select aria-label={`Interaction ${index + 1} transition`} value={interaction.transition?.type ?? "instant"} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...(interaction.transition ?? { duration: 180, easing: "ease-out" }), type: event.target.value as NonNullable<CanvasPrototypeInteraction["transition"]>["type"] } })}><option value="instant">Instant</option><option value="dissolve">Dissolve</option><option value="slide">Slide</option></select></label>
                 {interaction.transition?.type !== "instant" && <label><span>Duration</span><input aria-label={`Interaction ${index + 1} duration`} type="number" min="0" max="5000" step="10" value={interaction.transition?.duration ?? 180} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...(interaction.transition ?? { type: "dissolve", easing: "ease-out" }), duration: Math.max(0, Math.min(5000, Number(event.target.value))) } })} /></label>}
                 {interaction.transition?.type === "slide" && <label><span>Direction</span><select aria-label={`Interaction ${index + 1} direction`} value={interaction.transition.direction ?? "left"} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...interaction.transition!, direction: event.target.value as "left" | "right" | "up" | "down" } })}><option value="left">Left</option><option value="right">Right</option><option value="up">Up</option><option value="down">Down</option></select></label>}
               </div>}
             </div>)}
-            {!selectedNode.interactions?.length && <p className="canvas-field-hint">Add a click or hover action, then play the prototype without leaving Studio.</p>}
+            {!selectedNode.interactions?.length && <p className="canvas-field-hint">Add a click, hover, or timed action, then play the prototype without leaving Studio.</p>}
           </section>
           <section className="canvas-inspector-section canvas-order-actions"><h3>Layer order</h3><div><button onClick={() => reorderSelected("forward")}>Forward</button><button onClick={() => reorderSelected("backward")}>Backward</button><button onClick={() => reorderSelected("front")}>To front</button><button onClick={() => reorderSelected("back")}>To back</button></div></section>
           {selectedNode.groupId && <section className="canvas-inspector-section"><button className="canvas-reset-overrides" type="button" onClick={ungroupSelected}>Ungroup selection</button></section>}
