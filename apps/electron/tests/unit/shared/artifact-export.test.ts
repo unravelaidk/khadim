@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Artifact } from "../../../src/shared/types";
 import { renderArtifactForPdf, renderCanvasSvg } from "../../../src/shared/artifact-export";
+import { canvasShadowFilterId } from "../../../src/shared/canvas-effects";
 
 const common = {
   id: "artifact-a",
@@ -439,6 +440,80 @@ describe("renderArtifactForPdf", () => {
     expect(svg).not.toContain("9px");
     expect(liveSvg).toContain('<g style="filter:blur(4px);mix-blend-mode:overlay"><g clip-path="url(#canvas-radius-clip-canvas-gradient-photo)" style="backdrop-filter:blur(10px)"><image');
     expect(liveSvg).toContain("backdrop-filter:blur(14px)");
+  });
+
+  it("exports ordered drop and inner shadow stacks for primitives and component overrides", () => {
+    const stack = [
+      { id: "drop", visible: true, type: "drop" as const, color: "#112233", opacity: .3, x: 4, y: 8, blur: 12, spread: 2 },
+      { id: "inner", visible: true, type: "inner" as const, color: "#445566", opacity: .5, x: 0, y: 2, blur: 4, spread: 1 },
+      { id: "hidden", visible: false, type: "drop" as const, color: "#ff0000", opacity: 1, x: 50, y: 50, blur: 50, spread: 50 },
+    ];
+    const content = {
+      format: "khadim-canvas" as const,
+      sceneVersion: 1 as const,
+      frame: { width: 320, height: 200 },
+      elements: [
+        { id: "shape", type: "rectangle" as const, x: 20, y: 20, width: 100, height: 80, color: "#ffffff", shadows: stack },
+        { id: "instance", type: "component" as const, componentId: "card", componentRole: "instance" as const, x: 160, y: 20, width: 100, height: 80, color: "#ffffff", overrides: { surface: { shadows: stack } } },
+      ],
+      components: [{ id: "card", name: "Card", width: 100, height: 80, nodes: [{ id: "surface", type: "rectangle" as const, x: 0, y: 0, width: 100, height: 80, color: "#ffffff" }] }],
+      appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
+      files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Shadow stack");
+    expect(svg.match(/<filter id="canvas-shadow-/g)).toHaveLength(2);
+    expect(svg).toContain('<feMorphology in="SourceAlpha" operator="dilate" radius="2"');
+    expect(svg).toContain('<feMorphology in="SourceAlpha" operator="erode" radius="1"');
+    expect(svg).toContain('<feMergeNode in="canvas-shadow-stage-0"/><feMergeNode in="SourceGraphic"/><feMergeNode in="canvas-shadow-stage-1"/>');
+    expect(svg).not.toContain("#ff0000");
+    expect(svg).toContain(`filter:url(#${canvasShadowFilterId("canvas-gradient-shape")})`);
+    expect(svg).toContain(`filter:url(#${canvasShadowFilterId("canvas-component-gradient-instance-surface")})`);
+  });
+
+  it("preserves legacy shadow softness and composition while new stacks follow Penpot order", () => {
+    const legacyId = canvasShadowFilterId("canvas-gradient-legacy");
+    const stackId = canvasShadowFilterId("canvas-gradient-stack");
+    const content = {
+      format: "khadim-canvas" as const,
+      sceneVersion: 1 as const,
+      frame: { width: 320, height: 200 },
+      elements: [
+        { id: "legacy", type: "rectangle" as const, x: 20, y: 20, width: 100, height: 60, color: "#ffffff", layerBlur: { value: 4, visible: true }, shadow: { color: "#000000", opacity: .2, x: 0, y: 8, blur: 18 } },
+        { id: "stack", type: "rectangle" as const, x: 160, y: 20, width: 100, height: 60, color: "#ffffff", layerBlur: { value: 4, visible: true }, shadows: [{ id: "drop", visible: true, type: "drop" as const, color: "#000000", opacity: .2, x: 0, y: 8, blur: 18, spread: 0 }] },
+      ],
+      components: [],
+      appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
+      files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Legacy shadows");
+    const legacyFilter = svg.slice(svg.indexOf(`<filter id="${legacyId}"`), svg.indexOf("</filter>", svg.indexOf(`<filter id="${legacyId}"`)));
+    expect(legacyFilter).toContain('stdDeviation="18"');
+    expect(svg).toContain(`style="filter:blur(4px) url(#${legacyId})"`);
+    expect(svg).toContain(`style="filter:url(#${stackId}) blur(4px)"`);
+  });
+
+  it("keeps paint-stack shadow filter IDs distinct for punctuation-colliding node IDs", () => {
+    const shadow = { id: "drop", visible: true, type: "drop" as const, color: "#000000", opacity: .2, x: 0, y: 4, blur: 8, spread: 0 };
+    const content = {
+      format: "khadim-canvas" as const,
+      sceneVersion: 1 as const,
+      frame: { width: 320, height: 200 },
+      elements: [
+        { id: "a:b", type: "rectangle" as const, x: 20, y: 20, width: 100, height: 60, color: "#ffffff", fills: [{ id: "fill-a", visible: true, opacity: 1, color: "#ffffff" }], shadows: [shadow] },
+        { id: "a-b", type: "rectangle" as const, x: 160, y: 20, width: 100, height: 60, color: "#ffffff", fills: [{ id: "fill-b", visible: true, opacity: 1, color: "#ffffff" }], shadows: [{ ...shadow, id: "drop-b" }] },
+      ],
+      components: [],
+      appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
+      files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Distinct filters");
+    const filterIds = [...svg.matchAll(/<filter id="([^"]+)"/g)].map((match) => match[1]);
+    expect(filterIds).toHaveLength(2);
+    expect(new Set(filterIds).size).toBe(2);
+    expect(filterIds).toEqual(expect.arrayContaining([canvasShadowFilterId("canvas-gradient-a:b"), canvasShadowFilterId("canvas-gradient-a-b")]));
   });
 
   it("exports ordered fill and stroke stacks with radial gradients and alignment masks", () => {

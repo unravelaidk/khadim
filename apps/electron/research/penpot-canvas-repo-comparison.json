@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T23:58:00+02:00",
+  "capturedAt": "2026-07-23T00:25:00+02:00",
   "repository": "https://github.com/penpot/penpot",
   "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
   "scope": [
@@ -19,12 +19,15 @@
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape/blur.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape/radius.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape/shadow.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/fills.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/stroke.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/color.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/shapes/filters.cljs",
     "https://help.penpot.app/user-guide/designing/workspace-basics/",
     "https://help.penpot.app/user-guide/designing/layers/",
     "https://help.penpot.app/user-guide/designing/color-stroke/",
+    "https://help.penpot.app/user-guide/design-systems/design-tokens/",
     "https://help.penpot.app/user-guide/prototyping-testing/prototyping/",
     "https://help.penpot.app/technical-guide/developer/data-model/penpot-file-format/"
   ],
@@ -53,6 +56,11 @@
       "area": "fill and stroke stacks",
       "evidence": "Penpot stores fills and strokes as ordered vectors. Its paint records include visibility, opacity, solid or linear and radial gradient color data, while strokes add width, inner, center, or outer alignment, solid, dotted, dashed, or mixed style, and dash and gap values.",
       "khadimDecision": "Persist bounded back-to-front fill and stroke arrays with stable paint IDs. Keep legacy single-paint fields as compatibility mirrors, render the arrays through shared editor and export semantics, use SVG clipping and masks for inside and outside strokes, include stroke outsets in bounds, and expose undoable stack operations in the inspector."
+    },
+    {
+      "area": "shadow stacks",
+      "evidence": "Penpot stores shadows as an ordered vector. Each record has a stable ID, drop or inner style, offsets, blur, spread, visibility, and color data. Its design-token guide states that a shadow token can contain multiple ordered shadows.",
+      "khadimDecision": "Persist bounded back-to-front shadow arrays with stable effect IDs and keep the top visible drop shadow as a legacy mirror. Use one shared SVG filter model for editor, prototype, and static export; place drop stages behind SourceGraphic and inner stages above it; suppress effects in mask geometry; and include visible drop outsets in culling and selection export."
     },
     {
       "area": "snapping",
@@ -89,7 +97,8 @@
     "Fixed and hug auto-layout with alignment, distribution, padding, wrapping, and independent line gaps",
     "Deterministic edge, center, page, frame, ruler-guide, layout-grid, equal-spacing, and pixel-grid snapping with transient distance feedback",
     "Sixteen layer blend modes, bounded layer and background blur, and normalized independent corner radii across primitives, component instances, clipping, undo, persistence, and static export",
-    "Ordered multi-fill and multi-stroke paint stacks with per-paint visibility and opacity, linear and radial gradients, inside, center, and outside stroke alignment, patterned strokes, reusable radial paint styles, undoable stack editing, component and boolean preservation, strict persistence, alignment-aware bounds, and editor, prototype, and static export parity"
+    "Ordered multi-fill and multi-stroke paint stacks with per-paint visibility and opacity, linear and radial gradients, inside, center, and outside stroke alignment, patterned strokes, reusable radial paint styles, undoable stack editing, component and boolean preservation, strict persistence, alignment-aware bounds, and editor, prototype, and static export parity",
+    "Ordered drop and inner shadow stacks with stable IDs, visibility, color, opacity, offsets, blur, spread, reusable effect styles, legacy mirrors, undoable stack editing, component and boolean preservation, mask suppression, strict persistence, drop-aware bounds, and editor, prototype, and static export parity"
   ],
   "nextHighValueGaps": [
     "Semantic canvas command and undo transaction modules",

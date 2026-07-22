@@ -238,7 +238,7 @@ the fastest path: click text and type; use the agent only for broader changes.
 
 ## Research conclusions
 
-Web research was last run on July 22, 2026, against primary project
+Web research was last run on July 23, 2026, against primary project
 documentation and repositories. No academic sources are relevant because these
 are software integration and license decisions. React Router now presents v8
 as its current release, but v7 remains an intentional Khadim template boundary
@@ -283,6 +283,21 @@ outsets. Legacy single-fill and single-stroke fields remain compatibility
 mirrors, so existing scenes render unchanged while edited shapes opt into the
 new arrays. Persistence bounds paint counts and numeric values, rejects
 duplicate paint IDs, and validates radial geometry and stroke options.
+
+Layer effects use the same ordered-record contract. A primitive can store up
+to 16 drop or inner shadows, each with a stable ID, visibility, color, opacity,
+horizontal and vertical offsets, blur, and spread. The inspector lists the top
+effect first and provides undoable add, duplicate, reorder, hide, and delete
+actions. A shared SVG filter builder places drop shadows behind the source and
+inner shadows above it, so the editor, prototype player, component overrides,
+boolean results, and SVG, PNG, and PDF exports stay consistent. Mask geometry
+suppresses shadows, while selection export and large-scene culling include
+only visible drop-shadow outsets. Effect styles preserve complete stacks, and
+the top visible drop remains a legacy single-shadow mirror. Persistence bounds
+counts and numeric values and rejects duplicate IDs, unknown effect types, and
+empty effect styles. When a legacy CSS-filter shadow enters the new stack, its
+stored deviation is normalized to the new blur-radius scale without changing
+its rendered softness or its compatibility mirror.
 
 Khadim now follows that boundary for prototype interactions. Primitive and
 component layers can persist click, hover, and timed triggers for page
@@ -410,12 +425,13 @@ and [official Monaco site](https://microsoft.github.io/monaco-editor).
 Keep Khadim's native, versioned canvas scene instead of replacing it with an
 embedded whiteboard. The editor now owns pages, frames, vector paths, editable
 SVG import, reusable components and variants, auto layout, constraints, grids,
-guides, masks, boolean shapes, connectors, tokens and styles, ordered fill and
-stroke stacks, radial gradients, prototype interactions, and SVG/PNG/PDF
-export. Shared geometry, paint, boolean, and export modules keep the persisted
-model usable outside the editor UI. Penpot's architecture is the reference for
-the next extraction: editor gestures should become semantic, reversible
-commands while view and export remain independent consumers of the same model.
+guides, masks, boolean shapes, connectors, tokens and styles, ordered fill,
+stroke, and shadow stacks, radial gradients, prototype interactions, and
+SVG/PNG/PDF export. Shared geometry, paint, effects, boolean, and export modules
+keep the persisted model usable outside the editor UI. Penpot's architecture is
+the reference for the next extraction: editor gestures should become semantic,
+reversible commands while view and export remain independent consumers of the
+same model.
 
 ### Vite for executable web-project previews
 

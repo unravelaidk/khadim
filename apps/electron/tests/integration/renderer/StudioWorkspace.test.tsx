@@ -828,17 +828,49 @@ describe("StudioWorkspace canvas design workflow", () => {
 
     await user.click(screen.getByRole("button", { name: "Rectangle tool" }));
     fireEvent.keyDown(window, { key: "Enter" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Drop shadow" }));
+    await user.click(screen.getByRole("button", { name: "Add shadow" }));
     await user.click(screen.getByRole("tab", { name: "Assets" }));
-    await user.click(screen.getByRole("button", { name: "Save shadow as style" }));
+    await user.click(screen.getByRole("button", { name: "Save shadows as style" }));
     const styledEffect = onChange.mock.calls.at(-1)?.[0].content;
-    expect(styledEffect.effectStyles).toEqual([expect.objectContaining({ name: "Rectangle effect", shadow: expect.objectContaining({ blur: 18 }) })]);
+    expect(styledEffect.effectStyles).toEqual([expect.objectContaining({ name: "Rectangle effect", shadow: expect.objectContaining({ blur: 4 }), shadows: [expect.objectContaining({ type: "drop", spread: 0 })] })]);
     expect(styledEffect.elements[1].effectStyleId).toBe(styledEffect.effectStyles[0].id);
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
     const undone = onChange.mock.calls.at(-1)?.[0].content;
     expect(undone.effectStyles).toEqual([]);
     expect(undone.elements[1].effectStyleId).toBeUndefined();
+  });
+
+  it("authors ordered drop and inner shadow stacks with undoable structural controls", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-shadow-stack", "2026-07-22T10:00:00.000Z");
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    fireEvent.keyDown(window, { key: "r" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    await user.click(screen.getByRole("button", { name: "Add shadow" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Shadow 1 type" }), { target: { value: "inner" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Shadow 1 spread" }), { target: { value: "3" } });
+    await user.click(screen.getByRole("button", { name: "Add shadow" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Shadow 1 X" }), { target: { value: "6" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Shadow 1 blur" }), { target: { value: "12" } });
+    await user.click(screen.getByRole("button", { name: "Duplicate shadow 1" }));
+
+    let content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.elements[0]).toMatchObject({
+      shadow: { x: 6, blur: 12 },
+      shadows: [expect.objectContaining({ type: "inner", spread: 3 }), expect.objectContaining({ type: "drop", x: 6, blur: 12 }), expect.objectContaining({ type: "drop", x: 6, blur: 12 })],
+    });
+    expect(container.querySelector("filter[id*='canvas-shadow'] feMorphology")).not.toBeNull();
+    expect(container.querySelectorAll("filter[id*='canvas-shadow'] feMergeNode").length).toBeGreaterThanOrEqual(4);
+
+    await user.click(screen.getByRole("button", { name: "Move shadow 1 down" }));
+    await user.click(screen.getByRole("button", { name: "Delete shadow 1" }));
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.elements[0].shadows).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].shadows).toHaveLength(3);
   });
 
   it("authors advanced appearance controls with live rendering and undo", async () => {

@@ -43,10 +43,11 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { Artifact, CanvasBlendMode, CanvasFillPaint, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasStrokePaint } from "../../../shared/types";
+import type { Artifact, CanvasBlendMode, CanvasFillPaint, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasShadowEffect, CanvasStrokePaint } from "../../../shared/types";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, normalizeCanvasPath, resolveCanvasConnectors, type CanvasAbsolutePoint } from "../../../shared/canvas-geometry";
 import { canvasElementFills, canvasElementIsClosed, canvasElementStrokes, canvasElementStrokeOutset, canvasGradientVector, canvasStrokeDashArray } from "../../../shared/canvas-paint";
+import { canvasElementShadows, canvasLegacyShadowMirror, canvasShadowFilterDefinition, canvasShadowFilterId, canvasShadowOutset } from "../../../shared/canvas-effects";
 import { booleanCanvasNodes, canBooleanNode, svgPathBounds, type CanvasBooleanOperation } from "../../../shared/vector-boolean";
 import { importSvgToCanvasNodes } from "./svg-import";
 import { CanvasPrototypePreview } from "./CanvasPrototypePreview";
@@ -168,10 +169,11 @@ function withPrimaryStroke(node: CanvasPrimitiveNode, color: string): CanvasPrim
   return { ...node, strokeColor: color, strokes: node.strokes.map((paint, index) => index === primaryIndex ? { ...paint, color } : paint) };
 }
 
-function canvasAppearanceStyle(node: Pick<CanvasNode, "blendMode" | "layerBlur" | "backgroundBlur"> & { shadow?: CanvasPrimitiveNode["shadow"] }, scale = 1): React.CSSProperties | undefined {
+function canvasAppearanceStyle(node: Pick<CanvasNode, "blendMode" | "layerBlur" | "backgroundBlur">, scale = 1, shadowFilterId?: string, legacyShadowOrder = false): React.CSSProperties | undefined {
   const filters: string[] = [];
+  if (!legacyShadowOrder && shadowFilterId) filters.push(`url(#${shadowFilterId})`);
   if (node.layerBlur?.visible && node.layerBlur.value > 0) filters.push(`blur(${node.layerBlur.value * scale}px)`);
-  if (node.shadow) filters.push(`drop-shadow(${node.shadow.x}px ${node.shadow.y}px ${node.shadow.blur}px color-mix(in srgb, ${node.shadow.color} ${Math.round(node.shadow.opacity * 100)}%, transparent))`);
+  if (legacyShadowOrder && shadowFilterId) filters.push(`url(#${shadowFilterId})`);
   const backdropFilter = node.backgroundBlur?.visible && node.backgroundBlur.value > 0 ? `blur(${node.backgroundBlur.value * scale}px)` : undefined;
   if (!filters.length && (!node.blendMode || node.blendMode === "normal") && !backdropFilter) return undefined;
   return {
@@ -192,7 +194,7 @@ function booleanResultForNode(node: CanvasPrimitiveNode, scene: CanvasNode[]): C
   if (node.type !== "boolean" || !node.booleanOperation) return null;
   const children = scene.filter((candidate): candidate is CanvasPrimitiveNode => candidate.parentId === node.id && candidate.type !== "component" && candidate.type !== "boolean" && canBooleanNode(candidate));
   const result = booleanCanvasNodes(children, node.booleanOperation);
-  return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, fills: node.fills, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, strokes: node.strokes, strokeDash: node.strokeDash, shadow: node.shadow, parentId: node.parentId, groupId: node.groupId } : null;
+  return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, fills: node.fills, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, strokes: node.strokes, strokeDash: node.strokeDash, shadow: node.shadow, shadows: node.shadows, parentId: node.parentId, groupId: node.groupId } : null;
 }
 
 function resolveBooleanGroups(scene: CanvasNode[]): CanvasNode[] {
@@ -532,11 +534,11 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         const scale = definition ? Math.max(node.width / Math.max(1, definition.width), node.height / Math.max(1, definition.height)) : 1;
         const childPadding = Math.max(...(definition?.nodes.map((child) => {
           const effective = effectivePrimitive(child, node);
-          return canvasElementStrokeOutset(effective) * scale + (effective.shadow ? (effective.shadow.blur * 2 + Math.abs(effective.shadow.x) + Math.abs(effective.shadow.y)) * scale : 0) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 * scale : 0);
+          return (canvasElementStrokeOutset(effective) + canvasShadowOutset(effective) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 : 0)) * scale;
         }) ?? [0]));
         return Math.max(maximum, childPadding + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
       }
-      return Math.max(maximum, canvasElementStrokeOutset(node) + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
+      return Math.max(maximum, canvasElementStrokeOutset(node) + canvasShadowOutset(node) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
     }, 0);
     return { x: visualBounds.x - padding, y: visualBounds.y - padding, width: visualBounds.width + padding * 2, height: visualBounds.height + padding * 2 };
   })() : null;
@@ -1071,7 +1073,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     if (!selectedNode) return;
     let authoredPatch = selectedNode.type !== "component" && ("color" in patch || "fillGradient" in patch || "fills" in patch) && !("fillStyleId" in patch) ? { ...patch, fillStyleId: undefined } : patch;
     if (selectedNode.type === "text" && ["fontFamily", "fontSize", "fontWeight", "fontStyle", "textAlign", "lineHeight", "letterSpacing"].some((key) => key in patch) && !("textStyleId" in patch)) authoredPatch = { ...authoredPatch, textStyleId: undefined };
-    if (selectedNode.type !== "component" && "shadow" in patch && !("effectStyleId" in patch)) authoredPatch = { ...authoredPatch, effectStyleId: undefined };
+    if (selectedNode.type !== "component" && ("shadow" in patch || "shadows" in patch) && !("effectStyleId" in patch)) authoredPatch = { ...authoredPatch, effectStyleId: undefined };
     if (selectedNode.type !== "component" && selectedNode.tokenBindings && !("tokenBindings" in patch)) {
       const detached: Array<keyof NonNullable<CanvasPrimitiveNode["tokenBindings"]>> = [];
       if ("color" in patch || "fillGradient" in patch || "fills" in patch) detached.push("fill");
@@ -1146,6 +1148,19 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   function patchSelectedStroke(id: string, patch: Partial<CanvasStrokePaint>): void {
     commitSelectedStrokes(materializedStrokes().map((paint) => paint.id === id ? { ...paint, ...patch } : paint));
+  }
+
+  function materializedShadows(): CanvasShadowEffect[] {
+    if (!selectedNode || selectedNode.type === "component") return [];
+    return canvasElementShadows(selectedNode).map((shadow) => ({ ...shadow }));
+  }
+
+  function commitSelectedShadows(shadows: CanvasShadowEffect[], recordHistory?: boolean): void {
+    patchSelected({ shadows, shadow: canvasLegacyShadowMirror(shadows) }, recordHistory);
+  }
+
+  function patchSelectedShadow(id: string, patch: Partial<CanvasShadowEffect>): void {
+    commitSelectedShadows(materializedShadows().map((shadow) => shadow.id === id ? { ...shadow, ...patch } : shadow));
   }
 
   function addPrototypeInteraction(): void {
@@ -1267,36 +1282,63 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   }
 
   function createEffectStyle(): void {
-    if (!selectedNode || selectedNode.type === "component" || !selectedNode.shadow) return;
-    const style: CanvasEffectStyle = { id: crypto.randomUUID(), name: `${nodeLabel(selectedNode)} effect`, shadow: cloneSnapshot(selectedNode.shadow) };
+    if (!selectedNode || selectedNode.type === "component") return;
+    const shadows = canvasElementShadows(selectedNode);
+    if (!shadows.length) return;
+    const style: CanvasEffectStyle = { id: crypto.randomUUID(), name: `${nodeLabel(selectedNode)} effect`, shadow: canvasLegacyShadowMirror(shadows), shadows: cloneSnapshot(shadows) };
     const nextNodes = nodes.map((node) => node.id === selectedNode.id && node.type !== "component" ? { ...node, effectStyleId: style.id } : node) as CanvasNode[];
     commitCanvas(nextNodes, componentsRef.current, true, paintStylesRef.current, textStylesRef.current, [...effectStylesRef.current, style]);
   }
 
   function applyEffectStyle(style: CanvasEffectStyle): void {
     const ids = new Set(selectedIds);
-    const nextNodes = nodes.map((node) => ids.has(node.id) && node.type !== "component" ? { ...node, shadow: cloneSnapshot(style.shadow), effectStyleId: style.id } : node) as CanvasNode[];
+    const shadows = canvasElementShadows(style);
+    const nextNodes = nodes.map((node) => ids.has(node.id) && node.type !== "component" ? { ...node, shadow: canvasLegacyShadowMirror(shadows), shadows: cloneSnapshot(shadows), effectStyleId: style.id } : node) as CanvasNode[];
     commitCanvas(nextNodes);
   }
 
   function updateEffectStyle(styleId: string): void {
-    if (!selectedNode || selectedNode.type === "component" || !selectedNode.shadow) return;
+    if (!selectedNode || selectedNode.type === "component") return;
+    const selectedShadows = canvasElementShadows(selectedNode);
+    if (!selectedShadows.length) return;
     const before = currentSnapshot();
-    const nextStyles = effectStylesRef.current.map((style) => style.id === styleId ? { ...style, shadow: cloneSnapshot(selectedNode.shadow!) } : style);
+    const nextStyles = effectStylesRef.current.map((style) => style.id === styleId ? { ...style, shadow: canvasLegacyShadowMirror(selectedShadows), shadows: cloneSnapshot(selectedShadows) } : style);
     const updated = nextStyles.find((style) => style.id === styleId);
     if (!updated) return;
-    const nextNodes = nodes.map((node) => node.type !== "component" && node.effectStyleId === styleId ? { ...node, shadow: cloneSnapshot(updated.shadow) } : node) as CanvasNode[];
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.effectStyleId === styleId ? { ...node, shadow: cloneSnapshot(updated.shadow) } : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type !== "component" && node.effectStyleId === styleId ? { ...node, shadow: cloneSnapshot(updated.shadow) } : node) }));
+    const shadows = canvasElementShadows(updated);
+    const legacy = canvasLegacyShadowMirror(shadows);
+    const updateReference = (node: CanvasNode): CanvasNode => {
+      if (node.type !== "component") return node.effectStyleId === styleId ? { ...node, shadow: legacy, shadows: cloneSnapshot(shadows) } : node;
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([nodeId, override]) => {
+        if (override.effectStyleId !== styleId) return [nodeId, override];
+        changed = true;
+        return [nodeId, { ...override, shadow: legacy, shadows: cloneSnapshot(shadows) }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
+    const nextNodes = nodes.map(updateReference);
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.effectStyleId === styleId ? { ...node, shadow: legacy, shadows: cloneSnapshot(shadows) } : node) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(updateReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current, textStylesRef.current, nextStyles);
   }
 
   function removeEffectStyle(styleId: string): void {
     const before = currentSnapshot();
-    const nextNodes = nodes.map((node) => node.type !== "component" && node.effectStyleId === styleId ? { ...node, effectStyleId: undefined } : node) as CanvasNode[];
+    const removeReference = (node: CanvasNode): CanvasNode => {
+      if (node.type !== "component") return node.effectStyleId === styleId ? { ...node, effectStyleId: undefined } : node;
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([nodeId, override]) => {
+        if (override.effectStyleId !== styleId) return [nodeId, override];
+        changed = true;
+        return [nodeId, { ...override, effectStyleId: undefined }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
+    const nextNodes = nodes.map(removeReference);
     const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.effectStyleId === styleId ? { ...node, effectStyleId: undefined } : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type !== "component" && node.effectStyleId === styleId ? { ...node, effectStyleId: undefined } : node) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(removeReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current, textStylesRef.current, effectStylesRef.current.filter((style) => style.id !== styleId));
   }
@@ -2662,7 +2704,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const radiusClipId = `canvas-editor-radius-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
     const gradientVector = effective.fillGradient ? canvasGradientVector(effective.fillGradient.angle) : undefined;
     const fill = effective.fillGradient ? `url(#${gradientId})` : effective.color;
-    const style = canvasAppearanceStyle(effective, Math.min(scaleX, scaleY));
+    const primitiveScale = Math.min(scaleX, scaleY);
+    const shadowFilterId = canvasElementShadows(effective).some((shadow) => shadow.visible) ? canvasShadowFilterId(`editor-${key}`) : undefined;
+    const shadowDefinitionMarkup = shadowFilterId ? canvasShadowFilterDefinition(effective, shadowFilterId, primitiveScale, { x, y, width, height }, canvasElementStrokeOutset(effective) * primitiveScale) : "";
+    const shadowDefinition = shadowDefinitionMarkup ? <defs dangerouslySetInnerHTML={{ __html: shadowDefinitionMarkup }} /> : null;
+    const legacyShadowOrder = effective.shadows === undefined && Boolean(effective.shadow);
+    const style = canvasAppearanceStyle(effective, primitiveScale, shadowFilterId, legacyShadowOrder);
     if (effective.fills !== undefined || effective.strokes !== undefined) {
       const scale = Math.min(scaleX, scaleY);
       const fills = canvasElementFills(effective).filter((paint) => paint.visible);
@@ -2723,7 +2770,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         return rendered;
       });
       const maximumStroke = Math.max(0, ...strokes.map((paint) => paint.width * scale * 2));
-      const outerStyle = canvasAppearanceStyle({ blendMode: effective.blendMode, layerBlur: effective.layerBlur, shadow: effective.shadow }, scale);
+      const outerStyle = canvasAppearanceStyle({ blendMode: effective.blendMode, layerBlur: effective.layerBlur }, scale, shadowFilterId, legacyShadowOrder);
       const backgroundStyle = canvasAppearanceStyle({ backgroundBlur: effective.backgroundBlur }, scale);
       const backgroundLayer = backgroundStyle && closed ? paintShape("background-blur", { fill: "#00000000", stroke: "none", style: backgroundStyle }) : null;
       const imageLayer = effective.type === "image" ? <image href={effective.src} x={x} y={y} width={width} height={height} preserveAspectRatio="xMidYMid slice" /> : null;
@@ -2733,6 +2780,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         : <>{backgroundLayer}{imageLayer}{fillLayers}{strokeLayers}</>;
       const rotation = parent ? effective.rotation ?? 0 : 0;
       return <g className="canvas-node canvas-paint-stack" key={key} transform={rotation ? `rotate(${rotation} ${x + width / 2} ${y + height / 2})` : undefined}>
+        {shadowDefinition}
         <defs>
           {gradientDefinitions}
           {closed && strokes.some((paint) => paint.alignment === "inside") && <clipPath id={insideClipId} clipPathUnits="userSpaceOnUse">{paintShape("inside-clip", { fill: "#ffffff", stroke: "none" })}</clipPath>}
@@ -2760,14 +2808,14 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     else if (effective.type === "image") {
       const hasRadius = Boolean(effective.cornerRadii || effective.radius);
       const image = <image className="canvas-node" href={effective.src} x={x} y={y} width={width} height={height} preserveAspectRatio="xMidYMid slice" opacity={effective.opacity ?? 1} />;
-      const outerStyle = canvasAppearanceStyle({ blendMode: effective.blendMode, layerBlur: effective.layerBlur, shadow: effective.shadow }, Math.min(scaleX, scaleY));
+      const outerStyle = canvasAppearanceStyle({ blendMode: effective.blendMode, layerBlur: effective.layerBlur }, primitiveScale, shadowFilterId, legacyShadowOrder);
       const backgroundStyle = canvasAppearanceStyle({ backgroundBlur: effective.backgroundBlur }, Math.min(scaleX, scaleY));
       const clipped = hasRadius || backgroundStyle ? <g clipPath={hasRadius ? `url(#${radiusClipId})` : undefined} style={backgroundStyle}>{image}</g> : image;
       primitive = <>{hasRadius && <defs><clipPath id={radiusClipId} clipPathUnits="userSpaceOnUse">{effective.cornerRadii ? <path d={canvasRoundedRectPath(x, y, width, height, effective.cornerRadii, Math.min(scaleX, scaleY))} /> : <rect x={x} y={y} width={width} height={height} rx={(effective.radius ?? 0) * Math.min(scaleX, scaleY)} />}</clipPath></defs>}{outerStyle ? <g style={outerStyle}>{clipped}</g> : clipped}</>;
     } else if (effective.cornerRadii) primitive = <path className={`canvas-node ${effective.type === "frame" ? "canvas-frame-node" : ""}`} d={canvasRoundedRectPath(x, y, width, height, effective.cornerRadii, Math.min(scaleX, scaleY))} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={effective.strokeDash || undefined} opacity={effective.opacity ?? 1} style={style} />;
     else primitive = <rect className={`canvas-node ${effective.type === "frame" ? "canvas-frame-node" : ""}`} x={x} y={y} width={width} height={height} rx={(effective.radius ?? 8) * Math.min(scaleX, scaleY)} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={effective.strokeDash || undefined} opacity={effective.opacity ?? 1} style={style} />;
     const rotation = parent ? effective.rotation ?? 0 : 0;
-    return <g key={key} transform={rotation ? `rotate(${rotation} ${x + width / 2} ${y + height / 2})` : undefined}>{effective.fillGradient && gradientVector && <defs><linearGradient id={gradientId} x1={gradientVector.x1} y1={gradientVector.y1} x2={gradientVector.x2} y2={gradientVector.y2}>{effective.fillGradient.stops.map((stop, index) => <stop key={`${gradientId}:${index}`} offset={`${Math.min(1, Math.max(0, stop.offset)) * 100}%`} stopColor={stop.color} stopOpacity={stop.opacity ?? 1} />)}</linearGradient></defs>}{primitive}</g>;
+    return <g key={key} transform={rotation ? `rotate(${rotation} ${x + width / 2} ${y + height / 2})` : undefined}>{shadowDefinition}{effective.fillGradient && gradientVector && <defs><linearGradient id={gradientId} x1={gradientVector.x1} y1={gradientVector.y1} x2={gradientVector.x2} y2={gradientVector.y2}>{effective.fillGradient.stops.map((stop, index) => <stop key={`${gradientId}:${index}`} offset={`${Math.min(1, Math.max(0, stop.offset)) * 100}%`} stopColor={stop.color} stopOpacity={stop.opacity ?? 1} />)}</linearGradient></defs>}{primitive}</g>;
   }
 
   function renderCanvasNode(node: CanvasNode): React.ReactNode {
@@ -2837,7 +2885,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             })}
             {definition.nodes.filter((child) => internalMaskSourceIds.has(child.id)).map((mask) => {
               const effective = effectivePrimitive(mask, node);
-              return <clipPath id={internalMaskId(mask.id)} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse">{renderPrimitive({ ...effective, opacity: 1, shadow: undefined, strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `${node.id}:mask:${mask.id}`, undefined, scaleX, scaleY)}</clipPath>;
+              return <clipPath id={internalMaskId(mask.id)} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse">{renderPrimitive({ ...effective, opacity: 1, shadow: undefined, shadows: [], strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `${node.id}:mask:${mask.id}`, undefined, scaleX, scaleY)}</clipPath>;
             })}
           </defs>
           {definition.nodes.map((child) => {
@@ -2893,6 +2941,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const closedStroke = canvasElementIsClosed(selectedNode);
     const fills = canFill ? canvasElementFills(selectedNode) : [];
     const strokes = canvasElementStrokes(selectedNode);
+    const shadows = canvasElementShadows(selectedNode);
     const gradientStops = (paint: CanvasFillPaint) => paint.gradient?.stops ?? [{ offset: 0, color: paint.color }, { offset: 1, color: "#ffffff" }];
     const moveFill = (index: number, direction: -1 | 1): void => {
       const next = materializedFills();
@@ -2907,6 +2956,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       if (target < 0 || target >= next.length) return;
       [next[index], next[target]] = [next[target], next[index]];
       commitSelectedStrokes(next, true);
+    };
+    const moveShadow = (index: number, direction: -1 | 1): void => {
+      const next = materializedShadows();
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return;
+      [next[index], next[target]] = [next[target], next[index]];
+      commitSelectedShadows(next, true);
     };
     return <>
       {canFill && <section className="canvas-inspector-section canvas-paint-section"><div className="canvas-section-heading"><h3>Fills</h3><button type="button" aria-label="Add fill" disabled={fills.length >= 16} onClick={() => commitSelectedFills([...materializedFills(), { id: crypto.randomUUID(), visible: true, opacity: 1, color: selectedNode.color }], true)}><Plus size={12} /></button></div>
@@ -2935,6 +2991,15 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             {paint.style !== "solid" && <div className="canvas-property-grid"><label><span>Dash</span><input aria-label={`Stroke ${displayIndex + 1} dash`} type="number" min="0.1" max="10000" value={paint.dash ?? 4} onChange={(event) => patchSelectedStroke(paint.id, { dash: Math.min(10_000, Math.max(.1, Number(event.target.value))) })} /></label><label><span>Gap</span><input aria-label={`Stroke ${displayIndex + 1} gap`} type="number" min="0.1" max="10000" value={paint.gap ?? 4} onChange={(event) => patchSelectedStroke(paint.id, { gap: Math.min(10_000, Math.max(.1, Number(event.target.value))) })} /></label></div>}
           </div>;
         })}<small className="canvas-field-hint">Open paths and text use centered strokes. Closed shapes support inside, center, and outside positions.</small></section>
+      <section className="canvas-inspector-section canvas-paint-section"><div className="canvas-section-heading"><h3>Shadows</h3><button type="button" aria-label="Add shadow" disabled={shadows.length >= 16} onClick={() => commitSelectedShadows([...materializedShadows(), { id: crypto.randomUUID(), visible: true, type: "drop", color: "#101828", opacity: .2, x: 0, y: 4, blur: 4, spread: 0 }], true)}><Plus size={12} /></button></div>
+        {selectedNode.effectStyleId && <div className="canvas-connector-status"><span>Linked to {effectStyles.find((style) => style.id === selectedNode.effectStyleId)?.name ?? "effect style"}</span><button type="button" onClick={() => patchSelected({ effectStyleId: undefined })}>Detach style</button></div>}
+        {[...shadows].reverse().map((shadow, displayIndex) => {
+          const index = shadows.length - displayIndex - 1;
+          return <div className="canvas-paint-row" key={shadow.id}><div className="canvas-paint-row-head"><input aria-label={`Shadow ${displayIndex + 1} visible`} type="checkbox" checked={shadow.visible} onChange={(event) => patchSelectedShadow(shadow.id, { visible: event.target.checked })} /><input aria-label={`Shadow ${displayIndex + 1} color`} type="color" value={shadow.color} onChange={(event) => patchSelectedShadow(shadow.id, { color: event.target.value })} /><select aria-label={`Shadow ${displayIndex + 1} type`} value={shadow.type} onChange={(event) => patchSelectedShadow(shadow.id, { type: event.target.value as CanvasShadowEffect["type"] })}><option value="drop">Drop</option><option value="inner">Inner</option></select><button type="button" aria-label={`Move shadow ${displayIndex + 1} up`} disabled={index === shadows.length - 1} onClick={() => moveShadow(index, 1)}><CaretUp size={11} /></button><button type="button" aria-label={`Move shadow ${displayIndex + 1} down`} disabled={index === 0} onClick={() => moveShadow(index, -1)}><CaretDown size={11} /></button><button type="button" aria-label={`Duplicate shadow ${displayIndex + 1}`} disabled={shadows.length >= 16} onClick={() => { const next = materializedShadows(); next.splice(index + 1, 0, { ...next[index], id: crypto.randomUUID() }); commitSelectedShadows(next, true); }}><Copy size={11} /></button><button type="button" aria-label={`Delete shadow ${displayIndex + 1}`} onClick={() => commitSelectedShadows(materializedShadows().filter((candidate) => candidate.id !== shadow.id), true)}><Trash size={11} /></button></div>
+            <div className="canvas-property-grid"><label><span>X</span><input aria-label={`Shadow ${displayIndex + 1} X`} type="number" min="-10000" max="10000" value={shadow.x} onChange={(event) => patchSelectedShadow(shadow.id, { x: Math.min(10_000, Math.max(-10_000, Number(event.target.value))) })} /></label><label><span>Y</span><input aria-label={`Shadow ${displayIndex + 1} Y`} type="number" min="-10000" max="10000" value={shadow.y} onChange={(event) => patchSelectedShadow(shadow.id, { y: Math.min(10_000, Math.max(-10_000, Number(event.target.value))) })} /></label><label><span>Blur</span><input aria-label={`Shadow ${displayIndex + 1} blur`} type="number" min="0" max="10000" value={shadow.blur} onChange={(event) => patchSelectedShadow(shadow.id, { blur: Math.min(10_000, Math.max(0, Number(event.target.value))) })} /></label><label><span>Spread</span><input aria-label={`Shadow ${displayIndex + 1} spread`} type="number" min="-10000" max="10000" value={shadow.spread} onChange={(event) => patchSelectedShadow(shadow.id, { spread: Math.min(10_000, Math.max(-10_000, Number(event.target.value))) })} /></label></div>
+            <label><span>Opacity</span><div className="canvas-range-field"><input aria-label={`Shadow ${displayIndex + 1} opacity`} type="range" min="0" max="100" value={Math.round(shadow.opacity * 100)} onChange={(event) => patchSelectedShadow(shadow.id, { opacity: Number(event.target.value) / 100 })} /><output>{Math.round(shadow.opacity * 100)}%</output></div></label>
+          </div>;
+        })}<small className="canvas-field-hint">Top effect is listed first. Drop shadows render behind the layer; inner shadows render above it.</small></section>
     </>;
   }
 
@@ -3019,9 +3084,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             {!filteredTextStyles.length && <p>{textStyles.length ? "No matching text styles" : "Save typography to keep type consistent."}</p>}
           </section>
           <section className="canvas-paint-styles"><header><strong>Effect styles</strong><small>{filteredEffectStyles.length}</small></header>
-            {selectedNode && selectedNode.type !== "component" && selectedNode.shadow && <button className="canvas-create-style" type="button" onClick={createEffectStyle}><Plus size={13} /> Save shadow as style</button>}
-            <div className="canvas-style-list">{filteredEffectStyles.map((style) => <div className="canvas-style-row" key={style.id}><button type="button" aria-label={`Apply ${style.name}`} onClick={() => applyEffectStyle(style)}><i style={{ background: "#ffffff", boxShadow: `${style.shadow.x}px ${style.shadow.y}px ${style.shadow.blur}px color-mix(in srgb, ${style.shadow.color} ${style.shadow.opacity * 100}%, transparent)` }} /><span><strong>{style.name}</strong><small>{style.shadow.y}px / {style.shadow.blur}px blur</small></span></button>{selectedNode && selectedNode.type !== "component" && selectedNode.shadow && <button type="button" aria-label={`Update ${style.name} from selection`} onClick={() => updateEffectStyle(style.id)}><ArrowClockwise size={12} /></button>}<button type="button" aria-label={`Delete ${style.name}`} onClick={() => removeEffectStyle(style.id)}><Trash size={12} /></button></div>)}</div>
-            {!filteredEffectStyles.length && <p>{effectStyles.length ? "No matching effect styles" : "Save a shadow to reuse its effect."}</p>}
+            {selectedNode && selectedNode.type !== "component" && canvasElementShadows(selectedNode).length > 0 && <button className="canvas-create-style" type="button" onClick={createEffectStyle}><Plus size={13} /> Save shadows as style</button>}
+            <div className="canvas-style-list">{filteredEffectStyles.map((style) => {
+              const shadows = canvasElementShadows(style);
+              const preview = shadows.filter((shadow) => shadow.visible).map((shadow) => `${shadow.type === "inner" ? "inset " : ""}${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.spread}px color-mix(in srgb, ${shadow.color} ${shadow.opacity * 100}%, transparent)`).join(", ");
+              return <div className="canvas-style-row" key={style.id}><button type="button" aria-label={`Apply ${style.name}`} onClick={() => applyEffectStyle(style)}><i style={{ background: "#ffffff", boxShadow: preview || undefined }} /><span><strong>{style.name}</strong><small>{shadows.length} {shadows.length === 1 ? "shadow" : "shadows"}</small></span></button>{selectedNode && selectedNode.type !== "component" && canvasElementShadows(selectedNode).length > 0 && <button type="button" aria-label={`Update ${style.name} from selection`} onClick={() => updateEffectStyle(style.id)}><ArrowClockwise size={12} /></button>}<button type="button" aria-label={`Delete ${style.name}`} onClick={() => removeEffectStyle(style.id)}><Trash size={12} /></button></div>;
+            })}</div>
+            {!filteredEffectStyles.length && <p>{effectStyles.length ? "No matching effect styles" : "Save a shadow stack to reuse it across layers."}</p>}
           </section>
           <section><header><strong>Local components</strong><small>{filteredComponents.length}</small></header>
             <div className="canvas-asset-grid">{filteredComponents.map((component) => <button type="button" key={component.id} onClick={() => insertComponent(component)}><span className="canvas-asset-preview"><DiamondsFour size={17} /></span><span><strong>{component.name}</strong><small>{component.nodes.length} layers</small></span><Plus size={13} /></button>)}</div>
@@ -3079,7 +3148,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             <filter id="khadim-canvas-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="18" floodOpacity=".16" /></filter>
             <marker id="canvas-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker>
             {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame" && Boolean(node.clipContent)).map((frame) => <clipPath id={`canvas-clip-${frame.id}`} key={frame.id} clipPathUnits="userSpaceOnUse">{frame.cornerRadii ? <path d={canvasRoundedRectPath(frame.x, frame.y, frame.width, frame.height, frame.cornerRadii)} transform={frame.rotation ? `rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})` : undefined} /> : <rect x={frame.x} y={frame.y} width={frame.width} height={frame.height} rx={frame.radius ?? 0} transform={frame.rotation ? `rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})` : undefined} />}</clipPath>)}
-            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component" && maskSourceIds.has(node.id)).map((mask) => <clipPath id={`canvas-mask-${mask.id}`} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse"><g transform={mask.rotation ? `rotate(${mask.rotation} ${mask.x + mask.width / 2} ${mask.y + mask.height / 2})` : undefined}>{renderPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `mask-shape:${mask.id}`)}</g></clipPath>)}
+            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component" && maskSourceIds.has(node.id)).map((mask) => <clipPath id={`canvas-mask-${mask.id}`} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse"><g transform={mask.rotation ? `rotate(${mask.rotation} ${mask.x + mask.width / 2} ${mask.y + mask.height / 2})` : undefined}>{renderPrimitive({ ...mask, opacity: 1, shadow: undefined, shadows: [], strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `mask-shape:${mask.id}`)}</g></clipPath>)}
           </defs>
           <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
             <text className="canvas-frame-label" x="0" y="-15">Frame 1 · {canvasFrame.width} × {canvasFrame.height}</text>
@@ -3226,8 +3295,6 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             {selectedNode.layerBlur?.visible && <label><span>Layer blur radius</span><input type="number" min="0" max="100" value={selectedNode.layerBlur.value} onChange={(event) => patchSelected({ layerBlur: { ...selectedNode.layerBlur!, value: Math.min(100, Math.max(0, Number(event.target.value))) } })} /></label>}
             <label className="canvas-toggle-row"><input aria-label="Background blur" type="checkbox" checked={Boolean(selectedNode.backgroundBlur?.visible)} onChange={(event) => patchSelected({ backgroundBlur: { value: selectedNode.backgroundBlur?.value ?? 12, visible: event.target.checked } })} /><span>Background blur</span></label>
             {selectedNode.backgroundBlur?.visible && <><label><span>Background blur radius</span><input type="number" min="0" max="100" value={selectedNode.backgroundBlur.value} onChange={(event) => patchSelected({ backgroundBlur: { ...selectedNode.backgroundBlur!, value: Math.min(100, Math.max(0, Number(event.target.value))) } })} /></label><small className="canvas-field-hint">Live canvas only. Static SVG, PNG, and PDF exports omit background blur.</small></>}
-            <label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.shadow)} onChange={(event) => patchSelected({ shadow: event.target.checked ? { color: "#101828", x: 0, y: 8, blur: 18, opacity: .2 } : undefined })} /><span>Drop shadow</span></label>
-            {selectedNode.shadow && <div className="canvas-property-grid"><label><span>Y</span><input aria-label="Shadow Y" type="number" value={selectedNode.shadow.y} onChange={(event) => patchSelected({ shadow: { ...selectedNode.shadow!, y: Number(event.target.value) } })} /></label><label><span>B</span><input aria-label="Shadow blur" type="number" min="0" value={selectedNode.shadow.blur} onChange={(event) => patchSelected({ shadow: { ...selectedNode.shadow!, blur: Math.max(0, Number(event.target.value)) } })} /></label></div>}
           </section>}
           {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Frame</h3><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.clipContent)} onChange={(event) => patchSelected({ clipContent: event.target.checked })} /><span>Clip contents</span></label><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.layout)} onChange={toggleAutoLayout} /><span>Enable auto layout</span></label>{selectedNode.layout && <><div className="canvas-segmented"><button className={selectedNode.layout.direction === "row" ? "active" : ""} onClick={() => patchFrameLayout({ direction: "row" })}>Row</button><button className={selectedNode.layout.direction === "column" ? "active" : ""} onClick={() => patchFrameLayout({ direction: "column" })}>Column</button></div><div className="canvas-typography-fields"><label><span>Gap</span><input aria-label="Layout gap" type="number" min="0" value={selectedNode.layout.gap} onChange={(event) => patchFrameLayout({ gap: Math.max(0, Number(event.target.value)) })} /></label><label><span>Padding</span><input aria-label="Layout padding" type="number" min="0" value={selectedNode.layout.padding} onChange={(event) => patchFrameLayout({ padding: Math.max(0, Number(event.target.value)) })} /></label><label><span>Align</span><select aria-label="Layout alignment" value={selectedNode.layout.align} onChange={(event) => patchFrameLayout({ align: event.target.value as "start" | "center" | "end" })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option></select></label><label><span>Distribute</span><select aria-label="Layout distribution" value={selectedNode.layout.justify} onChange={(event) => patchFrameLayout({ justify: event.target.value as "start" | "center" | "end" | "space-between" })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option></select></label><label><span>Sizing</span><select aria-label="Layout sizing" value={selectedNode.layout.sizing} onChange={(event) => patchFrameLayout({ sizing: event.target.value as "fixed" | "hug" })}><option value="fixed">Fixed</option><option value="hug">Hug contents</option></select></label>{selectedNode.layout.wrap && <label><span>Cross gap</span><input aria-label="Layout cross gap" type="number" min="0" value={selectedNode.layout.crossGap ?? selectedNode.layout.gap} onChange={(event) => patchFrameLayout({ crossGap: Math.max(0, Number(event.target.value)) })} /></label>}</div><label className="canvas-toggle-row"><input aria-label="Wrap auto-layout children" type="checkbox" checked={Boolean(selectedNode.layout.wrap)} disabled={selectedNode.layout.sizing === "hug"} onChange={(event) => patchFrameLayout({ wrap: event.target.checked, crossGap: event.target.checked ? selectedNode.layout!.crossGap ?? selectedNode.layout!.gap : selectedNode.layout!.crossGap })} /><span>Wrap children</span></label>{selectedNode.layout.sizing === "hug" && <small className="canvas-field-hint">Use fixed sizing to wrap children across rows or columns.</small>}</>}</section>}
           {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Layout grids</h3><div className="canvas-guide-actions"><button type="button" onClick={() => addFrameLayoutGrid("square")}><Plus size={12} /> Square</button><button type="button" onClick={() => addFrameLayoutGrid("columns")}><Plus size={12} /> Columns</button><button type="button" onClick={() => addFrameLayoutGrid("rows")}><Plus size={12} /> Rows</button></div>{selectedNode.layoutGrids?.map((grid) => <div className="canvas-guide-row" key={grid.id}><select aria-label={`Grid ${grid.id} type`} value={grid.type} onChange={(event) => patchFrameLayoutGrid(grid.id, { type: event.target.value as "square" | "columns" | "rows" })}><option value="square">Square</option><option value="columns">Columns</option><option value="rows">Rows</option></select><input aria-label={`Grid ${grid.type} size`} type="number" min="1" max={grid.type === "square" ? 10_000 : 100} value={grid.type === "square" ? grid.size ?? 8 : grid.count ?? 12} onChange={(event) => patchFrameLayoutGrid(grid.id, grid.type === "square" ? { size: Number(event.target.value) } : { count: Number(event.target.value) })} /><input aria-label={`Grid ${grid.type} color`} type="color" value={grid.color} onChange={(event) => patchFrameLayoutGrid(grid.id, { color: event.target.value })} /><button type="button" aria-label={`Delete ${grid.type} grid`} onClick={() => removeFrameLayoutGrid(grid.id)}><Trash size={11} /></button></div>)}</section>}

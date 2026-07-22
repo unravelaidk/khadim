@@ -470,7 +470,10 @@ export interface CanvasTextStyle {
 export interface CanvasEffectStyle {
   id: string;
   name: string;
-  shadow: CanvasShadow;
+  /** Legacy single-shadow mirror retained for older saved projects. */
+  shadow?: CanvasShadow;
+  /** Ordered back-to-front effect stack. Presence overrides the legacy shadow. */
+  shadows?: CanvasShadowEffect[];
 }
 
 export type CanvasHorizontalConstraint = "left" | "right" | "left-right" | "center" | "scale";
@@ -482,6 +485,13 @@ export interface CanvasShadow {
   y: number;
   blur: number;
   opacity: number;
+}
+
+export interface CanvasShadowEffect extends CanvasShadow {
+  id: string;
+  visible: boolean;
+  type: "drop" | "inner";
+  spread: number;
 }
 
 export type CanvasBlendMode =
@@ -613,6 +623,8 @@ export interface CanvasPrimitiveElement {
   /** Ordered back-to-front stroke stack. Presence, including an empty array, overrides legacy stroke fields. */
   strokes?: CanvasStrokePaint[];
   shadow?: CanvasShadow;
+  /** Ordered back-to-front shadow stack. Presence, including an empty array, overrides the legacy shadow. */
+  shadows?: CanvasShadowEffect[];
   text?: string;
   fontSize?: number;
   fontFamily?: string;

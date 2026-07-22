@@ -312,6 +312,19 @@ function isCanvasShadow(value: unknown): boolean {
     && isFiniteCanvasNumber(shadow.opacity, 0, 1);
 }
 
+function isCanvasShadows(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 16) return false;
+  const ids = new Set<string>();
+  return value.every((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
+    const shadow = entry as Record<string, unknown>;
+    if (!isBoundedString(shadow.id, 240) || ids.has(shadow.id) || typeof shadow.visible !== "boolean" || !["drop", "inner"].includes(String(shadow.type))
+      || !isCanvasShadow(shadow) || !isFiniteCanvasNumber(shadow.spread, -10_000, 10_000)) return false;
+    ids.add(shadow.id);
+    return true;
+  });
+}
+
 function isCanvasBlur(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const blur = value as Record<string, unknown>;
@@ -454,6 +467,7 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
     if (new Set(interactions.map((interaction) => interaction.id)).size !== interactions.length || new Set(interactions.map((interaction) => interaction.trigger)).size !== interactions.length) return false;
   }
   if (element.shadow !== undefined && !isCanvasShadow(element.shadow)) return false;
+  if (element.shadows !== undefined && (element.type === "component" || !isCanvasShadows(element.shadows))) return false;
   if (element.layout !== undefined && (element.type !== "frame" || !isCanvasLayout(element.layout))) return false;
   if (element.layoutGrids !== undefined && (element.type !== "frame" || !Array.isArray(element.layoutGrids) || element.layoutGrids.length > 16 || element.layoutGrids.some((value) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
@@ -615,13 +629,21 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
   if (data.effectStyles !== undefined && (!Array.isArray(data.effectStyles) || data.effectStyles.length > 2_000 || data.effectStyles.some((value) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
     const style = value as Record<string, unknown>;
-    return !isBoundedString(style.id, 240) || !isBoundedString(style.name, 1_000) || !isCanvasShadow(style.shadow);
+    return !isBoundedString(style.id, 240) || !isBoundedString(style.name, 1_000)
+      || style.shadow === undefined && style.shadows === undefined
+      || style.shadow !== undefined && !isCanvasShadow(style.shadow)
+      || style.shadows !== undefined && (!isCanvasShadows(style.shadows) || (style.shadows as unknown[]).length === 0);
   }) || new Set(data.effectStyles.map((style) => (style as Record<string, unknown>).id)).size !== data.effectStyles.length)) return false;
   const textStyleIds = new Set((data.textStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
   const effectStyleIds = new Set((data.effectStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
   const allPrimitiveNodes = [...elements.filter((element) => element.type !== "component"), ...components.flatMap((component) => component.nodes as Record<string, unknown>[])];
   if (allPrimitiveNodes.some((element) => element.textStyleId !== undefined && !textStyleIds.has(element.textStyleId as string))) return false;
   if (allPrimitiveNodes.some((element) => element.effectStyleId !== undefined && !effectStyleIds.has(element.effectStyleId as string))) return false;
+  if (elements.some((element) => element.type === "component" && element.overrides && Object.values(element.overrides as Record<string, unknown>).some((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+    const override = value as Record<string, unknown>;
+    return override.effectStyleId !== undefined && !effectStyleIds.has(override.effectStyleId as string);
+  }))) return false;
   if (data.tokenCollections !== undefined) {
     if (!Array.isArray(data.tokenCollections) || data.tokenCollections.length > 100 || data.tokenCollections.some((value) => {
       if (typeof value !== "object" || value === null || Array.isArray(value)) return true;

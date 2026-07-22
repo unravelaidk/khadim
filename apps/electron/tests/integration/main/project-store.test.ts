@@ -396,6 +396,31 @@ describe("ProjectStore", () => {
     const paintArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [paintedShape] } };
     await store.saveArtifacts(project.id, [paintArtifact]);
     await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([paintArtifact]);
+    const shadowStack = [
+      { id: "drop", visible: true, type: "drop" as const, color: "#101828", opacity: .2, x: 0, y: 8, blur: 18, spread: 2 },
+      { id: "inner", visible: true, type: "inner" as const, color: "#ffffff", opacity: .35, x: 0, y: 1, blur: 3, spread: -1 },
+    ];
+    const shadowArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...paintedShape, shadows: shadowStack }], effectStyles: [{ id: "raised", name: "Raised", shadows: shadowStack, shadow: { color: "#101828", opacity: .2, x: 0, y: 8, blur: 18 } }] } };
+    await store.saveArtifacts(project.id, [shadowArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([shadowArtifact]);
+    const duplicateShadowId = { ...shadowArtifact, content: { ...shadowArtifact.content, elements: [{ ...paintedShape, shadows: [shadowStack[0], { ...shadowStack[0] }] }] } } as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [duplicateShadowId])).rejects.toThrow("artifact library is invalid");
+    const invalidShadowType = { ...shadowArtifact, content: { ...shadowArtifact.content, elements: [{ ...paintedShape, shadows: [{ ...shadowStack[0], type: "ambient" }] }] } } as unknown as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [invalidShadowType])).rejects.toThrow("artifact library is invalid");
+    const emptyEffectStyle = { ...shadowArtifact, content: { ...shadowArtifact.content, effectStyles: [{ id: "empty", name: "Empty", shadows: [] }] } } as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [emptyEffectStyle])).rejects.toThrow("artifact library is invalid");
+    const componentInstance = { id: "instance", type: "component" as const, componentId: "card", componentRole: "instance" as const, x: 20, y: 20, width: 180, height: 100, color: "#ffffff", overrides: { surface: { effectStyleId: "raised", shadows: shadowStack } } };
+    const componentShadowArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
+      elements: [componentInstance],
+      components: [{ id: "card", name: "Card", width: 180, height: 100, nodes: [{ ...paintedShape, id: "surface", x: 0, y: 0, effectStyleId: "raised", shadows: shadowStack }] }],
+      effectStyles: [{ id: "raised", name: "Raised", shadows: shadowStack, shadow: { color: "#101828", opacity: .2, x: 0, y: 8, blur: 18 } }],
+    } };
+    await store.saveArtifacts(project.id, [componentShadowArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([componentShadowArtifact]);
+    const staleOverrideStyle = { ...componentShadowArtifact, content: { ...artifact.content, elements: [{ ...componentInstance, overrides: { surface: { effectStyleId: "missing" } } }], components: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.components : [], effectStyles: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.effectStyles : [] } } as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [staleOverrideStyle])).rejects.toThrow("artifact library is invalid");
+    const nullOverride = { ...componentShadowArtifact, content: { ...artifact.content, elements: [{ ...componentInstance, overrides: { surface: null } }], components: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.components : [], effectStyles: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.effectStyles : [] } } as unknown as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [nullOverride])).rejects.toThrow("artifact library is invalid");
     const duplicatePaintId = { ...paintArtifact, content: { ...paintArtifact.content, elements: [{ ...paintedShape, fills: [...paintedShape.fills!, { ...paintedShape.fills![0] }] }] } } as ArtifactDraft;
     await expect(store.saveArtifacts(project.id, [duplicatePaintId])).rejects.toThrow("artifact library is invalid");
     const invalidRadial = { ...paintArtifact, content: { ...paintArtifact.content, elements: [{ ...paintedShape, fills: [{ ...paintedShape.fills![1], gradient: { ...paintedShape.fills![1].gradient!, radius: 3 } }] }] } } as ArtifactDraft;

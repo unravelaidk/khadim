@@ -20,6 +20,7 @@ import type {
 } from "../../../shared/types";
 import { canvasPathAbsolutePoints, canvasPathData } from "../../../shared/canvas-geometry";
 import { canvasElementStrokeOutset } from "../../../shared/canvas-paint";
+import { canvasShadowOutset } from "../../../shared/canvas-effects";
 import { svgPathBounds } from "../../../shared/vector-boolean";
 
 export type {
@@ -282,9 +283,9 @@ export function canvasGeometryIndex(nodes: CanvasNode[], components: CanvasCompo
     const visualOutset = node.type === "component"
       ? (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0) + Math.max(0, ...(definition?.nodes.map((child) => {
         const effective = { ...child, ...node.overrides?.[child.id] };
-        return (canvasElementStrokeOutset(effective) + (effective.shadow ? effective.shadow.blur * 2 + Math.abs(effective.shadow.x) + Math.abs(effective.shadow.y) : 0) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 : 0)) * scale;
+        return (canvasElementStrokeOutset(effective) + canvasShadowOutset(effective) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 : 0)) * scale;
       }) ?? []))
-      : canvasElementStrokeOutset(node) + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0);
+      : canvasElementStrokeOutset(node) + canvasShadowOutset(node) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0);
     const rotated = pathRect
       ? rotatedRectAround(pathRect, node.rotation ?? 0, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
       : rotatedRect(rect, node.rotation);
