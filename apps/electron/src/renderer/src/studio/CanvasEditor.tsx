@@ -43,10 +43,10 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { Artifact, CanvasBlendMode, CanvasPrototypeFlow, CanvasPrototypeInteraction } from "../../../shared/types";
+import type { Artifact, CanvasBlendMode, CanvasFillPaint, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasStrokePaint } from "../../../shared/types";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, normalizeCanvasPath, resolveCanvasConnectors, type CanvasAbsolutePoint } from "../../../shared/canvas-geometry";
-import { canvasGradientVector } from "../../../shared/canvas-paint";
+import { canvasElementFills, canvasElementIsClosed, canvasElementStrokes, canvasElementStrokeOutset, canvasGradientVector, canvasStrokeDashArray } from "../../../shared/canvas-paint";
 import { booleanCanvasNodes, canBooleanNode, svgPathBounds, type CanvasBooleanOperation } from "../../../shared/vector-boolean";
 import { importSvgToCanvasNodes } from "./svg-import";
 import { CanvasPrototypePreview } from "./CanvasPrototypePreview";
@@ -145,6 +145,29 @@ const withoutTokenBindings = (bindings: CanvasPrimitiveNode["tokenBindings"], ke
   return Object.keys(next).length ? next : undefined;
 };
 
+function lastVisiblePaintIndex<T extends { visible: boolean }>(paints: T[]): number {
+  for (let index = paints.length - 1; index >= 0; index -= 1) if (paints[index].visible) return index;
+  return paints.length - 1;
+}
+
+function lastVisiblePaint<T extends { visible: boolean }>(paints: T[]): T | undefined {
+  return paints[lastVisiblePaintIndex(paints)];
+}
+
+function withPrimaryFill(node: CanvasPrimitiveNode, color: string, gradient?: CanvasPaintStyle["gradient"]): CanvasPrimitiveNode {
+  const fillGradient = gradient?.type === "linear" ? gradient : undefined;
+  if (node.fills === undefined && gradient?.type !== "radial") return { ...node, color, fillGradient };
+  if (!node.fills?.length) return { ...node, color, fillGradient, fills: [{ id: `style-fill-${node.id}`, visible: true, opacity: 1, color, gradient }] };
+  const primaryIndex = lastVisiblePaintIndex(node.fills);
+  return { ...node, color, fillGradient, fills: node.fills.map((paint, index) => index === primaryIndex ? { ...paint, color, gradient } : paint) };
+}
+
+function withPrimaryStroke(node: CanvasPrimitiveNode, color: string): CanvasPrimitiveNode {
+  if (!node.strokes?.length) return { ...node, strokeColor: color };
+  const primaryIndex = lastVisiblePaintIndex(node.strokes);
+  return { ...node, strokeColor: color, strokes: node.strokes.map((paint, index) => index === primaryIndex ? { ...paint, color } : paint) };
+}
+
 function canvasAppearanceStyle(node: Pick<CanvasNode, "blendMode" | "layerBlur" | "backgroundBlur"> & { shadow?: CanvasPrimitiveNode["shadow"] }, scale = 1): React.CSSProperties | undefined {
   const filters: string[] = [];
   if (node.layerBlur?.visible && node.layerBlur.value > 0) filters.push(`blur(${node.layerBlur.value * scale}px)`);
@@ -169,7 +192,7 @@ function booleanResultForNode(node: CanvasPrimitiveNode, scene: CanvasNode[]): C
   if (node.type !== "boolean" || !node.booleanOperation) return null;
   const children = scene.filter((candidate): candidate is CanvasPrimitiveNode => candidate.parentId === node.id && candidate.type !== "component" && candidate.type !== "boolean" && canBooleanNode(candidate));
   const result = booleanCanvasNodes(children, node.booleanOperation);
-  return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, strokeDash: node.strokeDash, shadow: node.shadow, parentId: node.parentId, groupId: node.groupId } : null;
+  return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, fills: node.fills, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, strokes: node.strokes, strokeDash: node.strokeDash, shadow: node.shadow, parentId: node.parentId, groupId: node.groupId } : null;
 }
 
 function resolveBooleanGroups(scene: CanvasNode[]): CanvasNode[] {
@@ -509,11 +532,11 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         const scale = definition ? Math.max(node.width / Math.max(1, definition.width), node.height / Math.max(1, definition.height)) : 1;
         const childPadding = Math.max(...(definition?.nodes.map((child) => {
           const effective = effectivePrimitive(child, node);
-          return (effective.strokeWidth ?? 0) * scale / 2 + (effective.shadow ? (effective.shadow.blur * 2 + Math.abs(effective.shadow.x) + Math.abs(effective.shadow.y)) * scale : 0) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 * scale : 0);
+          return canvasElementStrokeOutset(effective) * scale + (effective.shadow ? (effective.shadow.blur * 2 + Math.abs(effective.shadow.x) + Math.abs(effective.shadow.y)) * scale : 0) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 * scale : 0);
         }) ?? [0]));
         return Math.max(maximum, childPadding + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
       }
-      return Math.max(maximum, (node.strokeWidth ?? 0) / 2 + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
+      return Math.max(maximum, canvasElementStrokeOutset(node) + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
     }, 0);
     return { x: visualBounds.x - padding, y: visualBounds.y - padding, width: visualBounds.width + padding * 2, height: visualBounds.height + padding * 2 };
   })() : null;
@@ -1044,15 +1067,15 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     return !previous || previous.key !== key || now - previous.at > 800;
   }
 
-  function patchSelected(patch: Partial<CanvasNode>): void {
+  function patchSelected(patch: Partial<CanvasNode>, recordHistory?: boolean): void {
     if (!selectedNode) return;
-    let authoredPatch = selectedNode.type !== "component" && ("color" in patch || "fillGradient" in patch) && !("fillStyleId" in patch) ? { ...patch, fillStyleId: undefined } : patch;
+    let authoredPatch = selectedNode.type !== "component" && ("color" in patch || "fillGradient" in patch || "fills" in patch) && !("fillStyleId" in patch) ? { ...patch, fillStyleId: undefined } : patch;
     if (selectedNode.type === "text" && ["fontFamily", "fontSize", "fontWeight", "fontStyle", "textAlign", "lineHeight", "letterSpacing"].some((key) => key in patch) && !("textStyleId" in patch)) authoredPatch = { ...authoredPatch, textStyleId: undefined };
     if (selectedNode.type !== "component" && "shadow" in patch && !("effectStyleId" in patch)) authoredPatch = { ...authoredPatch, effectStyleId: undefined };
     if (selectedNode.type !== "component" && selectedNode.tokenBindings && !("tokenBindings" in patch)) {
       const detached: Array<keyof NonNullable<CanvasPrimitiveNode["tokenBindings"]>> = [];
-      if ("color" in patch || "fillGradient" in patch) detached.push("fill");
-      if ("strokeColor" in patch) detached.push("stroke");
+      if ("color" in patch || "fillGradient" in patch || "fills" in patch) detached.push("fill");
+      if ("strokeColor" in patch || "strokes" in patch) detached.push("stroke");
       if ("radius" in patch || "cornerRadii" in patch) detached.push("radius");
       if ("opacity" in patch) detached.push("opacity");
       if ("layout" in patch) detached.push("gap", "padding");
@@ -1083,7 +1106,46 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     if (selectedNode.parentId) next = applyFrameLayout(next, selectedNode.parentId, components);
     if (selectedNode.type === "frame" && !selectedNode.layout && (patch.width !== undefined || patch.height !== undefined)) next = applyFrameResizeConstraints(nodes, next, selectedNode.id);
     if (selectedNode.type === "frame" && ((patch as Partial<CanvasPrimitiveNode>).layout !== undefined || patch.width !== undefined || patch.height !== undefined)) next = applyFrameLayout(next, selectedNode.id, components);
-    commitCanvas(next, componentsRef.current, shouldRecordInspectorHistory(`${selectedNode.id}:${Object.keys(patch).sort().join(",")}`));
+    commitCanvas(next, componentsRef.current, recordHistory ?? shouldRecordInspectorHistory(`${selectedNode.id}:${Object.keys(patch).sort().join(",")}`));
+  }
+
+  function commitSelectedFills(fills: CanvasFillPaint[], recordHistory?: boolean): void {
+    const primary = lastVisiblePaint(fills);
+    const fallbackColor = selectedNode?.type !== "component" ? selectedNode?.color ?? "#000000" : "#000000";
+    patchSelected({
+      fills,
+      color: primary?.color ?? fallbackColor,
+      fillGradient: primary?.gradient?.type === "linear" ? primary.gradient : undefined,
+    }, recordHistory);
+  }
+
+  function commitSelectedStrokes(strokes: CanvasStrokePaint[], recordHistory?: boolean): void {
+    const primary = lastVisiblePaint(strokes);
+    const fallbackColor = selectedNode && selectedNode.type !== "component" ? selectedNode.strokeColor : undefined;
+    patchSelected({
+      strokes,
+      strokeColor: primary?.color ?? fallbackColor,
+      strokeWidth: primary?.width ?? 0,
+      strokeDash: primary && primary.style !== "solid" ? primary.dash ?? 4 : 0,
+    }, recordHistory);
+  }
+
+  function materializedFills(): CanvasFillPaint[] {
+    if (!selectedNode || selectedNode.type === "component") return [];
+    return canvasElementFills(selectedNode).map((paint) => ({ ...paint, gradient: paint.gradient ? cloneSnapshot(paint.gradient) : undefined }));
+  }
+
+  function materializedStrokes(): CanvasStrokePaint[] {
+    if (!selectedNode || selectedNode.type === "component") return [];
+    return canvasElementStrokes(selectedNode).map((paint) => ({ ...paint }));
+  }
+
+  function patchSelectedFill(id: string, patch: Partial<CanvasFillPaint>): void {
+    commitSelectedFills(materializedFills().map((paint) => paint.id === id ? { ...paint, ...patch } : paint));
+  }
+
+  function patchSelectedStroke(id: string, patch: Partial<CanvasStrokePaint>): void {
+    commitSelectedStrokes(materializedStrokes().map((paint) => paint.id === id ? { ...paint, ...patch } : paint));
   }
 
   function addPrototypeInteraction(): void {
@@ -1116,11 +1178,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   function createPaintStyle(): void {
     if (!selectedNode || selectedNode.type === "component" || selectedNode.type === "line" || selectedNode.type === "arrow" || selectedNode.type === "image" || selectedNode.type === "path" && !selectedNode.pathClosed) return;
+    const fills = canvasElementFills(selectedNode);
+    const primaryFill = lastVisiblePaint(fills);
     const style: CanvasPaintStyle = {
       id: crypto.randomUUID(),
       name: `${nodeLabel(selectedNode)} paint`,
-      color: selectedNode.color,
-      gradient: selectedNode.fillGradient ? cloneSnapshot(selectedNode.fillGradient) : undefined,
+      color: primaryFill?.color ?? selectedNode.color,
+      gradient: primaryFill?.gradient ? cloneSnapshot(primaryFill.gradient) : undefined,
     };
     const nextNodes = nodes.map((node) => node.id === selectedNode.id && node.type !== "component" ? { ...node, fillStyleId: style.id } : node) as CanvasNode[];
     commitCanvas(nextNodes, componentsRef.current, true, [...paintStylesRef.current, style]);
@@ -1130,7 +1194,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     if (!selectedNodes.length) return;
     const ids = new Set(selectedIds);
     const nextNodes = nodes.map((node) => ids.has(node.id) && node.type !== "component" && node.type !== "line" && node.type !== "arrow" && node.type !== "image" && (node.type !== "path" || node.pathClosed)
-      ? { ...node, color: style.color, fillGradient: style.gradient ? cloneSnapshot(style.gradient) : undefined, fillStyleId: style.id, tokenBindings: withoutTokenBindings(node.tokenBindings, ["fill"]) }
+      ? { ...withPrimaryFill(node, style.color, style.gradient ? cloneSnapshot(style.gradient) : undefined), fillStyleId: style.id, tokenBindings: withoutTokenBindings(node.tokenBindings, ["fill"]) }
       : node) as CanvasNode[];
     commitCanvas(nextNodes);
   }
@@ -1138,12 +1202,14 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   function updatePaintStyle(styleId: string): void {
     if (!selectedNode || selectedNode.type === "component") return;
     const before = currentSnapshot();
-    const nextStyles = paintStylesRef.current.map((style) => style.id === styleId ? { ...style, color: selectedNode.color, gradient: selectedNode.fillGradient ? cloneSnapshot(selectedNode.fillGradient) : undefined } : style);
+    const fills = canvasElementFills(selectedNode);
+    const primaryFill = lastVisiblePaint(fills);
+    const nextStyles = paintStylesRef.current.map((style) => style.id === styleId ? { ...style, color: primaryFill?.color ?? selectedNode.color, gradient: primaryFill?.gradient ? cloneSnapshot(primaryFill.gradient) : undefined } : style);
     const updated = nextStyles.find((style) => style.id === styleId);
     if (!updated) return;
-    const nextNodes = nodes.map((node) => node.type !== "component" && node.fillStyleId === styleId ? { ...node, color: updated.color, fillGradient: updated.gradient ? cloneSnapshot(updated.gradient) : undefined } : node) as CanvasNode[];
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.fillStyleId === styleId ? { ...node, color: updated.color, fillGradient: updated.gradient ? cloneSnapshot(updated.gradient) : undefined } : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type !== "component" && node.fillStyleId === styleId ? { ...node, color: updated.color, fillGradient: updated.gradient ? cloneSnapshot(updated.gradient) : undefined } : node) }));
+    const nextNodes = nodes.map((node) => node.type !== "component" && node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node) as CanvasNode[];
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type !== "component" && node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, nextStyles);
   }
@@ -1245,7 +1311,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const opacity = bindings.opacity ? values.get(bindings.opacity) : undefined;
     const gap = bindings.gap ? values.get(bindings.gap) : undefined;
     const padding = bindings.padding ? values.get(bindings.padding) : undefined;
-    return {
+    const tokenized = {
       ...node,
       color: typeof fill === "string" ? fill : node.color,
       strokeColor: typeof stroke === "string" ? stroke : node.strokeColor,
@@ -1253,6 +1319,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       opacity: typeof opacity === "number" ? Math.min(1, Math.max(0, opacity)) : node.opacity,
       layout: node.layout && (typeof gap === "number" || typeof padding === "number") ? { ...node.layout, gap: typeof gap === "number" ? Math.max(0, gap) : node.layout.gap, padding: typeof padding === "number" ? Math.max(0, padding) : node.layout.padding } : node.layout,
     };
+    const withFill = typeof fill === "string" ? withPrimaryFill(tokenized, fill, tokenized.fillGradient) : tokenized;
+    return typeof stroke === "string" ? withPrimaryStroke(withFill, stroke) : withFill;
   }
 
   function commitTokenCollections(nextCollections: CanvasTokenCollection[], activeNodes = nodesRef.current): void {
@@ -1350,7 +1418,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       setSelectedIds([result.id]);
       return;
     }
-    const group: CanvasPrimitiveNode = { id: crypto.randomUUID(), type: "boolean", name: `${operation[0].toUpperCase()}${operation.slice(1)}`, x: result.x, y: result.y, width: result.width, height: result.height, color: result.color, fillGradient: result.fillGradient, opacity: result.opacity, strokeColor: result.strokeColor, strokeWidth: result.strokeWidth, parentId: sharedParent, groupId: sharedGroup, booleanOperation: operation };
+    const group: CanvasPrimitiveNode = { id: crypto.randomUUID(), type: "boolean", name: `${operation[0].toUpperCase()}${operation.slice(1)}`, x: result.x, y: result.y, width: result.width, height: result.height, color: result.color, fillGradient: result.fillGradient, fills: result.fills, opacity: result.opacity, strokeColor: result.strokeColor, strokeWidth: result.strokeWidth, strokes: result.strokes, parentId: sharedParent, groupId: sharedGroup, booleanOperation: operation };
     const selectedSet = new Set(selectedIds);
     const next = nodes.map((node) => selectedSet.has(node.id) ? { ...node, parentId: group.id, groupId: undefined } as CanvasNode : node);
     next.splice(Math.max(0, firstIndex), 0, group);
@@ -1599,14 +1667,24 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   function patchComponentPrimitive(sourceId: string, patch: Partial<Pick<CanvasPrimitiveNode, "text" | "color" | "opacity">>): void {
     if (!selectedNode || selectedNode.type !== "component" || !selectedComponent) return;
+    const paintAwarePatch = (node: CanvasPrimitiveNode): Partial<CanvasPrimitiveNode> => {
+      if (patch.color === undefined) return patch;
+      const fills = canvasElementFills(node);
+      const primary = lastVisiblePaint(fills);
+      const painted = withPrimaryFill(node, patch.color, primary?.gradient);
+      return { ...patch, color: painted.color, fillGradient: painted.fillGradient, fills: painted.fills };
+    };
     if (selectedNode.componentRole === "main") {
       const nextComponents = components.map((component) => component.id === selectedComponent.id
-        ? { ...component, nodes: component.nodes.map((node) => node.id === sourceId ? { ...node, ...patch } : node) }
+        ? { ...component, nodes: component.nodes.map((node) => node.id === sourceId ? { ...node, ...paintAwarePatch(node) } : node) }
         : component);
       commitCanvas(nodes, nextComponents, shouldRecordInspectorHistory(`${selectedNode.id}:component:${sourceId}:${Object.keys(patch).sort().join(",")}`));
       return;
     }
-    patchSelected({ overrides: { ...selectedNode.overrides, [sourceId]: { ...selectedNode.overrides?.[sourceId], ...patch } } } as Partial<CanvasComponentNode>);
+    const source = selectedComponent.nodes.find((node) => node.id === sourceId);
+    if (!source) return;
+    const effective = effectivePrimitive(source, selectedNode);
+    patchSelected({ overrides: { ...selectedNode.overrides, [sourceId]: { ...selectedNode.overrides?.[sourceId], ...paintAwarePatch(effective) } } } as Partial<CanvasComponentNode>);
   }
 
   function resetSelectedOverrides(): void {
@@ -2585,6 +2663,85 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const gradientVector = effective.fillGradient ? canvasGradientVector(effective.fillGradient.angle) : undefined;
     const fill = effective.fillGradient ? `url(#${gradientId})` : effective.color;
     const style = canvasAppearanceStyle(effective, Math.min(scaleX, scaleY));
+    if (effective.fills !== undefined || effective.strokes !== undefined) {
+      const scale = Math.min(scaleX, scaleY);
+      const fills = canvasElementFills(effective).filter((paint) => paint.visible);
+      const strokes = canvasElementStrokes(effective).filter((paint) => paint.visible && paint.width > 0);
+      const closed = canvasElementIsClosed(effective);
+      const idBase = key.replace(/[^a-zA-Z0-9_-]/g, "-");
+      const insideClipId = `canvas-editor-paint-inside-${idBase}`;
+      const outsideMaskId = `canvas-editor-paint-outside-${idBase}`;
+      const imageClipId = `canvas-editor-paint-image-${idBase}`;
+      type PaintShapeProps = {
+        fill?: string;
+        fillOpacity?: number;
+        stroke?: string;
+        strokeOpacity?: number;
+        strokeWidth?: number;
+        strokeDasharray?: string;
+        strokeLinecap?: "butt" | "round" | "square";
+        strokeLinejoin?: "bevel" | "miter" | "round";
+        style?: React.CSSProperties;
+      };
+      const paintShape = (paintKey: string, props: PaintShapeProps): React.ReactNode => {
+        if (effective.type === "text") {
+          const fontSize = (effective.fontSize ?? 26) * scale;
+          const lineHeight = fontSize * (effective.lineHeight ?? 1.2);
+          const lines = wrapTextLines(effective.text ?? "", width, fontSize);
+          const textX = effective.textAlign === "center" ? x + width / 2 : effective.textAlign === "right" ? x + width : x;
+          const anchor = effective.textAlign === "center" ? "middle" : effective.textAlign === "right" ? "end" : "start";
+          return <text key={paintKey} x={textX} y={y + fontSize} fontFamily={effective.fontFamily ?? "Atkinson Hyperlegible Next"} fontSize={fontSize} fontWeight={effective.fontWeight ?? 620} fontStyle={effective.fontStyle ?? "normal"} letterSpacing={effective.letterSpacing ?? 0} textAnchor={anchor} {...props}>{lines.map((line, index) => <tspan key={`${paintKey}:${index}`} x={textX} dy={index ? lineHeight : 0}>{line || "\u00a0"}</tspan>)}</text>;
+        }
+        if (effective.type === "ellipse") return <ellipse key={paintKey} cx={x + width / 2} cy={y + height / 2} rx={width / 2} ry={height / 2} {...props} />;
+        if (effective.type === "line") return <line key={paintKey} x1={effective.lineFlip ? x + width : x} y1={y} x2={effective.lineFlip ? x : x + width} y2={y + height} {...props} />;
+        if (effective.type === "path" || effective.type === "arrow") {
+          const pathNode = { ...effective, x, y, width, height };
+          const importedTransform = effective.type === "path" && effective.svgPathData ? canvasImportedPathTransform(pathNode) : undefined;
+          return <path key={paintKey} d={effective.type === "path" && effective.svgPathData ? effective.svgPathData : canvasPathData(canvasPathAbsolutePoints(pathNode), effective.pathSmoothing ?? 0, effective.pathClosed)} transform={importedTransform} fillRule={effective.fillRule ?? "nonzero"} markerStart={effective.startCap === "arrow" ? "url(#canvas-arrowhead)" : undefined} markerEnd={effective.type === "arrow" || effective.endCap === "arrow" ? "url(#canvas-arrowhead)" : undefined} {...props} />;
+        }
+        const shapeNode = effective.type === "image" ? { ...effective, radius: effective.radius ?? 0 } : effective;
+        return effective.cornerRadii ? <path key={paintKey} d={canvasRoundedRectPath(x, y, width, height, effective.cornerRadii, scale)} {...props} /> : <rect key={paintKey} x={x} y={y} width={width} height={height} rx={(shapeNode.radius ?? (shapeNode.type === "frame" ? 4 : 8)) * scale} {...props} />;
+      };
+      const gradientDefinitions = fills.flatMap((paint, index) => {
+        if (!paint.gradient) return [];
+        const id = `${gradientId}-fill-${index}-${paint.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        const stops = paint.gradient.stops.map((stop, stopIndex) => <stop key={`${id}:${stopIndex}`} offset={`${Math.min(1, Math.max(0, stop.offset)) * 100}%`} stopColor={stop.color} stopOpacity={stop.opacity ?? 1} />);
+        if (paint.gradient.type === "radial") return [<radialGradient id={id} key={id} cx={paint.gradient.centerX} cy={paint.gradient.centerY} r={paint.gradient.radius}>{stops}</radialGradient>];
+        const vector = canvasGradientVector(paint.gradient.angle);
+        return [<linearGradient id={id} key={id} x1={vector.x1} y1={vector.y1} x2={vector.x2} y2={vector.y2}>{stops}</linearGradient>];
+      });
+      const fillLayers = closed || effective.type === "text" ? fills.map((paint, index) => {
+        const id = `${gradientId}-fill-${index}-${paint.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        return paintShape(`fill:${paint.id}`, { fill: paint.gradient ? `url(#${id})` : paint.color, fillOpacity: paint.opacity, stroke: "none" });
+      }) : [];
+      const strokeLayers = strokes.map((paint) => {
+        const alignment = closed ? paint.alignment : "center";
+        const dash = canvasStrokeDashArray(paint);
+        const rendered = paintShape(`stroke:${paint.id}`, { fill: "none", stroke: paint.color, strokeOpacity: paint.opacity, strokeWidth: paint.width * scale * (alignment === "center" ? 1 : 2), strokeDasharray: dash, strokeLinecap: paint.style === "dotted" ? "round" : effective.startCap === "round" || effective.endCap === "round" ? "round" : "butt", strokeLinejoin: "round" });
+        if (alignment === "inside") return <g key={`inside:${paint.id}`} clipPath={`url(#${insideClipId})`}>{rendered}</g>;
+        if (alignment === "outside") return <g key={`outside:${paint.id}`} mask={`url(#${outsideMaskId})`}>{rendered}</g>;
+        return rendered;
+      });
+      const maximumStroke = Math.max(0, ...strokes.map((paint) => paint.width * scale * 2));
+      const outerStyle = canvasAppearanceStyle({ blendMode: effective.blendMode, layerBlur: effective.layerBlur, shadow: effective.shadow }, scale);
+      const backgroundStyle = canvasAppearanceStyle({ backgroundBlur: effective.backgroundBlur }, scale);
+      const backgroundLayer = backgroundStyle && closed ? paintShape("background-blur", { fill: "#00000000", stroke: "none", style: backgroundStyle }) : null;
+      const imageLayer = effective.type === "image" ? <image href={effective.src} x={x} y={y} width={width} height={height} preserveAspectRatio="xMidYMid slice" /> : null;
+      const hasImageClip = effective.type === "image" && Boolean(effective.cornerRadii || effective.radius);
+      const painted = effective.type === "image" && hasImageClip
+        ? <>{<g clipPath={`url(#${imageClipId})`}>{backgroundLayer}{imageLayer}</g>}{strokeLayers}</>
+        : <>{backgroundLayer}{imageLayer}{fillLayers}{strokeLayers}</>;
+      const rotation = parent ? effective.rotation ?? 0 : 0;
+      return <g className="canvas-node canvas-paint-stack" key={key} transform={rotation ? `rotate(${rotation} ${x + width / 2} ${y + height / 2})` : undefined}>
+        <defs>
+          {gradientDefinitions}
+          {closed && strokes.some((paint) => paint.alignment === "inside") && <clipPath id={insideClipId} clipPathUnits="userSpaceOnUse">{paintShape("inside-clip", { fill: "#ffffff", stroke: "none" })}</clipPath>}
+          {closed && strokes.some((paint) => paint.alignment === "outside") && <mask id={outsideMaskId} maskUnits="userSpaceOnUse" x={x - maximumStroke} y={y - maximumStroke} width={width + maximumStroke * 2} height={height + maximumStroke * 2}><rect x={x - maximumStroke} y={y - maximumStroke} width={width + maximumStroke * 2} height={height + maximumStroke * 2} fill="#ffffff" />{paintShape("outside-mask", { fill: "#000000", stroke: "none" })}</mask>}
+          {hasImageClip && <clipPath id={imageClipId} clipPathUnits="userSpaceOnUse">{paintShape("image-clip", { fill: "#ffffff", stroke: "none" })}</clipPath>}
+        </defs>
+        <g opacity={effective.opacity ?? 1} style={outerStyle}>{painted}</g>
+      </g>;
+    }
     let primitive: React.ReactNode;
     if (effective.type === "text") {
       const fontSize = (effective.fontSize ?? 26) * Math.min(scaleX, scaleY);
@@ -2680,7 +2837,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             })}
             {definition.nodes.filter((child) => internalMaskSourceIds.has(child.id)).map((mask) => {
               const effective = effectivePrimitive(mask, node);
-              return <clipPath id={internalMaskId(mask.id)} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse">{renderPrimitive({ ...effective, opacity: 1, shadow: undefined, strokeWidth: 0 }, `${node.id}:mask:${mask.id}`, undefined, scaleX, scaleY)}</clipPath>;
+              return <clipPath id={internalMaskId(mask.id)} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse">{renderPrimitive({ ...effective, opacity: 1, shadow: undefined, strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `${node.id}:mask:${mask.id}`, undefined, scaleX, scaleY)}</clipPath>;
             })}
           </defs>
           {definition.nodes.map((child) => {
@@ -2728,6 +2885,57 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         ? <rect key={index} x={frame.x + margin + index * (size + gutter)} y={frame.y} width={size} height={frame.height} />
         : <rect key={index} x={frame.x} y={frame.y + margin + index * (size + gutter)} width={frame.width} height={size} />)}</g>;
     })}</g>;
+  }
+
+  function renderPaintStackInspector(): React.ReactNode {
+    if (!selectedNode || selectedNode.type === "component") return null;
+    const canFill = selectedNode.type !== "image" && (selectedNode.type === "text" || canvasElementIsClosed(selectedNode));
+    const closedStroke = canvasElementIsClosed(selectedNode);
+    const fills = canFill ? canvasElementFills(selectedNode) : [];
+    const strokes = canvasElementStrokes(selectedNode);
+    const gradientStops = (paint: CanvasFillPaint) => paint.gradient?.stops ?? [{ offset: 0, color: paint.color }, { offset: 1, color: "#ffffff" }];
+    const moveFill = (index: number, direction: -1 | 1): void => {
+      const next = materializedFills();
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return;
+      [next[index], next[target]] = [next[target], next[index]];
+      commitSelectedFills(next, true);
+    };
+    const moveStroke = (index: number, direction: -1 | 1): void => {
+      const next = materializedStrokes();
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return;
+      [next[index], next[target]] = [next[target], next[index]];
+      commitSelectedStrokes(next, true);
+    };
+    return <>
+      {canFill && <section className="canvas-inspector-section canvas-paint-section"><div className="canvas-section-heading"><h3>Fills</h3><button type="button" aria-label="Add fill" disabled={fills.length >= 16} onClick={() => commitSelectedFills([...materializedFills(), { id: crypto.randomUUID(), visible: true, opacity: 1, color: selectedNode.color }], true)}><Plus size={12} /></button></div>
+        {selectedNode.fillStyleId && <div className="canvas-connector-status"><span>Linked to {paintStyles.find((style) => style.id === selectedNode.fillStyleId)?.name ?? "color style"}</span><button type="button" onClick={() => patchSelected({ fillStyleId: undefined })}>Detach style</button></div>}
+        {[...fills].reverse().map((paint, displayIndex) => {
+          const index = fills.length - displayIndex - 1;
+          const gradient = paint.gradient;
+          const type = gradient?.type ?? "solid";
+          const stops = gradientStops(paint);
+          return <div className="canvas-paint-row" key={paint.id}>
+            <div className="canvas-paint-row-head"><input aria-label={`Fill ${displayIndex + 1} visible`} type="checkbox" checked={paint.visible} onChange={(event) => patchSelectedFill(paint.id, { visible: event.target.checked })} /><input aria-label={`Fill ${displayIndex + 1} color`} type="color" value={paint.color} onChange={(event) => patchSelectedFill(paint.id, { color: event.target.value })} /><select aria-label={displayIndex === 0 ? "Fill type" : `Fill ${displayIndex + 1} type`} value={type} onChange={(event) => {
+              const nextType = event.target.value;
+              patchSelectedFill(paint.id, { gradient: nextType === "linear" ? { type: "linear", angle: 90, stops } : nextType === "radial" ? { type: "radial", centerX: .5, centerY: .5, radius: .5, stops } : undefined });
+            }}><option value="solid">Solid</option><option value="linear">Linear</option><option value="radial">Radial</option></select><button type="button" aria-label={`Move fill ${displayIndex + 1} up`} disabled={index === fills.length - 1} onClick={() => moveFill(index, 1)}><CaretUp size={11} /></button><button type="button" aria-label={`Move fill ${displayIndex + 1} down`} disabled={index === 0} onClick={() => moveFill(index, -1)}><CaretDown size={11} /></button><button type="button" aria-label={`Duplicate fill ${displayIndex + 1}`} disabled={fills.length >= 16} onClick={() => { const next = materializedFills(); next.splice(index + 1, 0, { ...cloneSnapshot(next[index]), id: crypto.randomUUID() }); commitSelectedFills(next, true); }}><Copy size={11} /></button><button type="button" aria-label={`Delete fill ${displayIndex + 1}`} onClick={() => commitSelectedFills(materializedFills().filter((candidate) => candidate.id !== paint.id), true)}><Trash size={11} /></button></div>
+            <label><span>Opacity</span><div className="canvas-range-field"><input aria-label={`Fill ${displayIndex + 1} opacity`} type="range" min="0" max="100" value={Math.round(paint.opacity * 100)} onChange={(event) => patchSelectedFill(paint.id, { opacity: Number(event.target.value) / 100 })} /><output>{Math.round(paint.opacity * 100)}%</output></div></label>
+            {gradient && <><div className="canvas-typography-fields"><label className="canvas-color-field"><span>Start</span><input aria-label={`Fill ${displayIndex + 1} gradient start`} type="color" value={stops[0]?.color ?? paint.color} onChange={(event) => patchSelectedFill(paint.id, { gradient: { ...gradient, stops: [{ ...(stops[0] ?? { offset: 0 }), color: event.target.value }, ...stops.slice(1)] } })} /></label><label className="canvas-color-field"><span>End</span><input aria-label={`Fill ${displayIndex + 1} gradient end`} type="color" value={stops.at(-1)?.color ?? "#ffffff"} onChange={(event) => patchSelectedFill(paint.id, { gradient: { ...gradient, stops: [...stops.slice(0, -1), { ...(stops.at(-1) ?? { offset: 1 }), color: event.target.value }] } })} /></label></div>
+              {gradient.type === "linear" ? <label><span>Angle</span><input aria-label={displayIndex === 0 ? "Gradient angle" : `Fill ${displayIndex + 1} gradient angle`} type="number" min="0" max="359" value={gradient.angle} onChange={(event) => patchSelectedFill(paint.id, { gradient: { ...gradient, angle: normalizedAngle(Number(event.target.value)) } })} /></label> : <div className="canvas-property-grid"><label><span>X</span><input aria-label={`Fill ${displayIndex + 1} radial center X`} type="number" min="0" max="1" step="0.05" value={gradient.centerX} onChange={(event) => patchSelectedFill(paint.id, { gradient: { ...gradient, centerX: Math.min(1, Math.max(0, Number(event.target.value))) } })} /></label><label><span>Y</span><input aria-label={`Fill ${displayIndex + 1} radial center Y`} type="number" min="0" max="1" step="0.05" value={gradient.centerY} onChange={(event) => patchSelectedFill(paint.id, { gradient: { ...gradient, centerY: Math.min(1, Math.max(0, Number(event.target.value))) } })} /></label><label><span>R</span><input aria-label={`Fill ${displayIndex + 1} radial radius`} type="number" min="0.01" max="2" step="0.05" value={gradient.radius} onChange={(event) => patchSelectedFill(paint.id, { gradient: { ...gradient, radius: Math.min(2, Math.max(.01, Number(event.target.value))) } })} /></label></div>}</>}
+          </div>;
+        })}<small className="canvas-field-hint">Top paint is listed first. Each fill has independent visibility and opacity.</small></section>}
+      <section className="canvas-inspector-section canvas-paint-section"><div className="canvas-section-heading"><h3>Strokes</h3><button type="button" aria-label="Add stroke" disabled={strokes.length >= 16} onClick={() => commitSelectedStrokes([...materializedStrokes(), { id: crypto.randomUUID(), visible: true, color: selectedNode.strokeColor ?? selectedNode.color, opacity: 1, width: Math.max(1, selectedNode.strokeWidth ?? 1), alignment: closedStroke ? "inside" : "center", style: "solid" }], true)}><Plus size={12} /></button></div>
+        {[...strokes].reverse().map((paint, displayIndex) => {
+          const index = strokes.length - displayIndex - 1;
+          return <div className="canvas-paint-row" key={paint.id}><div className="canvas-paint-row-head"><input aria-label={`Stroke ${displayIndex + 1} visible`} type="checkbox" checked={paint.visible} onChange={(event) => patchSelectedStroke(paint.id, { visible: event.target.checked })} /><input aria-label={`Stroke ${displayIndex + 1} color`} type="color" value={paint.color} onChange={(event) => patchSelectedStroke(paint.id, { color: event.target.value })} /><strong>Stroke {displayIndex + 1}</strong><button type="button" aria-label={`Move stroke ${displayIndex + 1} up`} disabled={index === strokes.length - 1} onClick={() => moveStroke(index, 1)}><CaretUp size={11} /></button><button type="button" aria-label={`Move stroke ${displayIndex + 1} down`} disabled={index === 0} onClick={() => moveStroke(index, -1)}><CaretDown size={11} /></button><button type="button" aria-label={`Duplicate stroke ${displayIndex + 1}`} disabled={strokes.length >= 16} onClick={() => { const next = materializedStrokes(); next.splice(index + 1, 0, { ...next[index], id: crypto.randomUUID() }); commitSelectedStrokes(next, true); }}><Copy size={11} /></button><button type="button" aria-label={`Delete stroke ${displayIndex + 1}`} onClick={() => commitSelectedStrokes(materializedStrokes().filter((candidate) => candidate.id !== paint.id), true)}><Trash size={11} /></button></div>
+            <div className="canvas-property-grid"><label><span>Width</span><input aria-label={`Stroke ${displayIndex + 1} width`} type="number" min="0" max="10000" value={paint.width} onChange={(event) => patchSelectedStroke(paint.id, { width: Math.min(10_000, Math.max(0, Number(event.target.value))) })} /></label><label><span>Opacity</span><input aria-label={`Stroke ${displayIndex + 1} opacity`} type="number" min="0" max="100" value={Math.round(paint.opacity * 100)} onChange={(event) => patchSelectedStroke(paint.id, { opacity: Math.min(1, Math.max(0, Number(event.target.value) / 100)) })} /></label></div>
+            <div className="canvas-typography-fields"><label><span>Position</span><select aria-label={`Stroke ${displayIndex + 1} alignment`} value={closedStroke ? paint.alignment : "center"} disabled={!closedStroke} onChange={(event) => patchSelectedStroke(paint.id, { alignment: event.target.value as CanvasStrokePaint["alignment"] })}><option value="inside">Inside</option><option value="center">Center</option><option value="outside">Outside</option></select></label><label><span>Style</span><select aria-label={`Stroke ${displayIndex + 1} style`} value={paint.style} onChange={(event) => patchSelectedStroke(paint.id, { style: event.target.value as CanvasStrokePaint["style"] })}><option value="solid">Solid</option><option value="dotted">Dotted</option><option value="dashed">Dashed</option><option value="mixed">Mixed</option></select></label></div>
+            {paint.style !== "solid" && <div className="canvas-property-grid"><label><span>Dash</span><input aria-label={`Stroke ${displayIndex + 1} dash`} type="number" min="0.1" max="10000" value={paint.dash ?? 4} onChange={(event) => patchSelectedStroke(paint.id, { dash: Math.min(10_000, Math.max(.1, Number(event.target.value))) })} /></label><label><span>Gap</span><input aria-label={`Stroke ${displayIndex + 1} gap`} type="number" min="0.1" max="10000" value={paint.gap ?? 4} onChange={(event) => patchSelectedStroke(paint.id, { gap: Math.min(10_000, Math.max(.1, Number(event.target.value))) })} /></label></div>}
+          </div>;
+        })}<small className="canvas-field-hint">Open paths and text use centered strokes. Closed shapes support inside, center, and outside positions.</small></section>
+    </>;
   }
 
   const historyCanUndo = pastRef.current.length > 0 && historyRevision >= 0;
@@ -2802,7 +3010,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           </section>
           <section className="canvas-paint-styles"><header><strong>Color styles</strong><small>{filteredPaintStyles.length}</small></header>
             {canCreatePaintStyle && <button className="canvas-create-style" type="button" onClick={createPaintStyle}><Plus size={13} /> Save selected fill as style</button>}
-            <div className="canvas-style-list">{filteredPaintStyles.map((style) => <div className="canvas-style-row" key={style.id}><button type="button" aria-label={`Apply ${style.name}`} onClick={() => applyPaintStyle(style)}><i style={{ background: style.gradient ? `linear-gradient(${style.gradient.angle}deg, ${style.gradient.stops.map((stop) => `${stop.color} ${stop.offset * 100}%`).join(", ")})` : style.color }} /><span><strong>{style.name}</strong><small>{style.gradient ? "Linear gradient" : style.color.toUpperCase()}</small></span></button>{selectedNode && selectedNode.type !== "component" && <button type="button" aria-label={`Update ${style.name} from selection`} title="Update from selection" onClick={() => updatePaintStyle(style.id)}><ArrowClockwise size={12} /></button>}<button type="button" aria-label={`Delete ${style.name}`} onClick={() => removePaintStyle(style.id)}><Trash size={12} /></button></div>)}</div>
+            <div className="canvas-style-list">{filteredPaintStyles.map((style) => <div className="canvas-style-row" key={style.id}><button type="button" aria-label={`Apply ${style.name}`} onClick={() => applyPaintStyle(style)}><i style={{ background: style.gradient ? `${style.gradient.type === "linear" ? `linear-gradient(${style.gradient.angle}deg` : "radial-gradient(circle"}, ${style.gradient.stops.map((stop) => `${stop.color} ${stop.offset * 100}%`).join(", ")})` : style.color }} /><span><strong>{style.name}</strong><small>{style.gradient ? `${style.gradient.type === "linear" ? "Linear" : "Radial"} gradient` : style.color.toUpperCase()}</small></span></button>{selectedNode && selectedNode.type !== "component" && <button type="button" aria-label={`Update ${style.name} from selection`} title="Update from selection" onClick={() => updatePaintStyle(style.id)}><ArrowClockwise size={12} /></button>}<button type="button" aria-label={`Delete ${style.name}`} onClick={() => removePaintStyle(style.id)}><Trash size={12} /></button></div>)}</div>
             {!filteredPaintStyles.length && <p>{paintStyles.length ? "No matching color styles" : "Save a fill to reuse it across layers."}</p>}
           </section>
           <section className="canvas-paint-styles"><header><strong>Text styles</strong><small>{filteredTextStyles.length}</small></header>
@@ -2871,7 +3079,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             <filter id="khadim-canvas-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="18" floodOpacity=".16" /></filter>
             <marker id="canvas-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker>
             {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame" && Boolean(node.clipContent)).map((frame) => <clipPath id={`canvas-clip-${frame.id}`} key={frame.id} clipPathUnits="userSpaceOnUse">{frame.cornerRadii ? <path d={canvasRoundedRectPath(frame.x, frame.y, frame.width, frame.height, frame.cornerRadii)} transform={frame.rotation ? `rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})` : undefined} /> : <rect x={frame.x} y={frame.y} width={frame.width} height={frame.height} rx={frame.radius ?? 0} transform={frame.rotation ? `rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})` : undefined} />}</clipPath>)}
-            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component" && maskSourceIds.has(node.id)).map((mask) => <clipPath id={`canvas-mask-${mask.id}`} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse"><g transform={mask.rotation ? `rotate(${mask.rotation} ${mask.x + mask.width / 2} ${mask.y + mask.height / 2})` : undefined}>{renderPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0 }, `mask-shape:${mask.id}`)}</g></clipPath>)}
+            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component" && maskSourceIds.has(node.id)).map((mask) => <clipPath id={`canvas-mask-${mask.id}`} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse"><g transform={mask.rotation ? `rotate(${mask.rotation} ${mask.x + mask.width / 2} ${mask.y + mask.height / 2})` : undefined}>{renderPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `mask-shape:${mask.id}`)}</g></clipPath>)}
           </defs>
           <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
             <text className="canvas-frame-label" x="0" y="-15">Frame 1 · {canvasFrame.width} × {canvasFrame.height}</text>
@@ -2996,14 +3204,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           </div>{selectedNode.parentId && <label className="canvas-toggle-row"><input type="checkbox" checked={selectedNode.layoutPosition === "absolute"} onChange={(event) => patchSelected({ layoutPosition: event.target.checked ? "absolute" : "static" })} /><span>Absolute in parent</span></label>}</section>
           <section className="canvas-inspector-section"><h3>Hierarchy</h3><label><span>Parent</span><select aria-label="Parent frame" value={selectedNode.parentId ?? ""} onChange={(event) => reparentSelected(event.target.value || undefined)}><option value="">Page root</option>{nodes.filter((node) => node.type === "frame" && node.id !== selectedNode.id && !descendantIds(nodes, [selectedNode.id]).includes(node.id)).map((frame) => <option value={frame.id} key={frame.id}>{frame.name ?? nodeLabel(frame)}</option>)}</select></label><small className="canvas-field-hint">Drag layers to reorder. Hold Shift while dropping on a frame to nest.</small></section>
           {selectedNode.type !== "component" && selectedNode.maskId && <section className="canvas-inspector-section"><button className="canvas-reset-overrides" type="button" onClick={releaseSelectedMask}>Release mask</button></section>}
-          {selectedNode.type !== "component" && selectedNode.type !== "line" && selectedNode.type !== "arrow" && selectedNode.type !== "image" && (selectedNode.type !== "path" || selectedNode.pathClosed) && <section className="canvas-inspector-section"><h3>Fill paint</h3>
-            {selectedNode.fillStyleId && <div className="canvas-connector-status"><span>Linked to {paintStyles.find((style) => style.id === selectedNode.fillStyleId)?.name ?? "color style"}</span><button type="button" onClick={() => patchSelected({ fillStyleId: undefined })}>Detach style</button></div>}
-            <label><span>Type</span><select aria-label="Fill type" value={selectedNode.fillGradient ? "linear" : "solid"} onChange={(event) => patchSelected({ fillGradient: event.target.value === "linear" ? { type: "linear", angle: 90, stops: [{ offset: 0, color: selectedNode.color }, { offset: 1, color: "#ffffff" }] } : undefined })}><option value="solid">Solid</option><option value="linear">Linear gradient</option></select></label>
-            {selectedNode.fillGradient && <><label><span>Angle</span><input aria-label="Gradient angle" type="number" min="0" max="359" value={selectedNode.fillGradient.angle} onChange={(event) => patchSelected({ fillGradient: { ...selectedNode.fillGradient!, angle: normalizedAngle(Number(event.target.value)) } })} /></label><div className="canvas-typography-fields">
-              <label className="canvas-color-field"><span>Start</span><span><input aria-label="Gradient start color" type="color" value={selectedNode.fillGradient.stops[0]?.color ?? selectedNode.color} onChange={(event) => patchSelected({ fillGradient: { ...selectedNode.fillGradient!, stops: [{ ...(selectedNode.fillGradient!.stops[0] ?? { offset: 0 }), color: event.target.value }, ...(selectedNode.fillGradient!.stops.slice(1).length ? selectedNode.fillGradient!.stops.slice(1) : [{ offset: 1, color: "#ffffff" }])] } })} /></span></label>
-              <label className="canvas-color-field"><span>End</span><span><input aria-label="Gradient end color" type="color" value={selectedNode.fillGradient.stops.at(-1)?.color ?? "#ffffff"} onChange={(event) => patchSelected({ fillGradient: { ...selectedNode.fillGradient!, stops: [...selectedNode.fillGradient!.stops.slice(0, -1), { ...(selectedNode.fillGradient!.stops.at(-1) ?? { offset: 1 }), color: event.target.value }] } })} /></span></label>
-            </div></>}
-          </section>}
+          {renderPaintStackInspector()}
           {selectedNode.type === "boolean" && <section className="canvas-inspector-section"><h3>Boolean group</h3><label><span>Operation</span><select aria-label="Boolean operation" value={selectedNode.booleanOperation} onChange={(event) => patchSelected({ booleanOperation: event.target.value as CanvasPrimitiveNode["booleanOperation"] })}><option value="union">Union</option><option value="difference">Subtract</option><option value="intersection">Intersect</option><option value="exclusion">Exclude</option></select></label><div className="canvas-guide-actions"><button type="button" onClick={() => { setEditingBooleanId(selectedNode.id); setSelectedIds(nodes.filter((node) => node.parentId === selectedNode.id).slice(0, 1).map((node) => node.id)); }}>Edit contents</button><button type="button" onClick={flattenSelectedBoolean}>Flatten</button><button type="button" onClick={releaseSelectedBoolean}>Release</button></div><small className="canvas-field-hint">The source shapes stay editable until you flatten the group.</small></section>}
           {editingBooleanId && selectedNode.parentId === editingBooleanId && <section className="canvas-inspector-section"><div className="canvas-connector-status"><span>Editing boolean contents</span><button type="button" onClick={() => { setSelectedIds([editingBooleanId]); setEditingBooleanId(null); }}>Done</button></div></section>}
           {selectedNode.parentId && nodes.some((node) => node.id === selectedNode.parentId && node.type === "frame" && !node.layout) && <section className="canvas-inspector-section"><h3>Constraints</h3><div className="canvas-typography-fields"><label><span>Horizontal</span><select aria-label="Horizontal constraint" value={selectedNode.constraintH ?? "left"} onChange={(event) => patchSelected({ constraintH: event.target.value as CanvasNode["constraintH"] })}><option value="left">Left</option><option value="right">Right</option><option value="left-right">Left & right</option><option value="center">Center</option><option value="scale">Scale</option></select></label><label><span>Vertical</span><select aria-label="Vertical constraint" value={selectedNode.constraintV ?? "top"} onChange={(event) => patchSelected({ constraintV: event.target.value as CanvasNode["constraintV"] })}><option value="top">Top</option><option value="bottom">Bottom</option><option value="top-bottom">Top & bottom</option><option value="center">Center</option><option value="scale">Scale</option></select></label></div><small className="canvas-field-hint">Controls how this layer responds when its frame is resized.</small></section>}
@@ -3012,8 +3213,6 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {selectedNode.type !== "component" && <section className="canvas-inspector-section">
             <h3>Appearance</h3>
             <label><span>Blend mode</span><select aria-label="Blend mode" value={selectedNode.blendMode ?? "normal"} onChange={(event) => patchSelected({ blendMode: event.target.value as CanvasBlendMode })}>{canvasBlendModes.map((mode) => <option value={mode.value} key={mode.value}>{mode.label}</option>)}</select></label>
-            {selectedNode.type !== "line" && selectedNode.type !== "arrow" && selectedNode.type !== "image" && (selectedNode.type !== "path" || selectedNode.pathClosed) && <label className="canvas-color-field"><span>{selectedNode.type === "text" ? "Text color" : "Fill"}</span><span><input type="color" value={selectedNode.color} onChange={(event) => patchSelected({ color: event.target.value })} /><code>{selectedNode.color.toUpperCase()}</code></span></label>}
-            {selectedNode.type !== "text" && selectedNode.type !== "image" && <><label className="canvas-color-field"><span>Stroke</span><span><input type="color" value={selectedNode.strokeColor ?? "#17181c"} onChange={(event) => patchSelected({ strokeColor: event.target.value, strokeWidth: Math.max(1, selectedNode.strokeWidth ?? 1) })} /><code>{(selectedNode.strokeColor ?? "#17181c").toUpperCase()}</code></span></label><div className="canvas-typography-fields"><label><span>Width</span><input aria-label="Stroke width" type="number" min="0" max="64" value={selectedNode.strokeWidth ?? 0} onChange={(event) => patchSelected({ strokeWidth: Math.max(0, Number(event.target.value)) })} /></label><label><span>Dash</span><input aria-label="Stroke dash" type="number" min="0" max="64" value={selectedNode.strokeDash ?? 0} onChange={(event) => patchSelected({ strokeDash: Math.max(0, Number(event.target.value)) })} /></label></div></>}
             <label><span>Opacity</span><div className="canvas-range-field"><input type="range" min="0" max="100" value={Math.round((selectedNode.opacity ?? 1) * 100)} onChange={(event) => patchSelected({ opacity: Number(event.target.value) / 100 })} /><output>{Math.round((selectedNode.opacity ?? 1) * 100)}%</output></div></label>
             {(selectedNode.type === "rectangle" || selectedNode.type === "frame" || selectedNode.type === "image") && <><label className="canvas-toggle-row"><input aria-label="Independent corner radii" type="checkbox" checked={Boolean(selectedNode.cornerRadii)} onChange={(event) => {
               const radius = selectedNode.radius ?? 0;

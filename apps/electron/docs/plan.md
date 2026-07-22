@@ -268,6 +268,22 @@ values above 100 pixels, and malformed or unsupported corner records. Instance
 detachment stays disabled while a group-level blend or blur is active because
 flattening that effect onto overlapping children would change the composition.
 
+Shape paint also uses ordered semantic records. Closed primitives and text can
+store up to 16 fills, and every primitive can store up to 16 strokes. Each
+paint has a stable ID, visibility, opacity, and color. Fills support solid,
+linear-gradient, and radial-gradient paint. Strokes add width, inside, center,
+or outside alignment, and solid, dotted, dashed, or mixed patterns with
+independent dash and gap values. The inspector lists the top paint first and
+supports add, duplicate, reorder, hide, and delete actions with undo. Open
+paths and text use centered strokes because SVG doesn't provide a closed
+interior for clipping. The editor, prototype player, component overrides,
+boolean results, masks, and static exporter consume the same ordered stacks.
+Selection export and large-scene culling include center and outside stroke
+outsets. Legacy single-fill and single-stroke fields remain compatibility
+mirrors, so existing scenes render unchanged while edited shapes opt into the
+new arrays. Persistence bounds paint counts and numeric values, rejects
+duplicate paint IDs, and validates radial geometry and stroke options.
+
 Khadim now follows that boundary for prototype interactions. Primitive and
 component layers can persist click, hover, and timed triggers for page
 navigation, previous-screen navigation, protocol-validated external URLs, and
@@ -394,12 +410,12 @@ and [official Monaco site](https://microsoft.github.io/monaco-editor).
 Keep Khadim's native, versioned canvas scene instead of replacing it with an
 embedded whiteboard. The editor now owns pages, frames, vector paths, editable
 SVG import, reusable components and variants, auto layout, constraints, grids,
-guides, masks, boolean shapes, connectors, tokens and styles, prototype
-interactions, and SVG/PNG/PDF export. Shared geometry, paint, boolean, and
-export modules keep the persisted model usable outside the editor UI. Penpot's
-architecture is the reference for the next extraction: editor gestures should
-become semantic, reversible commands while view and export remain independent
-consumers of the same model.
+guides, masks, boolean shapes, connectors, tokens and styles, ordered fill and
+stroke stacks, radial gradients, prototype interactions, and SVG/PNG/PDF
+export. Shared geometry, paint, boolean, and export modules keep the persisted
+model usable outside the editor UI. Penpot's architecture is the reference for
+the next extraction: editor gestures should become semantic, reversible
+commands while view and export remain independent consumers of the same model.
 
 ### Vite for executable web-project previews
 

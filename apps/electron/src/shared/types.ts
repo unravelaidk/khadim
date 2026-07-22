@@ -411,6 +411,36 @@ export interface CanvasLinearGradient {
   stops: CanvasGradientStop[];
 }
 
+export interface CanvasRadialGradient {
+  type: "radial";
+  centerX: number;
+  centerY: number;
+  radius: number;
+  stops: CanvasGradientStop[];
+}
+
+export type CanvasGradient = CanvasLinearGradient | CanvasRadialGradient;
+
+export interface CanvasFillPaint {
+  id: string;
+  visible: boolean;
+  opacity: number;
+  color: string;
+  gradient?: CanvasGradient;
+}
+
+export interface CanvasStrokePaint {
+  id: string;
+  visible: boolean;
+  color: string;
+  opacity: number;
+  width: number;
+  alignment: "inside" | "center" | "outside";
+  style: "solid" | "dotted" | "dashed" | "mixed";
+  dash?: number;
+  gap?: number;
+}
+
 export interface CanvasSvgViewBox {
   x: number;
   y: number;
@@ -422,7 +452,7 @@ export interface CanvasPaintStyle {
   id: string;
   name: string;
   color: string;
-  gradient?: CanvasLinearGradient;
+  gradient?: CanvasGradient;
 }
 
 export interface CanvasTextStyle {
@@ -561,6 +591,8 @@ export interface CanvasPrimitiveElement {
   name?: string;
   color: string;
   fillGradient?: CanvasLinearGradient;
+  /** Ordered back-to-front fill stack. Presence, including an empty array, overrides legacy fill fields. */
+  fills?: CanvasFillPaint[];
   fillStyleId?: string;
   opacity?: number;
   blendMode?: CanvasBlendMode;
@@ -578,6 +610,8 @@ export interface CanvasPrimitiveElement {
   strokeColor?: string;
   strokeWidth?: number;
   strokeDash?: number;
+  /** Ordered back-to-front stroke stack. Presence, including an empty array, overrides legacy stroke fields. */
+  strokes?: CanvasStrokePaint[];
   shadow?: CanvasShadow;
   text?: string;
   fontSize?: number;

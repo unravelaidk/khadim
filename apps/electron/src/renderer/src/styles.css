@@ -2850,6 +2850,24 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 .canvas-layout > .studio-inspector > header { height: 42px; padding: 0 13px; border-bottom: 1px solid var(--line); }
 .canvas-inspector-section { padding: 13px; border-bottom: 1px solid var(--line); }
 .canvas-inspector-section h3 { margin: 0 0 11px; color: var(--text-3); font-size: 10px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; }
+.canvas-section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.canvas-section-heading h3 { margin: 0; }
+.canvas-section-heading > button { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 6px; color: var(--text-2); background: var(--surface-raised); }
+.canvas-section-heading > button:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+.canvas-section-heading > button:disabled { opacity: .4; }
+.canvas-paint-row { margin: 0 0 8px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--surface-raised) 58%, transparent); }
+.canvas-paint-row-head { display: grid; grid-template-columns: 16px 28px minmax(0, 1fr) repeat(4, 22px); gap: 3px; align-items: center; margin-bottom: 8px; }
+.canvas-paint-row-head > input[type="checkbox"] { margin: 0; }
+.canvas-paint-row-head > input[type="color"] { width: 28px; height: 26px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); }
+.canvas-paint-row-head > select { min-width: 0; height: 26px; padding: 0 5px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-2); background: var(--surface-raised); font-size: 10px; }
+.canvas-paint-row-head > strong { overflow: hidden; color: var(--text-2); font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-paint-row-head > button { width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--text-3); background: transparent; }
+.canvas-paint-row-head > button:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
+.canvas-paint-row-head > button:last-child:hover:not(:disabled) { color: var(--danger); }
+.canvas-paint-row-head > button:disabled { opacity: .28; }
+.canvas-paint-row label { margin-bottom: 7px; }
+.canvas-paint-row .canvas-property-grid,
+.canvas-paint-row .canvas-typography-fields { margin-bottom: 7px; }
 .canvas-inspector-section label { gap: 6px; margin: 0 0 10px; }
 .canvas-inspector-section label:last-child { margin-bottom: 0; }
 .canvas-inspector-section label > span:first-child { color: var(--text-3); font-size: 10px; }

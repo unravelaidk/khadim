@@ -253,11 +253,16 @@ function isFiniteCanvasNumber(value: unknown, minimum = -100_000, maximum = 100_
   return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum;
 }
 
-function isCanvasGradient(value: unknown): boolean {
+function isCanvasGradient(value: unknown, allowRadial = true): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const gradient = value as Record<string, unknown>;
-  return gradient.type === "linear"
-    && isFiniteCanvasNumber(gradient.angle, -360_000, 360_000)
+  const geometryValid = gradient.type === "linear"
+    ? isFiniteCanvasNumber(gradient.angle, -360_000, 360_000)
+    : allowRadial && gradient.type === "radial"
+      && isFiniteCanvasNumber(gradient.centerX, 0, 1)
+      && isFiniteCanvasNumber(gradient.centerY, 0, 1)
+      && isFiniteCanvasNumber(gradient.radius, .001, 2);
+  return geometryValid
     && Array.isArray(gradient.stops)
     && gradient.stops.length >= 2
     && gradient.stops.length <= 16
@@ -268,6 +273,33 @@ function isCanvasGradient(value: unknown): boolean {
         && isBoundedString(stop.color, 80)
         && (stop.opacity === undefined || isFiniteCanvasNumber(stop.opacity, 0, 1));
     });
+}
+
+function isCanvasFills(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 16) return false;
+  const ids = new Set<string>();
+  return value.every((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
+    const fill = entry as Record<string, unknown>;
+    if (!isBoundedString(fill.id, 240) || ids.has(fill.id) || typeof fill.visible !== "boolean" || !isFiniteCanvasNumber(fill.opacity, 0, 1) || !isBoundedString(fill.color, 80)) return false;
+    ids.add(fill.id);
+    return fill.gradient === undefined || isCanvasGradient(fill.gradient);
+  });
+}
+
+function isCanvasStrokes(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 16) return false;
+  const ids = new Set<string>();
+  return value.every((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
+    const stroke = entry as Record<string, unknown>;
+    if (!isBoundedString(stroke.id, 240) || ids.has(stroke.id) || typeof stroke.visible !== "boolean" || !isBoundedString(stroke.color, 80)
+      || !isFiniteCanvasNumber(stroke.opacity, 0, 1) || !isFiniteCanvasNumber(stroke.width, 0, 10_000)
+      || !["inside", "center", "outside"].includes(String(stroke.alignment)) || !["solid", "dotted", "dashed", "mixed"].includes(String(stroke.style))
+      || (stroke.dash !== undefined && !isFiniteCanvasNumber(stroke.dash, .1, 10_000)) || (stroke.gap !== undefined && !isFiniteCanvasNumber(stroke.gap, .1, 10_000))) return false;
+    ids.add(stroke.id);
+    return true;
+  });
 }
 
 function isCanvasShadow(value: unknown): boolean {
@@ -381,7 +413,13 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
   for (const key of ["name", "parentId", "groupId", "maskId", "prototypeKey", "color", "strokeColor", "text", "src", "alt", "startBindingId", "endBindingId", "fontFamily"]) {
     if (element[key] !== undefined && !isBoundedString(element[key], key === "src" ? 15 * 1024 * 1024 : key === "text" ? 250_000 : 1_000, true)) return false;
   }
-  if (element.fillGradient !== undefined && !isCanvasGradient(element.fillGradient)) return false;
+  if (element.fillGradient !== undefined && (!isCanvasGradient(element.fillGradient, false) || (element.fillGradient as Record<string, unknown>).type !== "linear")) return false;
+  if (element.fills !== undefined && (element.type === "component" || !isCanvasFills(element.fills))) return false;
+  if (element.strokes !== undefined && (element.type === "component" || !isCanvasStrokes(element.strokes))) return false;
+  const supportsFills = element.type === "text" || !["line", "arrow", "image"].includes(String(element.type)) && (element.type !== "path" || element.pathClosed === true);
+  if (element.fills !== undefined && !supportsFills) return false;
+  const requiresCenteredStrokes = ["text", "line", "arrow"].includes(String(element.type)) || element.type === "path" && element.pathClosed !== true;
+  if (requiresCenteredStrokes && Array.isArray(element.strokes) && element.strokes.some((stroke) => (stroke as Record<string, unknown>).alignment !== "center")) return false;
   if (element.fillStyleId !== undefined && !isBoundedString(element.fillStyleId, 240)) return false;
   if (element.textStyleId !== undefined && (element.type !== "text" || !isBoundedString(element.textStyleId, 240))) return false;
   if (element.effectStyleId !== undefined && !isBoundedString(element.effectStyleId, 240)) return false;

@@ -1,7 +1,7 @@
 import type { Artifact, CanvasArtifactContent, CanvasComponentDefinition, CanvasElement, CanvasPrimitiveElement, HtmlDocumentArtifactContent } from "./types";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, resolveCanvasConnectors } from "./canvas-geometry";
 import { booleanCanvasNodes, canBooleanNode } from "./vector-boolean";
-import { canvasGradientVector } from "./canvas-paint";
+import { canvasElementFills, canvasElementIsClosed, canvasElementStrokes, canvasGradientVector, canvasStrokeDashArray } from "./canvas-paint";
 
 const inertPolicy = "default-src 'none'; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
 
@@ -136,8 +136,74 @@ function roundedRectShape(node: CanvasPrimitiveElement, x: number, y: number, wi
   return { tag: "rect", geometry: `x="${x}" y="${y}" width="${width}" height="${height}" rx="${finite(node.radius, node.type === "frame" ? 4 : 8) * scale}"` };
 }
 
+function paintGradientDefinition(node: CanvasPrimitiveElement, fill: NonNullable<CanvasPrimitiveElement["fills"]>[number], id: string): string {
+  if (!fill.gradient) return "";
+  const stops = fill.gradient.stops.map((stop) => `<stop offset="${Math.min(1, Math.max(0, stop.offset)) * 100}%" stop-color="${safeColor(stop.color)}" stop-opacity="${opacity(stop.opacity)}"/>`).join("");
+  if (fill.gradient.type === "radial") return `<radialGradient id="${escapeHtml(id)}" cx="${fill.gradient.centerX}" cy="${fill.gradient.centerY}" r="${fill.gradient.radius}">${stops}</radialGradient>`;
+  const vector = canvasGradientVector(fill.gradient.angle);
+  return `<linearGradient id="${escapeHtml(id)}" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}">${stops}</linearGradient>`;
+}
+
 function rotationWrapper(content: string, rotation: number, x: number, y: number, width: number, height: number): string {
   return rotation ? `<g transform="rotate(${rotation} ${x + width / 2} ${y + height / 2})">${content}</g>` : content;
+}
+
+function renderCanvasPaintStack(node: CanvasPrimitiveElement, x: number, y: number, width: number, height: number, scaleX: number, scaleY: number, parentOpacity: number, gradientId: string, liveEffects: boolean): string {
+  const scale = Math.min(scaleX, scaleY);
+  const fills = canvasElementFills(node).filter((fill) => fill.visible);
+  const strokes = canvasElementStrokes(node).filter((stroke) => stroke.visible && stroke.width > 0);
+  const closed = canvasElementIsClosed(node);
+  const idBase = gradientId.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const clipId = `canvas-paint-inside-${idBase}`;
+  const maskId = `canvas-paint-outside-${idBase}`;
+  const shape = (attrs: string): string => {
+    if (node.type === "ellipse") return `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" ${attrs}/>`;
+    if (node.type === "line") return `<line x1="${node.lineFlip ? x + width : x}" y1="${y}" x2="${node.lineFlip ? x : x + width}" y2="${y + height}" ${attrs}/>`;
+    if (node.type === "path" || node.type === "arrow") {
+      const pathNode = { ...node, x, y, width, height };
+      const importedTransform = node.type === "path" && node.svgPathData ? canvasImportedPathTransform(pathNode) : undefined;
+      const data = node.type === "path" && node.svgPathData ? node.svgPathData : canvasPathData(canvasPathAbsolutePoints(pathNode), finite(node.pathSmoothing, 0), Boolean(node.pathClosed));
+      return `<path d="${escapeHtml(data)}"${importedTransform ? ` transform="${escapeHtml(importedTransform)}"` : ""} fill-rule="${node.fillRule ?? "nonzero"}" ${attrs}/>`;
+    }
+    const rounded = roundedRectShape(node.type === "image" ? { ...node, radius: node.radius ?? 0 } : node, x, y, width, height, scale);
+    return `<${rounded.tag} ${rounded.geometry} ${attrs}/>`;
+  };
+  const text = (attrs: string): string => {
+    const fontSize = finite(node.fontSize, 26) * scale;
+    const lineHeight = fontSize * finite(node.lineHeight, 1.2);
+    const textX = node.textAlign === "center" ? x + width / 2 : node.textAlign === "right" ? x + width : x;
+    const anchor = node.textAlign === "center" ? "middle" : node.textAlign === "right" ? "end" : "start";
+    const spans = wrapCanvasText(node.text ?? "", width, fontSize).map((line, index) => `<tspan x="${textX}" dy="${index ? lineHeight : 0}">${escapeHtml(line || "\u00a0")}</tspan>`).join("");
+    return `<text x="${textX}" y="${y + fontSize}" font-family="${escapeHtml(node.fontFamily ?? "Atkinson Hyperlegible Next")}" font-size="${fontSize}" font-weight="${finite(node.fontWeight, 620)}" font-style="${node.fontStyle ?? "normal"}" letter-spacing="${finite(node.letterSpacing, 0)}" text-anchor="${anchor}" ${attrs}>${spans}</text>`;
+  };
+  const paintShape = (attrs: string): string => node.type === "text" ? text(attrs) : shape(attrs);
+  const fillLayers = closed || node.type === "text" ? fills.map((fill, index) => {
+    const fillId = `${idBase}-fill-${index}-${fill.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const value = fill.gradient ? `url(#${escapeHtml(fillId)})` : safeColor(fill.color);
+    return paintShape(`fill="${value}" fill-opacity="${opacity(fill.opacity)}" stroke="none"`);
+  }).join("") : "";
+  const strokeLayers = strokes.map((stroke) => {
+    const alignment = closed ? stroke.alignment : "center";
+    const strokeWidth = stroke.width * scale * (alignment === "center" ? 1 : 2);
+    const dash = canvasStrokeDashArray(stroke);
+    const attrs = `fill="none" stroke="${safeColor(stroke.color)}" stroke-opacity="${opacity(stroke.opacity)}" stroke-width="${strokeWidth}"${dash ? ` stroke-dasharray="${dash}"` : ""} stroke-linecap="${stroke.style === "dotted" ? "round" : node.startCap === "round" || node.endCap === "round" ? "round" : "butt"}" stroke-linejoin="round"${node.startCap === "arrow" ? ' marker-start="url(#canvas-arrowhead)"' : ""}${node.type === "arrow" || node.endCap === "arrow" ? ' marker-end="url(#canvas-arrowhead)"' : ""}`;
+    const rendered = paintShape(attrs);
+    if (alignment === "inside") return `<g clip-path="url(#${clipId})">${rendered}</g>`;
+    if (alignment === "outside") return `<g mask="url(#${maskId})">${rendered}</g>`;
+    return rendered;
+  }).join("");
+  const definitions = fills.map((fill, index) => paintGradientDefinition(node, fill, `${idBase}-fill-${index}-${fill.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`)).join("");
+  const needsInside = closed && strokes.some((stroke) => stroke.alignment === "inside");
+  const needsOutside = closed && strokes.some((stroke) => stroke.alignment === "outside");
+  const maximumStroke = Math.max(0, ...strokes.map((stroke) => stroke.width * scale * 2));
+  const clipping = `${needsInside ? `<clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">${shape('fill="#ffffff" stroke="none"')}</clipPath>` : ""}${needsOutside ? `<mask id="${maskId}" maskUnits="userSpaceOnUse" x="${x - maximumStroke}" y="${y - maximumStroke}" width="${width + maximumStroke * 2}" height="${height + maximumStroke * 2}"><rect x="${x - maximumStroke}" y="${y - maximumStroke}" width="${width + maximumStroke * 2}" height="${height + maximumStroke * 2}" fill="#ffffff"/>${shape('fill="#000000" stroke="none"')}</mask>` : ""}`;
+  const outerAppearance = appearanceStyle({ blendMode: node.blendMode, layerBlur: node.layerBlur, shadow: node.shadow }, scale);
+  const backgroundAppearance = appearanceStyle({ backgroundBlur: node.backgroundBlur }, scale, liveEffects);
+  const backgroundLayer = backgroundAppearance && closed ? shape(`fill="#00000000" stroke="none"${backgroundAppearance}`) : "";
+  const imageLayer = node.type === "image" ? `<image href="${escapeHtml(node.src ?? "")}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/>` : "";
+  const imageClip = node.type === "image" && (node.cornerRadii || node.radius) ? `<clipPath id="canvas-paint-image-${idBase}" clipPathUnits="userSpaceOnUse">${shape('fill="#ffffff" stroke="none"')}</clipPath>` : "";
+  const painted = node.type === "image" && imageClip ? `<g clip-path="url(#canvas-paint-image-${idBase})">${backgroundLayer}${imageLayer}</g>${strokeLayers}` : `${backgroundLayer}${imageLayer}${fillLayers}${strokeLayers}`;
+  return `${definitions || clipping || imageClip ? `<defs>${definitions}${clipping}${imageClip}</defs>` : ""}<g opacity="${opacity(node.opacity) * parentOpacity}"${outerAppearance}>${painted}</g>`;
 }
 
 function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offsetY = 0, scaleX = 1, scaleY = 1, override?: Partial<CanvasPrimitiveElement>, parentOpacity = 1, gradientId = `canvas-gradient-${value.id}`, liveEffects = false): string {
@@ -154,6 +220,10 @@ function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offse
   const dash = finite(node.strokeDash, 0) > 0 ? ` stroke-dasharray="${finite(node.strokeDash, 0)}"` : "";
   const appearance = appearanceStyle(node, Math.min(scaleX, scaleY), liveEffects);
   let content = "";
+  if (node.fills !== undefined || node.strokes !== undefined) {
+    content = renderCanvasPaintStack(node, x, y, width, height, scaleX, scaleY, parentOpacity, gradientId, liveEffects);
+    return rotationWrapper(content, finite(node.rotation, 0), x, y, width, height);
+  }
   if (node.type === "text") {
     const fontSize = finite(node.fontSize, 26) * Math.min(scaleX, scaleY);
     const lineHeight = fontSize * finite(node.lineHeight, 1.2);
@@ -240,7 +310,7 @@ function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explici
     const renderedNode = node.type === "boolean" ? (() => {
       const children = index.booleanChildrenByParent.get(node.id) ?? [];
       const result = node.booleanOperation ? booleanCanvasNodes(children, node.booleanOperation) : null;
-      return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, shadow: node.shadow, parentId: node.parentId } : null;
+      return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, fills: node.fills, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, strokes: node.strokes, shadow: node.shadow, parentId: node.parentId } : null;
     })() : node;
     if (!renderedNode) return "";
     const rendered = renderCanvasPrimitive(renderedNode, 0, 0, 1, 1, undefined, 1, `canvas-gradient-${renderedNode.id}`, liveEffects);
@@ -272,7 +342,7 @@ function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explici
     return `<clipPath id="${clipId(frame.id)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}${rotation ? ` transform="rotate(${rotation} ${x + frameWidth / 2} ${y + frameHeight / 2})"` : ""}/></clipPath>`;
   }).join("");
   const componentMasks = definition.nodes.filter((child) => internalMaskSourceIds.has(child.id)).map((source) => {
-    const effective = { ...source, ...overrides[source.id], opacity: 1, shadow: undefined, strokeWidth: 0 };
+    const effective = { ...source, ...overrides[source.id], opacity: 1, shadow: undefined, strokeWidth: 0, fills: [{ id: `mask-fill-${source.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] };
     return `<clipPath id="${maskId(source.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive(effective, finite(node.x, 0), finite(node.y, 0), scaleX, scaleY)}</clipPath>`;
   }).join("");
   const renderedChildren = definition.nodes.map((child) => {
@@ -325,7 +395,7 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
     return `<clipPath id="canvas-clip-${escapeHtml(frame.id)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}${frame.rotation ? ` transform="rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})"` : ""}/></clipPath>`;
   }).join("");
   const maskIds = new Set(resolvedElements.flatMap((element) => element.type !== "component" && element.maskId ? [element.maskId] : []));
-  const masks = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type !== "component" && maskIds.has(element.id)).map((mask) => `<clipPath id="canvas-mask-${escapeHtml(mask.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0 })}</clipPath>`).join("");
+  const masks = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type !== "component" && maskIds.has(element.id)).map((mask) => `<clipPath id="canvas-mask-${escapeHtml(mask.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] })}</clipPath>`).join("");
   const gradientDefinition = (node: CanvasPrimitiveElement, id: string): string => {
     if (!node.fillGradient) return "";
     const vector = canvasGradientVector(node.fillGradient.angle);

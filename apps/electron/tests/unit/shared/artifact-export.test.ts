@@ -178,7 +178,7 @@ describe("renderArtifactForPdf", () => {
       frame: { width: 300, height: 200 },
       elements: [{ id: "instance", type: "component" as const, componentId: "masked", componentRole: "instance" as const, x: 20, y: 20, width: 120, height: 80, color: "#ffffff" }],
       components: [{ id: "masked", name: "Masked art", width: 120, height: 80, nodes: [
-        { id: "mask", type: "ellipse" as const, x: 20, y: 0, width: 80, height: 80, color: "#000000" },
+        { id: "mask", type: "ellipse" as const, x: 20, y: 0, width: 80, height: 80, color: "#000000", fills: [] },
         { id: "art", type: "rectangle" as const, x: 0, y: 0, width: 120, height: 80, color: "#ff0000", maskId: "mask" },
       ] }],
       appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
@@ -188,7 +188,8 @@ describe("renderArtifactForPdf", () => {
     const svg = renderCanvasSvg(content, "Masked component");
     expect(svg).toContain('id="canvas-component-mask-instance-mask"');
     expect(svg).toContain('clip-path="url(#canvas-component-mask-instance-mask)"');
-    expect(svg.match(/fill="#000000"/g)).toHaveLength(1);
+    expect(svg).toContain('fill="#ffffff" fill-opacity="1" stroke="none"');
+    expect(svg).not.toContain('fill="#000000"');
   });
 
   it("renders linked canvas component instances with local text overrides", () => {
@@ -438,6 +439,49 @@ describe("renderArtifactForPdf", () => {
     expect(svg).not.toContain("9px");
     expect(liveSvg).toContain('<g style="filter:blur(4px);mix-blend-mode:overlay"><g clip-path="url(#canvas-radius-clip-canvas-gradient-photo)" style="backdrop-filter:blur(10px)"><image');
     expect(liveSvg).toContain("backdrop-filter:blur(14px)");
+  });
+
+  it("exports ordered fill and stroke stacks with radial gradients and alignment masks", () => {
+    const content = {
+      format: "khadim-canvas" as const,
+      sceneVersion: 1 as const,
+      frame: { width: 320, height: 200 },
+      elements: [{
+        id: "painted", type: "rectangle" as const, x: 40, y: 30, width: 160, height: 100, color: "#ef4444", opacity: .8,
+        fills: [
+          { id: "base", visible: true, opacity: 1, color: "#ef4444" },
+          { id: "glow", visible: true, opacity: .65, color: "#2563eb", gradient: { type: "radial" as const, centerX: .25, centerY: .75, radius: .8, stops: [{ offset: 0, color: "#ffffff" }, { offset: 1, color: "#2563eb", opacity: .4 }] } },
+          { id: "hidden", visible: false, opacity: 1, color: "#00ff00" },
+        ],
+        strokes: [
+          { id: "inner", visible: true, color: "#111827", opacity: .7, width: 4, alignment: "inside" as const, style: "dashed" as const, dash: 6, gap: 3 },
+          { id: "outer", visible: true, color: "#6652d9", opacity: 1, width: 8, alignment: "outside" as const, style: "dotted" as const, dash: 1, gap: 5 },
+          { id: "hidden-stroke", visible: false, color: "#00ff00", opacity: 1, width: 20, alignment: "center" as const, style: "solid" as const },
+        ],
+      }],
+      components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Paint stacks");
+    expect(svg).toContain('<radialGradient id="canvas-gradient-painted-fill-1-glow" cx="0.25" cy="0.75" r="0.8">');
+    expect(svg.indexOf('fill="#ef4444" fill-opacity="1"')).toBeLessThan(svg.indexOf('fill="url(#canvas-gradient-painted-fill-1-glow)" fill-opacity="0.65"'));
+    expect(svg).toContain('clip-path="url(#canvas-paint-inside-canvas-gradient-painted)"');
+    expect(svg).toContain('mask="url(#canvas-paint-outside-canvas-gradient-painted)"');
+    expect(svg).toContain('stroke="#111827" stroke-opacity="0.7" stroke-width="8" stroke-dasharray="6 3"');
+    expect(svg).toContain('stroke="#6652d9" stroke-opacity="1" stroke-width="16" stroke-dasharray="1 5" stroke-linecap="round"');
+    expect(svg).not.toContain("#00ff00");
+    expect(svg).toContain('<g opacity="0.8">');
+  });
+
+  it("keeps imported open-path paint stacks unfilled and center-aligned", () => {
+    const svg = renderCanvasSvg({
+      format: "khadim-canvas", sceneVersion: 1, frame: { width: 200, height: 120 },
+      elements: [{ id: "curve", type: "path", x: 20, y: 20, width: 120, height: 60, color: "#ef4444", pathClosed: false, svgPathData: "M 0 0 C 20 80 100 -20 120 60", svgViewBox: { x: 0, y: 0, width: 120, height: 60 }, fills: [], strokes: [{ id: "curve-stroke", visible: true, color: "#2563eb", opacity: 1, width: 6, alignment: "outside", style: "solid" }] }],
+      components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {},
+    }, "Open curve");
+    expect(svg).toContain('fill="none" stroke="#2563eb" stroke-opacity="1" stroke-width="6"');
+    expect(svg).not.toContain("canvas-paint-outside");
+    expect(svg).not.toContain('fill="#ef4444"');
   });
 
   it("exports the latest safe visual preview for a React artifact", () => {

@@ -541,6 +541,21 @@ describe("StudioWorkspace canvas design workflow", () => {
     }
   });
 
+  it("applies component color overrides to stack-backed child fills", async () => {
+    const artifact = createArtifact("canvas", "project-a", "component-paint-stack", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    artifact.content.components = [{ id: "paint-card", name: "Paint card", width: 120, height: 80, nodes: [{ id: "surface", name: "Surface", type: "rectangle", x: 0, y: 0, width: 120, height: 80, color: "#2563eb", fills: [{ id: "base", visible: true, opacity: 1, color: "#ef4444" }, { id: "top", visible: true, opacity: .8, color: "#2563eb" }] }] }];
+    artifact.content.elements = [{ id: "instance", name: "Paint instance", type: "component", componentId: "paint-card", componentRole: "instance", x: 40, y: 40, width: 120, height: 80, color: "#ffffff" }];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Paint instance" }));
+    fireEvent.change(screen.getByLabelText("Surface color"), { target: { value: "#00ff00" } });
+
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({ overrides: { surface: { color: "#00ff00", fills: [{ id: "base", color: "#ef4444" }, { id: "top", color: "#00ff00", opacity: .8 }] } } });
+    expect(container.querySelector('.canvas-component-node [fill="#00ff00"]')).not.toBeNull();
+  });
+
   it("supports history, multi-selection alignment, and reusable component instances", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-a", "2026-07-22T10:00:00.000Z");
     const onChange = vi.fn();
@@ -745,6 +760,54 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(reused.elements[1]).toMatchObject({ fillStyleId: styled.styles[0].id, fillGradient: { angle: 35 } });
     fireEvent.change(screen.getByRole("spinbutton", { name: "Gradient angle" }), { target: { value: "55" } });
     expect(onChange.mock.calls.at(-1)?.[0].content.elements[1]).toMatchObject({ fillStyleId: undefined, fillGradient: { angle: 55 } });
+  });
+
+  it("authors ordered radial fills and aligned stroke stacks with undoable structural edits", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-paint-stacks", "2026-07-22T10:00:00.000Z");
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+
+    await user.click(screen.getByRole("button", { name: "Rectangle tool" }));
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 30, clientX: 140, clientY: 150 });
+    fireEvent.pointerMove(canvas, { pointerId: 30, clientX: 320, clientY: 270 });
+    fireEvent.pointerUp(canvas, { pointerId: 30, clientX: 320, clientY: 270 });
+
+    await user.click(screen.getByRole("button", { name: "Add fill" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Fill type" }), { target: { value: "radial" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Fill 1 radial center X" }), { target: { value: "0.3" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Fill 1 opacity" }), { target: { value: "65" } });
+    await user.click(screen.getByRole("button", { name: "Duplicate fill 1" }));
+    await user.click(screen.getByRole("button", { name: "Move fill 1 down" }));
+    await user.click(screen.getByRole("checkbox", { name: "Fill 1 visible" }));
+
+    await user.click(screen.getByRole("button", { name: "Add stroke" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Stroke 1 alignment" }), { target: { value: "outside" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Stroke 1 style" }), { target: { value: "dashed" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Stroke 1 dash" }), { target: { value: "9" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Stroke 1 gap" }), { target: { value: "3" } });
+    await user.click(screen.getByRole("button", { name: "Duplicate stroke 1" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({
+      fills: [expect.objectContaining({ visible: true }), expect.objectContaining({ gradient: expect.objectContaining({ type: "radial", centerX: .3 }), opacity: .65 }), expect.objectContaining({ gradient: expect.objectContaining({ type: "radial" }), visible: false })],
+      strokes: [expect.objectContaining({ alignment: "outside", style: "dashed", dash: 9, gap: 3 }), expect.objectContaining({ alignment: "outside", style: "dashed" })],
+    });
+    expect(canvas.querySelector("radialGradient")).not.toBeNull();
+    expect(canvas.querySelector("mask[id*='canvas-editor-paint-outside']")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Delete stroke 1" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].strokes).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].strokes).toHaveLength(2);
+    await user.click(screen.getByRole("tab", { name: "Assets" }));
+    await user.click(screen.getByRole("button", { name: "Save selected fill as style" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.styles).toEqual([expect.objectContaining({ gradient: expect.objectContaining({ type: "radial", centerX: .3 }) })]);
+    await user.click(screen.getByRole("button", { name: "Rectangle tool" }));
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 31, clientX: 380, clientY: 170 });
+    fireEvent.pointerMove(canvas, { pointerId: 31, clientX: 500, clientY: 250 });
+    fireEvent.pointerUp(canvas, { pointerId: 31, clientX: 500, clientY: 250 });
+    await user.click(screen.getByRole("button", { name: "Apply Rectangle paint" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[1]).toMatchObject({ fills: [expect.objectContaining({ gradient: expect.objectContaining({ type: "radial", centerX: .3 }) })] });
   });
 
   it("creates linked typography and effect styles with undoable design-system changes", async () => {

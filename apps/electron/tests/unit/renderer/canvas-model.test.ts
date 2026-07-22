@@ -272,6 +272,9 @@ describe("Khadim canvas scene model", () => {
       { ...first, id: "distant", x: 5_000, y: 5_000 },
       { ...first, id: "shadow-nearby", x: 1_070, y: 40, shadow: { color: "#000000", x: -120, y: 0, blur: 80, opacity: .2 } },
       { ...first, id: "blur-nearby", x: 880, y: 40, layerBlur: { value: 50, visible: true } },
+      { ...first, id: "outside-stroke-nearby", x: 830, y: 100, strokes: [{ id: "outer", visible: true, color: "#111827", opacity: 1, width: 40, alignment: "outside", style: "solid" }] },
+      { ...first, id: "inside-stroke-distant", x: 830, y: 180, strokes: [{ id: "inner", visible: true, color: "#111827", opacity: 1, width: 40, alignment: "inside", style: "solid" }] },
+      { ...first, id: "arrowhead-nearby", type: "arrow", x: 850, y: 260, width: 100, height: 40, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], strokes: [{ id: "arrow-stroke", visible: true, color: "#111827", opacity: 1, width: 10, alignment: "center", style: "solid" }] },
       { id: "blur-component", type: "component", componentId: "blur-card", componentRole: "instance", x: 940, y: 140, width: 80, height: 40, color: "#ffffff" },
       { ...first, id: "curved-nearby", type: "path", x: 1_200, y: 80, width: 100, height: 100, points: [{ x: 0, y: 0, handleOut: { x: -8, y: 0 } }, { x: 1, y: 1, handleIn: { x: -8, y: 1 } }], strokeWidth: 2 },
       { ...first, id: "selected-distant", x: 6_000, y: 6_000, maskId: "mask" },
@@ -284,8 +287,9 @@ describe("Khadim canvas scene model", () => {
     const culled = canvasViewportElements(canvasGeometryIndex(nodes, components), { x: -100, y: -100, width: 900, height: 700 }, ["selected-distant"], "boolean");
     const ids = new Set(culled.map((node) => node.id));
 
-    expect(ids).toEqual(new Set(["visible-parent", "visible", "shadow-nearby", "blur-nearby", "blur-component", "curved-nearby", "selected-distant", "mask", "boolean", "operand-a", "operand-b"]));
+    expect(ids).toEqual(new Set(["visible-parent", "visible", "shadow-nearby", "blur-nearby", "outside-stroke-nearby", "arrowhead-nearby", "blur-component", "curved-nearby", "selected-distant", "mask", "boolean", "operand-a", "operand-b"]));
     expect(ids.has("distant")).toBe(false);
+    expect(ids.has("inside-stroke-distant")).toBe(false);
   });
 
   it("calculates bounded layer-rail windows with overscan and stable spacers", () => {
