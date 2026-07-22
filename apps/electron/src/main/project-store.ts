@@ -288,6 +288,8 @@ function isCanvasLayout(value: unknown): boolean {
     && ["start", "center", "end", "space-between"].includes(String(layout.justify))
     && ["fixed", "hug"].includes(String(layout.sizing))
     && isFiniteCanvasNumber(layout.gap, 0, 100_000)
+    && (layout.crossGap === undefined || isFiniteCanvasNumber(layout.crossGap, 0, 100_000))
+    && (layout.wrap === undefined || typeof layout.wrap === "boolean")
     && isFiniteCanvasNumber(layout.padding, 0, 100_000);
 }
 

@@ -270,6 +270,31 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(elements.find((node: { id: string }) => node.id === "frame").width).toBe(128);
   });
 
+  it("authors wrapping, alignment, and distribution for fixed auto-layout frames", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-layout-wrap", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [
+      { id: "frame", type: "frame", name: "Wrapping stack", x: 40, y: 60, width: 220, height: 220, color: "#ffffff", layout: { direction: "row", align: "start", justify: "start", gap: 10, padding: 10, sizing: "fixed" } },
+      { id: "a", parentId: "frame", type: "rectangle", name: "A", x: 50, y: 70, width: 80, height: 40, color: "#2563eb" },
+      { id: "b", parentId: "frame", type: "rectangle", name: "B", x: 140, y: 70, width: 80, height: 48, color: "#f59e0b" },
+      { id: "c", parentId: "frame", type: "rectangle", name: "C", x: 230, y: 70, width: 80, height: 30, color: "#10b981" },
+    ];
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Wrap auto-layout children" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Layout cross gap" }), { target: { value: "12" } });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Layout distribution" }), "space-between");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Layout alignment" }), "end");
+
+    const elements = onChange.mock.calls.at(-1)?.[0].content.elements;
+    expect(elements.find((node: { id: string }) => node.id === "frame").layout).toMatchObject({ wrap: true, crossGap: 12, justify: "space-between", align: "end" });
+    expect(elements.find((node: { id: string }) => node.id === "a")).toMatchObject({ x: 50, y: 78 });
+    expect(elements.find((node: { id: string }) => node.id === "b")).toMatchObject({ x: 170, y: 70 });
+    expect(elements.find((node: { id: string }) => node.id === "c")).toMatchObject({ x: 50, y: 130 });
+  });
+
   it("pads selection exports for strokes and shadows", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-export-padding", "2026-07-22T10:00:00.000Z");
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
@@ -708,6 +733,33 @@ describe("StudioWorkspace canvas design workflow", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("applies page presets, custom dimensions, orientation, color, and undo", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-page-settings", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Page size preset" }), "phone");
+    let content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.frame).toEqual({ width: 390, height: 844 });
+    expect(content.pages.find((page: { id: string }) => page.id === content.activePageId).frame).toEqual(content.frame);
+
+    await user.click(screen.getByRole("button", { name: "Swap orientation" }));
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.frame).toEqual({ width: 844, height: 390 });
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.frame).toEqual({ width: 390, height: 844 });
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.frame).toEqual({ width: 844, height: 390 });
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Page width" }), { target: { value: "900" } });
+    fireEvent.change(screen.getByLabelText("Page background"), { target: { value: "#fef3c7" } });
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.frame).toEqual({ width: 900, height: 390 });
+    expect(content.appState.viewBackgroundColor).toBe("#fef3c7");
   });
 
   it("manages page-local layers, viewports, rulers, and persistent guides", async () => {

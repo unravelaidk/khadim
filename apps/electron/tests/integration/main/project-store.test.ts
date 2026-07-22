@@ -427,7 +427,7 @@ describe("ProjectStore", () => {
     await expect(store.saveArtifacts(project.id, [invalidStartPrototype])).rejects.toThrow("artifact library is invalid");
     const systemArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
       elements: [
-        { id: "frame", type: "frame", x: 0, y: 0, width: 400, height: 300, color: "#ffffff", layoutGrids: [{ id: "grid", type: "columns", visible: true, color: "#2563eb", opacity: .12, count: 12, gutter: 16, margin: 24 }] },
+        { id: "frame", type: "frame", x: 0, y: 0, width: 400, height: 300, color: "#ffffff", layout: { direction: "row", align: "start", justify: "space-between", gap: 16, crossGap: 20, padding: 24, sizing: "fixed", wrap: true }, layoutGrids: [{ id: "grid", type: "columns", visible: true, color: "#2563eb", opacity: .12, count: 12, gutter: 16, margin: 24 }] },
         { id: "surface", parentId: "frame", type: "rectangle", x: 24, y: 24, width: 120, height: 80, color: "#2563eb", tokenBindings: { fill: "brand-token" } },
         { id: "boolean", type: "boolean", booleanOperation: "union", x: 460, y: 20, width: 150, height: 100, color: "#2563eb" },
         { id: "boolean-a", parentId: "boolean", type: "rectangle", x: 460, y: 20, width: 100, height: 100, color: "#2563eb" },

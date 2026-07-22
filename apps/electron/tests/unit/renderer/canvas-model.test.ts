@@ -58,6 +58,21 @@ describe("Khadim canvas scene model", () => {
     expect(result.find((node) => node.id === outer.id)).toMatchObject({ width: 240, height: 110 });
   });
 
+  it("wraps fixed auto-layout children into lines with an independent cross gap", () => {
+    const wrappingFrame: CanvasPrimitiveNode = { ...frame, id: "wrapping", x: 40, y: 60, width: 220, height: 220, layout: { direction: "row", align: "start", justify: "start", gap: 10, crossGap: 12, padding: 10, sizing: "fixed", wrap: true } };
+    const children: CanvasPrimitiveNode[] = [
+      { ...first, id: "wrap-a", parentId: wrappingFrame.id, width: 80, height: 40 },
+      { ...first, id: "wrap-b", parentId: wrappingFrame.id, width: 80, height: 48 },
+      { ...first, id: "wrap-c", parentId: wrappingFrame.id, width: 80, height: 30 },
+    ];
+
+    const result = applyFrameLayout([wrappingFrame, ...children], wrappingFrame.id, []);
+
+    expect(result.find((node) => node.id === "wrap-a")).toMatchObject({ x: 50, y: 70 });
+    expect(result.find((node) => node.id === "wrap-b")).toMatchObject({ x: 140, y: 70 });
+    expect(result.find((node) => node.id === "wrap-c")).toMatchObject({ x: 50, y: 130 });
+  });
+
   it("tracks descendants and computes selection bounds without relying on rendering", () => {
     const nested: CanvasNode = { ...first, id: "nested", parentId: second.id };
     expect(descendantIds([frame, first, second, nested], [frame.id])).toEqual(expect.arrayContaining([first.id, second.id, nested.id]));

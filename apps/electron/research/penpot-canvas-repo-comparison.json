@@ -42,17 +42,20 @@
     }
   ],
   "implementedFromComparison": [
-    "Serializable click and hover triggers on primitive and component layers",
-    "Navigate, previous-screen, and protocol-validated external URL actions",
+    "Serializable click, hover, and timed triggers on primitive and component layers",
+    "Navigate, previous-screen, overlay, toggle-overlay, close-overlay, and protocol-validated external URL actions",
     "Instant, dissolve, and directional slide transitions with duration and easing",
-    "In-canvas prototype playback with navigation history",
-    "Deletion cleanup for interactions targeting removed pages"
+    "Accessible in-canvas prototype playback with navigation history and overlay focus management",
+    "Deletion cleanup for interactions targeting removed pages",
+    "Page ordering, prototype start screens, lazy thumbnails, and multi-page PDF output",
+    "Shared large-scene geometry indexing, viewport culling, and virtualized layer rails",
+    "Fixed and hug auto-layout with alignment, distribution, padding, wrapping, and independent line gaps"
   ],
   "nextHighValueGaps": [
-    "Overlay actions and multiple named prototype flows",
+    "Multiple named prototype flows and matching-layer animation",
     "Semantic canvas command and undo transaction modules",
     "Center, midpoint, and guide-aware snapping in shared geometry",
     "Nested component cycle validation",
-    "Prototype keyboard focus order and scroll-container behavior"
+    "Prototype scroll-container behavior"
   ]
 }

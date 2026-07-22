@@ -293,6 +293,14 @@ metadata, page rows use browser-native content visibility, and page thumbnails
 render only near the scroll viewport while the active page stays eager.
 Large-scene tests cover culling, rail windowing, and editing a distant layer.
 
+Page-level design controls now expose phone, tablet, desktop, presentation, and
+A4 presets alongside bounded custom dimensions, orientation swapping, and page
+background color. Every change stays page-local, participates in the shared
+undo history, and updates the active-page compatibility mirror. Frame
+auto-layout now supports fixed or hug sizing, main-axis distribution,
+cross-axis alignment, padding, child gaps, fixed-frame wrapping, and a separate
+gap between wrapped lines.
+
 ### Google Workspace read-only integrations
 
 Use one Google desktop OAuth grant for the first read-only Workspace bundle:

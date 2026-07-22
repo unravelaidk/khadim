@@ -459,8 +459,10 @@ export interface CanvasAutoLayout {
   align: "start" | "center" | "end";
   justify: "start" | "center" | "end" | "space-between";
   gap: number;
+  crossGap?: number;
   padding: number;
   sizing: "fixed" | "hug";
+  wrap?: boolean;
 }
 
 export interface CanvasLayoutGrid {

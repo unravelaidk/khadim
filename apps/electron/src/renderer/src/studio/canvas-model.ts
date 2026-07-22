@@ -449,20 +449,38 @@ function applyFrameLayoutCascade(nodes: CanvasNode[], frameId: string, component
       }
     : frame;
   const availableMain = (layout.direction === "row" ? nextFrame.width : nextFrame.height) - layout.padding * 2;
-  let gap = layout.gap;
-  let cursor = layout.padding;
-  if (layout.justify === "center") cursor += Math.max(0, (availableMain - contentMain) / 2);
-  if (layout.justify === "end") cursor += Math.max(0, availableMain - contentMain);
-  if (layout.justify === "space-between" && sizes.length > 1) gap = Math.max(layout.gap, (availableMain - mainSizes.reduce((sum, size) => sum + size, 0)) / (sizes.length - 1));
-  const positioned = new Map<string, { x: number; y: number }>();
+  const availableCross = (layout.direction === "row" ? nextFrame.height : nextFrame.width) - layout.padding * 2;
+  const wraps = Boolean(layout.wrap) && layout.sizing === "fixed";
+  const lines: typeof sizes[] = [];
   for (const size of sizes) {
-    const availableCross = (layout.direction === "row" ? nextFrame.height : nextFrame.width) - layout.padding * 2;
-    const crossSize = layout.direction === "row" ? size.height : size.width;
-    const cross = layout.padding + (layout.align === "center" ? (availableCross - crossSize) / 2 : layout.align === "end" ? availableCross - crossSize : 0);
-    positioned.set(size.node.id, layout.direction === "row"
-      ? { x: nextFrame.x + cursor, y: nextFrame.y + cross }
-      : { x: nextFrame.x + cross, y: nextFrame.y + cursor });
-    cursor += (layout.direction === "row" ? size.width : size.height) + gap;
+    const line = lines.at(-1);
+    const sizeMain = layout.direction === "row" ? size.width : size.height;
+    const lineMain = line?.reduce((sum, candidate) => sum + (layout.direction === "row" ? candidate.width : candidate.height), 0) ?? 0;
+    const required = lineMain + (line?.length ? layout.gap * line.length : 0) + sizeMain;
+    if (wraps && line?.length && required > availableMain) lines.push([size]);
+    else if (line) line.push(size);
+    else lines.push([size]);
+  }
+  const positioned = new Map<string, { x: number; y: number }>();
+  let crossCursor = layout.padding;
+  for (const line of lines) {
+    const lineMainSizes = line.map((size) => layout.direction === "row" ? size.width : size.height);
+    const lineContentMain = lineMainSizes.reduce((sum, size) => sum + size, 0) + layout.gap * Math.max(0, line.length - 1);
+    const lineCross = wraps ? Math.max(...line.map((size) => layout.direction === "row" ? size.height : size.width)) : availableCross;
+    let gap = layout.gap;
+    let cursor = layout.padding;
+    if (layout.justify === "center") cursor += Math.max(0, (availableMain - lineContentMain) / 2);
+    if (layout.justify === "end") cursor += Math.max(0, availableMain - lineContentMain);
+    if (layout.justify === "space-between" && line.length > 1) gap = Math.max(layout.gap, (availableMain - lineMainSizes.reduce((sum, size) => sum + size, 0)) / (line.length - 1));
+    for (const size of line) {
+      const crossSize = layout.direction === "row" ? size.height : size.width;
+      const cross = crossCursor + (layout.align === "center" ? (lineCross - crossSize) / 2 : layout.align === "end" ? lineCross - crossSize : 0);
+      positioned.set(size.node.id, layout.direction === "row"
+        ? { x: nextFrame.x + cursor, y: nextFrame.y + cross }
+        : { x: nextFrame.x + cross, y: nextFrame.y + cursor });
+      cursor += (layout.direction === "row" ? size.width : size.height) + gap;
+    }
+    crossCursor += lineCross + (layout.crossGap ?? layout.gap);
   }
   const deltas = new Map(children.map((child) => {
     const position = positioned.get(child.id)!;
