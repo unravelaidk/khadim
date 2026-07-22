@@ -2628,7 +2628,7 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 @keyframes studio-editor-spin { to { transform: rotate(360deg); } }
 .canvas-layout { position: relative; grid-template-columns: 210px minmax(0, 1fr) 240px; background: var(--surface); }
 .canvas-layers { min-width: 0; overflow: hidden; display: grid; grid-template-rows: auto 42px minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--surface); }
-.canvas-pages-panel { max-height: 176px; overflow: hidden; border-bottom: 1px solid var(--line); }
+.canvas-pages-panel { max-height: 230px; overflow: hidden; border-bottom: 1px solid var(--line); }
 .canvas-pages-panel > header { height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 7px 0 12px; color: var(--text-3); }
 .canvas-pages-panel > header strong { font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
 .canvas-pages-panel > header span { display: flex; gap: 2px; }
@@ -2639,12 +2639,14 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 .canvas-page-start { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border-radius: 6px; }
 .canvas-pages-panel > header button:hover,
 .canvas-pages-panel > div > div > button:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
-.canvas-pages-panel > div { max-height: 136px; overflow: auto; padding: 2px 6px 7px; display: grid; gap: 2px; }
-.canvas-pages-panel > div > div { min-width: 0; height: 34px; display: grid; grid-template-columns: minmax(0, 1fr) 26px 18px 26px; align-items: center; border-radius: 6px; }
+.canvas-pages-panel > div { max-height: 190px; overflow: auto; padding: 3px 6px 7px; display: grid; gap: 3px; }
+.canvas-pages-panel > div > div { min-width: 0; height: 42px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 26px 18px 26px; align-items: center; border-radius: 7px; }
 .canvas-pages-panel > div > div.active { background: var(--choice-active); }
-.canvas-pages-panel > div > div > button:first-child { min-width: 0; height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 7px; border: 0; color: var(--text-2); background: transparent; text-align: left; }
-.canvas-pages-panel > div > div > button:first-child span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.canvas-pages-panel > div > div > button:first-child small { color: var(--text-3); font-size: 9px; }
+.canvas-page-open { min-width: 0; height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 6px; border: 0; color: var(--text-2); background: transparent; text-align: left; }
+.canvas-page-open span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.canvas-page-open small { color: var(--text-3); font-size: 11px; }
+.canvas-page-thumbnail { box-sizing: border-box; width: 34px; height: 28px; overflow: hidden; display: grid; place-items: center; margin-left: 3px; border: 1px solid var(--line); border-radius: 4px; background: var(--artifact-matte); }
+.canvas-page-thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .canvas-pages-panel input { min-width: 0; width: 100%; height: 26px; padding: 0 7px; border: 1px solid transparent; border-radius: 5px; outline: 0; color: var(--text); background: transparent; font-size: 11px; }
 .canvas-pages-panel input:focus { border-color: color-mix(in oklch, var(--blue) 45%, var(--line)); background: var(--surface-raised); }
 .canvas-pages-panel button:disabled { opacity: .25; }

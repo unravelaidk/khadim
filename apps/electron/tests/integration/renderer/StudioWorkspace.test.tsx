@@ -638,14 +638,18 @@ describe("StudioWorkspace canvas design workflow", () => {
     const user = userEvent.setup();
     const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
     const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const initialThumbnailSource = container.querySelector<HTMLImageElement>(".canvas-page-thumbnail img")?.src;
 
     await user.click(screen.getByRole("button", { name: "Rectangle tool" }));
     fireEvent.pointerDown(canvas, { button: 0, pointerId: 31, clientX: 120, clientY: 140 });
     fireEvent.pointerMove(canvas, { pointerId: 31, clientX: 240, clientY: 220 });
     fireEvent.pointerUp(canvas, { pointerId: 31, clientX: 240, clientY: 220 });
+    await waitFor(() => expect(container.querySelector<HTMLImageElement>(".canvas-page-thumbnail img")?.src).not.toBe(initialThumbnailSource));
     await user.click(screen.getByRole("button", { name: "Add page" }));
     let content = onChange.mock.calls.at(-1)?.[0].content;
     expect(content.pages).toHaveLength(2);
+    expect(container.querySelectorAll(".canvas-page-thumbnail img")).toHaveLength(2);
+    expect([...container.querySelectorAll<HTMLImageElement>(".canvas-page-thumbnail img")].every((image) => image.src.startsWith("data:image/svg+xml"))).toBe(true);
     expect(content.elements).toEqual([]);
     expect(content.pages.find((page: { id: string }) => page.id === content.activePageId).elements).toEqual(content.elements);
 

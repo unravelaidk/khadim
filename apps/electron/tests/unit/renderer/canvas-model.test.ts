@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyFrameResizeConstraints,
   applyFrameLayout,
+  canvasGeometryIndex,
   canvasPages,
+  canvasThumbnailElements,
   descendantIds,
   effectivePrimitive,
   isCanvasNode,
@@ -85,5 +87,42 @@ describe("Khadim canvas scene model", () => {
   it("upgrades a legacy single-page scene into a stable page snapshot", () => {
     const pages = canvasPages({ format: "khadim-canvas", sceneVersion: 1, frame: { width: 960, height: 600 }, elements: [first], components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {} });
     expect(pages).toEqual([{ id: "page-1", name: "Page 1", frame: { width: 960, height: 600 }, elements: [first], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true } }]);
+  });
+
+  it("indexes large scene geometry and inherited interaction flags without recursive walks", () => {
+    const nodes: CanvasNode[] = Array.from({ length: 5_000 }, (_, index) => ({
+      ...first,
+      id: `node-${index}`,
+      parentId: index ? `node-${index - 1}` : undefined,
+      x: index,
+      hidden: index === 12,
+      locked: index === 24,
+    }));
+
+    const index = canvasGeometryIndex(nodes, []);
+
+    expect(index).toHaveLength(5_000);
+    expect(index[11]).toMatchObject({ hidden: false, locked: false, rect: { x: 11, y: 0, width: 80, height: 40 } });
+    expect(index[12]).toMatchObject({ hidden: true, locked: false });
+    expect(index[24]).toMatchObject({ hidden: true, locked: true });
+    expect(index.at(-1)).toMatchObject({ hidden: true, locked: true });
+  });
+
+  it("bounds thumbnail scenes while retaining backdrops, top layers, and dependencies", () => {
+    const nodes: CanvasNode[] = Array.from({ length: 600 }, (_, index) => ({
+      ...first,
+      id: `layer-${index}`,
+      parentId: index === 599 ? "layer-200" : undefined,
+      maskId: index === 599 ? "layer-300" : undefined,
+    }));
+
+    const preview = canvasThumbnailElements(nodes, 120);
+    const ids = new Set(preview.map((node) => node.id));
+
+    expect(preview.length).toBeLessThanOrEqual(240);
+    expect(ids.has("layer-0")).toBe(true);
+    expect(ids.has("layer-599")).toBe(true);
+    expect(ids.has("layer-300")).toBe(true);
+    expect(ids.has("layer-200")).toBe(true);
   });
 });

@@ -293,14 +293,20 @@ function isCanvasLayout(value: unknown): boolean {
 
 function hasCanvasParentCycle(nodes: Record<string, unknown>[]): boolean {
   const parentById = new Map(nodes.map((node) => [node.id as string, node.parentId as string | undefined]));
+  const state = new Map<string, "visiting" | "complete">();
   for (const node of nodes) {
-    const visited = new Set<string>();
+    if (state.get(node.id as string) === "complete") continue;
+    const path: string[] = [];
     let current: string | undefined = node.id as string;
     while (current) {
-      if (visited.has(current)) return true;
-      visited.add(current);
+      const currentState = state.get(current);
+      if (currentState === "visiting") return true;
+      if (currentState === "complete") break;
+      state.set(current, "visiting");
+      path.push(current);
       current = parentById.get(current);
     }
+    path.forEach((id) => state.set(id, "complete"));
   }
   return false;
 }

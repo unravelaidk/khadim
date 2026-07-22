@@ -392,6 +392,11 @@ describe("ProjectStore", () => {
     await store.saveArtifacts(project.id, [artifact]);
     await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([artifact]);
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    const deepElements: CanvasPrimitiveElement[] = Array.from({ length: 8_000 }, (_, index) => ({ id: `deep-${index}`, parentId: index ? `deep-${index - 1}` : undefined, type: "rectangle", x: index, y: index, width: 10, height: 10, color: "#ffffff" }));
+    const deepArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: deepElements } };
+    await store.saveArtifacts(project.id, [deepArtifact]);
+    const [reloadedDeepArtifact] = await new ProjectStore(dataDirectory).listArtifacts(project.id);
+    expect(reloadedDeepArtifact.content.format === "khadim-canvas" ? reloadedDeepArtifact.content.elements : []).toHaveLength(8_000);
     const pagedArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, activePageId: "page-a", pages: [
       { id: "page-a", name: "Flow", frame: artifact.content.frame, elements: artifact.content.elements, appState: artifact.content.appState },
       { id: "page-b", name: "Archive", frame: { width: 1200, height: 800 }, elements: [], appState: { viewBackgroundColor: "#f8fafc", snapToGrid: false, guides: [{ id: "guide-a", axis: "x", position: 240 }] } },

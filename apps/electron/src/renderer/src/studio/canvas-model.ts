@@ -57,6 +57,13 @@ export interface CanvasRect {
   height: number;
 }
 
+export interface CanvasGeometryEntry {
+  node: CanvasNode;
+  rect: CanvasRect;
+  hidden: boolean;
+  locked: boolean;
+}
+
 export function isCanvasPrimitiveNode(value: unknown): value is CanvasPrimitiveNode {
   if (!value || typeof value !== "object") return false;
   const node = value as Partial<CanvasPrimitiveNode>;
@@ -129,6 +136,77 @@ export function nodeSize(node: CanvasNode, components: CanvasComponentDefinition
 export function nodeRect(node: CanvasNode, components: CanvasComponentDefinition[]): CanvasRect {
   const size = nodeSize(node, components);
   return { x: node.x, y: node.y, width: size.width, height: size.height };
+}
+
+/** Builds reusable geometry and inherited interaction flags in linear time. */
+export function canvasGeometryIndex(nodes: CanvasNode[], components: CanvasComponentDefinition[]): CanvasGeometryEntry[] {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const componentsById = new Map(components.map((component) => [component.id, component]));
+  const flagsById = new Map<string, { hidden: boolean; locked: boolean }>();
+
+  for (const node of nodes) {
+    if (flagsById.has(node.id)) continue;
+    const path: CanvasNode[] = [];
+    const visited = new Set<string>();
+    let current: CanvasNode | undefined = node;
+    while (current && !flagsById.has(current.id) && !visited.has(current.id)) {
+      visited.add(current.id);
+      path.push(current);
+      current = current.parentId ? nodesById.get(current.parentId) : undefined;
+    }
+    let flags = current ? flagsById.get(current.id) ?? { hidden: false, locked: false } : { hidden: false, locked: false };
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const candidate = path[index];
+      flags = { hidden: flags.hidden || Boolean(candidate.hidden), locked: flags.locked || Boolean(candidate.locked) };
+      flagsById.set(candidate.id, flags);
+    }
+  }
+
+  return nodes.map((node) => {
+    const definition = node.type === "component" ? componentsById.get(node.componentId) : undefined;
+    const width = node.type === "component" ? node.width || definition?.width || 1 : node.width;
+    const height = node.type === "component" ? node.height || definition?.height || 1 : node.height;
+    return { node, rect: { x: node.x, y: node.y, width, height }, ...(flagsById.get(node.id) ?? { hidden: Boolean(node.hidden), locked: Boolean(node.locked) }) };
+  });
+}
+
+/** Bounds preview work while retaining backdrops, top layers, and their scene dependencies. */
+export function canvasThumbnailElements(nodes: CanvasNode[], maximum = 180): CanvasNode[] {
+  if (nodes.length <= maximum) return nodes;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const selected = new Set<string>();
+  const dependencyLimit = maximum * 2;
+  const backgroundCount = Math.min(36, Math.floor(maximum / 4));
+  nodes.slice(0, backgroundCount).forEach((node) => selected.add(node.id));
+  nodes.slice(-(maximum - backgroundCount)).forEach((node) => selected.add(node.id));
+
+  const includeDependency = (id: string | undefined): void => {
+    const visited = new Set<string>();
+    let currentId = id;
+    while (currentId && !visited.has(currentId) && selected.size < dependencyLimit) {
+      visited.add(currentId);
+      const dependency = byId.get(currentId);
+      if (!dependency) break;
+      selected.add(dependency.id);
+      if (dependency.type !== "component") {
+        if (dependency.maskId) selected.add(dependency.maskId);
+        if (dependency.startBindingId) selected.add(dependency.startBindingId);
+        if (dependency.endBindingId) selected.add(dependency.endBindingId);
+      }
+      currentId = dependency.parentId;
+    }
+  };
+
+  [...selected].forEach((id) => {
+    const node = byId.get(id);
+    includeDependency(node?.parentId);
+    if (node?.type !== "component") {
+      includeDependency(node?.maskId);
+      includeDependency(node?.startBindingId);
+      includeDependency(node?.endBindingId);
+    }
+  });
+  return nodes.filter((node) => selected.has(node.id));
 }
 
 export function rotatedRect(rect: CanvasRect, rotation = 0): CanvasRect {

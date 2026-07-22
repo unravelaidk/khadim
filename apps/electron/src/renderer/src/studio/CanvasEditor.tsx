@@ -42,7 +42,7 @@ import {
   TextT,
   Trash,
 } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Artifact, CanvasPrototypeInteraction } from "../../../shared/types";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, normalizeCanvasPath, resolveCanvasConnectors, type CanvasAbsolutePoint } from "../../../shared/canvas-geometry";
@@ -54,9 +54,11 @@ import {
   applyFrameLayout,
   applyFrameResizeConstraints,
   canvasComponents,
+  canvasGeometryIndex,
   canvasNodes,
   canvasPages,
   canvasSignature,
+  canvasThumbnailElements,
   descendantIds,
   effectivePrimitive,
   intersects,
@@ -256,6 +258,36 @@ function wrapTextLines(text: string, width: number, fontSize: number): string[] 
   });
 }
 
+interface CanvasPageThumbnailProps {
+  page: CanvasPage;
+  components: CanvasComponentDefinition[];
+  files: CanvasArtifactContent["files"];
+  title: string;
+}
+
+function canvasPageThumbnailSource({ page, components, files, title }: CanvasPageThumbnailProps): string {
+  const svg = renderCanvasSvg({
+    format: "khadim-canvas",
+    sceneVersion: 1,
+    frame: page.frame,
+    elements: canvasThumbnailElements(page.elements),
+    components,
+    appState: page.appState,
+    files,
+  }, `${title} — ${page.name} thumbnail`);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+const CanvasPageThumbnail = memo(function CanvasPageThumbnail({ page, components, files, title }: CanvasPageThumbnailProps): React.JSX.Element {
+  const props = { page, components, files, title };
+  const [source, setSource] = useState(() => canvasPageThumbnailSource(props));
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSource(canvasPageThumbnailSource(props)), 160);
+    return () => window.clearTimeout(timeout);
+  }, [components, files, page, title]);
+  return <span className="canvas-page-thumbnail" aria-hidden="true"><img alt="" draggable={false} src={source} /></span>;
+});
+
 export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps): React.JSX.Element {
   const incomingNodes = useMemo(() => canvasNodes(content), [content.elements]);
   const incomingComponents = useMemo(() => canvasComponents(content), [content.components]);
@@ -336,6 +368,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const selectedNodes = nodes.filter((node) => selectedIds.includes(node.id));
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : undefined;
   const selectedBounds = selectionRect(selectedNodes, components);
+  const geometryIndex = useMemo(() => canvasGeometryIndex(nodes, components), [components, nodes]);
+  const geometryById = useMemo(() => new Map(geometryIndex.map((entry) => [entry.node.id, entry])), [geometryIndex]);
   const selectedExportBounds = selectedBounds ? (() => {
     const visualRects = selectedNodes.map((node) => {
       if (node.type !== "component" && (node.type === "path" || node.type === "arrow") && node.points?.length) {
@@ -395,15 +429,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   useEffect(() => setSelectedPathPointIndex(null), [selectedNode?.id]);
 
   function hasNodeOrAncestorFlag(node: CanvasNode, flag: "hidden" | "locked"): boolean {
-    let current: CanvasNode | undefined = node;
-    const visited = new Set<string>();
-    while (current && !visited.has(current.id)) {
-      visited.add(current.id);
-      if (current[flag]) return true;
-      const parentId: string | undefined = current.parentId;
-      current = parentId ? nodes.find((candidate) => candidate.id === parentId) : undefined;
-    }
-    return false;
+    return geometryById.get(node.id)?.[flag] ?? Boolean(node[flag]);
   }
 
   function layerDepth(node: CanvasNode): number {
@@ -1585,11 +1611,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   }
 
   function nodeAtPoint(point: { x: number; y: number }, excludeId?: string): CanvasNode | undefined {
-    return [...nodesRef.current].reverse().find((node) => node.id !== excludeId
-      && node.type !== "arrow"
-      && !hasNodeOrAncestorFlag(node, "hidden")
-      && !hasNodeOrAncestorFlag(node, "locked")
-      && intersects({ x: point.x, y: point.y, width: 0, height: 0 }, nodeRect(node, componentsRef.current)));
+    for (let index = geometryIndex.length - 1; index >= 0; index -= 1) {
+      const entry = geometryIndex[index];
+      if (entry.node.id !== excludeId && entry.node.type !== "arrow" && !entry.hidden && !entry.locked
+        && intersects({ x: point.x, y: point.y, width: 0, height: 0 }, entry.rect)) return entry.node;
+    }
+    return undefined;
   }
 
   function finishPenDraft(closed = false): void {
@@ -1887,7 +1914,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         for (let index = 0; index < count; index++) layoutGridY.push(gridFrame.y + margin + index * (size + gutter), gridFrame.y + margin + index * (size + gutter) + size);
       }
     }
-    const otherRects = nodes.filter((node) => !movingIds.includes(node.id) && !node.hidden).map((node) => nodeRect(node, components));
+    const movingIdSet = new Set(movingIds);
+    const otherRects = geometryIndex.filter((entry) => !movingIdSet.has(entry.node.id) && !entry.hidden).map((entry) => entry.rect);
     const xCandidates = [0, canvasFrame.width / 2, canvasFrame.width, ...layoutGridX, ...rulerGuides.filter((guide) => guide.axis === "x").map((guide) => guide.position), ...otherRects.flatMap((rect) => [rect.x, rect.x + rect.width / 2, rect.x + rect.width])];
     const yCandidates = [0, canvasFrame.height / 2, canvasFrame.height, ...layoutGridY, ...rulerGuides.filter((guide) => guide.axis === "y").map((guide) => guide.position), ...otherRects.flatMap((rect) => [rect.y, rect.y + rect.height / 2, rect.y + rect.height])];
     const xAnchors = [bounds.x + x, bounds.x + x + bounds.width / 2, bounds.x + x + bounds.width];
@@ -2168,7 +2196,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     }
     if (gesture.kind === "marquee") {
       const rect = { x: Math.min(gesture.startX, gesture.currentX), y: Math.min(gesture.startY, gesture.currentY), width: Math.abs(gesture.currentX - gesture.startX), height: Math.abs(gesture.currentY - gesture.startY) };
-      if (rect.width > 2 || rect.height > 2) setSelectedIds(nodes.filter((node) => !hasNodeOrAncestorFlag(node, "hidden") && !hasNodeOrAncestorFlag(node, "locked") && intersects(rect, nodeRect(node, components))).map((node) => node.id));
+      if (rect.width > 2 || rect.height > 2) setSelectedIds(geometryIndex.filter((entry) => !entry.hidden && !entry.locked && intersects(rect, entry.rect)).map((entry) => entry.node.id));
       setMarquee(null);
     }
   }
@@ -2454,9 +2482,10 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         <section className="canvas-pages-panel" aria-label="Canvas pages">
           <header><strong>Pages</strong><span><button type="button" aria-label="Duplicate current page" title="Duplicate page" onClick={() => createPage(true)}><Copy size={12} /></button><button type="button" aria-label="Add page" title="Add page" onClick={() => createPage(false)}><Plus size={13} /></button></span></header>
           <div>{pages.map((page, index) => <div className={page.id === activePageId ? "active" : ""} key={page.id}>
+            <CanvasPageThumbnail page={page} components={components} files={content.files} title={artifact.title} />
             {page.id === activePageId
               ? <input key={`${page.id}:${page.name}`} aria-label="Current page name" defaultValue={page.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = page.name; else renamePage(page.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
-              : <button type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}
+              : <button className="canvas-page-open" type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}
             <button className="canvas-page-start" type="button" aria-label={page.id === prototypeStartPageId ? `${page.name} is prototype start` : `Set ${page.name} as prototype start`} aria-pressed={page.id === prototypeStartPageId} title={page.id === prototypeStartPageId ? "Prototype start" : "Set as prototype start"} onClick={() => markPrototypeStart(page.id)}><Flag size={11} weight={page.id === prototypeStartPageId ? "fill" : "regular"} /></button>
             <span className="canvas-page-move">
               <button type="button" aria-label={`Move ${page.name} up`} disabled={index === 0} onClick={() => movePage(page.id, -1)}><CaretUp size={10} /></button>

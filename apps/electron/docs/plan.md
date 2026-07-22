@@ -266,7 +266,9 @@ hotspots respect hidden ancestors, masks, and clipped frames. Persistence
 rejects malformed actions, unsafe URL protocols, duplicate triggers, and stale
 page destinations. Pages can be reordered and nominate an explicit prototype
 start screen; deleting that screen chooses a valid fallback and undo restores
-the prior flow. PDF output emits every canvas page on a separate sheet.
+the prior flow. The page rail renders bounded, idle-updated thumbnails so scene
+edits stay visually navigable without regenerating every preview during a
+gesture. PDF output emits every canvas page on a separate sheet.
 
 The next architectural extraction should follow Penpot's change-builder model:
 move semantic canvas commands and grouped undo transactions out of
@@ -274,6 +276,12 @@ move semantic canvas commands and grouped undo transactions out of
 centers, frame edge midpoints, and guides. The raw comparison, exact upstream
 paths, and remaining gaps are recorded in
 [`penpot-canvas-repo-comparison.json`](../research/penpot-canvas-repo-comparison.json).
+
+Large-scene interaction now builds one linear geometry/ancestor-state index per
+scene revision and reuses it for hit testing, marquee selection, and snap
+candidates. Persistence cycle detection is also linear and is covered at 8,000
+nested elements. The next performance boundary is viewport culling for SVG
+rendering and virtualized layer/page rails.
 
 ### Google Workspace read-only integrations
 
@@ -514,8 +522,7 @@ the same in Preview and PDF preparation.
 
 1. Extract semantic canvas commands and grouped undo transactions from
    `CanvasEditor`, then index geometry for large-scene hit testing and snapping.
-2. Add page thumbnails, prototype overlay actions, and selection-aware agent
-   patch protocols.
+2. Add prototype overlay actions and selection-aware agent patch protocols.
 3. Harden the HTML document editor with selection-scoped agent patches,
    revision history, and long-document pagination fixtures.
 4. Add export fixtures for long documents, complex multi-page canvases, and compiled
