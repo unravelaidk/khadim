@@ -89,6 +89,109 @@ describe("StudioWorkspace artifact synchronization", () => {
 describe("StudioWorkspace canvas design workflow", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+  it("snaps dragged layers to equal peer spacing, shows measurements, and supports modifier bypass", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-snapping", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [
+      { id: "left", type: "rectangle", name: "Left", x: 0, y: 60, width: 40, height: 40, color: "#2563eb" },
+      { id: "moving", type: "rectangle", name: "Moving", x: 50, y: 60, width: 40, height: 40, color: "#f59e0b" },
+      { id: "right", type: "rectangle", name: "Right", x: 160, y: 60, width: 40, height: 40, color: "#16a34a" },
+    ];
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const movingNode = container.querySelectorAll<SVGGraphicsElement>(".canvas-node")[1];
+
+    fireEvent.pointerDown(movingNode, { button: 0, pointerId: 81, clientX: 125.2, clientY: 124.8 });
+    fireEvent.pointerMove(canvas, { pointerId: 81, clientX: 144.96, clientY: 124.8 });
+    expect(canvas).toHaveAccessibleDescription(/Control or Command while dragging to bypass snapping/);
+    expect(container.querySelector(".canvas-snap-feedback")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector("output[aria-live='polite']")).toHaveTextContent("Equal horizontal spacing 40 pixels");
+    expect(container.querySelectorAll(".canvas-snap-distance")).toHaveLength(2);
+    expect([...container.querySelectorAll(".canvas-snap-distance text")].map((node) => node.textContent)).toEqual(["40", "40"]);
+    fireEvent.pointerUp(canvas, { pointerId: 81, clientX: 144.96, clientY: 124.8 });
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements.find((node: { id: string }) => node.id === "moving")).toMatchObject({ x: 80, y: 60 });
+    expect(container.querySelector(".canvas-snap-distance")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const restoredNode = container.querySelectorAll<SVGGraphicsElement>(".canvas-node")[1];
+    fireEvent.pointerDown(restoredNode, { button: 0, pointerId: 82, clientX: 125.2, clientY: 124.8 });
+    fireEvent.pointerMove(canvas, { pointerId: 82, clientX: 144.96, clientY: 124.8, ctrlKey: true });
+    expect(container.querySelector(".canvas-snap-feedback line")).toBeNull();
+    fireEvent.pointerUp(canvas, { pointerId: 82, clientX: 144.96, clientY: 124.8, ctrlKey: true });
+    const freelyMoved = onChange.mock.calls.at(-1)?.[0].content.elements.find((node: { id: string }) => node.id === "moving");
+    expect(freelyMoved.x).toBeCloseTo(76);
+    expect(freelyMoved.y).toBeCloseTo(60);
+  });
+
+  it("does not treat a moving frame's own layout grid as stationary snap geometry", () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-moving-grid", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.appState = { ...artifact.content.appState, snapToGrid: false };
+    artifact.content.elements = [{
+      id: "moving-frame",
+      type: "frame",
+      name: "Moving frame",
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+      color: "#ffffff",
+      layoutGrids: [{ id: "columns", type: "columns", visible: true, color: "#2563eb", opacity: .2, count: 2, gutter: 0, margin: 0 }],
+    }];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const frameNode = container.querySelector<SVGGraphicsElement>(".canvas-node")!;
+
+    fireEvent.pointerDown(frameNode, { button: 0, pointerId: 83, clientX: 224, clientY: 178 });
+    fireEvent.pointerMove(canvas, { pointerId: 83, clientX: 226.28, clientY: 178 });
+    fireEvent.pointerUp(canvas, { pointerId: 83, clientX: 226.28, clientY: 178 });
+
+    const moved = onChange.mock.calls.at(-1)?.[0].content.elements[0];
+    expect(moved.x).toBeCloseTo(103);
+  });
+
+  it("ignores axis-aligned grid targets inside rotated frames", () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-rotated-grid", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.appState = { ...artifact.content.appState, snapToGrid: false };
+    artifact.content.elements = [
+      { id: "rotated", type: "frame", name: "Rotated frame", x: 400, y: 100, width: 300, height: 200, rotation: 90, color: "#ffffff", layoutGrids: [{ id: "columns", type: "columns", visible: true, color: "#2563eb", opacity: .2, count: 3, gutter: 10, margin: 10 }] },
+      { id: "child", parentId: "rotated", type: "rectangle", name: "Child", x: 490, y: 160, width: 40, height: 40, color: "#f59e0b" },
+    ];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const childNode = container.querySelectorAll<SVGGraphicsElement>(".canvas-node")[1];
+
+    fireEvent.pointerDown(childNode, { button: 0, pointerId: 84, clientX: 459.6, clientY: 200.8 });
+    fireEvent.pointerMove(canvas, { pointerId: 84, clientX: 461.88, clientY: 200.8 });
+    fireEvent.pointerUp(canvas, { pointerId: 84, clientX: 461.88, clientY: 200.8 });
+
+    const moved = onChange.mock.calls.at(-1)?.[0].content.elements.find((node: { id: string }) => node.id === "child");
+    expect(moved.x).toBeCloseTo(493);
+  });
+
+  it("does not snap to ruler guides while guides are hidden", () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-hidden-guide", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.appState = { ...artifact.content.appState, snapToGrid: false, guidesVisible: false, guides: [{ id: "hidden", axis: "x", position: 333 }] };
+    artifact.content.elements = [{ id: "moving", type: "rectangle", name: "Moving", x: 280, y: 100, width: 40, height: 40, color: "#2563eb" }];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const movingNode = container.querySelector<SVGGraphicsElement>(".canvas-node")!;
+
+    fireEvent.pointerDown(movingNode, { button: 0, pointerId: 85, clientX: 300, clientY: 155.2 });
+    fireEvent.pointerMove(canvas, { pointerId: 85, clientX: 307.6, clientY: 155.2 });
+    fireEvent.pointerUp(canvas, { pointerId: 85, clientX: 307.6, clientY: 155.2 });
+
+    const moved = onChange.mock.calls.at(-1)?.[0].content.elements[0];
+    expect(moved.x).toBeCloseTo(290);
+  });
+
   it("combines compatible multi-selections with editable non-destructive vector booleans", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-boolean", "2026-07-22T10:00:00.000Z");
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
@@ -220,11 +323,12 @@ describe("StudioWorkspace canvas design workflow", () => {
     await user.click(screen.getByRole("button", { name: "Square" }));
     fireEvent.change(screen.getByRole("spinbutton", { name: /Grid square size/ }), { target: { value: "10" } });
     await user.click(screen.getByRole("button", { name: "Columns" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Grid columns size" }), { target: { value: "500" } });
     await user.click(screen.getByRole("button", { name: "Rows" }));
     const frame = onChange.mock.calls.at(-1)?.[0].content.elements[0];
     expect(frame.layoutGrids).toEqual([
       expect.objectContaining({ type: "square", size: 10, visible: true }),
-      expect.objectContaining({ type: "columns", count: 12, gutter: 16, margin: 24 }),
+      expect.objectContaining({ type: "columns", count: 100, gutter: 16, margin: 24 }),
       expect.objectContaining({ type: "rows", count: 12, gutter: 16, margin: 24 }),
     ]);
     expect(container.querySelector(".canvas-layout-grids")).not.toBeNull();

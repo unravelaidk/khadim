@@ -2779,7 +2779,13 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 .canvas-path-points .canvas-path-point-hit:focus-visible { stroke: var(--blue); stroke-width: 2px; }
 .canvas-component-main-outline { fill: none; stroke: var(--blue); stroke-width: 1px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 .canvas-component-label { fill: var(--blue); font: 650 9px/1 "Atkinson Hyperlegible Next Variable", sans-serif; user-select: none; }
-.canvas-smart-guide { stroke: oklch(.62 .22 340); stroke-width: 1px; stroke-dasharray: 3 2; pointer-events: none; }
+.canvas-snap-feedback { pointer-events: none; }
+.canvas-smart-guide { stroke: var(--blue); stroke-width: 1px; pointer-events: none; }
+.canvas-smart-guide-layout-grid { stroke-dasharray: 3 2; }
+.canvas-smart-guide-guide { stroke-width: 1.25px; }
+.canvas-snap-distance line { stroke: var(--blue); stroke-width: 1px; }
+.canvas-snap-distance rect { fill: var(--blue); stroke: var(--surface-raised); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.canvas-snap-distance text { fill: var(--surface); font-family: var(--font-code); font-weight: 650; text-anchor: middle; }
 .canvas-ruler-guide { stroke-width: 1px; stroke-dasharray: 5 3; opacity: .8; pointer-events: none; }
 .canvas-ruler-surface { fill: color-mix(in oklch, var(--surface-raised) 96%, transparent); stroke: var(--line); stroke-width: 1px; }
 .canvas-rulers line { stroke: var(--text-3); stroke-width: 1px; }

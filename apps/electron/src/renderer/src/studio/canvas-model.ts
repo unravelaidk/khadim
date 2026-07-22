@@ -59,6 +59,81 @@ export interface CanvasRect {
   height: number;
 }
 
+export type CanvasSnapAxis = "x" | "y";
+export type CanvasSnapTargetKind = "shape" | "frame" | "page" | "guide" | "layout-grid";
+
+export interface CanvasSnapRectTarget {
+  id: string;
+  rect: CanvasRect;
+  kind?: Extract<CanvasSnapTargetKind, "shape" | "frame" | "page">;
+}
+
+export interface CanvasSnapAxisTarget {
+  axis: CanvasSnapAxis;
+  position: number;
+  kind: Extract<CanvasSnapTargetKind, "guide" | "layout-grid">;
+  from?: number;
+  to?: number;
+}
+
+export interface CanvasSnapLine {
+  axis: CanvasSnapAxis;
+  position: number;
+  from: number;
+  to: number;
+  kind: CanvasSnapTargetKind;
+}
+
+export interface CanvasSnapMeasurement {
+  axis: CanvasSnapAxis;
+  start: number;
+  end: number;
+  cross: number;
+  value: number;
+}
+
+export interface CanvasSnapFeedback {
+  lines: CanvasSnapLine[];
+  measurements: CanvasSnapMeasurement[];
+}
+
+export interface CanvasSnapIndexedCandidate {
+  position: number;
+  from: number;
+  to: number;
+  kind: CanvasSnapTargetKind;
+}
+
+export interface CanvasSnapIndex {
+  x: CanvasSnapIndexedCandidate[];
+  y: CanvasSnapIndexedCandidate[];
+  rectsByLeft: CanvasSnapRectTarget[];
+  rectsByRight: CanvasSnapRectTarget[];
+  rectsByTop: CanvasSnapRectTarget[];
+  rectsByBottom: CanvasSnapRectTarget[];
+}
+
+export interface CanvasMoveSnapInput {
+  bounds: CanvasRect;
+  deltaX: number;
+  deltaY: number;
+  rectTargets?: CanvasSnapRectTarget[];
+  axisTargets?: CanvasSnapAxisTarget[];
+  snapIndex?: CanvasSnapIndex;
+  threshold: number;
+  pageRect: CanvasRect;
+  snapToGrid?: boolean;
+  gridSize?: number;
+  gridOriginX?: number;
+  gridOriginY?: number;
+  disabled?: boolean;
+}
+
+export interface CanvasMoveSnapResult extends CanvasSnapFeedback {
+  deltaX: number;
+  deltaY: number;
+}
+
 export interface CanvasGeometryEntry {
   node: CanvasNode;
   rect: CanvasRect;
@@ -342,6 +417,239 @@ export function intersects(first: CanvasRect, second: CanvasRect): boolean {
     && first.x + first.width >= second.x
     && first.y <= second.y + second.height
     && first.y + first.height >= second.y;
+}
+
+type AxisCandidate = CanvasSnapIndexedCandidate;
+
+interface AxisSnap {
+  correction: number;
+  line: CanvasSnapLine;
+}
+
+interface SpacingSnap {
+  correction: number;
+  measurements: CanvasSnapMeasurement[];
+}
+
+const snapKindPriority: Record<CanvasSnapTargetKind, number> = {
+  guide: 0,
+  "layout-grid": 1,
+  shape: 2,
+  frame: 3,
+  page: 4,
+};
+
+function rectAxisCandidates(target: CanvasSnapRectTarget, axis: CanvasSnapAxis): AxisCandidate[] {
+  const { rect } = target;
+  const kind = target.kind ?? "shape";
+  if (axis === "x") {
+    return [rect.x, rect.x + rect.width / 2, rect.x + rect.width].map((position) => ({ position, from: rect.y, to: rect.y + rect.height, kind }));
+  }
+  return [rect.y, rect.y + rect.height / 2, rect.y + rect.height].map((position) => ({ position, from: rect.x, to: rect.x + rect.width, kind }));
+}
+
+function coalesceAxisCandidates(candidates: AxisCandidate[]): AxisCandidate[] {
+  const sorted = candidates.sort((first, second) => first.position - second.position || snapKindPriority[first.kind] - snapKindPriority[second.kind]);
+  const result: AxisCandidate[] = [];
+  for (const candidate of sorted) {
+    const previous = result.at(-1);
+    if (!previous || Math.abs(previous.position - candidate.position) > 1e-6) {
+      result.push({ ...candidate });
+      continue;
+    }
+    previous.from = Math.min(previous.from, candidate.from);
+    previous.to = Math.max(previous.to, candidate.to);
+    if (snapKindPriority[candidate.kind] < snapKindPriority[previous.kind]) previous.kind = candidate.kind;
+  }
+  return result;
+}
+
+/** Prepares sorted, coalesced snap data once at gesture start. */
+export function prepareCanvasSnapIndex(rectTargets: CanvasSnapRectTarget[], axisTargets: CanvasSnapAxisTarget[], pageRect: CanvasRect): CanvasSnapIndex {
+  const candidates = (axis: CanvasSnapAxis): AxisCandidate[] => coalesceAxisCandidates([
+    ...rectTargets.flatMap((target) => rectAxisCandidates(target, axis)),
+    ...rectAxisCandidates({ id: "page", rect: pageRect, kind: "page" }, axis),
+    ...axisTargets.filter((target) => target.axis === axis).map((target) => ({
+      position: target.position,
+      from: target.from ?? (axis === "x" ? pageRect.y : pageRect.x),
+      to: target.to ?? (axis === "x" ? pageRect.y + pageRect.height : pageRect.x + pageRect.width),
+      kind: target.kind,
+    })),
+  ]);
+  return {
+    x: candidates("x"),
+    y: candidates("y"),
+    rectsByLeft: [...rectTargets].sort((first, second) => first.rect.x - second.rect.x),
+    rectsByRight: [...rectTargets].sort((first, second) => first.rect.x + first.rect.width - (second.rect.x + second.rect.width)),
+    rectsByTop: [...rectTargets].sort((first, second) => first.rect.y - second.rect.y),
+    rectsByBottom: [...rectTargets].sort((first, second) => first.rect.y + first.rect.height - (second.rect.y + second.rect.height)),
+  };
+}
+
+function lowerBound<T>(items: T[], value: number, coordinate: (item: T) => number): number {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (coordinate(items[middle]) < value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function upperBound<T>(items: T[], value: number, coordinate: (item: T) => number): number {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (coordinate(items[middle]) <= value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function nearbyAxisCandidates(candidates: AxisCandidate[], anchors: number[], threshold: number): AxisCandidate[] {
+  const result = new Set<AxisCandidate>();
+  for (const anchor of anchors) {
+    const start = lowerBound(candidates, anchor - threshold, (candidate) => candidate.position);
+    const end = upperBound(candidates, anchor + threshold, (candidate) => candidate.position);
+    for (let index = start; index < end; index += 1) result.add(candidates[index]);
+  }
+  return [...result];
+}
+
+function closestAxisSnap(axis: CanvasSnapAxis, bounds: CanvasRect, delta: number, candidates: AxisCandidate[], threshold: number): AxisSnap | undefined {
+  const start = axis === "x" ? bounds.x + delta : bounds.y + delta;
+  const size = axis === "x" ? bounds.width : bounds.height;
+  const anchors = [start, start + size / 2, start + size];
+  let best: { correction: number; candidate: AxisCandidate } | undefined;
+  for (const anchor of anchors) {
+    for (const candidate of candidates) {
+      const correction = candidate.position - anchor;
+      if (Math.abs(correction) > threshold) continue;
+      if (!best
+        || Math.abs(correction) < Math.abs(best.correction) - 1e-6
+        || Math.abs(Math.abs(correction) - Math.abs(best.correction)) <= 1e-6 && snapKindPriority[candidate.kind] < snapKindPriority[best.candidate.kind]) {
+        best = { correction, candidate };
+      }
+    }
+  }
+  if (!best) return undefined;
+  const sameLine = candidates.filter((candidate) => Math.abs(candidate.position - best!.candidate.position) <= 1e-6);
+  return {
+    correction: best.correction,
+    line: {
+      axis,
+      position: best.candidate.position,
+      from: Math.min(...sameLine.map((candidate) => candidate.from)),
+      to: Math.max(...sameLine.map((candidate) => candidate.to)),
+      kind: best.candidate.kind,
+    },
+  };
+}
+
+function perpendicularOverlap(first: CanvasRect, second: CanvasRect, axis: CanvasSnapAxis): number {
+  if (axis === "x") return Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y);
+  return Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
+}
+
+function closestSpacingSnap(axis: CanvasSnapAxis, moving: CanvasRect, index: CanvasSnapIndex, threshold: number): SpacingSnap | undefined {
+  const scanLimit = 96;
+  if (axis === "x") {
+    let left: CanvasSnapRectTarget | undefined;
+    let right: CanvasSnapRectTarget | undefined;
+    const leftStart = upperBound(index.rectsByRight, moving.x + threshold, (target) => target.rect.x + target.rect.width) - 1;
+    const rightStart = lowerBound(index.rectsByLeft, moving.x + moving.width - threshold, (target) => target.rect.x);
+    for (let offset = 0; offset < scanLimit && leftStart - offset >= 0; offset += 1) {
+      const target = index.rectsByRight[leftStart - offset];
+      if (perpendicularOverlap(moving, target.rect, axis) > 0) { left = target; break; }
+    }
+    for (let offset = 0; offset < scanLimit && rightStart + offset < index.rectsByLeft.length; offset += 1) {
+      const target = index.rectsByLeft[rightStart + offset];
+      if (perpendicularOverlap(moving, target.rect, axis) > 0) { right = target; break; }
+    }
+    if (!left || !right || left.id === right.id) return undefined;
+    const correction = (left.rect.x + left.rect.width + right.rect.x - moving.width) / 2 - moving.x;
+    if (Math.abs(correction) > threshold) return undefined;
+    const next = { ...moving, x: moving.x + correction };
+    const gap = next.x - (left.rect.x + left.rect.width);
+    if (gap < 0 || Math.abs(right.rect.x - (next.x + next.width) - gap) > 1e-6) return undefined;
+    const cross = Math.min(left.rect.y, next.y, right.rect.y) - 10;
+    return {
+      correction,
+      measurements: [
+        { axis, start: left.rect.x + left.rect.width, end: next.x, cross, value: gap },
+        { axis, start: next.x + next.width, end: right.rect.x, cross, value: gap },
+      ],
+    };
+  }
+  let top: CanvasSnapRectTarget | undefined;
+  let bottom: CanvasSnapRectTarget | undefined;
+  const topStart = upperBound(index.rectsByBottom, moving.y + threshold, (target) => target.rect.y + target.rect.height) - 1;
+  const bottomStart = lowerBound(index.rectsByTop, moving.y + moving.height - threshold, (target) => target.rect.y);
+  for (let offset = 0; offset < scanLimit && topStart - offset >= 0; offset += 1) {
+    const target = index.rectsByBottom[topStart - offset];
+    if (perpendicularOverlap(moving, target.rect, axis) > 0) { top = target; break; }
+  }
+  for (let offset = 0; offset < scanLimit && bottomStart + offset < index.rectsByTop.length; offset += 1) {
+    const target = index.rectsByTop[bottomStart + offset];
+    if (perpendicularOverlap(moving, target.rect, axis) > 0) { bottom = target; break; }
+  }
+  if (!top || !bottom || top.id === bottom.id) return undefined;
+  const correction = (top.rect.y + top.rect.height + bottom.rect.y - moving.height) / 2 - moving.y;
+  if (Math.abs(correction) > threshold) return undefined;
+  const next = { ...moving, y: moving.y + correction };
+  const gap = next.y - (top.rect.y + top.rect.height);
+  if (gap < 0 || Math.abs(bottom.rect.y - (next.y + next.height) - gap) > 1e-6) return undefined;
+  const cross = Math.min(top.rect.x, next.x, bottom.rect.x) - 10;
+  return {
+    correction,
+    measurements: [
+      { axis, start: top.rect.y + top.rect.height, end: next.y, cross, value: gap },
+      { axis, start: next.y + next.height, end: bottom.rect.y, cross, value: gap },
+    ],
+  };
+}
+
+/**
+ * Resolves one move against semantic shape/page points, ruler and layout guides,
+ * equal spacing, then the pixel grid. The pure result is shared by pointer
+ * interaction tests and the transient canvas feedback renderer.
+ */
+export function snapCanvasMove(input: CanvasMoveSnapInput): CanvasMoveSnapResult {
+  if (input.disabled) return { deltaX: input.deltaX, deltaY: input.deltaY, lines: [], measurements: [] };
+  const snapIndex = input.snapIndex ?? prepareCanvasSnapIndex(input.rectTargets ?? [], input.axisTargets ?? [], input.pageRect);
+  const proposed = { ...input.bounds, x: input.bounds.x + input.deltaX, y: input.bounds.y + input.deltaY };
+  const xAnchors = [proposed.x, proposed.x + proposed.width / 2, proposed.x + proposed.width];
+  const yAnchors = [proposed.y, proposed.y + proposed.height / 2, proposed.y + proposed.height];
+  const xAlignment = closestAxisSnap("x", input.bounds, input.deltaX, nearbyAxisCandidates(snapIndex.x, xAnchors, input.threshold), input.threshold);
+  const yAlignment = closestAxisSnap("y", input.bounds, input.deltaY, nearbyAxisCandidates(snapIndex.y, yAnchors, input.threshold), input.threshold);
+  const xSpacing = closestSpacingSnap("x", proposed, snapIndex, input.threshold);
+  const ySpacing = closestSpacingSnap("y", proposed, snapIndex, input.threshold);
+  const useXSpacing = xSpacing && (!xAlignment || Math.abs(xSpacing.correction) < Math.abs(xAlignment.correction) - 1e-6);
+  const useYSpacing = ySpacing && (!yAlignment || Math.abs(ySpacing.correction) < Math.abs(yAlignment.correction) - 1e-6);
+  let deltaX = input.deltaX + (useXSpacing ? xSpacing.correction : xAlignment?.correction ?? 0);
+  let deltaY = input.deltaY + (useYSpacing ? ySpacing.correction : yAlignment?.correction ?? 0);
+  if (!useXSpacing && !xAlignment && input.snapToGrid) {
+    const size = Math.max(1, input.gridSize ?? 8);
+    const origin = input.gridOriginX ?? 0;
+    deltaX = Math.round((input.bounds.x + deltaX - origin) / size) * size + origin - input.bounds.x;
+  }
+  if (!useYSpacing && !yAlignment && input.snapToGrid) {
+    const size = Math.max(1, input.gridSize ?? 8);
+    const origin = input.gridOriginY ?? 0;
+    deltaY = Math.round((input.bounds.y + deltaY - origin) / size) * size + origin - input.bounds.y;
+  }
+  const moved = { ...input.bounds, x: input.bounds.x + deltaX, y: input.bounds.y + deltaY };
+  const lines = [!useXSpacing && xAlignment?.line, !useYSpacing && yAlignment?.line].filter((line): line is CanvasSnapLine => Boolean(line)).map((line) => line.axis === "x"
+    ? { ...line, from: Math.min(line.from, moved.y), to: Math.max(line.to, moved.y + moved.height) }
+    : { ...line, from: Math.min(line.from, moved.x), to: Math.max(line.to, moved.x + moved.width) });
+  return {
+    deltaX,
+    deltaY,
+    lines,
+    measurements: [...(useXSpacing ? xSpacing.measurements : []), ...(useYSpacing ? ySpacing.measurements : [])],
+  };
 }
 
 export function effectivePrimitive(node: CanvasPrimitiveNode, componentNode: CanvasComponentNode): CanvasPrimitiveNode {

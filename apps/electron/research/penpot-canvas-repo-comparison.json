@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T20:10:00+02:00",
+  "capturedAt": "2026-07-22T21:49:36+02:00",
   "repository": "https://github.com/penpot/penpot",
   "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
   "scope": [
@@ -12,7 +12,11 @@
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/data/workspace/interactions.cljs",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/files/changes_builder.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/data/workspace/undo.cljs",
-    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/geom/snap.cljc"
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/geom/snap.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/workspace/viewport/snap_points.cljs",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/workspace/viewport/snap_distances.cljs",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/worker/snap.cljs",
+    "https://help.penpot.app/user-guide/designing/workspace-basics/"
   ],
   "findings": [
     {
@@ -32,8 +36,8 @@
     },
     {
       "area": "snapping",
-      "evidence": "Penpot derives snap points from semantic shape geometry, including corners, centers, and frame edge midpoints, and models guides as snap inputs.",
-      "khadimDecision": "Extend Khadim smart guides beyond bounding-edge matches to center and frame-midpoint candidates, with tests in shared geometry."
+      "evidence": "Penpot derives snap points from semantic shape geometry, indexes them by axis for bounded queries, renders alignment feedback separately from mutation, and shows matching distances between nearby layers.",
+      "khadimDecision": "Resolve Khadim moves in a deterministic canvas-model function against peer edges and centers, page and frame geometry, ruler guides, layout grids, equal spacing, and the pixel grid. Build snap targets once per gesture, return bounded feedback geometry, and keep the SVG overlay separate from persisted scene data."
     },
     {
       "area": "component safety",
@@ -49,12 +53,13 @@
     "Deletion cleanup for interactions targeting removed pages",
     "Page ordering, prototype start screens, lazy thumbnails, and multi-page PDF output",
     "Shared large-scene geometry indexing, viewport culling, and virtualized layer rails",
-    "Fixed and hug auto-layout with alignment, distribution, padding, wrapping, and independent line gaps"
+    "Fixed and hug auto-layout with alignment, distribution, padding, wrapping, and independent line gaps",
+    "Deterministic edge, center, page, frame, ruler-guide, layout-grid, equal-spacing, and pixel-grid snapping with transient distance feedback"
   ],
   "nextHighValueGaps": [
     "Multiple named prototype flows and matching-layer animation",
     "Semantic canvas command and undo transaction modules",
-    "Center, midpoint, and guide-aware snapping in shared geometry",
+    "Extended equal-spacing sequence snapping and true rotated-frame grid snapping",
     "Nested component cycle validation",
     "Prototype scroll-container behavior"
   ]

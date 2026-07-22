@@ -163,7 +163,7 @@ the following behavior as working unless a focused test proves otherwise:
   new chat or Studio behavior instead of moving feature state back into
   `App.tsx`.
 
-The latest completed checks on July 22, 2026, were `340` passing tests, a clean
+The latest completed checks on July 22, 2026, were `432` passing tests, a clean
 TypeScript check, and a successful production build. A packaging smoke check
 also staged and executed Bun `1.3.13` beside the Khadim CLI slot. Packaged
 Electron audits verified the main-chat and artifact split, light and dark
@@ -238,7 +238,7 @@ the fastest path: click text and type; use the agent only for broader changes.
 
 ## Research conclusions
 
-Parallel Web research was last run on July 21, 2026, against primary project
+Web research was last run on July 22, 2026, against primary project
 documentation and repositories. No academic sources are relevant because these
 are software integration and license decisions. React Router now presents v8
 as its current release, but v7 remains an intentional Khadim template boundary
@@ -275,11 +275,10 @@ the prior flow. The page rail renders bounded, idle-updated thumbnails so scene
 edits stay visually navigable without regenerating every preview during a
 gesture. PDF output emits every canvas page on a separate sheet.
 
-The next architectural extraction should follow Penpot's change-builder model:
-move semantic canvas commands and grouped undo transactions out of
-`CanvasEditor.tsx`, then extend shared snapping from bounding edges to corners,
-centers, frame edge midpoints, and guides. The raw comparison, exact upstream
-paths, and remaining gaps are recorded in
+The next architectural extraction follows Penpot's change-builder model: move
+semantic canvas commands and grouped undo transactions out of
+`CanvasEditor.tsx`. The raw comparison, exact upstream paths, and remaining
+gaps are recorded in
 [`penpot-canvas-repo-comparison.json`](../research/penpot-canvas-repo-comparison.json).
 
 Large-scene interaction now builds one linear geometry/ancestor-state index per
@@ -300,6 +299,14 @@ undo history, and updates the active-page compatibility mirror. Frame
 auto-layout now supports fixed or hug sizing, main-axis distribution,
 cross-axis alignment, padding, child gaps, fixed-frame wrapping, and a separate
 gap between wrapped lines.
+
+Pointer moves now resolve through deterministic snapping geometry instead of
+component-local coordinate loops. A gesture builds peer, parent-frame, ruler,
+and layout-grid targets once, then snaps selected bounds to edges, centers,
+page geometry, equal peer spacing, or the configured pixel grid. The viewport
+renders bounded alignment lines and labeled distance segments without writing
+feedback into the scene. Hold Control or Command while dragging to bypass every
+snap source for temporary free placement.
 
 ### Google Workspace read-only integrations
 

@@ -70,6 +70,8 @@ import {
   nodeSize,
   rotatedRect,
   selectionRect,
+  prepareCanvasSnapIndex,
+  snapCanvasMove,
 } from "./canvas-model";
 import type {
   CanvasArtifactContent,
@@ -83,14 +85,23 @@ import type {
   CanvasPage,
   CanvasPrimitiveNode,
   CanvasRect,
+  CanvasSnapAxisTarget,
+  CanvasSnapFeedback,
+  CanvasSnapIndex,
+  CanvasSnapRectTarget,
   CanvasSnapshot,
 } from "./canvas-model";
 
 type CanvasDrawingTool = "rectangle" | "ellipse" | "line" | "arrow" | "text" | "frame";
 type CanvasTool = "select" | "hand" | "pen" | "pencil" | CanvasDrawingTool;
 type CanvasSidePanel = "layers" | "assets";
-type CanvasGuide = { x?: number; y?: number };
 type ResizeHandle = "nw" | "ne" | "se" | "sw";
+type CanvasMoveSnapContext = {
+  snapIndex: CanvasSnapIndex;
+  gridSize: number;
+  gridOriginX: number;
+  gridOriginY: number;
+};
 type CanvasGesture =
   | { kind: "pan"; pointerX: number; pointerY: number; originX: number; originY: number }
   | { kind: "marquee"; startX: number; startY: number; currentX: number; currentY: number }
@@ -98,7 +109,7 @@ type CanvasGesture =
   | { kind: "freehand"; nodeId: string; absolutePoints: Array<{ x: number; y: number }>; before: CanvasSnapshot }
   | { kind: "path-point"; nodeId: string; pointIndex: number; centerX: number; centerY: number; rotation: number; before: CanvasSnapshot }
   | { kind: "path-handle"; nodeId: string; pointIndex: number; handle: "in" | "out"; centerX: number; centerY: number; rotation: number; before: CanvasSnapshot }
-  | { kind: "move"; pointerX: number; pointerY: number; origins: Record<string, { x: number; y: number }>; bounds: CanvasRect; selectedIds: string[]; before: CanvasSnapshot }
+  | { kind: "move"; pointerX: number; pointerY: number; origins: Record<string, { x: number; y: number }>; bounds: CanvasRect; selectedIds: string[]; snapContext: CanvasMoveSnapContext; before: CanvasSnapshot }
   | { kind: "resize"; pointerX: number; pointerY: number; origin: CanvasRect; centerX: number; centerY: number; rotation: number; handle: ResizeHandle; nodeId: string; before: CanvasSnapshot }
   | { kind: "multi-resize"; pointerX: number; pointerY: number; origin: CanvasRect; handle: ResizeHandle; selectedIds: string[]; before: CanvasSnapshot }
   | { kind: "rotate"; centerX: number; centerY: number; initialAngle: number; initialRotation: number; nodeId: string; before: CanvasSnapshot }
@@ -356,7 +367,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [viewport, setViewport] = useState(content.appState.viewport ?? { x: 72, y: 64, zoom: .76 });
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>();
   const [layerViewport, setLayerViewport] = useState({ scrollTop: 0, height: 0 });
-  const [guides, setGuides] = useState<CanvasGuide>({});
+  const [snapFeedback, setSnapFeedback] = useState<CanvasSnapFeedback>({ lines: [], measurements: [] });
+  const [snapTargetRevision, setSnapTargetRevision] = useState(0);
   const [marquee, setMarquee] = useState<CanvasRect | null>(null);
   const [editingText, setEditingText] = useState<{ id: string; value: string } | null>(null);
   const [selectedPathPointIndex, setSelectedPathPointIndex] = useState<number | null>(null);
@@ -389,6 +401,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const inspectorHistoryRef = useRef<{ key: string; at: number } | null>(null);
   const clipboardRef = useRef<CanvasNode[]>([]);
   const clipboardRootIdsRef = useRef<string[]>([]);
+  const snapRectTargetsByParentRef = useRef(new Map<string, CanvasSnapRectTarget[]>());
   nodesRef.current = nodes;
   componentsRef.current = components;
   paintStylesRef.current = paintStyles;
@@ -413,6 +426,19 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const selectedBounds = selectionRect(selectedNodes, components);
   const geometryIndex = useMemo(() => canvasGeometryIndex(nodes, components), [components, nodes]);
   const geometryById = useMemo(() => new Map(geometryIndex.map((entry) => [entry.node.id, entry])), [geometryIndex]);
+  const snapRectTargetsByParent = useMemo(() => {
+    if (gestureRef.current && snapRectTargetsByParentRef.current.size) return snapRectTargetsByParentRef.current;
+    const byParent = new Map<string, CanvasSnapRectTarget[]>();
+    for (const entry of geometryIndex) {
+      if (entry.hidden) continue;
+      const key = entry.node.parentId ?? "__page__";
+      const targets = byParent.get(key) ?? [];
+      targets.push({ id: entry.node.id, rect: rotatedRect(entry.rect, entry.node.rotation), kind: entry.node.type === "frame" ? "frame" : "shape" });
+      byParent.set(key, targets);
+    }
+    snapRectTargetsByParentRef.current = byParent;
+    return byParent;
+  }, [geometryIndex, snapTargetRevision]);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const maskSourceIds = useMemo(() => new Set(nodes.flatMap((node) => node.type !== "component" && node.maskId ? [node.maskId] : [])), [nodes]);
   const viewportSceneRect = useMemo(() => {
@@ -508,7 +534,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setSnapToGrid(incomingSnapToGrid);
     setEditingText(null);
     setMarquee(null);
-    setGuides({});
+    setSnapFeedback({ lines: [], measurements: [] });
     nodesRef.current = incomingNodes;
     componentsRef.current = incomingComponents;
     paintStylesRef.current = incomingStyles;
@@ -1368,7 +1394,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   function patchFrameLayoutGrid(gridId: string, patch: Partial<NonNullable<CanvasPrimitiveNode["layoutGrids"]>[number]>): void {
     if (selectedNode?.type !== "frame") return;
-    patchSelected({ layoutGrids: (selectedNode.layoutGrids ?? []).map((grid) => grid.id === gridId ? { ...grid, ...patch } : grid) });
+    const bounded = {
+      ...patch,
+      ...(patch.count !== undefined ? { count: Math.min(100, Math.max(1, Math.round(patch.count))) } : {}),
+      ...(patch.size !== undefined ? { size: Math.min(10_000, Math.max(1, patch.size)) } : {}),
+    };
+    patchSelected({ layoutGrids: (selectedNode.layoutGrids ?? []).map((grid) => grid.id === gridId ? { ...grid, ...bounded } : grid) });
   }
 
   function removeFrameLayoutGrid(gridId: string): void {
@@ -1824,6 +1855,52 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     event.currentTarget.focus();
   }
 
+  function createMoveSnapContext(movingIds: string[], directIds: string[]): CanvasMoveSnapContext {
+    const movingIdSet = new Set(movingIds);
+    const directNodes = nodes.filter((node) => directIds.includes(node.id));
+    const parentKeys = new Set(directNodes.map((node) => node.parentId ?? "__page__"));
+    const hasSharedParent = parentKeys.size === 1;
+    const sharedParentId = hasSharedParent ? directNodes[0]?.parentId : undefined;
+    const targetPool = hasSharedParent
+      ? snapRectTargetsByParent.get(sharedParentId ?? "__page__") ?? []
+      : [...snapRectTargetsByParent.values()].flat();
+    const rectTargets = targetPool.filter((target) => !movingIdSet.has(target.id));
+    const parentFrame = sharedParentId ? nodes.find((node): node is CanvasPrimitiveNode => node.id === sharedParentId && node.type === "frame") : undefined;
+    if (parentFrame && !movingIdSet.has(parentFrame.id) && !rectTargets.some((target) => target.id === parentFrame.id)) {
+      rectTargets.push({ id: parentFrame.id, rect: rotatedRect(nodeRect(parentFrame, components), parentFrame.rotation), kind: "frame" });
+    }
+    const gridFrame = parentFrame && !(parentFrame.rotation ?? 0) ? parentFrame : undefined;
+    const squareGrid = gridFrame?.layoutGrids?.find((grid) => grid.visible && grid.type === "square");
+    const axisTargets: CanvasSnapAxisTarget[] = guidesVisible ? rulerGuides.map((guide) => ({ axis: guide.axis, position: guide.position, kind: "guide" })) : [];
+    for (const grid of snapToGrid ? gridFrame?.layoutGrids?.filter((candidate) => candidate.visible) ?? [] : []) {
+      const count = Math.min(100, Math.max(1, Math.round(grid.count ?? 12)));
+      const gutter = grid.gutter ?? 16;
+      const margin = grid.margin ?? 24;
+      if (grid.type === "columns") {
+        const size = Math.max(0, (gridFrame!.width - margin * 2 - gutter * (count - 1)) / count);
+        for (let index = 0; index < count; index += 1) {
+          const start = gridFrame!.x + margin + index * (size + gutter);
+          axisTargets.push({ axis: "x", position: start, kind: "layout-grid", from: gridFrame!.y, to: gridFrame!.y + gridFrame!.height });
+          axisTargets.push({ axis: "x", position: start + size, kind: "layout-grid", from: gridFrame!.y, to: gridFrame!.y + gridFrame!.height });
+        }
+      }
+      if (grid.type === "rows") {
+        const size = Math.max(0, (gridFrame!.height - margin * 2 - gutter * (count - 1)) / count);
+        for (let index = 0; index < count; index += 1) {
+          const start = gridFrame!.y + margin + index * (size + gutter);
+          axisTargets.push({ axis: "y", position: start, kind: "layout-grid", from: gridFrame!.x, to: gridFrame!.x + gridFrame!.width });
+          axisTargets.push({ axis: "y", position: start + size, kind: "layout-grid", from: gridFrame!.x, to: gridFrame!.x + gridFrame!.width });
+        }
+      }
+    }
+    return {
+      snapIndex: prepareCanvasSnapIndex(rectTargets, axisTargets, { x: 0, y: 0, ...canvasFrame }),
+      gridSize: squareGrid?.size ?? snapGridSize,
+      gridOriginX: gridFrame?.x ?? 0,
+      gridOriginY: gridFrame?.y ?? 0,
+    };
+  }
+
   function beginNodeMove(event: React.PointerEvent<SVGElement>, node: CanvasNode): void {
     if (tool !== "select" && tool !== "hand") return;
     event.stopPropagation();
@@ -1853,6 +1930,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       selectedIds: ids,
       bounds,
       origins: Object.fromEntries(movingNodes.map((item) => [item.id, { x: item.x, y: item.y }])),
+      snapContext: createMoveSnapContext(ids, directIds),
       before: currentSnapshot(),
     };
     stageRef.current?.setPointerCapture?.(event.pointerId);
@@ -1997,54 +2075,6 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     stageRef.current?.setPointerCapture?.(event.pointerId);
   }
 
-  function smartSnapDelta(bounds: CanvasRect, rawX: number, rawY: number, movingIds: string[]): { x: number; y: number; guides: CanvasGuide } {
-    let x = rawX;
-    let y = rawY;
-    const threshold = 6 / viewport.zoom;
-    const movingNode = nodes.find((node) => movingIds.includes(node.id));
-    const gridFrame = movingNode?.type === "frame" ? movingNode : nodes.find((node): node is CanvasPrimitiveNode => node.id === movingNode?.parentId && node.type === "frame");
-    const squareGrid = gridFrame?.layoutGrids?.find((grid) => grid.visible && grid.type === "square");
-    const gridSize = squareGrid?.size ?? snapGridSize;
-    const gridOriginX = gridFrame?.x ?? 0;
-    const gridOriginY = gridFrame?.y ?? 0;
-    const layoutGridX: number[] = [];
-    const layoutGridY: number[] = [];
-    for (const grid of gridFrame?.layoutGrids?.filter((candidate) => candidate.visible) ?? []) {
-      const count = Math.max(1, Math.round(grid.count ?? 12));
-      const gutter = grid.gutter ?? 16;
-      const margin = grid.margin ?? 24;
-      if (grid.type === "columns" && gridFrame) {
-        const size = Math.max(0, (gridFrame.width - margin * 2 - gutter * (count - 1)) / count);
-        for (let index = 0; index < count; index++) layoutGridX.push(gridFrame.x + margin + index * (size + gutter), gridFrame.x + margin + index * (size + gutter) + size);
-      }
-      if (grid.type === "rows" && gridFrame) {
-        const size = Math.max(0, (gridFrame.height - margin * 2 - gutter * (count - 1)) / count);
-        for (let index = 0; index < count; index++) layoutGridY.push(gridFrame.y + margin + index * (size + gutter), gridFrame.y + margin + index * (size + gutter) + size);
-      }
-    }
-    const movingIdSet = new Set(movingIds);
-    const otherRects = geometryIndex.filter((entry) => !movingIdSet.has(entry.node.id) && !entry.hidden).map((entry) => entry.rect);
-    const xCandidates = [0, canvasFrame.width / 2, canvasFrame.width, ...layoutGridX, ...rulerGuides.filter((guide) => guide.axis === "x").map((guide) => guide.position), ...otherRects.flatMap((rect) => [rect.x, rect.x + rect.width / 2, rect.x + rect.width])];
-    const yCandidates = [0, canvasFrame.height / 2, canvasFrame.height, ...layoutGridY, ...rulerGuides.filter((guide) => guide.axis === "y").map((guide) => guide.position), ...otherRects.flatMap((rect) => [rect.y, rect.y + rect.height / 2, rect.y + rect.height])];
-    const xAnchors = [bounds.x + x, bounds.x + x + bounds.width / 2, bounds.x + x + bounds.width];
-    const yAnchors = [bounds.y + y, bounds.y + y + bounds.height / 2, bounds.y + y + bounds.height];
-    let bestX: { delta: number; guide: number } | undefined;
-    let bestY: { delta: number; guide: number } | undefined;
-    for (const anchor of xAnchors) for (const candidate of xCandidates) {
-      const delta = candidate - anchor;
-      if (Math.abs(delta) <= threshold && (!bestX || Math.abs(delta) < Math.abs(bestX.delta))) bestX = { delta, guide: candidate };
-    }
-    for (const anchor of yAnchors) for (const candidate of yCandidates) {
-      const delta = candidate - anchor;
-      if (Math.abs(delta) <= threshold && (!bestY || Math.abs(delta) < Math.abs(bestY.delta))) bestY = { delta, guide: candidate };
-    }
-    if (bestX) x += bestX.delta;
-    else if (snapToGrid) x = Math.round((bounds.x + x - gridOriginX) / gridSize) * gridSize + gridOriginX - bounds.x;
-    if (bestY) y += bestY.delta;
-    else if (snapToGrid) y = Math.round((bounds.y + y - gridOriginY) / gridSize) * gridSize + gridOriginY - bounds.y;
-    return { x, y, guides: { x: bestX?.guide, y: bestY?.guide } };
-  }
-
   function handleStagePointerMove(event: React.PointerEvent<SVGSVGElement>): void {
     const gesture = gestureRef.current;
     if (!gesture) return;
@@ -2123,15 +2153,24 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       return;
     }
     if (gesture.kind === "move") {
-      const snapped = smartSnapDelta(gesture.bounds, point.x - gesture.pointerX, point.y - gesture.pointerY, gesture.selectedIds);
+      const snapped = snapCanvasMove({
+        bounds: gesture.bounds,
+        deltaX: point.x - gesture.pointerX,
+        deltaY: point.y - gesture.pointerY,
+        ...gesture.snapContext,
+        threshold: 6 / viewport.zoom,
+        pageRect: { x: 0, y: 0, ...canvasFrame },
+        snapToGrid,
+        disabled: event.ctrlKey || event.metaKey,
+      });
       const next = nodesRef.current.map((node) => {
         const origin = gesture.origins[node.id];
-        return origin ? { ...node, x: Math.round(origin.x + snapped.x), y: Math.round(origin.y + snapped.y) } as CanvasNode : node;
+        return origin ? { ...node, x: origin.x + snapped.deltaX, y: origin.y + snapped.deltaY } as CanvasNode : node;
       });
       const resolved = resolveCanvasConnectors(resolveBooleanGroups(next)) as CanvasNode[];
       nodesRef.current = resolved;
       setCanvasNodes(resolved);
-      setGuides(snapped.guides);
+      setSnapFeedback({ lines: snapped.lines, measurements: snapped.measurements });
       return;
     }
     if (gesture.kind === "rotate" || gesture.kind === "multi-rotate") {
@@ -2209,9 +2248,10 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       if (Math.abs(horizontal) >= Math.abs(vertical)) height = width / ratio;
       else width = height * ratio;
     }
-    const unit = snapToGrid ? snapGridSize : 1;
-    width = Math.max(1, Math.round(width / unit) * unit);
-    height = Math.max(1, Math.round(height / unit) * unit);
+    if (snapToGrid && !event.ctrlKey && !event.metaKey) {
+      width = Math.max(1, Math.round(width / snapGridSize) * snapGridSize);
+      height = Math.max(1, Math.round(height / snapGridSize) * snapGridSize);
+    }
     let x = gesture.origin.x;
     let y = gesture.origin.y;
     if (gesture.handle.includes("w")) x = gesture.origin.x + gesture.origin.width - width;
@@ -2242,7 +2282,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   function endGesture(event?: React.PointerEvent<SVGSVGElement>): void {
     const gesture = gestureRef.current;
     gestureRef.current = null;
-    setGuides({});
+    setSnapFeedback({ lines: [], measurements: [] });
+    setSnapTargetRevision((revision) => revision + 1);
     if (!gesture) return;
     if (gesture.kind === "pan") {
       persistViewport(viewportRef.current);
@@ -2570,7 +2611,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         const horizontal = Array.from({ length: Math.min(400, Math.ceil(frame.height / size) + 1) }, (_, index) => frame.y + index * size);
         return <g key={grid.id} stroke={color} opacity={opacity} vectorEffect="non-scaling-stroke">{vertical.map((x) => <line key={`x:${x}`} x1={x} x2={x} y1={frame.y} y2={frame.y + frame.height} />)}{horizontal.map((y) => <line key={`y:${y}`} x1={frame.x} x2={frame.x + frame.width} y1={y} y2={y} />)}</g>;
       }
-      const count = Math.max(1, Math.round(grid.count ?? 12));
+      const count = Math.min(100, Math.max(1, Math.round(grid.count ?? 12)));
       const gutter = grid.gutter ?? 16;
       const margin = grid.margin ?? 24;
       const available = (grid.type === "columns" ? frame.width : frame.height) - margin * 2 - gutter * (count - 1);
@@ -2584,6 +2625,10 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const historyCanUndo = pastRef.current.length > 0 && historyRevision >= 0;
   const historyCanRedo = futureRef.current.length > 0 && historyRevision >= 0;
   const rulerStep = viewport.zoom >= 1.5 ? 50 : viewport.zoom < .5 ? 200 : 100;
+  const snapAnnouncement = snapFeedback.measurements.length
+    ? [...new Map(snapFeedback.measurements.map((measurement) => [measurement.axis, measurement])).values()]
+      .map((measurement) => `Equal ${measurement.axis === "x" ? "horizontal" : "vertical"} spacing ${Math.round(measurement.value * 100) / 100} pixels.`).join(" ")
+    : snapFeedback.lines.map((line) => `${line.axis === "x" ? "Vertical" : "Horizontal"} alignment at ${Math.round(line.position * 100) / 100} pixels.`).join(" ");
 
   return (
     <div className="studio-editor-layout canvas-layout">
@@ -2699,7 +2744,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {canBooleanSelection && <><i /><button aria-label="Union selection" title="Union" onClick={() => applyBooleanOperation("union")}>Union</button><button aria-label="Subtract selection" title="Subtract" onClick={() => applyBooleanOperation("difference")}>Subtract</button><button aria-label="Intersect selection" title="Intersect" onClick={() => applyBooleanOperation("intersection")}>Intersect</button><button aria-label="Exclude overlap" title="Exclude" onClick={() => applyBooleanOperation("exclusion")}>Exclude</button><button aria-label="Flatten selection" title="Flatten" onClick={() => applyBooleanOperation("flatten")}>Flatten</button></>}
         </div>}
 
-        <p id="canvas-keyboard-help" className="sr-only">Choose a drawing tool and press Enter to insert it. Use arrow keys to move selected layers. Tab to vector points and use arrow keys to edit them.</p>
+        <p id="canvas-keyboard-help" className="sr-only">Choose a drawing tool and press Enter to insert it. Use arrow keys to move selected layers. Hold Control or Command while dragging to bypass snapping. Tab to vector points and use arrow keys to edit them.</p>
+        <output className="sr-only" aria-live="polite" aria-atomic="true">{snapAnnouncement}</output>
         <svg ref={stageRef} role="application" aria-label="Canvas artwork" aria-describedby="canvas-keyboard-help" tabIndex={0} onPointerDown={handleStagePointerDown} onPointerMove={handleStagePointerMove} onPointerUp={endGesture} onPointerCancel={endGesture} onDoubleClick={() => finishPenDraft(false)} onWheel={handleWheel}>
           <defs>
             <pattern id="khadim-canvas-grid" width={snapGridSize} height={snapGridSize} patternUnits="userSpaceOnUse"><circle cx=".75" cy=".75" r=".55" /></pattern>
@@ -2715,8 +2761,31 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             {guidesVisible && rulerGuides.map((guide) => guide.axis === "x" ? <line className="canvas-ruler-guide" key={guide.id} x1={guide.position} x2={guide.position} y1={-1000} y2={canvasFrame.height + 1000} stroke={guide.color ?? "#2563eb"} vectorEffect="non-scaling-stroke" /> : <line className="canvas-ruler-guide" key={guide.id} x1={-1000} x2={canvasFrame.width + 1000} y1={guide.position} y2={guide.position} stroke={guide.color ?? "#2563eb"} vectorEffect="non-scaling-stroke" />)}
             {renderedNodes.map(renderCanvasNode)}
             {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame").map(renderFrameLayoutGrids)}
-            {guides.x !== undefined && <line className="canvas-smart-guide" x1={guides.x} x2={guides.x} y1={-1000} y2={1600} vectorEffect="non-scaling-stroke" />}
-            {guides.y !== undefined && <line className="canvas-smart-guide" x1={-1000} x2={1960} y1={guides.y} y2={guides.y} vectorEffect="non-scaling-stroke" />}
+            <g className="canvas-snap-feedback" aria-hidden="true">
+              {snapFeedback.lines.map((line, index) => line.axis === "x"
+                ? <line className={`canvas-smart-guide canvas-smart-guide-${line.kind}`} key={`snap-line:${index}`} x1={line.position} x2={line.position} y1={line.from} y2={line.to} vectorEffect="non-scaling-stroke" />
+                : <line className={`canvas-smart-guide canvas-smart-guide-${line.kind}`} key={`snap-line:${index}`} x1={line.from} x2={line.to} y1={line.position} y2={line.position} vectorEffect="non-scaling-stroke" />)}
+              {snapFeedback.measurements.map((measurement, index) => {
+                const value = Math.round(measurement.value * 100) / 100;
+                const label = String(value);
+                const width = Math.max(24, label.length * 7 + 10) / viewport.zoom;
+                const height = 18 / viewport.zoom;
+                const center = (measurement.start + measurement.end) / 2;
+                return measurement.axis === "x" ? <g className="canvas-snap-distance" key={`snap-distance:${index}`}>
+                  <line x1={measurement.start} x2={measurement.end} y1={measurement.cross} y2={measurement.cross} vectorEffect="non-scaling-stroke" />
+                  <line x1={measurement.start} x2={measurement.start} y1={measurement.cross - 4 / viewport.zoom} y2={measurement.cross + 4 / viewport.zoom} vectorEffect="non-scaling-stroke" />
+                  <line x1={measurement.end} x2={measurement.end} y1={measurement.cross - 4 / viewport.zoom} y2={measurement.cross + 4 / viewport.zoom} vectorEffect="non-scaling-stroke" />
+                  <rect x={center - width / 2} y={measurement.cross - height / 2} width={width} height={height} rx={4 / viewport.zoom} />
+                  <text x={center} y={measurement.cross + 4 / viewport.zoom} fontSize={10 / viewport.zoom}>{label}</text>
+                </g> : <g className="canvas-snap-distance" key={`snap-distance:${index}`}>
+                  <line x1={measurement.cross} x2={measurement.cross} y1={measurement.start} y2={measurement.end} vectorEffect="non-scaling-stroke" />
+                  <line x1={measurement.cross - 4 / viewport.zoom} x2={measurement.cross + 4 / viewport.zoom} y1={measurement.start} y2={measurement.start} vectorEffect="non-scaling-stroke" />
+                  <line x1={measurement.cross - 4 / viewport.zoom} x2={measurement.cross + 4 / viewport.zoom} y1={measurement.end} y2={measurement.end} vectorEffect="non-scaling-stroke" />
+                  <rect x={measurement.cross - width / 2} y={center - height / 2} width={width} height={height} rx={4 / viewport.zoom} />
+                  <text x={measurement.cross} y={center + 4 / viewport.zoom} fontSize={10 / viewport.zoom}>{label}</text>
+                </g>;
+              })}
+            </g>
             {selectedNodes.filter((node) => !hasNodeOrAncestorFlag(node, "hidden")).map((node) => {
               const rect = nodeRect(node, components);
               const transform = node.rotation ? `rotate(${node.rotation} ${rect.x + rect.width / 2} ${rect.y + rect.height / 2})` : undefined;
@@ -2822,7 +2891,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {selectedNode.type !== "component" && (selectedNode.type === "path" || selectedNode.type === "arrow") && <section className="canvas-inspector-section"><h3>Vector path</h3>{selectedPathPoint && <div className="canvas-vector-node-editor"><small>Node {selectedPathPointIndex! + 1}</small><div className="canvas-segmented"><button type="button" className={(selectedPathPoint.nodeType ?? "corner") === "corner" ? "active" : ""} onClick={() => setSelectedPathNodeType("corner")}>Corner</button><button type="button" className={selectedPathPoint.nodeType === "smooth" ? "active" : ""} onClick={() => setSelectedPathNodeType("smooth")}>Curve</button></div><div className="canvas-guide-actions"><button type="button" onClick={addPathPointAfterSelection}>Split segment</button><button type="button" disabled={(selectedNode.points?.length ?? 0) <= 2} onClick={deleteSelectedPathPoint}>Delete node</button></div><small className="canvas-field-hint">Drag a handle to shape the curve. Hold Alt to break handle symmetry.</small></div>}{selectedNode.type === "path" && <><label><span>Smoothing</span><div className="canvas-range-field"><input aria-label="Path smoothing" type="range" min="0" max="100" value={Math.round((selectedNode.pathSmoothing ?? 0) * 100)} onChange={(event) => patchSelected({ pathSmoothing: Number(event.target.value) / 100 })} /><output>{Math.round((selectedNode.pathSmoothing ?? 0) * 100)}%</output></div></label><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.pathClosed)} onChange={(event) => patchSelected({ pathClosed: event.target.checked })} /><span>Close path</span></label></>}<div className="canvas-typography-fields"><label><span>Start</span><select aria-label="Start cap" value={selectedNode.startCap ?? "none"} onChange={(event) => patchSelected({ startCap: event.target.value as CanvasPrimitiveNode["startCap"] })}><option value="none">None</option><option value="round">Round</option><option value="arrow">Arrow</option></select></label><label><span>End</span><select aria-label="End cap" value={selectedNode.type === "arrow" ? "arrow" : selectedNode.endCap ?? "none"} onChange={(event) => patchSelected({ endCap: event.target.value as CanvasPrimitiveNode["endCap"] })}><option value="none">None</option><option value="round">Round</option><option value="arrow">Arrow</option></select></label></div>{selectedNode.type === "arrow" && <div className="canvas-connector-status"><span>{selectedNode.startBindingId ? "Start linked" : "Start free"}</span><span>{selectedNode.endBindingId ? "End linked" : "End free"}</span>{(selectedNode.startBindingId || selectedNode.endBindingId) && <button type="button" onClick={() => patchSelected({ startBindingId: undefined, endBindingId: undefined })}>Detach endpoints</button>}</div>}</section>}
           {selectedNode.type !== "component" && <section className="canvas-inspector-section"><h3>Appearance</h3>{selectedNode.type !== "line" && selectedNode.type !== "arrow" && selectedNode.type !== "image" && (selectedNode.type !== "path" || selectedNode.pathClosed) && <label className="canvas-color-field"><span>{selectedNode.type === "text" ? "Text color" : "Fill"}</span><span><input type="color" value={selectedNode.color} onChange={(event) => patchSelected({ color: event.target.value })} /><code>{selectedNode.color.toUpperCase()}</code></span></label>}{selectedNode.type !== "text" && selectedNode.type !== "image" && <><label className="canvas-color-field"><span>Stroke</span><span><input type="color" value={selectedNode.strokeColor ?? "#17181c"} onChange={(event) => patchSelected({ strokeColor: event.target.value, strokeWidth: Math.max(1, selectedNode.strokeWidth ?? 1) })} /><code>{(selectedNode.strokeColor ?? "#17181c").toUpperCase()}</code></span></label><div className="canvas-typography-fields"><label><span>Width</span><input aria-label="Stroke width" type="number" min="0" max="64" value={selectedNode.strokeWidth ?? 0} onChange={(event) => patchSelected({ strokeWidth: Math.max(0, Number(event.target.value)) })} /></label><label><span>Dash</span><input aria-label="Stroke dash" type="number" min="0" max="64" value={selectedNode.strokeDash ?? 0} onChange={(event) => patchSelected({ strokeDash: Math.max(0, Number(event.target.value)) })} /></label></div></>}<label><span>Opacity</span><div className="canvas-range-field"><input type="range" min="0" max="100" value={Math.round((selectedNode.opacity ?? 1) * 100)} onChange={(event) => patchSelected({ opacity: Number(event.target.value) / 100 })} /><output>{Math.round((selectedNode.opacity ?? 1) * 100)}%</output></div></label>{(selectedNode.type === "rectangle" || selectedNode.type === "frame") && <label><span>Corner radius</span><input type="number" min="0" value={selectedNode.radius ?? 0} onChange={(event) => patchSelected({ radius: Math.max(0, Number(event.target.value)) })} /></label>}<label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.shadow)} onChange={(event) => patchSelected({ shadow: event.target.checked ? { color: "#101828", x: 0, y: 8, blur: 18, opacity: .2 } : undefined })} /><span>Drop shadow</span></label>{selectedNode.shadow && <div className="canvas-property-grid"><label><span>Y</span><input aria-label="Shadow Y" type="number" value={selectedNode.shadow.y} onChange={(event) => patchSelected({ shadow: { ...selectedNode.shadow!, y: Number(event.target.value) } })} /></label><label><span>B</span><input aria-label="Shadow blur" type="number" min="0" value={selectedNode.shadow.blur} onChange={(event) => patchSelected({ shadow: { ...selectedNode.shadow!, blur: Math.max(0, Number(event.target.value)) } })} /></label></div>}</section>}
           {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Frame</h3><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.clipContent)} onChange={(event) => patchSelected({ clipContent: event.target.checked })} /><span>Clip contents</span></label><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.layout)} onChange={toggleAutoLayout} /><span>Enable auto layout</span></label>{selectedNode.layout && <><div className="canvas-segmented"><button className={selectedNode.layout.direction === "row" ? "active" : ""} onClick={() => patchFrameLayout({ direction: "row" })}>Row</button><button className={selectedNode.layout.direction === "column" ? "active" : ""} onClick={() => patchFrameLayout({ direction: "column" })}>Column</button></div><div className="canvas-typography-fields"><label><span>Gap</span><input aria-label="Layout gap" type="number" min="0" value={selectedNode.layout.gap} onChange={(event) => patchFrameLayout({ gap: Math.max(0, Number(event.target.value)) })} /></label><label><span>Padding</span><input aria-label="Layout padding" type="number" min="0" value={selectedNode.layout.padding} onChange={(event) => patchFrameLayout({ padding: Math.max(0, Number(event.target.value)) })} /></label><label><span>Align</span><select aria-label="Layout alignment" value={selectedNode.layout.align} onChange={(event) => patchFrameLayout({ align: event.target.value as "start" | "center" | "end" })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option></select></label><label><span>Distribute</span><select aria-label="Layout distribution" value={selectedNode.layout.justify} onChange={(event) => patchFrameLayout({ justify: event.target.value as "start" | "center" | "end" | "space-between" })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option></select></label><label><span>Sizing</span><select aria-label="Layout sizing" value={selectedNode.layout.sizing} onChange={(event) => patchFrameLayout({ sizing: event.target.value as "fixed" | "hug" })}><option value="fixed">Fixed</option><option value="hug">Hug contents</option></select></label>{selectedNode.layout.wrap && <label><span>Cross gap</span><input aria-label="Layout cross gap" type="number" min="0" value={selectedNode.layout.crossGap ?? selectedNode.layout.gap} onChange={(event) => patchFrameLayout({ crossGap: Math.max(0, Number(event.target.value)) })} /></label>}</div><label className="canvas-toggle-row"><input aria-label="Wrap auto-layout children" type="checkbox" checked={Boolean(selectedNode.layout.wrap)} disabled={selectedNode.layout.sizing === "hug"} onChange={(event) => patchFrameLayout({ wrap: event.target.checked, crossGap: event.target.checked ? selectedNode.layout!.crossGap ?? selectedNode.layout!.gap : selectedNode.layout!.crossGap })} /><span>Wrap children</span></label>{selectedNode.layout.sizing === "hug" && <small className="canvas-field-hint">Use fixed sizing to wrap children across rows or columns.</small>}</>}</section>}
-          {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Layout grids</h3><div className="canvas-guide-actions"><button type="button" onClick={() => addFrameLayoutGrid("square")}><Plus size={12} /> Square</button><button type="button" onClick={() => addFrameLayoutGrid("columns")}><Plus size={12} /> Columns</button><button type="button" onClick={() => addFrameLayoutGrid("rows")}><Plus size={12} /> Rows</button></div>{selectedNode.layoutGrids?.map((grid) => <div className="canvas-guide-row" key={grid.id}><select aria-label={`Grid ${grid.id} type`} value={grid.type} onChange={(event) => patchFrameLayoutGrid(grid.id, { type: event.target.value as "square" | "columns" | "rows" })}><option value="square">Square</option><option value="columns">Columns</option><option value="rows">Rows</option></select><input aria-label={`Grid ${grid.type} size`} type="number" min="1" value={grid.type === "square" ? grid.size ?? 8 : grid.count ?? 12} onChange={(event) => patchFrameLayoutGrid(grid.id, grid.type === "square" ? { size: Math.max(1, Number(event.target.value)) } : { count: Math.max(1, Number(event.target.value)) })} /><input aria-label={`Grid ${grid.type} color`} type="color" value={grid.color} onChange={(event) => patchFrameLayoutGrid(grid.id, { color: event.target.value })} /><button type="button" aria-label={`Delete ${grid.type} grid`} onClick={() => removeFrameLayoutGrid(grid.id)}><Trash size={11} /></button></div>)}</section>}
+          {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Layout grids</h3><div className="canvas-guide-actions"><button type="button" onClick={() => addFrameLayoutGrid("square")}><Plus size={12} /> Square</button><button type="button" onClick={() => addFrameLayoutGrid("columns")}><Plus size={12} /> Columns</button><button type="button" onClick={() => addFrameLayoutGrid("rows")}><Plus size={12} /> Rows</button></div>{selectedNode.layoutGrids?.map((grid) => <div className="canvas-guide-row" key={grid.id}><select aria-label={`Grid ${grid.id} type`} value={grid.type} onChange={(event) => patchFrameLayoutGrid(grid.id, { type: event.target.value as "square" | "columns" | "rows" })}><option value="square">Square</option><option value="columns">Columns</option><option value="rows">Rows</option></select><input aria-label={`Grid ${grid.type} size`} type="number" min="1" max={grid.type === "square" ? 10_000 : 100} value={grid.type === "square" ? grid.size ?? 8 : grid.count ?? 12} onChange={(event) => patchFrameLayoutGrid(grid.id, grid.type === "square" ? { size: Number(event.target.value) } : { count: Number(event.target.value) })} /><input aria-label={`Grid ${grid.type} color`} type="color" value={grid.color} onChange={(event) => patchFrameLayoutGrid(grid.id, { color: event.target.value })} /><button type="button" aria-label={`Delete ${grid.type} grid`} onClick={() => removeFrameLayoutGrid(grid.id)}><Trash size={11} /></button></div>)}</section>}
           {selectedNode.type === "component" && selectedComponent && <section className="canvas-inspector-section"><h3>Component properties</h3>{selectedComponent.nodes.map((source) => {
             const effective = effectivePrimitive(source, selectedNode);
             return <div className="canvas-component-property" key={source.id}>
@@ -2882,7 +2951,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {selectedNode.groupId && <section className="canvas-inspector-section"><button className="canvas-reset-overrides" type="button" onClick={ungroupSelected}>Ungroup selection</button></section>}
           {selectedNode.type !== "component" && selectedNode.type !== "boolean" && <section className="canvas-inspector-section"><button className="canvas-component-action" onClick={createComponentFromSelection}><DiamondsFour size={15} /><span><strong>Create component</strong><small>Reuse this layer as an asset</small></span></button></section>}
           <div className="canvas-inspector-actions"><button type="button" onClick={selectedNode.type === "component" && selectedNode.componentRole === "instance" ? detachSelectedInstance : duplicateSelected}>{selectedNode.type === "component" && selectedNode.componentRole === "instance" ? <><LinkBreak size={14} /> Detach</> : selectedNode.type === "component" ? <><DiamondsFour size={14} /> Instance</> : <><Copy size={14} /> Duplicate</>}</button><button type="button" onClick={toggleSelectedLock}>{selectedNode.locked ? <><LockSimpleOpen size={14} /> Unlock</> : <><LockSimple size={14} /> Lock</>}</button><button className="danger" type="button" onClick={removeSelected}><Trash size={14} /> Delete</button></div>
-        </> : <div className="canvas-inspector-empty"><Selection size={22} /><strong>Nothing selected</strong><p>Shift-click or drag a marquee to select multiple layers.</p><label className="canvas-snap-setting"><input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapMode(event.target.checked)} /><span><GridFour size={14} /><span><strong>Snap to 8 px grid</strong><small>Smart guides stay active</small></span></span></label></div>}
+        </> : <div className="canvas-inspector-empty"><Selection size={22} /><strong>Nothing selected</strong><p>Shift-click or drag a marquee to select multiple layers.</p><label className="canvas-snap-setting"><input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapMode(event.target.checked)} /><span><GridFour size={14} /><span><strong>Snap to 8 px grid</strong><small>Hold Ctrl/⌘ to bypass all snapping</small></span></span></label></div>}
         <section className="canvas-inspector-section canvas-page-settings"><h3>Page</h3><label><span>Preset</span><select aria-label="Page size preset" value={currentPagePreset} onChange={(event) => {
           const preset = canvasPagePresets.find((candidate) => candidate.id === event.target.value);
           if (preset) resizeActivePageFrame(preset.width, preset.height, true);

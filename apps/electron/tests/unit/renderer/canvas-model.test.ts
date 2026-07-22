@@ -11,7 +11,9 @@ import {
   descendantIds,
   effectivePrimitive,
   isCanvasNode,
+  prepareCanvasSnapIndex,
   selectionRect,
+  snapCanvasMove,
 } from "../../../src/renderer/src/studio/canvas-model";
 import type { CanvasComponentNode, CanvasNode, CanvasPrimitiveNode } from "../../../src/renderer/src/studio/canvas-model";
 
@@ -77,6 +79,117 @@ describe("Khadim canvas scene model", () => {
     const nested: CanvasNode = { ...first, id: "nested", parentId: second.id };
     expect(descendantIds([frame, first, second, nested], [frame.id])).toEqual(expect.arrayContaining([first.id, second.id, nested.id]));
     expect(selectionRect([first, second], [])).toEqual({ x: 0, y: 0, width: 80, height: 48 });
+  });
+
+  it("snaps move bounds to semantic shape centers and returns bounded feedback lines", () => {
+    const result = snapCanvasMove({
+      bounds: { x: 10, y: 20, width: 40, height: 30 },
+      deltaX: 94,
+      deltaY: 28,
+      rectTargets: [{ id: "target", rect: { x: 100, y: 50, width: 50, height: 80 } }],
+      threshold: 6,
+      pageRect: { x: 0, y: 0, width: 500, height: 400 },
+    });
+
+    expect(result).toMatchObject({ deltaX: 95, deltaY: 30 });
+    expect(result.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ axis: "x", position: 125, from: 50, to: 130, kind: "shape" }),
+      expect.objectContaining({ axis: "y", position: 50, from: 100, to: 150, kind: "shape" }),
+    ]));
+  });
+
+  it("snaps between nearby peers at equal distances and exposes both measurements", () => {
+    const result = snapCanvasMove({
+      bounds: { x: 50, y: 60, width: 40, height: 40 },
+      deltaX: 26,
+      deltaY: 0,
+      rectTargets: [
+        { id: "left", rect: { x: 0, y: 60, width: 40, height: 40 } },
+        { id: "right", rect: { x: 160, y: 60, width: 40, height: 40 } },
+      ],
+      threshold: 6,
+      pageRect: { x: 0, y: 0, width: 500, height: 400 },
+    });
+
+    expect(result.deltaX).toBe(30);
+    expect(result.measurements).toEqual([
+      expect.objectContaining({ axis: "x", start: 40, end: 80, value: 40 }),
+      expect.objectContaining({ axis: "x", start: 120, end: 160, value: 40 }),
+    ]);
+    expect(result.lines.filter((line) => line.axis === "x")).toHaveLength(0);
+
+    const vertical = snapCanvasMove({
+      bounds: { x: 60, y: 50, width: 40, height: 40 },
+      deltaX: 0,
+      deltaY: 26,
+      rectTargets: [
+        { id: "top", rect: { x: 60, y: 0, width: 40, height: 40 } },
+        { id: "bottom", rect: { x: 60, y: 160, width: 40, height: 40 } },
+      ],
+      threshold: 6,
+      pageRect: { x: 0, y: 0, width: 500, height: 500 },
+    });
+    expect(vertical.deltaY).toBe(30);
+    expect(vertical.measurements).toEqual([
+      expect.objectContaining({ axis: "y", start: 40, end: 80, value: 40 }),
+      expect.objectContaining({ axis: "y", start: 120, end: 160, value: 40 }),
+    ]);
+  });
+
+  it("prefers explicit ruler and layout guides when snap coordinates coincide", () => {
+    const result = snapCanvasMove({
+      bounds: { x: 48, y: 30, width: 40, height: 40 },
+      deltaX: 1,
+      deltaY: 0,
+      rectTargets: [{ id: "shape", rect: { x: 50, y: 10, width: 60, height: 80 } }],
+      axisTargets: [
+        { axis: "x", position: 50, kind: "layout-grid", from: 0, to: 200 },
+        { axis: "x", position: 50, kind: "guide", from: 0, to: 300 },
+      ],
+      threshold: 6,
+      pageRect: { x: 0, y: 0, width: 500, height: 400 },
+    });
+
+    expect(result.deltaX).toBe(2);
+    expect(result.lines).toEqual(expect.arrayContaining([expect.objectContaining({ axis: "x", position: 50, from: 0, to: 300, kind: "guide" })]));
+  });
+
+  it("falls back to the configured grid and bypasses every snap source on demand", () => {
+    const input = {
+      bounds: { x: 13, y: 17, width: 40, height: 40 },
+      deltaX: 10,
+      deltaY: 10,
+      rectTargets: [],
+      axisTargets: [{ axis: "x" as const, position: 26, kind: "guide" as const }],
+      threshold: 3,
+      pageRect: { x: 0, y: 0, width: 500, height: 400 },
+      snapToGrid: true,
+      gridSize: 8,
+    };
+
+    expect(snapCanvasMove(input)).toMatchObject({ deltaX: 13, deltaY: 7, lines: [expect.objectContaining({ kind: "guide", position: 26 })] });
+    expect(snapCanvasMove({ ...input, disabled: true })).toEqual({ deltaX: 10, deltaY: 10, lines: [], measurements: [] });
+  });
+
+  it("resolves snapping across large peer sets without recursive traversal", () => {
+    const rectTargets = Array.from({ length: 10_000 }, (_, index) => ({
+      id: `far-${index}`,
+      rect: { x: 1_000 + index * 100, y: 1_000, width: 40, height: 40 },
+    }));
+    rectTargets.push({ id: "near", rect: { x: 100, y: 0, width: 20, height: 20 } });
+
+    const pageRect = { x: 0, y: 0, width: 100_000, height: 100_000 };
+    const result = snapCanvasMove({
+      bounds: { x: 0, y: 0, width: 20, height: 20 },
+      deltaX: 89,
+      deltaY: 0,
+      snapIndex: prepareCanvasSnapIndex(rectTargets, [], pageRect),
+      threshold: 6,
+      pageRect,
+    });
+
+    expect(result.deltaX).toBe(90);
+    expect(result.lines).toEqual(expect.arrayContaining([expect.objectContaining({ axis: "x", position: 100 })]));
   });
 
   it("keeps instance overrides local to the linked component copy", () => {
