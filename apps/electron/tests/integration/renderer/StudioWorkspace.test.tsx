@@ -125,6 +125,61 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(freelyMoved.y).toBeCloseTo(60);
   });
 
+  it("extends smart-distance feedback across an existing layer sequence", () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-sequence-snapping", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [
+      { id: "first", type: "rectangle", name: "First", x: 0, y: 60, width: 40, height: 40, color: "#2563eb" },
+      { id: "second", type: "rectangle", name: "Second", x: 60, y: 60, width: 40, height: 40, color: "#f59e0b" },
+      { id: "third", type: "rectangle", name: "Third", x: 120, y: 60, width: 40, height: 40, color: "#16a34a" },
+      { id: "moving", type: "rectangle", name: "Moving", x: 170, y: 60, width: 40, height: 40, color: "#dc2626" },
+    ];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const movingNode = container.querySelectorAll<SVGGraphicsElement>(".canvas-node")[3];
+
+    fireEvent.pointerDown(movingNode, { button: 0, pointerId: 84, clientX: 216.4, clientY: 124.8 });
+    fireEvent.pointerMove(canvas, { pointerId: 84, clientX: 220.96, clientY: 124.8 });
+
+    expect(container.querySelector("output[aria-live='polite']")).toHaveTextContent("Equal horizontal spacing 20 pixels");
+    expect([...container.querySelectorAll(".canvas-snap-distance text")].map((node) => node.textContent)).toEqual(["20", "20", "20"]);
+    fireEvent.pointerUp(canvas, { pointerId: 84, clientX: 220.96, clientY: 124.8 });
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements.find((node: { id: string }) => node.id === "moving")).toMatchObject({ x: 180, y: 60 });
+  });
+
+  it("snaps a child through a rotated frame grid and renders rotated guide segments", () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-rotated-grid-snapping", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const radians = Math.PI / 4;
+    const local = { x: 187, y: 104 };
+    const center = { x: 200, y: 200 };
+    const world = {
+      x: center.x + (local.x - center.x) * Math.cos(radians) - (local.y - center.y) * Math.sin(radians),
+      y: center.y + (local.x - center.x) * Math.sin(radians) + (local.y - center.y) * Math.cos(radians),
+    };
+    artifact.content.elements = [
+      { id: "rotated-frame", type: "frame", name: "Rotated frame", x: 100, y: 100, width: 200, height: 200, rotation: 45, color: "#ffffff", layoutGrids: [{ id: "square", type: "square", visible: true, color: "#2563eb", opacity: .2, size: 50 }] },
+      { id: "moving-child", parentId: "rotated-frame", type: "rectangle", name: "Moving child", x: world.x - 10, y: world.y - 10, width: 20, height: 20, rotation: 45, color: "#f59e0b" },
+    ];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    const canvas = screen.getByRole("application", { name: "Canvas artwork" });
+    const movingNode = container.querySelectorAll<SVGGraphicsElement>(".canvas-node")[1];
+    const clientX = 72 + world.x * .76;
+    const clientY = 64 + world.y * .76;
+
+    fireEvent.pointerDown(movingNode, { button: 0, pointerId: 85, clientX, clientY });
+    fireEvent.pointerMove(canvas, { pointerId: 85, clientX, clientY });
+
+    expect(container.querySelector("output[aria-live='polite']")).toHaveTextContent("Aligned to rotated layout grid");
+    expect(container.querySelectorAll(".canvas-smart-guide-rotated")).toHaveLength(2);
+    fireEvent.pointerUp(canvas, { pointerId: 85, clientX, clientY });
+    const moved = onChange.mock.calls.at(-1)?.[0].content.elements.find((node: { id: string }) => node.id === "moving-child");
+    expect(moved.x).not.toBeCloseTo(world.x - 10);
+    expect(moved.y).not.toBeCloseTo(world.y - 10);
+  });
+
   it("does not treat a moving frame's own layout grid as stationary snap geometry", () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-moving-grid", "2026-07-22T10:00:00.000Z");
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
@@ -321,13 +376,16 @@ describe("StudioWorkspace canvas design workflow", () => {
   it("configures square, column, and row layout grids on frames", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-layout-grids", "2026-07-22T10:00:00.000Z");
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
-    artifact.content.elements = [{ id: "frame", type: "frame", name: "Desktop", x: 20, y: 20, width: 320, height: 240, color: "#ffffff" }];
+    artifact.content.elements = [{ id: "frame", type: "frame", name: "Desktop", x: 20, y: 20, width: 323, height: 240, color: "#ffffff" }];
     const onChange = vi.fn();
     const user = userEvent.setup();
     const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Square" }));
     fireEvent.change(screen.getByRole("spinbutton", { name: /Grid square size/ }), { target: { value: "10" } });
+    const verticalGridLines = [...container.querySelectorAll<SVGLineElement>(".canvas-layout-grids line")].filter((line) => line.getAttribute("x1") === line.getAttribute("x2"));
+    expect(verticalGridLines.at(-1)).toHaveAttribute("x1", "340");
+    expect(verticalGridLines.some((line) => line.getAttribute("x1") === "343" || line.getAttribute("x1") === "350")).toBe(false);
     await user.click(screen.getByRole("button", { name: "Columns" }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Grid columns size" }), { target: { value: "500" } });
     await user.click(screen.getByRole("button", { name: "Rows" }));

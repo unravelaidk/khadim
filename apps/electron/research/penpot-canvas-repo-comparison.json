@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-23T00:25:00+02:00",
+  "capturedAt": "2026-07-23T00:52:00+02:00",
   "repository": "https://github.com/penpot/penpot",
   "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
   "scope": [
@@ -29,6 +29,7 @@
     "https://help.penpot.app/user-guide/designing/color-stroke/",
     "https://help.penpot.app/user-guide/design-systems/design-tokens/",
     "https://help.penpot.app/user-guide/prototyping-testing/prototyping/",
+    "https://help.penpot.app/technical-guide/developer/architecture/frontend/",
     "https://help.penpot.app/technical-guide/developer/data-model/penpot-file-format/"
   ],
   "findings": [
@@ -64,8 +65,8 @@
     },
     {
       "area": "snapping",
-      "evidence": "Penpot derives snap points from semantic shape geometry, indexes them by axis for bounded queries, renders alignment feedback separately from mutation, and shows matching distances between nearby layers.",
-      "khadimDecision": "Resolve Khadim moves in a deterministic canvas-model function against peer edges and centers, page and frame geometry, ruler guides, layout grids, equal spacing, and the pixel grid. Build snap targets once per gesture, return bounded feedback geometry, and keep the SVG overlay separate from persisted scene data."
+      "evidence": "Penpot derives snap points from semantic shape geometry, maintains a worker-owned distance index for bounded queries, renders alignment feedback separately from mutation, and documents equal-distance feedback when three or more nearby layers form a sequence. Board guides remain semantic square, column, and row geometry.",
+      "khadimDecision": "Resolve Khadim moves in a deterministic canvas-model function against peer edges and centers, page and frame geometry, ruler guides, layout grids, equal-spacing sequences, and the pixel grid. Build snap targets once per gesture, solve rotated frame guides from real selection anchors in frame-local coordinates, combine compatible one-axis grid and world-axis constraints, return axis or vector feedback geometry, and keep the SVG overlay separate from persisted scene data."
     },
     {
       "area": "component safety",
@@ -95,14 +96,13 @@
     "Page ordering, prototype start screens, lazy thumbnails, and multi-page PDF output",
     "Shared large-scene geometry indexing, viewport culling, and virtualized layer rails",
     "Fixed and hug auto-layout with alignment, distribution, padding, wrapping, and independent line gaps",
-    "Deterministic edge, center, page, frame, ruler-guide, layout-grid, equal-spacing, and pixel-grid snapping with transient distance feedback",
+    "Deterministic edge, center, page, frame, ruler-guide, pixel-grid, multi-layer equal-spacing sequence, and rotated frame-local layout-grid snapping with transient axis and vector feedback",
     "Sixteen layer blend modes, bounded layer and background blur, and normalized independent corner radii across primitives, component instances, clipping, undo, persistence, and static export",
     "Ordered multi-fill and multi-stroke paint stacks with per-paint visibility and opacity, linear and radial gradients, inside, center, and outside stroke alignment, patterned strokes, reusable radial paint styles, undoable stack editing, component and boolean preservation, strict persistence, alignment-aware bounds, and editor, prototype, and static export parity",
     "Ordered drop and inner shadow stacks with stable IDs, visibility, color, opacity, offsets, blur, spread, reusable effect styles, legacy mirrors, undoable stack editing, component and boolean preservation, mask suppression, strict persistence, drop-aware bounds, and editor, prototype, and static export parity"
   ],
   "nextHighValueGaps": [
     "Semantic canvas command and undo transaction modules",
-    "Extended equal-spacing sequence snapping and true rotated-frame grid snapping",
     "Nested component cycle validation",
     "Selection-aware agent patches for prototype interactions"
   ]

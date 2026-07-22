@@ -56,11 +56,13 @@ import {
   applyFrameLayout,
   applyFrameResizeConstraints,
   canvasComponents,
+  canvasFrameOrientedSnapGrid,
   canvasGeometryIndex,
   canvasLayerTree,
   canvasNodes,
   canvasPages,
   canvasPrototypeFlows,
+  canvasRectAnchorPoints,
   canvasSignature,
   canvasThumbnailElements,
   canvasVirtualRange,
@@ -81,6 +83,7 @@ import type {
   CanvasComponentDefinition,
   CanvasComponentNode,
   CanvasNode,
+  CanvasOrientedSnapGrid,
   CanvasPaintStyle,
   CanvasTextStyle,
   CanvasEffectStyle,
@@ -104,6 +107,8 @@ type CanvasMoveSnapContext = {
   gridSize: number;
   gridOriginX: number;
   gridOriginY: number;
+  orientedGrids?: CanvasOrientedSnapGrid[];
+  anchorPoints?: Array<{ x: number; y: number }>;
 };
 type CanvasGesture =
   | { kind: "pan"; pointerX: number; pointerY: number; originX: number; originY: number }
@@ -2090,8 +2095,20 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     if (parentFrame && !movingIdSet.has(parentFrame.id) && !rectTargets.some((target) => target.id === parentFrame.id)) {
       rectTargets.push({ id: parentFrame.id, rect: rotatedRect(nodeRect(parentFrame, components), parentFrame.rotation), kind: "frame" });
     }
-    const gridFrame = parentFrame && !(parentFrame.rotation ?? 0) ? parentFrame : undefined;
-    const squareGrid = gridFrame?.layoutGrids?.find((grid) => grid.visible && grid.type === "square");
+    const normalizedFrameRotation = parentFrame ? ((parentFrame.rotation ?? 0) % 360 + 360) % 360 : 0;
+    const gridFrame = parentFrame && normalizedFrameRotation < 1e-6 ? parentFrame : undefined;
+    const squareGrid = parentFrame?.layoutGrids?.find((grid) => grid.visible && grid.type === "square");
+    const orientedGrid = snapToGrid && parentFrame ? canvasFrameOrientedSnapGrid(parentFrame, snapGridSize) : undefined;
+    const anchorPoints = orientedGrid && parentFrame && directNodes.length ? (() => {
+      const centerX = parentFrame.x + parentFrame.width / 2;
+      const centerY = parentFrame.y + parentFrame.height / 2;
+      const local = directNodes.flatMap((node) => canvasRectAnchorPoints(nodeRect(node, components), node.rotation)).map((point) => rotatePoint(point, centerX, centerY, -(parentFrame.rotation ?? 0)));
+      const left = Math.min(...local.map((point) => point.x));
+      const top = Math.min(...local.map((point) => point.y));
+      const right = Math.max(...local.map((point) => point.x));
+      const bottom = Math.max(...local.map((point) => point.y));
+      return canvasRectAnchorPoints({ x: left, y: top, width: right - left, height: bottom - top }).map((point) => rotatePoint(point, centerX, centerY, parentFrame.rotation ?? 0));
+    })() : undefined;
     const axisTargets: CanvasSnapAxisTarget[] = guidesVisible ? rulerGuides.map((guide) => ({ axis: guide.axis, position: guide.position, kind: "guide" })) : [];
     for (const grid of snapToGrid ? gridFrame?.layoutGrids?.filter((candidate) => candidate.visible) ?? [] : []) {
       const count = Math.min(100, Math.max(1, Math.round(grid.count ?? 12)));
@@ -2117,8 +2134,10 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     return {
       snapIndex: prepareCanvasSnapIndex(rectTargets, axisTargets, { x: 0, y: 0, ...canvasFrame }),
       gridSize: squareGrid?.size ?? snapGridSize,
-      gridOriginX: gridFrame?.x ?? 0,
-      gridOriginY: gridFrame?.y ?? 0,
+      gridOriginX: parentFrame?.x ?? 0,
+      gridOriginY: parentFrame?.y ?? 0,
+      orientedGrids: orientedGrid ? [orientedGrid] : undefined,
+      anchorPoints,
     };
   }
 
@@ -2391,7 +2410,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       const resolved = resolveCanvasConnectors(resolveBooleanGroups(next)) as CanvasNode[];
       nodesRef.current = resolved;
       setCanvasNodes(resolved);
-      setSnapFeedback({ lines: snapped.lines, measurements: snapped.measurements });
+      setSnapFeedback({ lines: snapped.lines, measurements: snapped.measurements, segments: snapped.segments });
       return;
     }
     if (gesture.kind === "rotate" || gesture.kind === "multi-rotate") {
@@ -2920,8 +2939,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       const opacity = grid.opacity;
       if (grid.type === "square") {
         const size = Math.max(2, grid.size ?? snapGridSize);
-        const vertical = Array.from({ length: Math.min(400, Math.ceil(frame.width / size) + 1) }, (_, index) => frame.x + index * size);
-        const horizontal = Array.from({ length: Math.min(400, Math.ceil(frame.height / size) + 1) }, (_, index) => frame.y + index * size);
+        const vertical = Array.from({ length: Math.min(400, Math.floor(frame.width / size) + 1) }, (_, index) => frame.x + index * size);
+        const horizontal = Array.from({ length: Math.min(400, Math.floor(frame.height / size) + 1) }, (_, index) => frame.y + index * size);
         return <g key={grid.id} stroke={color} opacity={opacity} vectorEffect="non-scaling-stroke">{vertical.map((x) => <line key={`x:${x}`} x1={x} x2={x} y1={frame.y} y2={frame.y + frame.height} />)}{horizontal.map((y) => <line key={`y:${y}`} x1={frame.x} x2={frame.x + frame.width} y1={y} y2={y} />)}</g>;
       }
       const count = Math.min(100, Math.max(1, Math.round(grid.count ?? 12)));
@@ -3009,7 +3028,9 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const snapAnnouncement = snapFeedback.measurements.length
     ? [...new Map(snapFeedback.measurements.map((measurement) => [measurement.axis, measurement])).values()]
       .map((measurement) => `Equal ${measurement.axis === "x" ? "horizontal" : "vertical"} spacing ${Math.round(measurement.value * 100) / 100} pixels.`).join(" ")
-    : snapFeedback.lines.map((line) => `${line.axis === "x" ? "Vertical" : "Horizontal"} alignment at ${Math.round(line.position * 100) / 100} pixels.`).join(" ");
+    : snapFeedback.lines.length
+      ? snapFeedback.lines.map((line) => `${line.axis === "x" ? "Vertical" : "Horizontal"} alignment at ${Math.round(line.position * 100) / 100} pixels.`).join(" ")
+      : snapFeedback.segments?.length ? "Aligned to rotated layout grid." : "";
 
   return (
     <div className="studio-editor-layout canvas-layout">
@@ -3162,6 +3183,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
               {snapFeedback.lines.map((line, index) => line.axis === "x"
                 ? <line className={`canvas-smart-guide canvas-smart-guide-${line.kind}`} key={`snap-line:${index}`} x1={line.position} x2={line.position} y1={line.from} y2={line.to} vectorEffect="non-scaling-stroke" />
                 : <line className={`canvas-smart-guide canvas-smart-guide-${line.kind}`} key={`snap-line:${index}`} x1={line.from} x2={line.to} y1={line.position} y2={line.position} vectorEffect="non-scaling-stroke" />)}
+              {snapFeedback.segments?.map((segment, index) => <line className={`canvas-smart-guide canvas-smart-guide-${segment.kind} canvas-smart-guide-rotated`} key={`snap-segment:${index}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} vectorEffect="non-scaling-stroke" />)}
               {snapFeedback.measurements.map((measurement, index) => {
                 const value = Math.round(measurement.value * 100) / 100;
                 const label = String(value);

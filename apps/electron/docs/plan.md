@@ -378,10 +378,16 @@ gap between wrapped lines.
 Pointer moves now resolve through deterministic snapping geometry instead of
 component-local coordinate loops. A gesture builds peer, parent-frame, ruler,
 and layout-grid targets once, then snaps selected bounds to edges, centers,
-page geometry, equal peer spacing, or the configured pixel grid. The viewport
-renders bounded alignment lines and labeled distance segments without writing
-feedback into the scene. Hold Control or Command while dragging to bypass every
-snap source for temporary free placement.
+page geometry, equal peer spacing, or the configured pixel grid. Equal-spacing
+feedback now extends through an existing run of three or more layers instead of
+stopping at the moving layer's immediate neighbors. Rotated frame guides are
+solved in the frame's local coordinate system, then returned as a world-space
+movement vector with guide segments that follow the visible square, column, or
+row grid. A rotated column-only or row-only grid keeps its unconstrained degree
+of freedom, so it can combine with a compatible ruler or shape alignment. The
+viewport renders bounded alignment lines and labeled distance segments without
+writing feedback into the scene. Hold Control or Command while dragging to
+bypass every snap source for temporary free placement.
 
 ### Google Workspace read-only integrations
 
@@ -735,6 +741,9 @@ canvas occlusion, animation quality, or preview scale.
 The research uses primary software documentation and repositories. Academic
 sources were not applicable to these integration decisions.
 
+- [Penpot workspace basics](https://help.penpot.app/user-guide/designing/workspace-basics/)
+- [Penpot frontend architecture](https://help.penpot.app/technical-guide/developer/architecture/frontend/)
+- [Penpot snap geometry source](https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/geom/snap.cljc)
 - [Puck repository and MIT license](https://github.com/puckeditor/puck)
 - [Puck documentation](https://puckeditor.com/docs)
 - [Monaco Editor repository and MIT license](https://github.com/microsoft/monaco-editor)
@@ -768,6 +777,5 @@ remaining work in this order:
    preserving the artifact path validation boundary.
 4. Add long-document pagination and PDF fixtures, plus selection-scoped
    document agent edits.
-5. Continue the native canvas hardening work: command extraction, nested
-   component cycle validation, scroll-container prototypes, extended
-   equal-spacing sequences, and rotated-frame grid snapping.
+5. Continue the native canvas hardening work: extract semantic commands, reject
+   nested component cycles, and add selection-aware prototype agent patches.

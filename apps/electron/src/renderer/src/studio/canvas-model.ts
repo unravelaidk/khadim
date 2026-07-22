@@ -97,9 +97,30 @@ export interface CanvasSnapMeasurement {
   value: number;
 }
 
+export interface CanvasSnapSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  kind: Extract<CanvasSnapTargetKind, "layout-grid">;
+}
+
+export interface CanvasOrientedSnapLine {
+  position: number;
+  threshold?: number;
+}
+
+export interface CanvasOrientedSnapGrid {
+  rect: CanvasRect;
+  rotation: number;
+  x: CanvasOrientedSnapLine[];
+  y: CanvasOrientedSnapLine[];
+}
+
 export interface CanvasSnapFeedback {
   lines: CanvasSnapLine[];
   measurements: CanvasSnapMeasurement[];
+  segments?: CanvasSnapSegment[];
 }
 
 export interface CanvasSnapIndexedCandidate {
@@ -131,6 +152,8 @@ export interface CanvasMoveSnapInput {
   gridSize?: number;
   gridOriginX?: number;
   gridOriginY?: number;
+  orientedGrids?: CanvasOrientedSnapGrid[];
+  anchorPoints?: CanvasPoint[];
   disabled?: boolean;
 }
 
@@ -453,6 +476,15 @@ interface SpacingSnap {
   measurements: CanvasSnapMeasurement[];
 }
 
+interface OrientedGridSnap {
+  correctionX: number;
+  correctionY: number;
+  segments: CanvasSnapSegment[];
+  localX?: number;
+  localY?: number;
+  rotation: number;
+}
+
 const snapKindPriority: Record<CanvasSnapTargetKind, number> = {
   guide: 0,
   "layout-grid": 1,
@@ -506,6 +538,42 @@ export function prepareCanvasSnapIndex(rectTargets: CanvasSnapRectTarget[], axis
     rectsByTop: [...rectTargets].sort((first, second) => first.rect.y - second.rect.y),
     rectsByBottom: [...rectTargets].sort((first, second) => first.rect.y + first.rect.height - (second.rect.y + second.rect.height)),
   };
+}
+
+/** Projects a frame's visible guides into its unrotated local space for vector snapping. */
+export function canvasFrameOrientedSnapGrid(frame: CanvasPrimitiveNode, fallbackSquareSize = 8): CanvasOrientedSnapGrid | undefined {
+  if (frame.type !== "frame" || !frame.layoutGrids?.some((grid) => grid.visible)) return undefined;
+  const rotation = ((frame.rotation ?? 0) % 360 + 360) % 360;
+  if (rotation < 1e-6) return undefined;
+  const x = new Map<number, CanvasOrientedSnapLine>();
+  const y = new Map<number, CanvasOrientedSnapLine>();
+  const add = (target: Map<number, CanvasOrientedSnapLine>, position: number, threshold?: number): void => {
+    const key = Math.round(position * 1e6) / 1e6;
+    const current = target.get(key);
+    target.set(key, { position, threshold: Math.max(current?.threshold ?? 0, threshold ?? 0) || undefined });
+  };
+  for (const grid of frame.layoutGrids.filter((candidate) => candidate.visible)) {
+    if (grid.type === "square") {
+      const size = Math.max(2, grid.size ?? fallbackSquareSize);
+      for (let index = 0; index < Math.min(400, Math.floor(frame.width / size) + 1); index += 1) add(x, frame.x + index * size, size / 2);
+      for (let index = 0; index < Math.min(400, Math.floor(frame.height / size) + 1); index += 1) add(y, frame.y + index * size, size / 2);
+      continue;
+    }
+    const count = Math.min(100, Math.max(1, Math.round(grid.count ?? 12)));
+    const gutter = grid.gutter ?? 16;
+    const margin = grid.margin ?? 24;
+    const available = (grid.type === "columns" ? frame.width : frame.height) - margin * 2 - gutter * (count - 1);
+    const size = Math.max(0, available / count);
+    for (let index = 0; index < count; index += 1) {
+      const start = (grid.type === "columns" ? frame.x : frame.y) + margin + index * (size + gutter);
+      const target = grid.type === "columns" ? x : y;
+      add(target, start);
+      add(target, start + size);
+    }
+  }
+  if (!x.size && !y.size) return undefined;
+  const sorted = (lines: Map<number, CanvasOrientedSnapLine>): CanvasOrientedSnapLine[] => [...lines.values()].sort((first, second) => first.position - second.position);
+  return { rect: { x: frame.x, y: frame.y, width: frame.width, height: frame.height }, rotation: frame.rotation ?? 0, x: sorted(x), y: sorted(y) };
 }
 
 function lowerBound<T>(items: T[], value: number, coordinate: (item: T) => number): number {
@@ -575,62 +643,189 @@ function perpendicularOverlap(first: CanvasRect, second: CanvasRect, axis: Canva
   return Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
 }
 
-function closestSpacingSnap(axis: CanvasSnapAxis, moving: CanvasRect, index: CanvasSnapIndex, threshold: number): SpacingSnap | undefined {
+function axisStart(rect: CanvasRect, axis: CanvasSnapAxis): number {
+  return axis === "x" ? rect.x : rect.y;
+}
+
+function axisSize(rect: CanvasRect, axis: CanvasSnapAxis): number {
+  return axis === "x" ? rect.width : rect.height;
+}
+
+function axisEnd(rect: CanvasRect, axis: CanvasSnapAxis): number {
+  return axisStart(rect, axis) + axisSize(rect, axis);
+}
+
+function crossStart(rect: CanvasRect, axis: CanvasSnapAxis): number {
+  return axis === "x" ? rect.y : rect.x;
+}
+
+function nearbySpacingTargets(axis: CanvasSnapAxis, moving: CanvasRect, index: CanvasSnapIndex, threshold: number): { before: CanvasSnapRectTarget[]; after: CanvasSnapRectTarget[] } {
   const scanLimit = 96;
-  if (axis === "x") {
-    let left: CanvasSnapRectTarget | undefined;
-    let right: CanvasSnapRectTarget | undefined;
-    const leftStart = upperBound(index.rectsByRight, moving.x + threshold, (target) => target.rect.x + target.rect.width) - 1;
-    const rightStart = lowerBound(index.rectsByLeft, moving.x + moving.width - threshold, (target) => target.rect.x);
-    for (let offset = 0; offset < scanLimit && leftStart - offset >= 0; offset += 1) {
-      const target = index.rectsByRight[leftStart - offset];
-      if (perpendicularOverlap(moving, target.rect, axis) > 0) { left = target; break; }
+  const before: CanvasSnapRectTarget[] = [];
+  const after: CanvasSnapRectTarget[] = [];
+  const beforeItems = axis === "x" ? index.rectsByRight : index.rectsByBottom;
+  const afterItems = axis === "x" ? index.rectsByLeft : index.rectsByTop;
+  const start = axisStart(moving, axis);
+  const end = axisEnd(moving, axis);
+  const beforeStart = upperBound(beforeItems, start + threshold, (target) => axisEnd(target.rect, axis)) - 1;
+  const afterStart = lowerBound(afterItems, end - threshold, (target) => axisStart(target.rect, axis));
+  for (let offset = 0; offset < scanLimit && beforeStart - offset >= 0; offset += 1) {
+    const target = beforeItems[beforeStart - offset];
+    if (perpendicularOverlap(moving, target.rect, axis) > 0) before.push(target);
+  }
+  for (let offset = 0; offset < scanLimit && afterStart + offset < afterItems.length; offset += 1) {
+    const target = afterItems[afterStart + offset];
+    if (perpendicularOverlap(moving, target.rect, axis) > 0) after.push(target);
+  }
+  return { before, after };
+}
+
+function spacingSequenceMeasurements(axis: CanvasSnapAxis, moving: CanvasRect, gap: number, peers: CanvasSnapRectTarget[]): CanvasSnapMeasurement[] {
+  const movingTarget: CanvasSnapRectTarget = { id: "__moving__", rect: moving };
+  const unique = new Map<string, CanvasSnapRectTarget>(peers.map((target) => [target.id, target]));
+  const ordered = [...unique.values(), movingTarget].sort((first, second) => axisStart(first.rect, axis) - axisStart(second.rect, axis) || axisEnd(first.rect, axis) - axisEnd(second.rect, axis));
+  const movingIndex = ordered.indexOf(movingTarget);
+  let first = movingIndex;
+  let last = movingIndex;
+  while (first > 0 && Math.abs(axisStart(ordered[first].rect, axis) - axisEnd(ordered[first - 1].rect, axis) - gap) <= 1e-6) first -= 1;
+  while (last < ordered.length - 1 && Math.abs(axisStart(ordered[last + 1].rect, axis) - axisEnd(ordered[last].rect, axis) - gap) <= 1e-6) last += 1;
+  if (last - first < 2) return [];
+  const sequence = ordered.slice(first, last + 1);
+  const cross = Math.min(...sequence.map((target) => crossStart(target.rect, axis))) - 10;
+  return sequence.slice(0, -1).map((target, offset) => ({
+    axis,
+    start: axisEnd(target.rect, axis),
+    end: axisStart(sequence[offset + 1].rect, axis),
+    cross,
+    value: gap,
+  }));
+}
+
+function closestSpacingSnap(axis: CanvasSnapAxis, moving: CanvasRect, index: CanvasSnapIndex, threshold: number): SpacingSnap | undefined {
+  const { before, after } = nearbySpacingTargets(axis, moving, index, threshold);
+  const candidates: Array<{ correction: number; gap: number }> = [];
+  const nearestBefore = before[0];
+  const nearestAfter = after[0];
+  if (nearestBefore && nearestAfter && nearestBefore.id !== nearestAfter.id) {
+    const correction = (axisEnd(nearestBefore.rect, axis) + axisStart(nearestAfter.rect, axis) - axisSize(moving, axis)) / 2 - axisStart(moving, axis);
+    const nextStart = axisStart(moving, axis) + correction;
+    const gap = nextStart - axisEnd(nearestBefore.rect, axis);
+    if (gap >= 0 && Math.abs(axisStart(nearestAfter.rect, axis) - (nextStart + axisSize(moving, axis)) - gap) <= 1e-6) candidates.push({ correction, gap });
+  }
+  if (nearestBefore) {
+    const previous = before.slice(1).find((target) => target.id !== nearestBefore.id && axisEnd(target.rect, axis) <= axisStart(nearestBefore.rect, axis) + 1e-6);
+    if (previous) {
+      const gap = axisStart(nearestBefore.rect, axis) - axisEnd(previous.rect, axis);
+      candidates.push({ correction: axisEnd(nearestBefore.rect, axis) + gap - axisStart(moving, axis), gap });
     }
-    for (let offset = 0; offset < scanLimit && rightStart + offset < index.rectsByLeft.length; offset += 1) {
-      const target = index.rectsByLeft[rightStart + offset];
-      if (perpendicularOverlap(moving, target.rect, axis) > 0) { right = target; break; }
+  }
+  if (nearestAfter) {
+    const next = after.slice(1).find((target) => target.id !== nearestAfter.id && axisStart(target.rect, axis) >= axisEnd(nearestAfter.rect, axis) - 1e-6);
+    if (next) {
+      const gap = axisStart(next.rect, axis) - axisEnd(nearestAfter.rect, axis);
+      candidates.push({ correction: axisStart(nearestAfter.rect, axis) - gap - axisSize(moving, axis) - axisStart(moving, axis), gap });
     }
-    if (!left || !right || left.id === right.id) return undefined;
-    const correction = (left.rect.x + left.rect.width + right.rect.x - moving.width) / 2 - moving.x;
-    if (Math.abs(correction) > threshold) return undefined;
-    const next = { ...moving, x: moving.x + correction };
-    const gap = next.x - (left.rect.x + left.rect.width);
-    if (gap < 0 || Math.abs(right.rect.x - (next.x + next.width) - gap) > 1e-6) return undefined;
-    const cross = Math.min(left.rect.y, next.y, right.rect.y) - 10;
-    return {
-      correction,
-      measurements: [
-        { axis, start: left.rect.x + left.rect.width, end: next.x, cross, value: gap },
-        { axis, start: next.x + next.width, end: right.rect.x, cross, value: gap },
-      ],
+  }
+  const peers = [...before, ...after];
+  let best: SpacingSnap | undefined;
+  for (const candidate of candidates) {
+    if (candidate.gap < 0 || Math.abs(candidate.correction) > threshold) continue;
+    const next = axis === "x" ? { ...moving, x: moving.x + candidate.correction } : { ...moving, y: moving.y + candidate.correction };
+    const measurements = spacingSequenceMeasurements(axis, next, candidate.gap, peers);
+    if (measurements.length < 2) continue;
+    if (!best || Math.abs(candidate.correction) < Math.abs(best.correction) - 1e-6
+      || Math.abs(Math.abs(candidate.correction) - Math.abs(best.correction)) <= 1e-6 && measurements.length > best.measurements.length) {
+      best = { correction: candidate.correction, measurements };
+    }
+  }
+  return best;
+}
+
+function rotateCanvasPoint(point: CanvasPoint, center: CanvasPoint, rotation: number): CanvasPoint {
+  const radians = rotation * Math.PI / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const x = point.x - center.x;
+  const y = point.y - center.y;
+  return { x: center.x + x * cosine - y * sine, y: center.y + x * sine + y * cosine };
+}
+
+export function canvasRectAnchorPoints(rect: CanvasRect, rotation = 0): CanvasPoint[] {
+  const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  return [rect.x, center.x, rect.x + rect.width].flatMap((x) =>
+    [rect.y, center.y, rect.y + rect.height].map((y) => rotateCanvasPoint({ x, y }, center, rotation)));
+}
+
+function closestOrientedGridSnap(bounds: CanvasRect, deltaX: number, deltaY: number, grids: CanvasOrientedSnapGrid[], threshold: number, anchorPoints?: CanvasPoint[]): OrientedGridSnap | undefined {
+  const proposed = { ...bounds, x: bounds.x + deltaX, y: bounds.y + deltaY };
+  const anchors = anchorPoints?.length
+    ? anchorPoints.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY }))
+    : canvasRectAnchorPoints(proposed);
+  let best: OrientedGridSnap & { distance: number } | undefined;
+  for (const grid of grids) {
+    const center = { x: grid.rect.x + grid.rect.width / 2, y: grid.rect.y + grid.rect.height / 2 };
+    const localAnchors = anchors.map((anchor) => rotateCanvasPoint(anchor, center, -grid.rotation));
+    const closest = (axis: CanvasSnapAxis): { correction: number; line: CanvasOrientedSnapLine } | undefined => {
+      const lines = axis === "x" ? grid.x : grid.y;
+      const maximumThreshold = Math.max(threshold, ...lines.map((line) => line.threshold ?? threshold));
+      let match: { correction: number; line: CanvasOrientedSnapLine } | undefined;
+      for (const anchor of localAnchors) {
+        const cross = axis === "x" ? anchor.y : anchor.x;
+        const crossMinimum = axis === "x" ? grid.rect.y : grid.rect.x;
+        const crossMaximum = crossMinimum + (axis === "x" ? grid.rect.height : grid.rect.width);
+        if (cross < crossMinimum - threshold || cross > crossMaximum + threshold) continue;
+        const coordinate = axis === "x" ? anchor.x : anchor.y;
+        const start = lowerBound(lines, coordinate - maximumThreshold, (line) => line.position);
+        const end = upperBound(lines, coordinate + maximumThreshold, (line) => line.position);
+        for (let index = start; index < end; index += 1) {
+          const line = lines[index];
+          const correction = line.position - coordinate;
+          if (Math.abs(correction) > (line.threshold ?? threshold)) continue;
+          if (!match || Math.abs(correction) < Math.abs(match.correction) - 1e-6) match = { correction, line };
+        }
+      }
+      return match;
+    };
+    const x = closest("x");
+    const y = closest("y");
+    if (!x && !y) continue;
+    const localCorrection = { x: x?.correction ?? 0, y: y?.correction ?? 0 };
+    const radians = grid.rotation * Math.PI / 180;
+    const correctionX = localCorrection.x * Math.cos(radians) - localCorrection.y * Math.sin(radians);
+    const correctionY = localCorrection.x * Math.sin(radians) + localCorrection.y * Math.cos(radians);
+    const segment = (axis: CanvasSnapAxis, position: number): CanvasSnapSegment => {
+      const first = rotateCanvasPoint(axis === "x" ? { x: position, y: grid.rect.y } : { x: grid.rect.x, y: position }, center, grid.rotation);
+      const second = rotateCanvasPoint(axis === "x" ? { x: position, y: grid.rect.y + grid.rect.height } : { x: grid.rect.x + grid.rect.width, y: position }, center, grid.rotation);
+      return { x1: first.x, y1: first.y, x2: second.x, y2: second.y, kind: "layout-grid" };
+    };
+    const segments = [x && segment("x", x.line.position), y && segment("y", y.line.position)].filter((value): value is CanvasSnapSegment => Boolean(value));
+    const distance = Math.hypot(correctionX, correctionY);
+    if (!best || distance < best.distance - 1e-6) best = {
+      distance,
+      correctionX,
+      correctionY,
+      segments,
+      localX: x?.correction,
+      localY: y?.correction,
+      rotation: grid.rotation,
     };
   }
-  let top: CanvasSnapRectTarget | undefined;
-  let bottom: CanvasSnapRectTarget | undefined;
-  const topStart = upperBound(index.rectsByBottom, moving.y + threshold, (target) => target.rect.y + target.rect.height) - 1;
-  const bottomStart = lowerBound(index.rectsByTop, moving.y + moving.height - threshold, (target) => target.rect.y);
-  for (let offset = 0; offset < scanLimit && topStart - offset >= 0; offset += 1) {
-    const target = index.rectsByBottom[topStart - offset];
-    if (perpendicularOverlap(moving, target.rect, axis) > 0) { top = target; break; }
-  }
-  for (let offset = 0; offset < scanLimit && bottomStart + offset < index.rectsByTop.length; offset += 1) {
-    const target = index.rectsByTop[bottomStart + offset];
-    if (perpendicularOverlap(moving, target.rect, axis) > 0) { bottom = target; break; }
-  }
-  if (!top || !bottom || top.id === bottom.id) return undefined;
-  const correction = (top.rect.y + top.rect.height + bottom.rect.y - moving.height) / 2 - moving.y;
-  if (Math.abs(correction) > threshold) return undefined;
-  const next = { ...moving, y: moving.y + correction };
-  const gap = next.y - (top.rect.y + top.rect.height);
-  if (gap < 0 || Math.abs(bottom.rect.y - (next.y + next.height) - gap) > 1e-6) return undefined;
-  const cross = Math.min(top.rect.x, next.x, bottom.rect.x) - 10;
-  return {
-    correction,
-    measurements: [
-      { axis, start: top.rect.y + top.rect.height, end: next.y, cross, value: gap },
-      { axis, start: next.y + next.height, end: bottom.rect.y, cross, value: gap },
-    ],
-  };
+  return best;
+}
+
+function combineOrientedAndStandard(oriented: OrientedGridSnap, correctionX: number, correctionY: number, hasX: boolean, hasY: boolean, threshold: number): { correctionX: number; correctionY: number; axis: CanvasSnapAxis } | undefined {
+  if ((oriented.localX === undefined) === (oriented.localY === undefined)) return undefined;
+  if (hasX === hasY) return undefined;
+  const radians = oriented.rotation * Math.PI / 180;
+  const normal = oriented.localX !== undefined
+    ? { x: Math.cos(radians), y: Math.sin(radians), value: oriented.localX }
+    : { x: -Math.sin(radians), y: Math.cos(radians), value: oriented.localY! };
+  const candidates: Array<{ correctionX: number; correctionY: number; axis: CanvasSnapAxis }> = [];
+  if (hasX && Math.abs(normal.y) > 1e-6) candidates.push({ correctionX, correctionY: (normal.value - normal.x * correctionX) / normal.y, axis: "x" });
+  if (hasY && Math.abs(normal.x) > 1e-6) candidates.push({ correctionX: (normal.value - normal.y * correctionY) / normal.x, correctionY, axis: "y" });
+  const maximumDistance = Math.hypot(oriented.correctionX, oriented.correctionY) + threshold * 2;
+  return candidates.filter((candidate) => Math.hypot(candidate.correctionX, candidate.correctionY) <= maximumDistance + 1e-6)
+    .sort((first, second) => Math.hypot(first.correctionX, first.correctionY) - Math.hypot(second.correctionX, second.correctionY))[0];
 }
 
 /**
@@ -650,14 +845,47 @@ export function snapCanvasMove(input: CanvasMoveSnapInput): CanvasMoveSnapResult
   const ySpacing = closestSpacingSnap("y", proposed, snapIndex, input.threshold);
   const useXSpacing = xSpacing && (!xAlignment || Math.abs(xSpacing.correction) < Math.abs(xAlignment.correction) - 1e-6);
   const useYSpacing = ySpacing && (!yAlignment || Math.abs(ySpacing.correction) < Math.abs(yAlignment.correction) - 1e-6);
-  let deltaX = input.deltaX + (useXSpacing ? xSpacing.correction : xAlignment?.correction ?? 0);
-  let deltaY = input.deltaY + (useYSpacing ? ySpacing.correction : yAlignment?.correction ?? 0);
-  if (!useXSpacing && !xAlignment && input.snapToGrid) {
+  const correctionX = useXSpacing ? xSpacing.correction : xAlignment?.correction ?? 0;
+  const correctionY = useYSpacing ? ySpacing.correction : yAlignment?.correction ?? 0;
+  const hasXStandardSnap = Boolean(useXSpacing || xAlignment);
+  const hasYStandardSnap = Boolean(useYSpacing || yAlignment);
+  const hasStandardSnap = hasXStandardSnap || hasYStandardSnap;
+  const oriented = input.orientedGrids?.length ? closestOrientedGridSnap(input.bounds, input.deltaX, input.deltaY, input.orientedGrids, input.threshold, input.anchorPoints) : undefined;
+  const combined = oriented ? combineOrientedAndStandard(oriented, correctionX, correctionY, hasXStandardSnap, hasYStandardSnap, input.threshold) : undefined;
+  if (oriented && combined) {
+    const deltaX = input.deltaX + combined.correctionX;
+    const deltaY = input.deltaY + combined.correctionY;
+    const moved = { ...input.bounds, x: input.bounds.x + deltaX, y: input.bounds.y + deltaY };
+    const line = combined.axis === "x" ? !useXSpacing && xAlignment?.line : !useYSpacing && yAlignment?.line;
+    const lines = line ? [line.axis === "x"
+      ? { ...line, from: Math.min(line.from, moved.y), to: Math.max(line.to, moved.y + moved.height) }
+      : { ...line, from: Math.min(line.from, moved.x), to: Math.max(line.to, moved.x + moved.width) }] : [];
+    return {
+      deltaX,
+      deltaY,
+      lines,
+      measurements: combined.axis === "x" && useXSpacing ? xSpacing.measurements : combined.axis === "y" && useYSpacing ? ySpacing.measurements : [],
+      segments: oriented.segments,
+    };
+  }
+  const useOriented = oriented && (!hasStandardSnap || Math.hypot(oriented.correctionX, oriented.correctionY) < Math.hypot(correctionX, correctionY) - 1e-6);
+  if (useOriented) {
+    return {
+      deltaX: input.deltaX + oriented.correctionX,
+      deltaY: input.deltaY + oriented.correctionY,
+      lines: [],
+      measurements: [],
+      segments: oriented.segments,
+    };
+  }
+  let deltaX = input.deltaX + correctionX;
+  let deltaY = input.deltaY + correctionY;
+  if (!useXSpacing && !xAlignment && input.snapToGrid && !input.orientedGrids?.length) {
     const size = Math.max(1, input.gridSize ?? 8);
     const origin = input.gridOriginX ?? 0;
     deltaX = Math.round((input.bounds.x + deltaX - origin) / size) * size + origin - input.bounds.x;
   }
-  if (!useYSpacing && !yAlignment && input.snapToGrid) {
+  if (!useYSpacing && !yAlignment && input.snapToGrid && !input.orientedGrids?.length) {
     const size = Math.max(1, input.gridSize ?? 8);
     const origin = input.gridOriginY ?? 0;
     deltaY = Math.round((input.bounds.y + deltaY - origin) / size) * size + origin - input.bounds.y;

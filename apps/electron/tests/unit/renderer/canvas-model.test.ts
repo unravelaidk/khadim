@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyFrameResizeConstraints,
   applyFrameLayout,
+  canvasFrameOrientedSnapGrid,
+  canvasRectAnchorPoints,
   canvasGeometryIndex,
   canvasLayerTree,
   canvasPages,
@@ -13,6 +15,7 @@ import {
   effectivePrimitive,
   isCanvasNode,
   prepareCanvasSnapIndex,
+  rotatedRect,
   selectionRect,
   snapCanvasMove,
 } from "../../../src/renderer/src/studio/canvas-model";
@@ -135,6 +138,167 @@ describe("Khadim canvas scene model", () => {
       expect.objectContaining({ axis: "y", start: 40, end: 80, value: 40 }),
       expect.objectContaining({ axis: "y", start: 120, end: 160, value: 40 }),
     ]);
+  });
+
+  it("extends equal spacing across an existing horizontal sequence", () => {
+    const result = snapCanvasMove({
+      bounds: { x: 170, y: 60, width: 40, height: 40 },
+      deltaX: 6,
+      deltaY: 0,
+      rectTargets: [
+        { id: "first", rect: { x: 0, y: 60, width: 40, height: 40 } },
+        { id: "second", rect: { x: 60, y: 60, width: 40, height: 40 } },
+        { id: "third", rect: { x: 120, y: 60, width: 40, height: 40 } },
+      ],
+      threshold: 6,
+      pageRect: { x: -500, y: -500, width: 1_000, height: 1_000 },
+    });
+
+    expect(result.deltaX).toBe(10);
+    expect(result.measurements).toEqual([
+      expect.objectContaining({ axis: "x", start: 40, end: 60, value: 20 }),
+      expect.objectContaining({ axis: "x", start: 100, end: 120, value: 20 }),
+      expect.objectContaining({ axis: "x", start: 160, end: 180, value: 20 }),
+    ]);
+  });
+
+  it("snaps through rotated frame grids in local coordinates with vector feedback", () => {
+    const rotatedFrame: CanvasPrimitiveNode = {
+      ...frame,
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 200,
+      rotation: 45,
+      layout: undefined,
+      layoutGrids: [{ id: "square", type: "square", visible: true, color: "#2563eb", opacity: .2, size: 50 }],
+    };
+    const grid = canvasFrameOrientedSnapGrid(rotatedFrame)!;
+    const radians = Math.PI / 4;
+    const local = { x: 153, y: 154 };
+    const center = { x: 200, y: 200 };
+    const world = {
+      x: center.x + (local.x - center.x) * Math.cos(radians) - (local.y - center.y) * Math.sin(radians),
+      y: center.y + (local.x - center.x) * Math.sin(radians) + (local.y - center.y) * Math.cos(radians),
+    };
+
+    const result = snapCanvasMove({
+      bounds: { x: world.x - 10, y: world.y - 10, width: 20, height: 20 },
+      deltaX: 0,
+      deltaY: 0,
+      rectTargets: [],
+      orientedGrids: [grid],
+      anchorPoints: canvasRectAnchorPoints({ x: world.x - 10, y: world.y - 10, width: 20, height: 20 }),
+      threshold: 6,
+      pageRect: { x: -1_000, y: -1_000, width: 2_000, height: 2_000 },
+      snapToGrid: true,
+    });
+    const snappedBounds = { x: world.x - 10 + result.deltaX, y: world.y - 10 + result.deltaY, width: 20, height: 20 };
+    const localAnchors = [snappedBounds.x, snappedBounds.x + 10, snappedBounds.x + 20].flatMap((x) =>
+      [snappedBounds.y, snappedBounds.y + 10, snappedBounds.y + 20].map((y) => ({
+        x: center.x + (x - center.x) * Math.cos(-radians) - (y - center.y) * Math.sin(-radians),
+        y: center.y + (x - center.x) * Math.sin(-radians) + (y - center.y) * Math.cos(-radians),
+      })));
+
+    expect(Math.min(...localAnchors.map((anchor) => Math.abs(anchor.x - 150)))).toBeCloseTo(0);
+    expect(Math.min(...localAnchors.map((anchor) => Math.abs(anchor.y - 150)))).toBeCloseTo(0);
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments?.every((segment) => segment.kind === "layout-grid")).toBe(true);
+    expect(canvasFrameOrientedSnapGrid({ ...rotatedFrame, width: 203, height: 203, rotation: 180 })?.x.map((line) => line.position)).toEqual([100, 150, 200, 250, 300]);
+  });
+
+  it("uses real rotated geometry anchors instead of a world bounding-box projection", () => {
+    const rotatedFrame: CanvasPrimitiveNode = {
+      ...frame,
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 200,
+      rotation: 45,
+      layout: undefined,
+      layoutGrids: [{ id: "square", type: "square", visible: true, color: "#2563eb", opacity: .2, size: 50 }],
+    };
+    const center = { x: 200, y: 200 };
+    const radians = Math.PI / 4;
+    const localCenter = { x: 170, y: 170 };
+    const worldCenter = {
+      x: center.x + (localCenter.x - center.x) * Math.cos(radians) - (localCenter.y - center.y) * Math.sin(radians),
+      y: center.y + (localCenter.x - center.x) * Math.sin(radians) + (localCenter.y - center.y) * Math.cos(radians),
+    };
+    const childRect = { x: worldCenter.x - 10, y: worldCenter.y - 10, width: 20, height: 20 };
+    const result = snapCanvasMove({
+      bounds: rotatedRect(childRect, 45),
+      deltaX: 0,
+      deltaY: 0,
+      rectTargets: [],
+      orientedGrids: [canvasFrameOrientedSnapGrid(rotatedFrame)!],
+      anchorPoints: canvasRectAnchorPoints(childRect, 45),
+      threshold: 6,
+      pageRect: { x: -1_000, y: -1_000, width: 2_000, height: 2_000 },
+      snapToGrid: true,
+    });
+
+    expect(Math.hypot(result.deltaX, result.deltaY)).toBeGreaterThan(10);
+    expect(result.deltaY).toBeCloseTo(-Math.sqrt(200));
+    expect(result.segments).toHaveLength(2);
+  });
+
+  it("combines a one-axis rotated grid constraint with a compatible world guide", () => {
+    const radians = Math.PI / 4;
+    const center = { x: 200, y: 200 };
+    const localAnchor = { x: 150, y: 100 };
+    const anchor = {
+      x: center.x + (localAnchor.x - center.x) * Math.cos(radians) - (localAnchor.y - center.y) * Math.sin(radians),
+      y: center.y + (localAnchor.x - center.x) * Math.sin(radians) + (localAnchor.y - center.y) * Math.cos(radians),
+    };
+    const result = snapCanvasMove({
+      bounds: { x: anchor.x, y: anchor.y, width: 20, height: 20 },
+      deltaX: 0,
+      deltaY: 0,
+      rectTargets: [],
+      axisTargets: [{ axis: "y", position: anchor.y + 2, kind: "guide" }],
+      orientedGrids: [{ rect: { x: 100, y: 100, width: 200, height: 200 }, rotation: 45, x: [{ position: 150 }], y: [] }],
+      anchorPoints: [anchor],
+      threshold: 6,
+      pageRect: { x: -1_000, y: -1_000, width: 2_000, height: 2_000 },
+    });
+
+    expect(result.deltaX).toBeCloseTo(-2);
+    expect(result.deltaY).toBeCloseTo(2);
+    expect(result.lines).toEqual([expect.objectContaining({ axis: "y", kind: "guide", position: anchor.y + 2 })]);
+    expect(result.segments).toHaveLength(1);
+  });
+
+  it("preserves an exact two-axis snap over a competing one-axis rotated grid", () => {
+    const radians = Math.PI / 4;
+    const center = { x: 200, y: 200 };
+    const localAnchor = { x: 154, y: 100 };
+    const anchor = {
+      x: center.x + (localAnchor.x - center.x) * Math.cos(radians) - (localAnchor.y - center.y) * Math.sin(radians),
+      y: center.y + (localAnchor.x - center.x) * Math.sin(radians) + (localAnchor.y - center.y) * Math.cos(radians),
+    };
+    const result = snapCanvasMove({
+      bounds: { x: anchor.x, y: anchor.y, width: 20, height: 20 },
+      deltaX: 0,
+      deltaY: 0,
+      rectTargets: [],
+      axisTargets: [
+        { axis: "x", position: anchor.x, kind: "guide" },
+        { axis: "y", position: anchor.y, kind: "guide" },
+      ],
+      orientedGrids: [{ rect: { x: 100, y: 100, width: 200, height: 200 }, rotation: 45, x: [{ position: 150 }], y: [] }],
+      anchorPoints: [anchor],
+      threshold: 6,
+      pageRect: { x: -1_000, y: -1_000, width: 2_000, height: 2_000 },
+    });
+
+    expect(result.deltaX).toBe(0);
+    expect(result.deltaY).toBe(0);
+    expect(result.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ axis: "x", kind: "guide" }),
+      expect.objectContaining({ axis: "y", kind: "guide" }),
+    ]));
+    expect(result.segments).toBeUndefined();
   });
 
   it("prefers explicit ruler and layout guides when snap coordinates coincide", () => {
