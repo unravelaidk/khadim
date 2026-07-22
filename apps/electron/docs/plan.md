@@ -163,7 +163,7 @@ the following behavior as working unless a focused test proves otherwise:
   new chat or Studio behavior instead of moving feature state back into
   `App.tsx`.
 
-The latest completed checks on July 22, 2026, were `432` passing tests, a clean
+The latest completed checks on July 22, 2026, were `438` passing tests, a clean
 TypeScript check, and a successful production build. A packaging smoke check
 also staged and executed Bun `1.3.13` beside the Khadim CLI slot. Packaged
 Electron audits verified the main-chat and artifact split, light and dark
@@ -269,11 +269,25 @@ interactions remain keyboard operable, and hotspots respect hidden ancestors,
 masks, and clipped frames. Escape closes the top overlay before it exits the
 preview. Persistence rejects malformed actions, unsafe URL protocols, invalid
 delay and overlay options, duplicate triggers, and stale page destinations.
-Pages can be reordered and nominate an explicit prototype
-start screen; deleting that screen chooses a valid fallback and undo restores
-the prior flow. The page rail renders bounded, idle-updated thumbnails so scene
-edits stay visually navigable without regenerating every preview during a
-gesture. PDF output emits every canvas page on a separate sheet.
+Pages can be reordered and belong to multiple named prototype flows. Each flow
+has an independent start screen, and the compact flow controls let you add,
+rename, select, retarget, and delete journeys without leaving the page rail.
+The preview can switch flows and reset directly to each starting screen.
+Deleting a start screen repairs every affected flow, and undo restores the
+prior flow set. The legacy `prototypeStartPageId` remains a compatibility
+mirror of the first flow.
+
+Penpot currently documents dissolve, slide, and push transitions. Khadim keeps
+its existing dissolve and slide transitions and adds a smart transition as an
+extension. Equal-sized screens match explicit smart-animation keys at any
+layer depth, then fall back to unique top-level names and stable IDs. The
+preview moves, scales, rotates, and crossfades a bounded set of non-overlapping
+layer trees while the unmatched screen content dissolves. Ambiguous matches or
+different page sizes fall back to dissolve, and reduced-motion settings skip
+the animated intermediate state. The page rail continues to render bounded,
+idle-updated thumbnails so scene edits stay visually navigable without
+regenerating every preview during a gesture. PDF output emits every canvas page
+on a separate sheet.
 
 The next architectural extraction follows Penpot's change-builder model: move
 semantic canvas commands and grouped undo transactions out of
@@ -692,5 +706,6 @@ remaining work in this order:
    preserving the artifact path validation boundary.
 4. Add long-document pagination and PDF fixtures, plus selection-scoped
    document agent edits.
-5. Continue the native canvas hardening work: command extraction, large-scene
-   indexing, page management, and richer prototype flows.
+5. Continue the native canvas hardening work: command extraction, nested
+   component cycle validation, scroll-container prototypes, extended
+   equal-spacing sequences, and rotated-frame grid snapping.

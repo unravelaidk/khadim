@@ -7,6 +7,7 @@ import type {
   CanvasHorizontalConstraint,
   CanvasPaintStyle,
   CanvasPage,
+  CanvasPrototypeFlow,
   CanvasPoint,
   CanvasPrimitiveElement,
   CanvasPrimitiveType,
@@ -27,6 +28,7 @@ export type {
   CanvasHorizontalConstraint,
   CanvasPaintStyle,
   CanvasPage,
+  CanvasPrototypeFlow,
   CanvasPoint,
   CanvasPrimitiveType,
   CanvasShadow,
@@ -49,6 +51,7 @@ export interface CanvasSnapshot {
   tokenCollections?: CanvasTokenCollection[];
   pages?: CanvasPage[];
   activePageId?: string;
+  prototypeFlows?: CanvasPrototypeFlow[];
   prototypeStartPageId?: string;
 }
 
@@ -211,6 +214,20 @@ export function canvasPages(content: CanvasArtifactContent): CanvasPage[] {
   const activeId = content.activePageId ?? content.pages?.[0]?.id ?? "page-1";
   const pages = content.pages?.length ? content.pages : [{ id: activeId, name: "Page 1", frame: content.frame, elements: content.elements, appState: content.appState }];
   return pages.map((page) => page.id === activeId ? { ...page, frame: content.frame, elements: content.elements, appState: content.appState } : page);
+}
+
+export function canvasPrototypeFlows(content: Pick<CanvasArtifactContent, "prototypeFlows" | "prototypeStartPageId">, pages: CanvasPage[]): CanvasPrototypeFlow[] {
+  const pageIds = new Set(pages.map((page) => page.id));
+  const seen = new Set<string>();
+  const flows = (content.prototypeFlows ?? []).flatMap((flow) => {
+    const name = flow.name.trim();
+    if (!flow.id || seen.has(flow.id) || !name || !pageIds.has(flow.startPageId)) return [];
+    seen.add(flow.id);
+    return [{ ...flow, name }];
+  });
+  if (flows.length) return flows;
+  const startPageId = pageIds.has(content.prototypeStartPageId ?? "") ? content.prototypeStartPageId! : pages[0]?.id;
+  return startPageId ? [{ id: "default-flow", name: "Main flow", startPageId }] : [];
 }
 
 export function canvasSignature(nodes: CanvasNode[], components: CanvasComponentDefinition[], styles: CanvasPaintStyle[] = []): string {

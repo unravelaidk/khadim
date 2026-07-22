@@ -917,6 +917,7 @@ describe("StudioWorkspace canvas design workflow", () => {
     content = onChange.mock.calls.at(-1)?.[0].content;
     expect(content.pages).toHaveLength(1);
     expect(content.prototypeStartPageId).toBe(content.pages[0].id);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Current page name" })).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "Undo" }));
     content = onChange.mock.calls.at(-1)?.[0].content;
     expect(content.pages).toHaveLength(2);
@@ -986,6 +987,52 @@ describe("StudioWorkspace canvas design workflow", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Canvas prototype preview" })).toBeNull();
     expect(playButton).toHaveFocus();
+  });
+
+  it("authors named flows and previews smart transitions between matching layers", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-smart-prototype", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const homeElements = [{ id: "hero-home", type: "rectangle" as const, name: "Hero", prototypeKey: "hero", x: 80, y: 80, width: 180, height: 100, color: "#2563eb", interactions: [{ id: "expand", trigger: "click" as const, action: "navigate" as const, destinationPageId: "details", transition: { type: "smart" as const, duration: 320, easing: "ease-in-out" as const } }] }];
+    const detailElements = [{ id: "hero-details", type: "rectangle" as const, name: "Hero", prototypeKey: "hero", x: 480, y: 160, width: 340, height: 240, color: "#7c3aed" }];
+    artifact.content.pages = [
+      { id: "home", name: "Home", frame: { width: 960, height: 600 }, elements: homeElements, appState },
+      { id: "details", name: "Details", frame: { width: 960, height: 600 }, elements: detailElements, appState },
+    ];
+    artifact.content.activePageId = "home";
+    artifact.content.elements = homeElements;
+    artifact.content.appState = appState;
+    artifact.content.prototypeFlows = [{ id: "main", name: "Main flow", startPageId: "home" }];
+    artifact.content.prototypeStartPageId = "home";
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Add prototype flow" }));
+    await user.clear(screen.getByRole("textbox", { name: "Prototype flow name" }));
+    await user.type(screen.getByRole("textbox", { name: "Prototype flow name" }), "Alternate journey");
+    await user.tab();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Prototype flow start page" }), "details");
+    expect(onChange.mock.calls.at(-1)?.[0].content.prototypeFlows).toEqual([
+      { id: "main", name: "Main flow", startPageId: "home" },
+      expect.objectContaining({ name: "Alternate journey", startPageId: "details" }),
+    ]);
+    expect(onChange.mock.calls.at(-1)?.[0].content.prototypeStartPageId).toBe("home");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Active prototype flow" }), "main");
+    await user.click(screen.getByRole("button", { name: "Play prototype" }));
+    const preview = screen.getByRole("dialog", { name: "Canvas prototype preview" });
+    expect(within(preview).getByRole("combobox", { name: "Preview prototype flow" })).toHaveValue("main");
+    await user.click(within(preview).getByRole("button", { name: "Run Hero click interaction" }));
+    expect(within(preview).getByAltText("Details prototype screen")).toBeInTheDocument();
+    expect(preview.querySelector(".canvas-prototype-screen")).toHaveClass("smart");
+    expect(preview.querySelector(".canvas-prototype-smart-source")).toHaveStyle({ transformOrigin: "17.708333333333336% 21.666666666666668%" });
+    expect(preview.querySelector(".canvas-prototype-smart-destination")).not.toBeNull();
+
+    await user.selectOptions(within(preview).getByRole("combobox", { name: "Preview prototype flow" }), within(preview).getByRole("option", { name: "Alternate journey" }));
+    expect(within(preview).getByAltText("Details prototype screen")).toBeInTheDocument();
+    expect(within(preview).getByText("Starting screen")).toBeInTheDocument();
+    expect(within(preview).getByRole("status")).toHaveTextContent("Alternate journey: Details");
   });
 
   it("keeps prototype hotspots keyboard reachable and clips them to visible frame bounds", async () => {

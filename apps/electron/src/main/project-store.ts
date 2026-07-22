@@ -346,9 +346,10 @@ function isCanvasPrototypeInteraction(value: unknown): boolean {
   if (interaction.transition !== undefined) {
     if (!opensDestination || typeof interaction.transition !== "object" || interaction.transition === null || Array.isArray(interaction.transition)) return false;
     const transition = interaction.transition as Record<string, unknown>;
-    if (!["instant", "dissolve", "slide"].includes(String(transition.type)) || !isFiniteCanvasNumber(transition.duration, 0, 5_000) || !["linear", "ease", "ease-in", "ease-out", "ease-in-out"].includes(String(transition.easing))) return false;
+    if (!["instant", "dissolve", "slide", "smart"].includes(String(transition.type)) || !isFiniteCanvasNumber(transition.duration, 0, 5_000) || !["linear", "ease", "ease-in", "ease-out", "ease-in-out"].includes(String(transition.easing))) return false;
     if (transition.direction !== undefined && !["left", "right", "up", "down"].includes(String(transition.direction))) return false;
     if (transition.type !== "slide" && transition.direction !== undefined) return false;
+    if (transition.type === "smart" && interaction.action !== "navigate") return false;
   }
   return true;
 }
@@ -361,7 +362,7 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
   if (!isBoundedString(element.color, 80)) return false;
   if (!["x", "y", "width", "height"].every((key) => isFiniteCanvasNumber(element[key]))) return false;
   if ((element.width as number) < 0 || (element.height as number) < 0) return false;
-  for (const key of ["name", "parentId", "groupId", "maskId", "color", "strokeColor", "text", "src", "alt", "startBindingId", "endBindingId", "fontFamily"]) {
+  for (const key of ["name", "parentId", "groupId", "maskId", "prototypeKey", "color", "strokeColor", "text", "src", "alt", "startBindingId", "endBindingId", "fontFamily"]) {
     if (element[key] !== undefined && !isBoundedString(element[key], key === "src" ? 15 * 1024 * 1024 : key === "text" ? 250_000 : 1_000, true)) return false;
   }
   if (element.fillGradient !== undefined && !isCanvasGradient(element.fillGradient)) return false;
@@ -580,17 +581,24 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
     if (pages.some((page) => typeof page !== "object" || page === null || Array.isArray(page)
       || !isBoundedString(page.id, 240)
       || !isBoundedString(page.name, 1_000)
-      || !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false))) return false;
+      || !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeFlows: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false))) return false;
     if (new Set(pages.map((page) => page.id)).size !== pages.length) return false;
     if (validatePrototypeDestinations) {
       const pageIds = new Set(pages.map((page) => page.id as string));
       if (data.prototypeStartPageId !== undefined && (!isBoundedString(data.prototypeStartPageId, 240) || !pageIds.has(data.prototypeStartPageId))) return false;
+      if (data.prototypeFlows !== undefined) {
+        if (!Array.isArray(data.prototypeFlows) || data.prototypeFlows.length < 1 || data.prototypeFlows.length > 64) return false;
+        const flows = data.prototypeFlows as Array<Record<string, unknown>>;
+        if (flows.some((flow) => !isBoundedString(flow.id, 240) || !isBoundedString(flow.name, 160) || !isBoundedString(flow.startPageId, 240) || !pageIds.has(flow.startPageId as string))) return false;
+        if (new Set(flows.map((flow) => flow.id)).size !== flows.length) return false;
+        if (data.prototypeStartPageId !== undefined && flows[0].startPageId !== data.prototypeStartPageId) return false;
+      }
       const destinations = pages.flatMap((page) => (page.elements as Array<Record<string, unknown>>).flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => ["navigate", "open-overlay", "toggle-overlay"].includes(String(interaction.action)) ? [interaction.destinationPageId as string] : []) ?? []));
       if (destinations.some((destination) => !pageIds.has(destination))) return false;
     }
     const activePage = pages.find((page) => page.id === data.activePageId);
     if (!activePage || JSON.stringify(activePage.frame) !== JSON.stringify(data.frame) || JSON.stringify(activePage.elements) !== JSON.stringify(data.elements) || JSON.stringify(activePage.appState) !== JSON.stringify(data.appState)) return false;
-  } else if (data.activePageId !== undefined || data.prototypeStartPageId !== undefined || validatePrototypeDestinations && elements.some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => interaction.action === "navigate"))) return false;
+  } else if (data.activePageId !== undefined || data.prototypeFlows !== undefined || data.prototypeStartPageId !== undefined || validatePrototypeDestinations && elements.some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => interaction.action === "navigate"))) return false;
   try {
     return JSON.stringify(data).length <= 50 * 1024 * 1024;
   } catch {

@@ -481,10 +481,17 @@ export type CanvasPrototypeTrigger = "click" | "hover" | "after-delay";
 export type CanvasPrototypeAction = "navigate" | "back" | "open-url" | "open-overlay" | "toggle-overlay" | "close-overlay";
 
 export interface CanvasPrototypeTransition {
-  type: "instant" | "dissolve" | "slide";
+  type: "instant" | "dissolve" | "slide" | "smart";
   duration: number;
   easing: "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out";
   direction?: "left" | "right" | "up" | "down";
+}
+
+/** A named prototype journey with its own starting screen. */
+export interface CanvasPrototypeFlow {
+  id: string;
+  name: string;
+  startPageId: string;
 }
 
 export interface CanvasPrototypeOverlay {
@@ -571,6 +578,8 @@ export interface CanvasPrimitiveElement {
   constraintH?: CanvasHorizontalConstraint;
   constraintV?: CanvasVerticalConstraint;
   interactions?: CanvasPrototypeInteraction[];
+  /** Stable cross-page key used by smart prototype transitions. */
+  prototypeKey?: string;
   /** Operation used by a non-destructive boolean group. Its direct children remain editable. */
   booleanOperation?: Exclude<CanvasBooleanOperation, "flatten">;
 }
@@ -594,6 +603,8 @@ export interface CanvasComponentElement {
   constraintH?: CanvasHorizontalConstraint;
   constraintV?: CanvasVerticalConstraint;
   interactions?: CanvasPrototypeInteraction[];
+  /** Stable cross-page key used by smart prototype transitions. */
+  prototypeKey?: string;
   componentId: string;
   componentRole: "main" | "instance";
   overrides?: Record<string, Partial<CanvasPrimitiveElement>>;
@@ -675,6 +686,8 @@ export interface CanvasArtifactContent {
   /** Page snapshots. Top-level frame/elements/appState mirror the active page for backwards-compatible agent edits. */
   pages?: CanvasPage[];
   activePageId?: string;
+  prototypeFlows?: CanvasPrototypeFlow[];
+  /** Legacy mirror of the first prototype flow's start page. */
   prototypeStartPageId?: string;
   appState: CanvasAppState;
   files: Record<string, CanvasAssetFile>;

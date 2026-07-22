@@ -1,14 +1,16 @@
 import { ArrowLeft, ArrowSquareOut, CaretLeft, Play, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
-import type { CanvasArtifactContent, CanvasElement, CanvasPage, CanvasPrototypeInteraction, CanvasPrototypeOverlay } from "../../../shared/types";
+import type { CanvasArtifactContent, CanvasElement, CanvasPage, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasPrototypeOverlay } from "../../../shared/types";
 import { nodeLabel } from "./canvas-model";
+import { canvasPrototypeLayerMatches } from "./canvas-prototype";
 
 interface CanvasPrototypePreviewProps {
   title: string;
   content: CanvasArtifactContent;
   pages: CanvasPage[];
-  startPageId: string;
+  flows: CanvasPrototypeFlow[];
+  initialFlowId?: string;
   onClose: () => void;
 }
 
@@ -28,6 +30,7 @@ function interactionFor(node: CanvasElement, trigger: CanvasPrototypeInteraction
 function transitionClass(transition?: CanvasPrototypeInteraction["transition"]): string {
   const type = transition?.type ?? "instant";
   const direction = transition?.direction ?? "left";
+  if (type === "smart") return "dissolve";
   return type === "slide" ? `slide-${direction}` : type;
 }
 
@@ -76,14 +79,21 @@ function timedInteractions(page: CanvasPage): CanvasPrototypeInteraction[] {
   });
 }
 
-function pageSvg(content: CanvasArtifactContent, page: CanvasPage, title: string): string {
-  return renderCanvasSvg({ ...content, frame: page.frame, elements: page.elements, activePageId: page.id, appState: page.appState }, `${title} — ${page.name}`);
+function pageSvg(content: CanvasArtifactContent, page: CanvasPage, title: string, elementIds?: string[], transparent = false): string {
+  return renderCanvasSvg({ ...content, frame: page.frame, elements: page.elements, activePageId: page.id, appState: page.appState }, `${title} — ${page.name}`, { elementIds, transparent });
 }
 
-export function CanvasPrototypePreview({ title, content, pages, startPageId, onClose }: CanvasPrototypePreviewProps): React.JSX.Element {
-  const initialId = pages.some((page) => page.id === startPageId) ? startPageId : pages[0]?.id;
+function svgSource(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+export function CanvasPrototypePreview({ title, content, pages, flows, initialFlowId, onClose }: CanvasPrototypePreviewProps): React.JSX.Element {
+  const initialFlow = flows.find((flow) => flow.id === initialFlowId) ?? flows[0];
+  const initialId = pages.some((page) => page.id === initialFlow?.startPageId) ? initialFlow.startPageId : pages[0]?.id;
+  const [activeFlowId, setActiveFlowId] = useState(initialFlow?.id ?? "");
   const [history, setHistory] = useState<string[]>(initialId ? [initialId] : []);
   const [transition, setTransition] = useState<CanvasPrototypeInteraction["transition"]>();
+  const [transitionSourcePageId, setTransitionSourcePageId] = useState<string>();
   const [overlays, setOverlays] = useState<PrototypeOverlayInstance[]>([]);
   const dialogRef = useRef<HTMLElement>(null);
   const headerBackRef = useRef<HTMLButtonElement>(null);
@@ -94,6 +104,7 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
   overlaysRef.current = overlays;
   const activePageId = history.at(-1);
   const page = pages.find((candidate) => candidate.id === activePageId) ?? pages[0];
+  const activeFlow = flows.find((flow) => flow.id === activeFlowId) ?? flows[0];
   const topOverlay = overlays.at(-1);
   const overlayPage = topOverlay ? pages.find((candidate) => candidate.id === topOverlay.pageId) : undefined;
 
@@ -112,6 +123,7 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
     if (interaction.action === "back") {
       executedTimersRef.current.clear();
       setTransition(undefined);
+      setTransitionSourcePageId(undefined);
       setOverlays([]);
       setHistory((current) => current.length > 1 ? current.slice(0, -1) : current);
       focusPreview();
@@ -135,10 +147,11 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
     }
     executedTimersRef.current.clear();
     setTransition(interaction.transition);
+    setTransitionSourcePageId(page?.id);
     setOverlays([]);
     setHistory((current) => [...current, interaction.destinationPageId!]);
     focusPreview();
-  }, [closeTopOverlay, focusPreview, pages]);
+  }, [closeTopOverlay, focusPreview, page?.id, pages]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -181,6 +194,7 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
           event.preventDefault();
           executedTimersRef.current.clear();
           setTransition(undefined);
+          setTransitionSourcePageId(undefined);
           setHistory((current) => current.slice(0, -1));
           focusPreview();
         }
@@ -201,7 +215,7 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
   useEffect(() => {
     const timedPage = overlayPage ?? page;
     if (!timedPage) return;
-    const layerKey = topOverlay ? `overlay:${topOverlay.id}` : `page:${history.length}:${timedPage.id}`;
+    const layerKey = topOverlay ? `overlay:${topOverlay.id}` : `flow:${activeFlowId}:page:${history.length}:${timedPage.id}`;
     const timers = timedInteractions(timedPage).flatMap((interaction) => {
       const key = `${layerKey}:${interaction.id}`;
       if (executedTimersRef.current.has(key)) return [];
@@ -211,10 +225,50 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
       }, interaction.delay ?? 0)];
     });
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [history.length, overlayPage, page, run, topOverlay]);
+  }, [activeFlowId, history.length, overlayPage, page, run, topOverlay]);
 
   const svg = useMemo(() => page ? pageSvg(content, page, title) : "", [content, page, title]);
   const overlaySvg = useMemo(() => overlayPage ? pageSvg(content, overlayPage, title) : "", [content, overlayPage, title]);
+  const transitionSourcePage = pages.find((candidate) => candidate.id === transitionSourcePageId);
+  const smartMatches = useMemo(() => transition?.type === "smart" ? canvasPrototypeLayerMatches(transitionSourcePage, page) : [], [page, transition?.type, transitionSourcePage]);
+  const smartActive = transition?.type === "smart" && smartMatches.length > 0;
+  const smartDestinationIds = useMemo(() => new Set(smartMatches.flatMap((match) => match.destinationElementIds)), [smartMatches]);
+  const smartSourceIds = useMemo(() => new Set(smartMatches.flatMap((match) => match.sourceElementIds)), [smartMatches]);
+  const smartDestinationBaseSvg = useMemo(() => smartActive && page ? pageSvg(content, page, title, page.elements.filter((element) => !smartDestinationIds.has(element.id)).map((element) => element.id)) : "", [content, page, smartActive, smartDestinationIds, title]);
+  const smartSourceBaseSvg = useMemo(() => smartActive && transitionSourcePage ? pageSvg(content, transitionSourcePage, title, transitionSourcePage.elements.filter((element) => !smartSourceIds.has(element.id)).map((element) => element.id)) : "", [content, smartActive, smartSourceIds, title, transitionSourcePage]);
+  const smartLayers = useMemo(() => smartActive && page && transitionSourcePage ? smartMatches.map((match) => ({
+    ...match,
+    sourceSvg: pageSvg(content, transitionSourcePage, title, match.sourceElementIds, true),
+    destinationSvg: pageSvg(content, page, title, match.destinationElementIds, true),
+  })) : [], [content, page, smartActive, smartMatches, title, transitionSourcePage]);
+
+  function switchFlow(flowId: string): void {
+    const flow = flows.find((candidate) => candidate.id === flowId);
+    if (!flow || !pages.some((candidate) => candidate.id === flow.startPageId)) return;
+    executedTimersRef.current.clear();
+    setActiveFlowId(flow.id);
+    setHistory([flow.startPageId]);
+    setTransition(undefined);
+    setTransitionSourcePageId(undefined);
+    setOverlays([]);
+    focusPreview();
+  }
+
+  function smartLayerStyle(source: CanvasElement, destination: CanvasElement, role: "source" | "destination"): React.CSSProperties {
+    if (!page) return {};
+    const frame = page.frame;
+    const from = role === "source" ? source : destination;
+    const to = role === "source" ? destination : source;
+    const deltaX = (to.x + to.width / 2 - from.x - from.width / 2) / frame.width * 100;
+    const deltaY = (to.y + to.height / 2 - from.y - from.height / 2) / frame.height * 100;
+    const scaleX = to.width / Math.max(1, from.width);
+    const scaleY = to.height / Math.max(1, from.height);
+    const rotation = (to.rotation ?? 0) - (from.rotation ?? 0);
+    return {
+      transformOrigin: `${(from.x + from.width / 2) / frame.width * 100}% ${(from.y + from.height / 2) / frame.height * 100}%`,
+      "--smart-transform": `translate(${deltaX}%, ${deltaY}%) scale(${scaleX}, ${scaleY}) rotate(${rotation}deg)`,
+    } as React.CSSProperties;
+  }
 
   function renderHotspots(targetPage: CanvasPage, keyPrefix: string): React.ReactNode {
     return targetPage.elements.filter((node) => !node.hidden && node.interactions?.length).map((node) => {
@@ -251,25 +305,35 @@ export function CanvasPrototypePreview({ title, content, pages, startPageId, onC
       <header>
         <span><Play weight="fill" size={13} /><strong>{overlayPage ? `${page.name} · ${overlayPage.name}` : page.name}</strong><small>{overlayPage ? "Overlay open" : history.length > 1 ? `${history.length - 1} screens deep` : "Starting screen"}</small></span>
         <div>
+          {flows.length > 1 && <select aria-label="Preview prototype flow" value={activeFlowId} onChange={(event) => switchFlow(event.target.value)}>{flows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name}</option>)}</select>}
           <button ref={headerBackRef} type="button" aria-label={overlayPage ? "Close prototype overlay" : "Previous prototype screen"} disabled={!overlayPage && history.length <= 1} onClick={() => {
             if (overlayPage) { closeTopOverlay(); return; }
             executedTimersRef.current.clear();
             setTransition(undefined);
+            setTransitionSourcePageId(undefined);
             setHistory((current) => current.slice(0, -1));
             focusPreview();
           }}><CaretLeft size={15} /></button>
           <button type="button" aria-label="Close prototype preview" onClick={onClose}><X size={15} /></button>
         </div>
       </header>
+      <output className="sr-only" aria-live="polite" aria-atomic="true">{activeFlow?.name ?? "Prototype"}: {page.name}{overlayPage ? `. ${overlayPage.name} overlay open.` : "."}</output>
       <div className="canvas-prototype-matte">
         <div className="canvas-prototype-stage" style={{ aspectRatio: `${page.frame.width} / ${page.frame.height}` }}>
           <div
-            className={`canvas-prototype-screen ${transitionClass(transition)}`}
+            className={`canvas-prototype-screen ${smartActive ? "smart" : transitionClass(transition)}`}
             inert={Boolean(topOverlay)}
             key={`${page.id}:${history.length}`}
-            style={{ background: page.appState.viewBackgroundColor, animationDuration: transition ? `${transition.duration}ms` : undefined, animationTimingFunction: transition?.easing }}
+            style={{ background: page.appState.viewBackgroundColor, animationDuration: transition ? `${transition.duration}ms` : undefined, animationTimingFunction: transition?.easing, "--prototype-duration": transition ? `${transition.duration}ms` : undefined, "--prototype-easing": transition?.easing } as React.CSSProperties}
           >
-            <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} alt={`${page.name} prototype screen`} draggable={false} />
+            {smartActive ? <>
+              <img className="canvas-prototype-smart-base" src={svgSource(smartDestinationBaseSvg)} alt={`${page.name} prototype screen`} draggable={false} />
+              <img className="canvas-prototype-smart-source-base" src={svgSource(smartSourceBaseSvg)} alt="" aria-hidden="true" draggable={false} />
+              {smartLayers.map((match) => <span className="canvas-prototype-smart-pair" aria-hidden="true" key={match.key}>
+                <img className="canvas-prototype-smart-source" src={svgSource(match.sourceSvg)} alt="" draggable={false} style={smartLayerStyle(match.source, match.destination, "source")} />
+                <img className="canvas-prototype-smart-destination" src={svgSource(match.destinationSvg)} alt="" draggable={false} style={smartLayerStyle(match.source, match.destination, "destination")} />
+              </span>)}
+            </> : <img src={svgSource(svg)} alt={`${page.name} prototype screen`} draggable={false} />}
             {renderHotspots(page, "page")}
           </div>
           {topOverlay && overlayPage && <div ref={overlayLayerRef} className={`canvas-prototype-overlay-layer ${topOverlay.options.position} ${topOverlay.options.background}`}>

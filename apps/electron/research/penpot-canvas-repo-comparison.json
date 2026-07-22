@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T21:49:36+02:00",
+  "capturedAt": "2026-07-22T22:23:43+02:00",
   "repository": "https://github.com/penpot/penpot",
   "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
   "scope": [
@@ -16,7 +16,9 @@
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/workspace/viewport/snap_points.cljs",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/workspace/viewport/snap_distances.cljs",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/worker/snap.cljs",
-    "https://help.penpot.app/user-guide/designing/workspace-basics/"
+    "https://help.penpot.app/user-guide/designing/workspace-basics/",
+    "https://help.penpot.app/user-guide/prototyping-testing/prototyping/",
+    "https://help.penpot.app/technical-guide/developer/data-model/penpot-file-format/"
   ],
   "findings": [
     {
@@ -43,6 +45,11 @@
       "area": "component safety",
       "evidence": "Penpot's change layer prevents structural edits that would create component nesting loops or mutate protected component-copy structure.",
       "khadimDecision": "Add explicit component-cycle and parent-cycle validation to Khadim's semantic command layer before supporting nested component instances."
+    },
+    {
+      "area": "prototype flows and animation",
+      "evidence": "Penpot stores named prototype flows as starting points for separate journeys. Its current user guide documents dissolve, slide, and push transitions, but does not document matching-layer animation.",
+      "khadimDecision": "Persist up to 64 named flows with valid page starts and keep the legacy start-page field as a first-flow mirror. Add smart animation as a Khadim extension: match explicit keys at any layer depth, then unique top-level names or stable IDs; animate a bounded non-overlapping set only between equal-sized screens and fall back to dissolve otherwise."
     }
   ],
   "implementedFromComparison": [
@@ -50,6 +57,8 @@
     "Navigate, previous-screen, overlay, toggle-overlay, close-overlay, and protocol-validated external URL actions",
     "Instant, dissolve, and directional slide transitions with duration and easing",
     "Accessible in-canvas prototype playback with navigation history and overlay focus management",
+    "Multiple named prototype flows with inline authoring, independent start screens, flow-aware playback, page-deletion repair, and undo/redo",
+    "Smart matching-layer transitions with explicit layer keys, unique-name and stable-ID fallback, nested-layer rendering, duration and easing, dissolve fallback, and reduced-motion handling",
     "Deletion cleanup for interactions targeting removed pages",
     "Page ordering, prototype start screens, lazy thumbnails, and multi-page PDF output",
     "Shared large-scene geometry indexing, viewport culling, and virtualized layer rails",
@@ -57,7 +66,6 @@
     "Deterministic edge, center, page, frame, ruler-guide, layout-grid, equal-spacing, and pixel-grid snapping with transient distance feedback"
   ],
   "nextHighValueGaps": [
-    "Multiple named prototype flows and matching-layer animation",
     "Semantic canvas command and undo transaction modules",
     "Extended equal-spacing sequence snapping and true rotated-frame grid snapping",
     "Nested component cycle validation",

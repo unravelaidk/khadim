@@ -43,7 +43,7 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { Artifact, CanvasPrototypeInteraction } from "../../../shared/types";
+import type { Artifact, CanvasPrototypeFlow, CanvasPrototypeInteraction } from "../../../shared/types";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, normalizeCanvasPath, resolveCanvasConnectors, type CanvasAbsolutePoint } from "../../../shared/canvas-geometry";
 import { canvasGradientVector } from "../../../shared/canvas-paint";
@@ -58,6 +58,7 @@ import {
   canvasLayerTree,
   canvasNodes,
   canvasPages,
+  canvasPrototypeFlows,
   canvasSignature,
   canvasThumbnailElements,
   canvasVirtualRange,
@@ -347,8 +348,9 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const incomingTokenCollections = useMemo(() => content.tokenCollections ?? [], [content.tokenCollections]);
   const incomingPages = useMemo(() => canvasPages(content), [content.activePageId, content.appState, content.elements, content.frame, content.pages]);
   const incomingActivePageId = content.activePageId ?? incomingPages[0].id;
-  const incomingPrototypeStartPageId = incomingPages.some((page) => page.id === content.prototypeStartPageId) ? content.prototypeStartPageId! : incomingPages[0].id;
-  const incomingSignature = useMemo(() => JSON.stringify({ scene: canvasSignature(incomingNodes, incomingComponents, incomingStyles), textStyles: incomingTextStyles, effectStyles: incomingEffectStyles, tokenCollections: incomingTokenCollections, pages: incomingPages, activePageId: incomingActivePageId, prototypeStartPageId: incomingPrototypeStartPageId }), [incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeStartPageId, incomingStyles, incomingTextStyles, incomingTokenCollections]);
+  const incomingPrototypeFlows = useMemo(() => canvasPrototypeFlows(content, incomingPages), [content.prototypeFlows, content.prototypeStartPageId, incomingPages]);
+  const incomingPrototypeStartPageId = incomingPrototypeFlows[0]?.startPageId ?? incomingPages[0].id;
+  const incomingSignature = useMemo(() => JSON.stringify({ scene: canvasSignature(incomingNodes, incomingComponents, incomingStyles), textStyles: incomingTextStyles, effectStyles: incomingEffectStyles, tokenCollections: incomingTokenCollections, pages: incomingPages, activePageId: incomingActivePageId, prototypeFlows: incomingPrototypeFlows, prototypeStartPageId: incomingPrototypeStartPageId }), [incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeFlows, incomingPrototypeStartPageId, incomingStyles, incomingTextStyles, incomingTokenCollections]);
   const [nodes, setCanvasNodes] = useState<CanvasNode[]>(incomingNodes);
   const [components, setComponents] = useState<CanvasComponentDefinition[]>(incomingComponents);
   const [paintStyles, setPaintStyles] = useState<CanvasPaintStyle[]>(incomingStyles);
@@ -357,6 +359,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [tokenCollections, setTokenCollections] = useState<CanvasTokenCollection[]>(incomingTokenCollections);
   const [pages, setPages] = useState<CanvasPage[]>(incomingPages);
   const [activePageId, setActivePageId] = useState(incomingActivePageId);
+  const [prototypeFlows, setPrototypeFlows] = useState<CanvasPrototypeFlow[]>(incomingPrototypeFlows);
+  const [activePrototypeFlowId, setActivePrototypeFlowId] = useState(incomingPrototypeFlows[0]?.id ?? "");
   const [prototypeStartPageId, setPrototypeStartPageId] = useState(incomingPrototypeStartPageId);
   const [selectedIds, setSelectedIds] = useState<string[]>(incomingNodes[0] ? [incomingNodes[0].id] : []);
   const [tool, setTool] = useState<CanvasTool>("select");
@@ -378,6 +382,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [prototypeOpen, setPrototypeOpen] = useState(false);
   const stageRef = useRef<SVGSVGElement>(null);
   const layerListRef = useRef<HTMLDivElement>(null);
+  const pageRowRefs = useRef(new Map<string, HTMLDivElement>());
   const imageInputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef(viewport);
   const viewportSaveRef = useRef<number | undefined>(undefined);
@@ -392,6 +397,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const tokenCollectionsRef = useRef(tokenCollections);
   const pagesRef = useRef(pages);
   const activePageIdRef = useRef(activePageId);
+  const prototypeFlowsRef = useRef(prototypeFlows);
   const prototypeStartPageIdRef = useRef(prototypeStartPageId);
   const gestureRef = useRef<CanvasGesture | null>(null);
   const penDraftRef = useRef<{ nodeId: string; before: CanvasSnapshot; absolutePoints: Array<{ x: number; y: number }> } | null>(null);
@@ -410,10 +416,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   tokenCollectionsRef.current = tokenCollections;
   pagesRef.current = pages;
   activePageIdRef.current = activePageId;
+  prototypeFlowsRef.current = prototypeFlows;
   prototypeStartPageIdRef.current = prototypeStartPageId;
   viewportRef.current = viewport;
 
   const activePage = pages.find((page) => page.id === activePageId) ?? pages[0];
+  const activePrototypeFlow = prototypeFlows.find((flow) => flow.id === activePrototypeFlowId) ?? prototypeFlows[0];
   const canvasFrame = activePage?.frame ?? content.frame;
   const pageAppState = activePage?.appState ?? content.appState;
   const rulerGuides = pageAppState.guides ?? [];
@@ -525,6 +533,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setTokenCollections(incomingTokenCollections);
     setPages(incomingPages);
     setActivePageId(incomingActivePageId);
+    setPrototypeFlows(incomingPrototypeFlows);
+    setActivePrototypeFlowId((current) => incomingPrototypeFlows.some((flow) => flow.id === current) ? current : incomingPrototypeFlows[0]?.id ?? "");
     setPrototypeStartPageId(incomingPrototypeStartPageId);
     const incomingPage = incomingPages.find((page) => page.id === incomingActivePageId) ?? incomingPages[0];
     const incomingViewport = incomingPage?.appState.viewport ?? content.appState.viewport ?? { x: 72, y: 64, zoom: .76 };
@@ -543,6 +553,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     tokenCollectionsRef.current = incomingTokenCollections;
     pagesRef.current = incomingPages;
     activePageIdRef.current = incomingActivePageId;
+    prototypeFlowsRef.current = incomingPrototypeFlows;
     prototypeStartPageIdRef.current = incomingPrototypeStartPageId;
     lastCommittedSignatureRef.current = incomingSignature;
     pastRef.current = [];
@@ -550,19 +561,19 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     inspectorHistoryRef.current = null;
     setHistoryRevision((revision) => revision + 1);
     setSelectedIds((current) => incomingActivePageId === previousActivePageId ? current.filter((id) => incomingNodes.some((node) => node.id === id)) : []);
-  }, [content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeStartPageId, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
+  }, [content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeFlows, incomingPrototypeStartPageId, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
 
   function syncedPages(nextNodes: CanvasNode[], nextAppState: CanvasPage["appState"] = { ...(pagesRef.current.find((page) => page.id === activePageIdRef.current)?.appState ?? content.appState), snapToGrid, viewport: viewportRef.current }, nextFrame = canvasFrame, sourcePages = pagesRef.current): CanvasPage[] {
     const page: CanvasPage = { id: activePageIdRef.current, name: sourcePages.find((candidate) => candidate.id === activePageIdRef.current)?.name ?? "Page 1", frame: nextFrame, elements: nextNodes, appState: nextAppState };
     return sourcePages.some((candidate) => candidate.id === page.id) ? sourcePages.map((candidate) => candidate.id === page.id ? page : candidate) : [...sourcePages, page];
   }
 
-  function sceneDocumentSignature(nextNodes: CanvasNode[], nextComponents: CanvasComponentDefinition[], nextStyles: CanvasPaintStyle[], nextPages: CanvasPage[], nextActivePageId = activePageIdRef.current, nextTextStyles = textStylesRef.current, nextEffectStyles = effectStylesRef.current, nextTokenCollections = tokenCollectionsRef.current, nextPrototypeStartPageId = prototypeStartPageIdRef.current): string {
-    return JSON.stringify({ scene: canvasSignature(nextNodes, nextComponents, nextStyles), textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: nextActivePageId, prototypeStartPageId: nextPrototypeStartPageId });
+  function sceneDocumentSignature(nextNodes: CanvasNode[], nextComponents: CanvasComponentDefinition[], nextStyles: CanvasPaintStyle[], nextPages: CanvasPage[], nextActivePageId = activePageIdRef.current, nextTextStyles = textStylesRef.current, nextEffectStyles = effectStylesRef.current, nextTokenCollections = tokenCollectionsRef.current, nextPrototypeFlows = prototypeFlowsRef.current): string {
+    return JSON.stringify({ scene: canvasSignature(nextNodes, nextComponents, nextStyles), textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: nextActivePageId, prototypeFlows: nextPrototypeFlows, prototypeStartPageId: nextPrototypeFlows[0]?.startPageId });
   }
 
   function currentSnapshot(): CanvasSnapshot {
-    return cloneSnapshot({ nodes: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: syncedPages(nodesRef.current), activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current });
+    return cloneSnapshot({ nodes: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: syncedPages(nodesRef.current), activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current });
   }
 
   function restoreDocumentSnapshot(snapshot: CanvasSnapshot): void {
@@ -572,14 +583,15 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     }
     const nextPages = cloneSnapshot(snapshot.pages);
     const active = nextPages.find((page) => page.id === snapshot.activePageId) ?? nextPages[0];
-    const nextPrototypeStartPageId = nextPages.some((page) => page.id === snapshot.prototypeStartPageId) ? snapshot.prototypeStartPageId! : nextPages[0].id;
+    const nextPrototypeFlows = canvasPrototypeFlows({ prototypeFlows: snapshot.prototypeFlows, prototypeStartPageId: snapshot.prototypeStartPageId }, nextPages);
+    const nextPrototypeStartPageId = nextPrototypeFlows[0].startPageId;
     const nextNodes = cloneSnapshot(active.elements) as CanvasNode[];
-    pagesRef.current = nextPages; activePageIdRef.current = active.id; prototypeStartPageIdRef.current = nextPrototypeStartPageId; nodesRef.current = nextNodes;
+    pagesRef.current = nextPages; activePageIdRef.current = active.id; prototypeFlowsRef.current = nextPrototypeFlows; prototypeStartPageIdRef.current = nextPrototypeStartPageId; nodesRef.current = nextNodes;
     componentsRef.current = cloneSnapshot(snapshot.components); paintStylesRef.current = cloneSnapshot(snapshot.styles ?? []); textStylesRef.current = cloneSnapshot(snapshot.textStyles ?? []); effectStylesRef.current = cloneSnapshot(snapshot.effectStyles ?? []); tokenCollectionsRef.current = cloneSnapshot(snapshot.tokenCollections ?? []);
-    setPages(nextPages); setActivePageId(active.id); setPrototypeStartPageId(nextPrototypeStartPageId); setCanvasNodes(nextNodes); setComponents(componentsRef.current); setPaintStyles(paintStylesRef.current); setTextStyles(textStylesRef.current); setEffectStyles(effectStylesRef.current); setTokenCollections(tokenCollectionsRef.current);
+    setPages(nextPages); setActivePageId(active.id); setPrototypeFlows(nextPrototypeFlows); setActivePrototypeFlowId((current) => nextPrototypeFlows.some((flow) => flow.id === current) ? current : nextPrototypeFlows[0].id); setPrototypeStartPageId(nextPrototypeStartPageId); setCanvasNodes(nextNodes); setComponents(componentsRef.current); setPaintStyles(paintStylesRef.current); setTextStyles(textStylesRef.current); setEffectStyles(effectStylesRef.current); setTokenCollections(tokenCollectionsRef.current);
     setViewport(active.appState.viewport ?? { x: 72, y: 64, zoom: .76 }); setSnapToGrid(active.appState.snapToGrid !== false); setSelectedIds([]);
-    lastCommittedSignatureRef.current = sceneDocumentSignature(nextNodes, componentsRef.current, paintStylesRef.current, nextPages, active.id, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextPrototypeStartPageId);
-    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: active.frame, elements: nextNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: active.id, prototypeStartPageId: nextPrototypeStartPageId, appState: active.appState } });
+    lastCommittedSignatureRef.current = sceneDocumentSignature(nextNodes, componentsRef.current, paintStylesRef.current, nextPages, active.id, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextPrototypeFlows);
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: active.frame, elements: nextNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: active.id, prototypeFlows: nextPrototypeFlows, prototypeStartPageId: nextPrototypeStartPageId, appState: active.appState } });
     setHistoryRevision((revision) => revision + 1);
   }
 
@@ -612,7 +624,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: canvasFrame, elements: resolvedNodes, components: nextComponents, styles: nextStyles, textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
+      content: { ...content, frame: canvasFrame, elements: resolvedNodes, components: nextComponents, styles: nextStyles, textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
     });
   }
 
@@ -655,7 +667,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
+      content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
     });
   }
 
@@ -734,7 +746,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setTool("select");
   }
 
-  function openPage(nextPageId: string, sourcePages = syncedPages(nodesRef.current), recordHistory = false, nextPrototypeStartPageId = prototypeStartPageIdRef.current): void {
+  function openPage(nextPageId: string, sourcePages = syncedPages(nodesRef.current), recordHistory = false, nextPrototypeFlows = prototypeFlowsRef.current): void {
     const target = sourcePages.find((page) => page.id === nextPageId);
     if (!target || nextPageId === activePageIdRef.current && sourcePages === pagesRef.current) return;
     if (recordHistory) { pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()]; futureRef.current = []; }
@@ -745,11 +757,14 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const targetViewport = target.appState.viewport ?? { x: 72, y: 64, zoom: .76 };
     const normalizedPages = sourcePages.map((page) => page.id === target.id ? { ...target, elements: targetNodes, appState: { ...target.appState, viewport: targetViewport } } : page);
     activePageIdRef.current = nextPageId;
+    const nextPrototypeStartPageId = nextPrototypeFlows[0]?.startPageId ?? sourcePages[0].id;
+    prototypeFlowsRef.current = nextPrototypeFlows;
     prototypeStartPageIdRef.current = nextPrototypeStartPageId;
     pagesRef.current = normalizedPages;
     nodesRef.current = targetNodes;
     viewportRef.current = targetViewport;
     setActivePageId(nextPageId);
+    setPrototypeFlows(nextPrototypeFlows);
     setPrototypeStartPageId(nextPrototypeStartPageId);
     setPages(normalizedPages);
     setCanvasNodes(targetNodes);
@@ -759,12 +774,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setEditingText(null);
     inspectorHistoryRef.current = null;
     setHistoryRevision((revision) => revision + 1);
-    lastCommittedSignatureRef.current = sceneDocumentSignature(targetNodes, componentsRef.current, paintStylesRef.current, normalizedPages, nextPageId, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextPrototypeStartPageId);
+    lastCommittedSignatureRef.current = sceneDocumentSignature(targetNodes, componentsRef.current, paintStylesRef.current, normalizedPages, nextPageId, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextPrototypeFlows);
     onChange({
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: target.frame, elements: targetNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, pages: normalizedPages, activePageId: nextPageId, prototypeStartPageId: nextPrototypeStartPageId, appState: { ...target.appState, viewport: targetViewport } },
+      content: { ...content, frame: target.frame, elements: targetNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: normalizedPages, activePageId: nextPageId, prototypeFlows: nextPrototypeFlows, prototypeStartPageId: nextPrototypeStartPageId, appState: { ...target.appState, viewport: targetViewport } },
     });
   }
 
@@ -780,13 +795,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   function renamePage(pageId: string, name: string): void {
     const finalName = name.trim();
-    if (!finalName) return;
+    if (!finalName || pagesRef.current.find((page) => page.id === pageId)?.name === finalName) return;
     if (shouldRecordInspectorHistory(`page:${pageId}:name`)) { pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()]; futureRef.current = []; }
     const nextPages = syncedPages(nodesRef.current).map((page) => page.id === pageId ? { ...page, name: finalName } : page);
     pagesRef.current = nextPages;
     setPages(nextPages);
     lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages);
-    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
   }
 
   function resizeActivePageFrame(width: number, height: number, fit = false): void {
@@ -815,13 +830,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     viewportRef.current = nextViewport;
     setPages(nextPages);
     setViewport(nextViewport);
-    lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages, activePageIdRef.current, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, prototypeStartPageIdRef.current);
+    lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages, activePageIdRef.current, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, prototypeFlowsRef.current);
     setHistoryRevision((revision) => revision + 1);
     onChange({
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: nextFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
+      content: { ...content, frame: nextFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
     });
   }
 
@@ -835,16 +850,46 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     openPage(activePageIdRef.current, nextPages, true);
   }
 
-  function markPrototypeStart(pageId: string): void {
-    if (pageId === prototypeStartPageIdRef.current || !pagesRef.current.some((page) => page.id === pageId)) return;
+  function persistPrototypeFlows(nextFlows: CanvasPrototypeFlow[]): void {
+    if (!nextFlows.length) return;
     pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()];
     futureRef.current = [];
-    prototypeStartPageIdRef.current = pageId;
-    setPrototypeStartPageId(pageId);
+    const nextPrototypeStartPageId = nextFlows[0].startPageId;
+    prototypeFlowsRef.current = nextFlows;
+    prototypeStartPageIdRef.current = nextPrototypeStartPageId;
+    setPrototypeFlows(nextFlows);
+    setPrototypeStartPageId(nextPrototypeStartPageId);
     const nextPages = syncedPages(nodesRef.current);
-    lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages, activePageIdRef.current, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, pageId);
-    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: pageId, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
+    lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages, activePageIdRef.current, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextFlows);
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: nextFlows, prototypeStartPageId: nextPrototypeStartPageId, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
     setHistoryRevision((revision) => revision + 1);
+  }
+
+  function markPrototypeStart(pageId: string): void {
+    if (!activePrototypeFlow || pageId === activePrototypeFlow.startPageId || !pagesRef.current.some((page) => page.id === pageId)) return;
+    persistPrototypeFlows(prototypeFlowsRef.current.map((flow) => flow.id === activePrototypeFlow.id ? { ...flow, startPageId: pageId } : flow));
+  }
+
+  function addPrototypeFlow(): void {
+    if (prototypeFlowsRef.current.length >= 64) return;
+    const flow: CanvasPrototypeFlow = { id: crypto.randomUUID(), name: `Flow ${prototypeFlowsRef.current.length + 1}`, startPageId: activePageIdRef.current };
+    persistPrototypeFlows([...prototypeFlowsRef.current, flow]);
+    setActivePrototypeFlowId(flow.id);
+  }
+
+  function renamePrototypeFlow(flowId: string, name: string): void {
+    const finalName = name.trim();
+    const flow = prototypeFlowsRef.current.find((candidate) => candidate.id === flowId);
+    if (!flow || !finalName || finalName === flow.name) return;
+    persistPrototypeFlows(prototypeFlowsRef.current.map((candidate) => candidate.id === flowId ? { ...candidate, name: finalName.slice(0, 160) } : candidate));
+  }
+
+  function deletePrototypeFlow(flowId: string): void {
+    if (prototypeFlowsRef.current.length <= 1) return;
+    const nextFlows = prototypeFlowsRef.current.filter((flow) => flow.id !== flowId);
+    if (nextFlows.length === prototypeFlowsRef.current.length) return;
+    persistPrototypeFlows(nextFlows);
+    if (activePrototypeFlowId === flowId) setActivePrototypeFlowId(nextFlows[0].id);
   }
 
   function deletePage(pageId: string): void {
@@ -859,8 +904,10 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       }),
     }));
     const nextActiveId = pageId === activePageIdRef.current ? nextPages[Math.min(index, nextPages.length - 1)].id : activePageIdRef.current;
-    const nextPrototypeStartPageId = pageId === prototypeStartPageIdRef.current ? nextPages[0].id : prototypeStartPageIdRef.current;
-    openPage(nextActiveId, nextPages, true, nextPrototypeStartPageId);
+    const focusPageId = nextPages[Math.min(index, nextPages.length - 1)].id;
+    const nextPrototypeFlows = prototypeFlowsRef.current.map((flow) => flow.startPageId === pageId ? { ...flow, startPageId: nextPages[0].id } : flow);
+    openPage(nextActiveId, nextPages, true, nextPrototypeFlows);
+    window.setTimeout(() => pageRowRefs.current.get(focusPageId)?.querySelector<HTMLElement>(".canvas-page-open, input, .canvas-page-start")?.focus(), 0);
   }
 
   function importImage(file: File | undefined): void {
@@ -2635,18 +2682,29 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       <aside className="canvas-layers" aria-label="Canvas layers and assets">
         <section className="canvas-pages-panel" aria-label="Canvas pages">
           <header><strong>Pages</strong><span><button type="button" aria-label="Duplicate current page" title="Duplicate page" onClick={() => createPage(true)}><Copy size={12} /></button><button type="button" aria-label="Add page" title="Add page" onClick={() => createPage(false)}><Plus size={13} /></button></span></header>
-          <div>{pages.map((page, index) => <div className={page.id === activePageId ? "active" : ""} key={page.id}>
+          <div>{pages.map((page, index) => <div ref={(row) => { if (row) pageRowRefs.current.set(page.id, row); else pageRowRefs.current.delete(page.id); }} className={page.id === activePageId ? "active" : ""} key={page.id}>
             <CanvasPageThumbnail page={page} components={components} files={content.files} title={artifact.title} eager={page.id === activePageId} />
             {page.id === activePageId
               ? <input key={`${page.id}:${page.name}`} aria-label="Current page name" defaultValue={page.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = page.name; else renamePage(page.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
               : <button className="canvas-page-open" type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}
-            <button className="canvas-page-start" type="button" aria-label={page.id === prototypeStartPageId ? `${page.name} is prototype start` : `Set ${page.name} as prototype start`} aria-pressed={page.id === prototypeStartPageId} title={page.id === prototypeStartPageId ? "Prototype start" : "Set as prototype start"} onClick={() => markPrototypeStart(page.id)}><Flag size={11} weight={page.id === prototypeStartPageId ? "fill" : "regular"} /></button>
+            <button className="canvas-page-start" type="button" aria-label={page.id === activePrototypeFlow?.startPageId ? `${page.name} is prototype start` : `Set ${page.name} as prototype start`} aria-pressed={page.id === activePrototypeFlow?.startPageId} title={page.id === activePrototypeFlow?.startPageId ? `Starts ${activePrototypeFlow?.name ?? "prototype flow"}` : `Set as ${activePrototypeFlow?.name ?? "flow"} start`} onClick={() => markPrototypeStart(page.id)}><Flag size={11} weight={page.id === activePrototypeFlow?.startPageId ? "fill" : "regular"} /></button>
             <span className="canvas-page-move">
               <button type="button" aria-label={`Move ${page.name} up`} disabled={index === 0} onClick={() => movePage(page.id, -1)}><CaretUp size={10} /></button>
               <button type="button" aria-label={`Move ${page.name} down`} disabled={index === pages.length - 1} onClick={() => movePage(page.id, 1)}><CaretDown size={10} /></button>
             </span>
             <button type="button" aria-label={`Delete ${page.name}`} disabled={pages.length <= 1} onClick={() => deletePage(page.id)}><Trash size={11} /></button>
           </div>)}</div>
+        </section>
+        <section className="canvas-flows-panel" aria-label="Prototype flows">
+          <header><strong>Flows</strong><button type="button" aria-label="Add prototype flow" title="Add flow" disabled={prototypeFlows.length >= 64} onClick={addPrototypeFlow}><Plus size={12} /></button></header>
+          <div>
+            <select aria-label="Active prototype flow" value={activePrototypeFlow?.id ?? ""} onChange={(event) => setActivePrototypeFlowId(event.target.value)}>{prototypeFlows.map((flow) => <option value={flow.id} key={flow.id}>{flow.name}</option>)}</select>
+            {activePrototypeFlow && <>
+              <input key={`${activePrototypeFlow.id}:${activePrototypeFlow.name}`} aria-label="Prototype flow name" defaultValue={activePrototypeFlow.name} maxLength={160} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = activePrototypeFlow.name; else renamePrototypeFlow(activePrototypeFlow.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+              <select aria-label="Prototype flow start page" value={activePrototypeFlow.startPageId} onChange={(event) => markPrototypeStart(event.target.value)}>{pages.map((page) => <option value={page.id} key={page.id}>{page.name}</option>)}</select>
+              <button type="button" aria-label={`Delete ${activePrototypeFlow.name}`} title="Delete flow" disabled={prototypeFlows.length <= 1} onClick={() => deletePrototypeFlow(activePrototypeFlow.id)}><Trash size={11} /></button>
+            </>}
+          </div>
         </section>
         <div className="canvas-panel-tabs" role="tablist" aria-label="Canvas sidebar">
           <button role="tab" aria-selected={sidePanel === "layers"} onClick={() => setSidePanel("layers")}><Stack size={13} /> Layers</button>
@@ -2844,7 +2902,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           <button type="button" aria-label="Fit frame" onClick={fitFrame}><CornersOut size={14} /></button>
         </div>
         {nodes.length === 0 && <div className="canvas-empty"><Selection size={25} /><strong>Start with a frame or shape</strong><span>Draw on the canvas, import an image, or use a reusable component.</span><div><button type="button" onClick={() => add("frame")}><BoundingBox size={14} /> Frame</button><button type="button" onClick={() => add("rectangle")}><Square size={14} /> Rectangle</button><button type="button" onClick={() => setSidePanel("assets")}><DiamondsFour size={14} /> Assets</button></div></div>}
-        {prototypeOpen && <CanvasPrototypePreview title={artifact.title} content={{ ...content, frame: canvasFrame, elements: nodes, components, styles: paintStyles, textStyles, effectStyles, tokenCollections, pages, activePageId, prototypeStartPageId, appState: pageAppState }} pages={syncedPages(nodes)} startPageId={prototypeStartPageId} onClose={() => setPrototypeOpen(false)} />}
+        {prototypeOpen && <CanvasPrototypePreview title={artifact.title} content={{ ...content, frame: canvasFrame, elements: nodes, components, styles: paintStyles, textStyles, effectStyles, tokenCollections, pages, activePageId, prototypeFlows, prototypeStartPageId, appState: pageAppState }} pages={syncedPages(nodes)} flows={prototypeFlows} initialFlowId={activePrototypeFlow?.id} onClose={() => setPrototypeOpen(false)} />}
       </main>
 
       <aside className="studio-inspector" aria-label="Canvas settings">
@@ -2903,6 +2961,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           })}{selectedNode.componentRole === "instance" && Object.keys(selectedNode.overrides ?? {}).length > 0 && <button className="canvas-reset-overrides" type="button" onClick={resetSelectedOverrides}>Reset overrides</button>}</section>}
           <section className="canvas-inspector-section canvas-prototype-section">
             <h3><span>Prototype</span><button type="button" disabled={usedPrototypeTriggers.size >= 3} onClick={addPrototypeInteraction}><Plus size={12} /> Interaction</button></h3>
+            <label><span>Smart animate key</span><input aria-label="Smart animate key" maxLength={240} placeholder={selectedNode.name ?? nodeLabel(selectedNode)} value={selectedNode.prototypeKey ?? ""} onChange={(event) => patchSelected({ prototypeKey: event.target.value || undefined })} /></label>
+            <p className="canvas-field-hint">Matching keys work at any depth. Unique top-level names are matched automatically.</p>
             {(selectedNode.interactions ?? []).map((interaction, index) => <div className="canvas-prototype-interaction" key={interaction.id}>
               <header><strong>Interaction {index + 1}</strong><button type="button" aria-label={`Delete interaction ${index + 1}`} onClick={() => removePrototypeInteraction(interaction.id)}><Trash size={12} /></button></header>
               <div className="canvas-typography-fields">
@@ -2919,7 +2979,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
                     action,
                     destinationPageId,
                     url: action === "open-url" ? interaction.url : undefined,
-                    transition: opensDestination ? interaction.transition ?? { type: "dissolve", duration: 180, easing: "ease-out" } : undefined,
+                    transition: opensDestination ? opensOverlay && interaction.transition?.type === "smart" ? { type: "dissolve", duration: interaction.transition.duration, easing: interaction.transition.easing } : interaction.transition ?? { type: "dissolve", duration: 180, easing: "ease-out" } : undefined,
                     overlay: opensOverlay ? interaction.overlay ?? { position: "center", background: "dim", closeOnOutsideClick: true } : undefined,
                   });
                 }}><option value="navigate">Navigate to</option><option value="open-overlay">Open overlay</option><option value="toggle-overlay">Toggle overlay</option><option value="close-overlay">Close overlay</option><option value="back">Previous screen</option><option value="open-url">Open URL</option></select></label>
@@ -2940,7 +3000,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
                 <label><span>Background</span><select aria-label={`Interaction ${index + 1} overlay background`} value={interaction.overlay?.background ?? "dim"} onChange={(event) => patchPrototypeInteraction(interaction.id, { overlay: { ...(interaction.overlay ?? { position: "center", closeOnOutsideClick: true }), background: event.target.value as "none" | "dim" } })}><option value="dim">Dim</option><option value="none">None</option></select></label>
               </div><label className="canvas-toggle-row"><input aria-label={`Interaction ${index + 1} close outside`} type="checkbox" checked={interaction.overlay?.closeOnOutsideClick ?? true} onChange={(event) => patchPrototypeInteraction(interaction.id, { overlay: { ...(interaction.overlay ?? { position: "center", background: "dim" }), closeOnOutsideClick: event.target.checked } })} /><span>Close when clicking outside</span></label></>}
               {(interaction.action === "navigate" || interaction.action === "open-overlay" || interaction.action === "toggle-overlay") && <div className="canvas-typography-fields">
-                <label><span>Transition</span><select aria-label={`Interaction ${index + 1} transition`} value={interaction.transition?.type ?? "instant"} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...(interaction.transition ?? { duration: 180, easing: "ease-out" }), type: event.target.value as NonNullable<CanvasPrototypeInteraction["transition"]>["type"] } })}><option value="instant">Instant</option><option value="dissolve">Dissolve</option><option value="slide">Slide</option></select></label>
+                <label><span>Transition</span><select aria-label={`Interaction ${index + 1} transition`} value={interaction.transition?.type ?? "instant"} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...(interaction.transition ?? { duration: 180, easing: "ease-out" }), type: event.target.value as NonNullable<CanvasPrototypeInteraction["transition"]>["type"], direction: event.target.value === "slide" ? interaction.transition?.direction ?? "left" : undefined } })}><option value="instant">Instant</option><option value="dissolve">Dissolve</option><option value="slide">Slide</option>{interaction.action === "navigate" && <option value="smart">Smart animate</option>}</select></label>
                 {interaction.transition?.type !== "instant" && <label><span>Duration</span><input aria-label={`Interaction ${index + 1} duration`} type="number" min="0" max="5000" step="10" value={interaction.transition?.duration ?? 180} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...(interaction.transition ?? { type: "dissolve", easing: "ease-out" }), duration: Math.max(0, Math.min(5000, Number(event.target.value))) } })} /></label>}
                 {interaction.transition?.type === "slide" && <label><span>Direction</span><select aria-label={`Interaction ${index + 1} direction`} value={interaction.transition.direction ?? "left"} onChange={(event) => patchPrototypeInteraction(interaction.id, { transition: { ...interaction.transition!, direction: event.target.value as "left" | "right" | "up" | "down" } })}><option value="left">Left</option><option value="right">Right</option><option value="up">Up</option><option value="down">Down</option></select></label>}
               </div>}

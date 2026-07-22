@@ -5,6 +5,7 @@ import {
   canvasGeometryIndex,
   canvasLayerTree,
   canvasPages,
+  canvasPrototypeFlows,
   canvasThumbnailElements,
   canvasVirtualRange,
   canvasViewportElements,
@@ -218,6 +219,12 @@ describe("Khadim canvas scene model", () => {
   it("upgrades a legacy single-page scene into a stable page snapshot", () => {
     const pages = canvasPages({ format: "khadim-canvas", sceneVersion: 1, frame: { width: 960, height: 600 }, elements: [first], components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {} });
     expect(pages).toEqual([{ id: "page-1", name: "Page 1", frame: { width: 960, height: 600 }, elements: [first], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true } }]);
+  });
+
+  it("normalizes named prototype flows and upgrades the legacy start page", () => {
+    const pages = canvasPages({ format: "khadim-canvas", sceneVersion: 1, frame: { width: 960, height: 600 }, elements: [first], components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {} });
+    expect(canvasPrototypeFlows({ prototypeStartPageId: pages[0].id }, pages)).toEqual([{ id: "default-flow", name: "Main flow", startPageId: pages[0].id }]);
+    expect(canvasPrototypeFlows({ prototypeFlows: [{ id: "journey", name: "  Checkout  ", startPageId: pages[0].id }, { id: "journey", name: "Duplicate", startPageId: pages[0].id }, { id: "stale", name: "Stale", startPageId: "missing" }] }, pages)).toEqual([{ id: "journey", name: "Checkout", startPageId: pages[0].id }]);
   });
 
   it("indexes large scene geometry and inherited interaction flags without recursive walks", () => {
