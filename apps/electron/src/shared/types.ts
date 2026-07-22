@@ -665,6 +665,7 @@ export interface CanvasArtifactContent {
   /** Page snapshots. Top-level frame/elements/appState mirror the active page for backwards-compatible agent edits. */
   pages?: CanvasPage[];
   activePageId?: string;
+  prototypeStartPageId?: string;
   appState: CanvasAppState;
   files: Record<string, CanvasAssetFile>;
 }

@@ -47,6 +47,7 @@ export interface CanvasSnapshot {
   tokenCollections?: CanvasTokenCollection[];
   pages?: CanvasPage[];
   activePageId?: string;
+  prototypeStartPageId?: string;
 }
 
 export interface CanvasRect {

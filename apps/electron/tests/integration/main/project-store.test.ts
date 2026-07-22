@@ -403,7 +403,7 @@ describe("ProjectStore", () => {
       { id: "page-a", name: "Flow", frame: artifact.content.frame, elements: [prototypeButton], appState: artifact.content.appState },
       { id: "page-b", name: "Archive", frame: artifact.content.frame, elements: [], appState: artifact.content.appState },
     ];
-    const prototypeArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [prototypeButton], activePageId: "page-a", pages: prototypePages } };
+    const prototypeArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [prototypeButton], activePageId: "page-a", prototypeStartPageId: "page-b", pages: prototypePages } };
     await store.saveArtifacts(project.id, [prototypeArtifact]);
     await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([prototypeArtifact]);
     const stalePrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "missing" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "missing" }] }] } : page) } };
@@ -412,6 +412,8 @@ describe("ProjectStore", () => {
     await expect(store.saveArtifacts(project.id, [unsafePrototype])).rejects.toThrow("artifact library is invalid");
     const duplicateTriggerPrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "first", trigger: "click", action: "back" }, { id: "second", trigger: "click", action: "back" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "first", trigger: "click", action: "back" }, { id: "second", trigger: "click", action: "back" }] }] } : page) } };
     await expect(store.saveArtifacts(project.id, [duplicateTriggerPrototype])).rejects.toThrow("artifact library is invalid");
+    const invalidStartPrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [prototypeButton], activePageId: "page-a", prototypeStartPageId: "missing", pages: prototypePages } };
+    await expect(store.saveArtifacts(project.id, [invalidStartPrototype])).rejects.toThrow("artifact library is invalid");
     const systemArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
       elements: [
         { id: "frame", type: "frame", x: 0, y: 0, width: 400, height: 300, color: "#ffffff", layoutGrids: [{ id: "grid", type: "columns", visible: true, color: "#2563eb", opacity: .12, count: 12, gutter: 16, margin: 24 }] },

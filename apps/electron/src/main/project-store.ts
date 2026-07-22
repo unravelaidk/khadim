@@ -560,16 +560,17 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
     if (pages.some((page) => typeof page !== "object" || page === null || Array.isArray(page)
       || !isBoundedString(page.id, 240)
       || !isBoundedString(page.name, 1_000)
-      || !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false))) return false;
+      || !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false))) return false;
     if (new Set(pages.map((page) => page.id)).size !== pages.length) return false;
     if (validatePrototypeDestinations) {
       const pageIds = new Set(pages.map((page) => page.id as string));
+      if (data.prototypeStartPageId !== undefined && (!isBoundedString(data.prototypeStartPageId, 240) || !pageIds.has(data.prototypeStartPageId))) return false;
       const destinations = pages.flatMap((page) => (page.elements as Array<Record<string, unknown>>).flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => interaction.action === "navigate" ? [interaction.destinationPageId as string] : []) ?? []));
       if (destinations.some((destination) => !pageIds.has(destination))) return false;
     }
     const activePage = pages.find((page) => page.id === data.activePageId);
     if (!activePage || JSON.stringify(activePage.frame) !== JSON.stringify(data.frame) || JSON.stringify(activePage.elements) !== JSON.stringify(data.elements) || JSON.stringify(activePage.appState) !== JSON.stringify(data.appState)) return false;
-  } else if (data.activePageId !== undefined || validatePrototypeDestinations && elements.some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => interaction.action === "navigate"))) return false;
+  } else if (data.activePageId !== undefined || data.prototypeStartPageId !== undefined || validatePrototypeDestinations && elements.some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => interaction.action === "navigate"))) return false;
   try {
     return JSON.stringify(data).length <= 50 * 1024 * 1024;
   } catch {

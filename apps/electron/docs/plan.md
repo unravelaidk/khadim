@@ -264,7 +264,9 @@ boundary: editor shortcuts are suspended, background controls are inert, focus
 is trapped and restored, hover interactions remain keyboard operable, and
 hotspots respect hidden ancestors, masks, and clipped frames. Persistence
 rejects malformed actions, unsafe URL protocols, duplicate triggers, and stale
-page destinations. PDF output emits every canvas page on a separate sheet.
+page destinations. Pages can be reordered and nominate an explicit prototype
+start screen; deleting that screen chooses a valid fallback and undo restores
+the prior flow. PDF output emits every canvas page on a separate sheet.
 
 The next architectural extraction should follow Penpot's change-builder model:
 move semantic canvas commands and grouped undo transactions out of
@@ -512,8 +514,8 @@ the same in Preview and PDF preparation.
 
 1. Extract semantic canvas commands and grouped undo transactions from
    `CanvasEditor`, then index geometry for large-scene hit testing and snapping.
-2. Add page reordering, thumbnails, explicit prototype start screens, overlay
-   actions, and selection-aware agent patch protocols.
+2. Add page thumbnails, prototype overlay actions, and selection-aware agent
+   patch protocols.
 3. Harden the HTML document editor with selection-scoped agent patches,
    revision history, and long-document pagination fixtures.
 4. Add export fixtures for long documents, complex multi-page canvases, and compiled

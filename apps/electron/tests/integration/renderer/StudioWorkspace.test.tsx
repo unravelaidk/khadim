@@ -653,10 +653,20 @@ describe("StudioWorkspace canvas design workflow", () => {
     fireEvent.pointerDown(canvas, { button: 0, pointerId: 32, clientX: 300, clientY: 180 });
     fireEvent.pointerMove(canvas, { pointerId: 32, clientX: 400, clientY: 280 });
     fireEvent.pointerUp(canvas, { pointerId: 32, clientX: 400, clientY: 280 });
+    await user.click(screen.getByRole("button", { name: "Set Page 2 as prototype start" }));
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.prototypeStartPageId).toBe(content.activePageId);
+    await user.click(screen.getByRole("button", { name: "Move Page 2 up" }));
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.pages.map((page: { name: string }) => page.name)).toEqual(["Page 2", "Page 1"]);
     await user.click(screen.getByRole("button", { name: /^Page 1 1$/ }));
     content = onChange.mock.calls.at(-1)?.[0].content;
     expect(content.elements).toEqual([expect.objectContaining({ type: "rectangle" })]);
     expect(content.pages.find((page: { id: string }) => page.id === content.activePageId).elements).toEqual(content.elements);
+    await user.click(screen.getByRole("button", { name: "Play prototype" }));
+    expect(screen.getByRole("dialog", { name: "Canvas prototype preview" })).toHaveTextContent("Page 2");
+    expect(screen.getByAltText("Page 2 prototype screen")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close prototype preview" }));
 
     await user.click(screen.getByRole("checkbox", { name: "Show rulers" }));
     await user.click(screen.getByRole("button", { name: "Vertical" }));
@@ -666,9 +676,13 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(container.querySelector(".canvas-rulers")).not.toBeNull();
     expect(container.querySelector(".canvas-ruler-guide")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Delete Page 2" }));
-    expect(onChange.mock.calls.at(-1)?.[0].content.pages).toHaveLength(1);
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.pages).toHaveLength(1);
+    expect(content.prototypeStartPageId).toBe(content.pages[0].id);
     await user.click(screen.getByRole("button", { name: "Undo" }));
-    expect(onChange.mock.calls.at(-1)?.[0].content.pages).toHaveLength(2);
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.pages).toHaveLength(2);
+    expect(content.prototypeStartPageId).toBe(content.pages.find((page: { name: string }) => page.name === "Page 2").id);
   });
 
   it("exposes an accessible layer hierarchy and reparents layers into frames", async () => {

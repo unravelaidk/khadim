@@ -9,6 +9,8 @@ import {
   ArrowClockwise,
   ArrowCounterClockwise,
   BoundingBox,
+  CaretDown,
+  CaretUp,
   Circle,
   Copy,
   CornersOut,
@@ -18,6 +20,7 @@ import {
   DownloadSimple,
   Eye,
   EyeSlash,
+  Flag,
   GridFour,
   Hand,
   ImageSquare,
@@ -262,7 +265,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const incomingTokenCollections = useMemo(() => content.tokenCollections ?? [], [content.tokenCollections]);
   const incomingPages = useMemo(() => canvasPages(content), [content.activePageId, content.appState, content.elements, content.frame, content.pages]);
   const incomingActivePageId = content.activePageId ?? incomingPages[0].id;
-  const incomingSignature = useMemo(() => JSON.stringify({ scene: canvasSignature(incomingNodes, incomingComponents, incomingStyles), textStyles: incomingTextStyles, effectStyles: incomingEffectStyles, tokenCollections: incomingTokenCollections, pages: incomingPages, activePageId: incomingActivePageId }), [incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingStyles, incomingTextStyles, incomingTokenCollections]);
+  const incomingPrototypeStartPageId = incomingPages.some((page) => page.id === content.prototypeStartPageId) ? content.prototypeStartPageId! : incomingPages[0].id;
+  const incomingSignature = useMemo(() => JSON.stringify({ scene: canvasSignature(incomingNodes, incomingComponents, incomingStyles), textStyles: incomingTextStyles, effectStyles: incomingEffectStyles, tokenCollections: incomingTokenCollections, pages: incomingPages, activePageId: incomingActivePageId, prototypeStartPageId: incomingPrototypeStartPageId }), [incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeStartPageId, incomingStyles, incomingTextStyles, incomingTokenCollections]);
   const [nodes, setCanvasNodes] = useState<CanvasNode[]>(incomingNodes);
   const [components, setComponents] = useState<CanvasComponentDefinition[]>(incomingComponents);
   const [paintStyles, setPaintStyles] = useState<CanvasPaintStyle[]>(incomingStyles);
@@ -271,6 +275,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [tokenCollections, setTokenCollections] = useState<CanvasTokenCollection[]>(incomingTokenCollections);
   const [pages, setPages] = useState<CanvasPage[]>(incomingPages);
   const [activePageId, setActivePageId] = useState(incomingActivePageId);
+  const [prototypeStartPageId, setPrototypeStartPageId] = useState(incomingPrototypeStartPageId);
   const [selectedIds, setSelectedIds] = useState<string[]>(incomingNodes[0] ? [incomingNodes[0].id] : []);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [sidePanel, setSidePanel] = useState<CanvasSidePanel>("layers");
@@ -301,6 +306,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const tokenCollectionsRef = useRef(tokenCollections);
   const pagesRef = useRef(pages);
   const activePageIdRef = useRef(activePageId);
+  const prototypeStartPageIdRef = useRef(prototypeStartPageId);
   const gestureRef = useRef<CanvasGesture | null>(null);
   const penDraftRef = useRef<{ nodeId: string; before: CanvasSnapshot; absolutePoints: Array<{ x: number; y: number }> } | null>(null);
   const lastCommittedSignatureRef = useRef(incomingSignature);
@@ -317,6 +323,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   tokenCollectionsRef.current = tokenCollections;
   pagesRef.current = pages;
   activePageIdRef.current = activePageId;
+  prototypeStartPageIdRef.current = prototypeStartPageId;
   viewportRef.current = viewport;
 
   const activePage = pages.find((page) => page.id === activePageId) ?? pages[0];
@@ -429,6 +436,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setTokenCollections(incomingTokenCollections);
     setPages(incomingPages);
     setActivePageId(incomingActivePageId);
+    setPrototypeStartPageId(incomingPrototypeStartPageId);
     const incomingPage = incomingPages.find((page) => page.id === incomingActivePageId) ?? incomingPages[0];
     const incomingViewport = incomingPage?.appState.viewport ?? content.appState.viewport ?? { x: 72, y: 64, zoom: .76 };
     const incomingSnapToGrid = incomingPage?.appState.snapToGrid ?? content.appState.snapToGrid !== false;
@@ -446,25 +454,26 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     tokenCollectionsRef.current = incomingTokenCollections;
     pagesRef.current = incomingPages;
     activePageIdRef.current = incomingActivePageId;
+    prototypeStartPageIdRef.current = incomingPrototypeStartPageId;
     lastCommittedSignatureRef.current = incomingSignature;
     pastRef.current = [];
     futureRef.current = [];
     inspectorHistoryRef.current = null;
     setHistoryRevision((revision) => revision + 1);
     setSelectedIds((current) => incomingActivePageId === previousActivePageId ? current.filter((id) => incomingNodes.some((node) => node.id === id)) : []);
-  }, [content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
+  }, [content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeStartPageId, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
 
   function syncedPages(nextNodes: CanvasNode[], nextAppState: CanvasPage["appState"] = { ...(pagesRef.current.find((page) => page.id === activePageIdRef.current)?.appState ?? content.appState), snapToGrid, viewport: viewportRef.current }, nextFrame = canvasFrame, sourcePages = pagesRef.current): CanvasPage[] {
     const page: CanvasPage = { id: activePageIdRef.current, name: sourcePages.find((candidate) => candidate.id === activePageIdRef.current)?.name ?? "Page 1", frame: nextFrame, elements: nextNodes, appState: nextAppState };
     return sourcePages.some((candidate) => candidate.id === page.id) ? sourcePages.map((candidate) => candidate.id === page.id ? page : candidate) : [...sourcePages, page];
   }
 
-  function sceneDocumentSignature(nextNodes: CanvasNode[], nextComponents: CanvasComponentDefinition[], nextStyles: CanvasPaintStyle[], nextPages: CanvasPage[], nextActivePageId = activePageIdRef.current, nextTextStyles = textStylesRef.current, nextEffectStyles = effectStylesRef.current, nextTokenCollections = tokenCollectionsRef.current): string {
-    return JSON.stringify({ scene: canvasSignature(nextNodes, nextComponents, nextStyles), textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: nextActivePageId });
+  function sceneDocumentSignature(nextNodes: CanvasNode[], nextComponents: CanvasComponentDefinition[], nextStyles: CanvasPaintStyle[], nextPages: CanvasPage[], nextActivePageId = activePageIdRef.current, nextTextStyles = textStylesRef.current, nextEffectStyles = effectStylesRef.current, nextTokenCollections = tokenCollectionsRef.current, nextPrototypeStartPageId = prototypeStartPageIdRef.current): string {
+    return JSON.stringify({ scene: canvasSignature(nextNodes, nextComponents, nextStyles), textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: nextActivePageId, prototypeStartPageId: nextPrototypeStartPageId });
   }
 
   function currentSnapshot(): CanvasSnapshot {
-    return cloneSnapshot({ nodes: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: syncedPages(nodesRef.current), activePageId: activePageIdRef.current });
+    return cloneSnapshot({ nodes: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: syncedPages(nodesRef.current), activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current });
   }
 
   function restoreDocumentSnapshot(snapshot: CanvasSnapshot): void {
@@ -474,13 +483,14 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     }
     const nextPages = cloneSnapshot(snapshot.pages);
     const active = nextPages.find((page) => page.id === snapshot.activePageId) ?? nextPages[0];
+    const nextPrototypeStartPageId = nextPages.some((page) => page.id === snapshot.prototypeStartPageId) ? snapshot.prototypeStartPageId! : nextPages[0].id;
     const nextNodes = cloneSnapshot(active.elements) as CanvasNode[];
-    pagesRef.current = nextPages; activePageIdRef.current = active.id; nodesRef.current = nextNodes;
+    pagesRef.current = nextPages; activePageIdRef.current = active.id; prototypeStartPageIdRef.current = nextPrototypeStartPageId; nodesRef.current = nextNodes;
     componentsRef.current = cloneSnapshot(snapshot.components); paintStylesRef.current = cloneSnapshot(snapshot.styles ?? []); textStylesRef.current = cloneSnapshot(snapshot.textStyles ?? []); effectStylesRef.current = cloneSnapshot(snapshot.effectStyles ?? []); tokenCollectionsRef.current = cloneSnapshot(snapshot.tokenCollections ?? []);
-    setPages(nextPages); setActivePageId(active.id); setCanvasNodes(nextNodes); setComponents(componentsRef.current); setPaintStyles(paintStylesRef.current); setTextStyles(textStylesRef.current); setEffectStyles(effectStylesRef.current); setTokenCollections(tokenCollectionsRef.current);
+    setPages(nextPages); setActivePageId(active.id); setPrototypeStartPageId(nextPrototypeStartPageId); setCanvasNodes(nextNodes); setComponents(componentsRef.current); setPaintStyles(paintStylesRef.current); setTextStyles(textStylesRef.current); setEffectStyles(effectStylesRef.current); setTokenCollections(tokenCollectionsRef.current);
     setViewport(active.appState.viewport ?? { x: 72, y: 64, zoom: .76 }); setSnapToGrid(active.appState.snapToGrid !== false); setSelectedIds([]);
-    lastCommittedSignatureRef.current = sceneDocumentSignature(nextNodes, componentsRef.current, paintStylesRef.current, nextPages, active.id);
-    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: active.frame, elements: nextNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: active.id, appState: active.appState } });
+    lastCommittedSignatureRef.current = sceneDocumentSignature(nextNodes, componentsRef.current, paintStylesRef.current, nextPages, active.id, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextPrototypeStartPageId);
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: active.frame, elements: nextNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: active.id, prototypeStartPageId: nextPrototypeStartPageId, appState: active.appState } });
     setHistoryRevision((revision) => revision + 1);
   }
 
@@ -513,7 +523,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: canvasFrame, elements: resolvedNodes, components: nextComponents, styles: nextStyles, textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: activePageIdRef.current, appState: nextAppState },
+      content: { ...content, frame: canvasFrame, elements: resolvedNodes, components: nextComponents, styles: nextStyles, textStyles: nextTextStyles, effectStyles: nextEffectStyles, tokenCollections: nextTokenCollections, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
     });
   }
 
@@ -556,7 +566,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, appState: nextAppState },
+      content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextAppState },
     });
   }
 
@@ -635,7 +645,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setTool("select");
   }
 
-  function openPage(nextPageId: string, sourcePages = syncedPages(nodesRef.current), recordHistory = false): void {
+  function openPage(nextPageId: string, sourcePages = syncedPages(nodesRef.current), recordHistory = false, nextPrototypeStartPageId = prototypeStartPageIdRef.current): void {
     const target = sourcePages.find((page) => page.id === nextPageId);
     if (!target || nextPageId === activePageIdRef.current && sourcePages === pagesRef.current) return;
     if (recordHistory) { pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()]; futureRef.current = []; }
@@ -646,10 +656,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const targetViewport = target.appState.viewport ?? { x: 72, y: 64, zoom: .76 };
     const normalizedPages = sourcePages.map((page) => page.id === target.id ? { ...target, elements: targetNodes, appState: { ...target.appState, viewport: targetViewport } } : page);
     activePageIdRef.current = nextPageId;
+    prototypeStartPageIdRef.current = nextPrototypeStartPageId;
     pagesRef.current = normalizedPages;
     nodesRef.current = targetNodes;
     viewportRef.current = targetViewport;
     setActivePageId(nextPageId);
+    setPrototypeStartPageId(nextPrototypeStartPageId);
     setPages(normalizedPages);
     setCanvasNodes(targetNodes);
     setViewport(targetViewport);
@@ -658,12 +670,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setEditingText(null);
     inspectorHistoryRef.current = null;
     setHistoryRevision((revision) => revision + 1);
-    lastCommittedSignatureRef.current = sceneDocumentSignature(targetNodes, componentsRef.current, paintStylesRef.current, normalizedPages, nextPageId);
+    lastCommittedSignatureRef.current = sceneDocumentSignature(targetNodes, componentsRef.current, paintStylesRef.current, normalizedPages, nextPageId, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, nextPrototypeStartPageId);
     onChange({
       ...artifact,
       lifecycle: "draft",
       updatedAt: new Date().toISOString(),
-      content: { ...content, frame: target.frame, elements: targetNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, pages: normalizedPages, activePageId: nextPageId, appState: { ...target.appState, viewport: targetViewport } },
+      content: { ...content, frame: target.frame, elements: targetNodes, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, pages: normalizedPages, activePageId: nextPageId, prototypeStartPageId: nextPrototypeStartPageId, appState: { ...target.appState, viewport: targetViewport } },
     });
   }
 
@@ -685,7 +697,29 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     pagesRef.current = nextPages;
     setPages(nextPages);
     lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages);
-    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, pages: nextPages, activePageId: activePageIdRef.current, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
+  }
+
+  function movePage(pageId: string, offset: -1 | 1): void {
+    const currentPages = syncedPages(nodesRef.current);
+    const index = currentPages.findIndex((page) => page.id === pageId);
+    const targetIndex = index + offset;
+    if (index < 0 || targetIndex < 0 || targetIndex >= currentPages.length) return;
+    const nextPages = [...currentPages];
+    [nextPages[index], nextPages[targetIndex]] = [nextPages[targetIndex], nextPages[index]];
+    openPage(activePageIdRef.current, nextPages, true);
+  }
+
+  function markPrototypeStart(pageId: string): void {
+    if (pageId === prototypeStartPageIdRef.current || !pagesRef.current.some((page) => page.id === pageId)) return;
+    pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()];
+    futureRef.current = [];
+    prototypeStartPageIdRef.current = pageId;
+    setPrototypeStartPageId(pageId);
+    const nextPages = syncedPages(nodesRef.current);
+    lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages, activePageIdRef.current, textStylesRef.current, effectStylesRef.current, tokenCollectionsRef.current, pageId);
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeStartPageId: pageId, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
+    setHistoryRevision((revision) => revision + 1);
   }
 
   function deletePage(pageId: string): void {
@@ -700,7 +734,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       }),
     }));
     const nextActiveId = pageId === activePageIdRef.current ? nextPages[Math.min(index, nextPages.length - 1)].id : activePageIdRef.current;
-    openPage(nextActiveId, nextPages, true);
+    const nextPrototypeStartPageId = pageId === prototypeStartPageIdRef.current ? nextPages[0].id : prototypeStartPageIdRef.current;
+    openPage(nextActiveId, nextPages, true, nextPrototypeStartPageId);
   }
 
   function importImage(file: File | undefined): void {
@@ -2418,7 +2453,17 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       <aside className="canvas-layers" aria-label="Canvas layers and assets">
         <section className="canvas-pages-panel" aria-label="Canvas pages">
           <header><strong>Pages</strong><span><button type="button" aria-label="Duplicate current page" title="Duplicate page" onClick={() => createPage(true)}><Copy size={12} /></button><button type="button" aria-label="Add page" title="Add page" onClick={() => createPage(false)}><Plus size={13} /></button></span></header>
-          <div>{pages.map((page) => <div className={page.id === activePageId ? "active" : ""} key={page.id}>{page.id === activePageId ? <input key={`${page.id}:${page.name}`} aria-label="Current page name" defaultValue={page.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = page.name; else renamePage(page.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /> : <button type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}<button type="button" aria-label={`Delete ${page.name}`} disabled={pages.length <= 1} onClick={() => deletePage(page.id)}><Trash size={11} /></button></div>)}</div>
+          <div>{pages.map((page, index) => <div className={page.id === activePageId ? "active" : ""} key={page.id}>
+            {page.id === activePageId
+              ? <input key={`${page.id}:${page.name}`} aria-label="Current page name" defaultValue={page.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = page.name; else renamePage(page.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+              : <button type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}
+            <button className="canvas-page-start" type="button" aria-label={page.id === prototypeStartPageId ? `${page.name} is prototype start` : `Set ${page.name} as prototype start`} aria-pressed={page.id === prototypeStartPageId} title={page.id === prototypeStartPageId ? "Prototype start" : "Set as prototype start"} onClick={() => markPrototypeStart(page.id)}><Flag size={11} weight={page.id === prototypeStartPageId ? "fill" : "regular"} /></button>
+            <span className="canvas-page-move">
+              <button type="button" aria-label={`Move ${page.name} up`} disabled={index === 0} onClick={() => movePage(page.id, -1)}><CaretUp size={10} /></button>
+              <button type="button" aria-label={`Move ${page.name} down`} disabled={index === pages.length - 1} onClick={() => movePage(page.id, 1)}><CaretDown size={10} /></button>
+            </span>
+            <button type="button" aria-label={`Delete ${page.name}`} disabled={pages.length <= 1} onClick={() => deletePage(page.id)}><Trash size={11} /></button>
+          </div>)}</div>
         </section>
         <div className="canvas-panel-tabs" role="tablist" aria-label="Canvas sidebar">
           <button role="tab" aria-selected={sidePanel === "layers"} onClick={() => setSidePanel("layers")}><Stack size={13} /> Layers</button>
@@ -2589,7 +2634,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           <button type="button" aria-label="Fit frame" onClick={fitFrame}><CornersOut size={14} /></button>
         </div>
         {nodes.length === 0 && <div className="canvas-empty"><Selection size={25} /><strong>Start with a frame or shape</strong><span>Draw on the canvas, import an image, or use a reusable component.</span><div><button type="button" onClick={() => add("frame")}><BoundingBox size={14} /> Frame</button><button type="button" onClick={() => add("rectangle")}><Square size={14} /> Rectangle</button><button type="button" onClick={() => setSidePanel("assets")}><DiamondsFour size={14} /> Assets</button></div></div>}
-        {prototypeOpen && <CanvasPrototypePreview title={artifact.title} content={{ ...content, frame: canvasFrame, elements: nodes, components, styles: paintStyles, textStyles, effectStyles, tokenCollections, pages, activePageId, appState: pageAppState }} pages={syncedPages(nodes)} startPageId={activePageId} onClose={() => setPrototypeOpen(false)} />}
+        {prototypeOpen && <CanvasPrototypePreview title={artifact.title} content={{ ...content, frame: canvasFrame, elements: nodes, components, styles: paintStyles, textStyles, effectStyles, tokenCollections, pages, activePageId, prototypeStartPageId, appState: pageAppState }} pages={syncedPages(nodes)} startPageId={prototypeStartPageId} onClose={() => setPrototypeOpen(false)} />}
       </main>
 
       <aside className="studio-inspector" aria-label="Canvas settings">
