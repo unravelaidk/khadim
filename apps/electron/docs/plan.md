@@ -285,8 +285,13 @@ paths, and remaining gaps are recorded in
 Large-scene interaction now builds one linear geometry/ancestor-state index per
 scene revision and reuses it for hit testing, marquee selection, and snap
 candidates. Persistence cycle detection is also linear and is covered at 8,000
-nested elements. The next performance boundary is viewport culling for SVG
-rendering and virtualized layer/page rails.
+nested elements. Scenes with 400 or more layers now reuse that index to render
+only the padded viewport while retaining selected layers, ancestors, masks,
+connector dependencies, active boolean operands, shadow overflow, and Bézier
+extrema. The layer rail uses a fixed-row overscanned window with list position
+metadata, page rows use browser-native content visibility, and page thumbnails
+render only near the scroll viewport while the active page stays eager.
+Large-scene tests cover culling, rail windowing, and editing a distant layer.
 
 ### Google Workspace read-only integrations
 

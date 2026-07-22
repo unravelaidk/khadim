@@ -17,6 +17,8 @@ import type {
   CanvasTokenCollection,
   CanvasVerticalConstraint,
 } from "../../../shared/types";
+import { canvasPathAbsolutePoints, canvasPathData } from "../../../shared/canvas-geometry";
+import { svgPathBounds } from "../../../shared/vector-boolean";
 
 export type {
   CanvasArtifactContent,
@@ -60,8 +62,21 @@ export interface CanvasRect {
 export interface CanvasGeometryEntry {
   node: CanvasNode;
   rect: CanvasRect;
+  visualRect: CanvasRect;
   hidden: boolean;
   locked: boolean;
+}
+
+export interface CanvasVirtualRange {
+  start: number;
+  end: number;
+  before: number;
+  after: number;
+}
+
+export interface CanvasLayerTree {
+  rows: CanvasNode[];
+  depthById: Map<string, number>;
 }
 
 export function isCanvasPrimitiveNode(value: unknown): value is CanvasPrimitiveNode {
@@ -166,8 +181,51 @@ export function canvasGeometryIndex(nodes: CanvasNode[], components: CanvasCompo
     const definition = node.type === "component" ? componentsById.get(node.componentId) : undefined;
     const width = node.type === "component" ? node.width || definition?.width || 1 : node.width;
     const height = node.type === "component" ? node.height || definition?.height || 1 : node.height;
-    return { node, rect: { x: node.x, y: node.y, width, height }, ...(flagsById.get(node.id) ?? { hidden: Boolean(node.hidden), locked: Boolean(node.locked) }) };
+    const rect = { x: node.x, y: node.y, width, height };
+    const pathRect = node.type !== "component" && (node.type === "path" || node.type === "arrow") && node.points?.length
+      ? svgPathBounds(canvasPathData(canvasPathAbsolutePoints(node), node.pathSmoothing ?? 0, Boolean(node.pathClosed)))
+      : undefined;
+    const scale = definition ? Math.max(width / Math.max(1, definition.width), height / Math.max(1, definition.height)) : 1;
+    const visualOutset = node.type === "component"
+      ? Math.max(0, ...(definition?.nodes.map((child) => ((child.strokeWidth ?? 0) / 2 + (child.shadow ? child.shadow.blur * 2 + Math.abs(child.shadow.x) + Math.abs(child.shadow.y) : 0)) * scale) ?? []))
+      : (node.strokeWidth ?? 0) / 2 + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0);
+    const rotated = pathRect
+      ? rotatedRectAround(pathRect, node.rotation ?? 0, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
+      : rotatedRect(rect, node.rotation);
+    const visualRect = { x: rotated.x - visualOutset, y: rotated.y - visualOutset, width: rotated.width + visualOutset * 2, height: rotated.height + visualOutset * 2 };
+    return { node, rect, visualRect, ...(flagsById.get(node.id) ?? { hidden: Boolean(node.hidden), locked: Boolean(node.locked) }) };
   });
+}
+
+/** Keeps the editable SVG bounded to the padded viewport while retaining scene dependencies. */
+export function canvasViewportElements(index: CanvasGeometryEntry[], viewport: CanvasRect, retainedIds: Iterable<string> = [], editingBooleanId?: string): CanvasNode[] {
+  const byId = new Map(index.map((entry) => [entry.node.id, entry.node]));
+  const included = new Set<string>();
+  for (const entry of index) {
+    if (!entry.hidden && intersects(viewport, entry.visualRect)) included.add(entry.node.id);
+  }
+  for (const id of retainedIds) if (byId.has(id)) included.add(id);
+  if (editingBooleanId) {
+    included.add(editingBooleanId);
+    for (const entry of index) if (entry.node.parentId === editingBooleanId) included.add(entry.node.id);
+  }
+
+  const includeDependencies = (id: string): void => {
+    let current = byId.get(id);
+    const visited = new Set<string>();
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      included.add(current.id);
+      if (current.type !== "component") {
+        if (current.maskId && byId.has(current.maskId)) included.add(current.maskId);
+        if (current.startBindingId && byId.has(current.startBindingId)) included.add(current.startBindingId);
+        if (current.endBindingId && byId.has(current.endBindingId)) included.add(current.endBindingId);
+      }
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+  };
+  [...included].forEach(includeDependencies);
+  return index.flatMap((entry) => included.has(entry.node.id) ? [entry.node] : []);
 }
 
 /** Bounds preview work while retaining backdrops, top layers, and their scene dependencies. */
@@ -211,22 +269,62 @@ export function canvasThumbnailElements(nodes: CanvasNode[], maximum = 180): Can
 
 export function rotatedRect(rect: CanvasRect, rotation = 0): CanvasRect {
   if (!rotation) return rect;
+  return rotatedRectAround(rect, rotation, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+}
+
+function rotatedRectAround(rect: CanvasRect, rotation: number, center: { x: number; y: number }): CanvasRect {
+  if (!rotation) return rect;
   const radians = rotation * Math.PI / 180;
   const cosine = Math.cos(radians);
   const sine = Math.sin(radians);
-  const centerX = rect.x + rect.width / 2;
-  const centerY = rect.y + rect.height / 2;
   const corners = [
     [rect.x, rect.y],
     [rect.x + rect.width, rect.y],
     [rect.x + rect.width, rect.y + rect.height],
     [rect.x, rect.y + rect.height],
-  ].map(([x, y]) => ({ x: centerX + (x - centerX) * cosine - (y - centerY) * sine, y: centerY + (x - centerX) * sine + (y - centerY) * cosine }));
+  ].map(([x, y]) => ({ x: center.x + (x - center.x) * cosine - (y - center.y) * sine, y: center.y + (x - center.x) * sine + (y - center.y) * cosine }));
   const left = Math.min(...corners.map((point) => point.x));
   const top = Math.min(...corners.map((point) => point.y));
   const right = Math.max(...corners.map((point) => point.x));
   const bottom = Math.max(...corners.map((point) => point.y));
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/** Calculates a fixed-row virtual window with symmetric overscan. */
+export function canvasVirtualRange(count: number, scrollTop: number, viewportHeight: number, rowHeight: number, overscan = 8): CanvasVirtualRange {
+  if (count <= 0 || viewportHeight <= 0 || rowHeight <= 0) return { start: 0, end: count, before: 0, after: 0 };
+  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+  const end = Math.min(count, Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscan);
+  return { start, end, before: start * rowHeight, after: (count - end) * rowHeight };
+}
+
+/** Flattens the layer hierarchy in visual order without recursive stack growth. */
+export function canvasLayerTree(nodes: CanvasNode[]): CanvasLayerTree {
+  const rows: CanvasNode[] = [];
+  const depthById = new Map<string, number>();
+  const childrenByParent = new Map<string | undefined, CanvasNode[]>();
+  const reversed = [...nodes].reverse();
+  for (const node of reversed) {
+    const children = childrenByParent.get(node.parentId) ?? [];
+    children.push(node);
+    childrenByParent.set(node.parentId, children);
+  }
+  const visited = new Set<string>();
+  const append = (root: CanvasNode, rootDepth: number): void => {
+    const stack = [{ node: root, depth: rootDepth }];
+    while (stack.length) {
+      const current = stack.pop()!;
+      if (visited.has(current.node.id)) continue;
+      visited.add(current.node.id);
+      rows.push(current.node);
+      depthById.set(current.node.id, Math.min(current.depth, 8));
+      const children = childrenByParent.get(current.node.id) ?? [];
+      for (let index = children.length - 1; index >= 0; index -= 1) stack.push({ node: children[index], depth: current.depth + 1 });
+    }
+  };
+  for (const root of childrenByParent.get(undefined) ?? []) append(root, 0);
+  for (const node of reversed) append(node, 0);
+  return { rows, depthById };
 }
 
 export function selectionRect(nodes: CanvasNode[], components: CanvasComponentDefinition[]): CanvasRect | null {

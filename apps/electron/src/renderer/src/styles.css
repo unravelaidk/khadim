@@ -2641,6 +2641,9 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 .canvas-pages-panel > div > div > button:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
 .canvas-pages-panel > div { max-height: 190px; overflow: auto; padding: 3px 6px 7px; display: grid; gap: 3px; }
 .canvas-pages-panel > div > div { min-width: 0; height: 42px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 26px 18px 26px; align-items: center; border-radius: 7px; }
+.canvas-pages-panel > div > div,
+.canvas-layer-row { content-visibility: auto; contain-intrinsic-block-size: 42px; }
+.canvas-layer-row { contain-intrinsic-block-size: 32px; }
 .canvas-pages-panel > div > div.active { background: var(--choice-active); }
 .canvas-page-open { min-width: 0; height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 6px; border: 0; color: var(--text-2); background: transparent; text-align: left; }
 .canvas-page-open span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createArtifact } from "../../../src/renderer/src/artifact-model";
@@ -348,6 +348,46 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("culls large scenes to the viewport while keeping rail-selected layers editable", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-viewport-culling", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const elements = Array.from({ length: 450 }, (_, index) => ({
+      id: `large-scene-${index}`,
+      type: "rectangle" as const,
+      name: index === 1 ? "Distant editable layer" : `Large scene ${index + 1}`,
+      x: index === 0 ? 40 : 5_000 + index * 100,
+      y: index === 0 ? 40 : 5_000,
+      width: 80,
+      height: 48,
+      color: "#2563eb",
+    }));
+    artifact.content.elements = elements;
+    artifact.content.appState.viewport = { x: 0, y: 0, zoom: 1 };
+    const page = artifact.content.pages?.[0];
+    if (page) artifact.content.pages = [{ ...page, elements, appState: artifact.content.appState }];
+    const bounds = vi.spyOn(SVGSVGElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1_000, bottom: 700, width: 1_000, height: 700, toJSON: () => ({}) });
+    const htmlBounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const height = this.classList.contains("canvas-layer-list") ? 350 : 0;
+      return { x: 0, y: 0, left: 0, top: 0, right: 210, bottom: height, width: 210, height, toJSON: () => ({}) };
+    });
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+
+    try {
+      const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+      await waitFor(() => expect(container.querySelectorAll(".canvas-stage .canvas-node")).toHaveLength(1));
+      await waitFor(() => expect(container.querySelectorAll(".canvas-layer-row").length).toBeLessThan(40));
+
+      await user.click(screen.getByRole("button", { name: "Distant editable layer" }));
+      await waitFor(() => expect(container.querySelectorAll(".canvas-stage .canvas-node")).toHaveLength(2));
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+      expect(onChange.mock.calls.at(-1)?.[0].content.elements[1]).toMatchObject({ id: "large-scene-1", x: 5_101 });
+    } finally {
+      bounds.mockRestore();
+      htmlBounds.mockRestore();
+    }
+  });
+
   it("supports history, multi-selection alignment, and reusable component instances", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-a", "2026-07-22T10:00:00.000Z");
     const onChange = vi.fn();
@@ -630,6 +670,44 @@ describe("StudioWorkspace canvas design workflow", () => {
     fireEvent.wheel(canvas, { deltaX: 24, deltaY: 18 });
     unmount();
     expect(onChange.mock.calls.at(-1)?.[0].content.appState.viewport).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number), zoom: expect.any(Number) }));
+  });
+
+  it("defers offscreen page thumbnails until their rail rows approach the viewport", async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class DeferredIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "84px";
+      readonly thresholds = [0];
+      constructor(callback: IntersectionObserverCallback) { callbacks.push(callback); }
+      disconnect(): void { /* Test observer has no native resources. */ }
+      observe(): void { /* Visibility is driven explicitly below. */ }
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+      unobserve(): void { /* Visibility is driven explicitly below. */ }
+    }
+    vi.stubGlobal("IntersectionObserver", DeferredIntersectionObserver);
+    const artifact = createArtifact("canvas", "project-a", "canvas-lazy-pages", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const elements = artifact.content.elements;
+    artifact.content.pages = [
+      { id: "active", name: "Active", frame: artifact.content.frame, elements, appState },
+      { id: "later-a", name: "Later A", frame: artifact.content.frame, elements: [], appState },
+      { id: "later-b", name: "Later B", frame: artifact.content.frame, elements: [], appState },
+    ];
+    artifact.content.activePageId = "active";
+    artifact.content.appState = appState;
+
+    try {
+      const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+      expect(container.querySelectorAll(".canvas-page-thumbnail")).toHaveLength(3);
+      expect(container.querySelectorAll(".canvas-page-thumbnail img")).toHaveLength(1);
+      expect(callbacks).toHaveLength(2);
+
+      act(() => callbacks[0]([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+      await waitFor(() => expect(container.querySelectorAll(".canvas-page-thumbnail img")).toHaveLength(2));
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("manages page-local layers, viewports, rulers, and persistent guides", async () => {

@@ -3,8 +3,11 @@ import {
   applyFrameResizeConstraints,
   applyFrameLayout,
   canvasGeometryIndex,
+  canvasLayerTree,
   canvasPages,
   canvasThumbnailElements,
+  canvasVirtualRange,
+  canvasViewportElements,
   descendantIds,
   effectivePrimitive,
   isCanvasNode,
@@ -102,7 +105,7 @@ describe("Khadim canvas scene model", () => {
     const index = canvasGeometryIndex(nodes, []);
 
     expect(index).toHaveLength(5_000);
-    expect(index[11]).toMatchObject({ hidden: false, locked: false, rect: { x: 11, y: 0, width: 80, height: 40 } });
+    expect(index[11]).toMatchObject({ hidden: false, locked: false, rect: { x: 11, y: 0, width: 80, height: 40 }, visualRect: { x: 11, y: 0, width: 80, height: 40 } });
     expect(index[12]).toMatchObject({ hidden: true, locked: false });
     expect(index[24]).toMatchObject({ hidden: true, locked: true });
     expect(index.at(-1)).toMatchObject({ hidden: true, locked: true });
@@ -124,5 +127,46 @@ describe("Khadim canvas scene model", () => {
     expect(ids.has("layer-599")).toBe(true);
     expect(ids.has("layer-300")).toBe(true);
     expect(ids.has("layer-200")).toBe(true);
+  });
+
+  it("culls distant scene nodes while retaining selected layers and dependencies", () => {
+    const nodes: CanvasNode[] = [
+      { ...frame, id: "visible-parent", x: 0, y: 0, width: 500, height: 400 },
+      { ...first, id: "visible", parentId: "visible-parent", x: 40, y: 40 },
+      { ...first, id: "distant", x: 5_000, y: 5_000 },
+      { ...first, id: "shadow-nearby", x: 1_070, y: 40, shadow: { color: "#000000", x: -120, y: 0, blur: 80, opacity: .2 } },
+      { ...first, id: "curved-nearby", type: "path", x: 1_200, y: 80, width: 100, height: 100, points: [{ x: 0, y: 0, handleOut: { x: -8, y: 0 } }, { x: 1, y: 1, handleIn: { x: -8, y: 1 } }], strokeWidth: 2 },
+      { ...first, id: "selected-distant", x: 6_000, y: 6_000, maskId: "mask" },
+      { ...first, id: "mask", x: 6_000, y: 6_000 },
+      { ...frame, id: "boolean", type: "boolean", booleanOperation: "union", x: 7_000, y: 7_000 },
+      { ...first, id: "operand-a", parentId: "boolean", x: 7_000, y: 7_000 },
+      { ...second, id: "operand-b", parentId: "boolean", x: 7_020, y: 7_000 },
+    ];
+
+    const culled = canvasViewportElements(canvasGeometryIndex(nodes, []), { x: -100, y: -100, width: 900, height: 700 }, ["selected-distant"], "boolean");
+    const ids = new Set(culled.map((node) => node.id));
+
+    expect(ids).toEqual(new Set(["visible-parent", "visible", "shadow-nearby", "curved-nearby", "selected-distant", "mask", "boolean", "operand-a", "operand-b"]));
+    expect(ids.has("distant")).toBe(false);
+  });
+
+  it("calculates bounded layer-rail windows with overscan and stable spacers", () => {
+    expect(canvasVirtualRange(1_000, 16_000, 320, 32, 10)).toEqual({ start: 490, end: 520, before: 15_680, after: 15_360 });
+    expect(canvasVirtualRange(12, 0, 0, 32)).toEqual({ start: 0, end: 12, before: 0, after: 0 });
+  });
+
+  it("flattens deeply nested layer rails without recursive stack growth", () => {
+    const nodes: CanvasNode[] = Array.from({ length: 8_000 }, (_, index) => ({
+      ...first,
+      id: `nested-${index}`,
+      parentId: index ? `nested-${index - 1}` : undefined,
+    }));
+
+    const tree = canvasLayerTree(nodes);
+
+    expect(tree.rows).toHaveLength(8_000);
+    expect(tree.rows[0].id).toBe("nested-0");
+    expect(tree.rows.at(-1)?.id).toBe("nested-7999");
+    expect(tree.depthById.get("nested-7999")).toBe(8);
   });
 });

@@ -55,10 +55,13 @@ import {
   applyFrameResizeConstraints,
   canvasComponents,
   canvasGeometryIndex,
+  canvasLayerTree,
   canvasNodes,
   canvasPages,
   canvasSignature,
   canvasThumbnailElements,
+  canvasVirtualRange,
+  canvasViewportElements,
   descendantIds,
   effectivePrimitive,
   intersects,
@@ -263,6 +266,7 @@ interface CanvasPageThumbnailProps {
   components: CanvasComponentDefinition[];
   files: CanvasArtifactContent["files"];
   title: string;
+  eager?: boolean;
 }
 
 function canvasPageThumbnailSource({ page, components, files, title }: CanvasPageThumbnailProps): string {
@@ -278,14 +282,42 @@ function canvasPageThumbnailSource({ page, components, files, title }: CanvasPag
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-const CanvasPageThumbnail = memo(function CanvasPageThumbnail({ page, components, files, title }: CanvasPageThumbnailProps): React.JSX.Element {
-  const props = { page, components, files, title };
-  const [source, setSource] = useState(() => canvasPageThumbnailSource(props));
+const CanvasPageThumbnail = memo(function CanvasPageThumbnail({ page, components, files, title, eager = false }: CanvasPageThumbnailProps): React.JSX.Element {
+  const props = { page, components, files, title, eager };
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const initiallyVisible = eager || typeof IntersectionObserver === "undefined";
+  const [visible, setVisible] = useState(initiallyVisible);
+  const [source, setSource] = useState<string | undefined>(() => initiallyVisible ? canvasPageThumbnailSource(props) : undefined);
+  const sourceRef = useRef(source);
+  const previousInputRef = useRef({ page, components, files, title });
+  sourceRef.current = source;
+  useEffect(() => { if (eager) setVisible(true); }, [eager]);
   useEffect(() => {
+    if (visible || typeof IntersectionObserver === "undefined") return;
+    const host = hostRef.current;
+    if (!host) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setVisible(true);
+      observer.disconnect();
+    }, { root: host.closest(".canvas-pages-panel > div"), rootMargin: "84px" });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [visible]);
+  useEffect(() => {
+    const previous = previousInputRef.current;
+    const changed = previous.page !== page || previous.components !== components || previous.files !== files || previous.title !== title;
+    previousInputRef.current = { page, components, files, title };
+    if (!visible) return;
+    if (!sourceRef.current) {
+      setSource(canvasPageThumbnailSource(props));
+      return;
+    }
+    if (!changed) return;
     const timeout = window.setTimeout(() => setSource(canvasPageThumbnailSource(props)), 160);
     return () => window.clearTimeout(timeout);
-  }, [components, files, page, title]);
-  return <span className="canvas-page-thumbnail" aria-hidden="true"><img alt="" draggable={false} src={source} /></span>;
+  }, [components, files, page, title, visible]);
+  return <span ref={hostRef} className="canvas-page-thumbnail" aria-hidden="true">{source && <img alt="" draggable={false} src={source} />}</span>;
 });
 
 export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps): React.JSX.Element {
@@ -315,6 +347,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [dragLayerId, setDragLayerId] = useState<string | null>(null);
   const [snapToGrid, setSnapToGrid] = useState(content.appState.snapToGrid !== false);
   const [viewport, setViewport] = useState(content.appState.viewport ?? { x: 72, y: 64, zoom: .76 });
+  const [stageSize, setStageSize] = useState<{ width: number; height: number }>();
+  const [layerViewport, setLayerViewport] = useState({ scrollTop: 0, height: 0 });
   const [guides, setGuides] = useState<CanvasGuide>({});
   const [marquee, setMarquee] = useState<CanvasRect | null>(null);
   const [editingText, setEditingText] = useState<{ id: string; value: string } | null>(null);
@@ -324,6 +358,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [transparentExport, setTransparentExport] = useState(false);
   const [prototypeOpen, setPrototypeOpen] = useState(false);
   const stageRef = useRef<SVGSVGElement>(null);
+  const layerListRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef(viewport);
   const viewportSaveRef = useRef<number | undefined>(undefined);
@@ -370,6 +405,21 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const selectedBounds = selectionRect(selectedNodes, components);
   const geometryIndex = useMemo(() => canvasGeometryIndex(nodes, components), [components, nodes]);
   const geometryById = useMemo(() => new Map(geometryIndex.map((entry) => [entry.node.id, entry])), [geometryIndex]);
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const maskSourceIds = useMemo(() => new Set(nodes.flatMap((node) => node.type !== "component" && node.maskId ? [node.maskId] : [])), [nodes]);
+  const viewportSceneRect = useMemo(() => {
+    if (!stageSize?.width || !stageSize.height) return undefined;
+    const padding = 160 / viewport.zoom;
+    return {
+      x: -viewport.x / viewport.zoom - padding,
+      y: -viewport.y / viewport.zoom - padding,
+      width: stageSize.width / viewport.zoom + padding * 2,
+      height: stageSize.height / viewport.zoom + padding * 2,
+    };
+  }, [stageSize, viewport]);
+  const renderedNodes = useMemo(() => nodes.length < 400 || !viewportSceneRect
+    ? nodes
+    : canvasViewportElements(geometryIndex, viewportSceneRect, selectedIds, editingBooleanId ?? undefined), [editingBooleanId, geometryIndex, nodes, selectedIds, viewportSceneRect]);
   const selectedExportBounds = selectedBounds ? (() => {
     const visualRects = selectedNodes.map((node) => {
       if (node.type !== "component" && (node.type === "path" || node.type === "arrow") && node.points?.length) {
@@ -410,21 +460,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const filteredPaintStyles = paintStyles.filter((style) => !query || style.name.toLowerCase().includes(query));
   const filteredTextStyles = textStyles.filter((style) => !query || style.name.toLowerCase().includes(query));
   const filteredEffectStyles = effectStyles.filter((style) => !query || style.name.toLowerCase().includes(query));
-  const layerRows = useMemo(() => {
-    const result: CanvasNode[] = [];
-    const visited = new Set<string>();
-    const append = (parentId?: string): void => {
-      [...nodes].reverse().filter((node) => node.parentId === parentId).forEach((node) => {
-        if (visited.has(node.id)) return;
-        visited.add(node.id);
-        result.push(node);
-        append(node.id);
-      });
-    };
-    append(undefined);
-    [...nodes].reverse().forEach((node) => { if (!visited.has(node.id)) result.push(node); });
-    return result;
-  }, [nodes]);
+  const layerTree = useMemo(() => canvasLayerTree(nodes), [nodes]);
+  const layerRows = layerTree.rows;
+  const layerWindow = nodes.length >= 400 && layerViewport.height > 0
+    ? canvasVirtualRange(layerRows.length, Math.max(0, layerViewport.scrollTop - 30), Math.max(0, layerViewport.height - 30), 32, 10)
+    : { start: 0, end: layerRows.length, before: 0, after: 0 };
+  const visibleLayerRows = layerRows.slice(layerWindow.start, layerWindow.end);
 
   useEffect(() => setSelectedPathPointIndex(null), [selectedNode?.id]);
 
@@ -432,20 +473,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     return geometryById.get(node.id)?.[flag] ?? Boolean(node[flag]);
   }
 
-  function layerDepth(node: CanvasNode): number {
-    let depth = 0;
-    let parentId = node.parentId;
-    const visited = new Set<string>();
-    while (parentId && !visited.has(parentId)) {
-      visited.add(parentId);
-      depth += 1;
-      parentId = nodes.find((candidate) => candidate.id === parentId)?.parentId;
-    }
-    return Math.min(depth, 8);
-  }
-
   function selectLayerNode(event: React.MouseEvent<HTMLButtonElement>, node: CanvasNode): void {
-    const parent = node.parentId ? nodes.find((candidate) => candidate.id === node.parentId) : undefined;
+    const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
     if (parent?.type === "boolean") setEditingBooleanId(parent.id);
     else if (node.type === "boolean") setEditingBooleanId(null);
     setSelectedIds((current) => event.shiftKey ? current.includes(node.id) ? current.filter((id) => id !== node.id) : [...current, node.id] : [node.id]);
@@ -1590,13 +1619,47 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   useEffect(() => {
     fittedRef.current = Boolean(content.appState.viewport);
-    if (!fittedRef.current) fitFrame();
     const element = stageRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => { if (!fittedRef.current) fitFrame(); });
+    if (!element) return;
+    const measure = (): void => {
+      const bounds = element.getBoundingClientRect();
+      if (bounds.width > 0 && bounds.height > 0) setStageSize((current) => current?.width === bounds.width && current.height === bounds.height ? current : { width: bounds.width, height: bounds.height });
+      if (!fittedRef.current) fitFrame();
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
   }, [artifact.id]);
+
+  useEffect(() => {
+    const element = layerListRef.current;
+    if (!element || sidePanel !== "layers") return;
+    const measure = (): void => {
+      const height = element.getBoundingClientRect().height;
+      setLayerViewport((current) => current.height === height ? current : { ...current, height });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [artifact.id, sidePanel]);
+
+  useEffect(() => {
+    const selectedId = selectedIds.at(-1);
+    const element = layerListRef.current;
+    if (!selectedId || !element || layerRows.length < 400 || layerViewport.height <= 30) return;
+    const index = layerRows.findIndex((node) => node.id === selectedId);
+    if (index < 0) return;
+    const top = 30 + index * 32;
+    const bottom = top + 32;
+    if (top >= element.scrollTop + 30 && bottom <= element.scrollTop + layerViewport.height) return;
+    const scrollTop = Math.max(0, top - 30 - (layerViewport.height - 30) / 2 + 16);
+    element.scrollTop = scrollTop;
+    setLayerViewport((current) => ({ ...current, scrollTop }));
+  }, [layerRows, layerViewport.height, selectedIds]);
 
   function stagePoint(clientX: number, clientY: number): { x: number; y: number } {
     const bounds = stageRef.current?.getBoundingClientRect();
@@ -2358,15 +2421,16 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   }
 
   function renderCanvasNode(node: CanvasNode): React.ReactNode {
-    const booleanParent = node.parentId ? nodes.find((candidate) => candidate.id === node.parentId && candidate.type === "boolean") : undefined;
+    const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
+    const booleanParent = parent?.type === "boolean" ? parent : undefined;
     if (booleanParent && editingBooleanId !== booleanParent.id) return null;
-    if (hasNodeOrAncestorFlag(node, "hidden") || nodes.some((candidate) => candidate.type !== "component" && candidate.maskId === node.id)) return null;
+    if (hasNodeOrAncestorFlag(node, "hidden") || maskSourceIds.has(node.id)) return null;
     const clipFrames: CanvasPrimitiveNode[] = [];
     let ancestorId = node.parentId;
     const visitedAncestors = new Set<string>();
     while (ancestorId && !visitedAncestors.has(ancestorId)) {
       visitedAncestors.add(ancestorId);
-      const ancestor = nodes.find((candidate) => candidate.id === ancestorId);
+      const ancestor = nodeById.get(ancestorId);
       if (!ancestor) break;
       if (ancestor.type === "frame" && ancestor.clipContent) clipFrames.push(ancestor);
       ancestorId = ancestor.parentId;
@@ -2483,7 +2547,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         <section className="canvas-pages-panel" aria-label="Canvas pages">
           <header><strong>Pages</strong><span><button type="button" aria-label="Duplicate current page" title="Duplicate page" onClick={() => createPage(true)}><Copy size={12} /></button><button type="button" aria-label="Add page" title="Add page" onClick={() => createPage(false)}><Plus size={13} /></button></span></header>
           <div>{pages.map((page, index) => <div className={page.id === activePageId ? "active" : ""} key={page.id}>
-            <CanvasPageThumbnail page={page} components={components} files={content.files} title={artifact.title} />
+            <CanvasPageThumbnail page={page} components={components} files={content.files} title={artifact.title} eager={page.id === activePageId} />
             {page.id === activePageId
               ? <input key={`${page.id}:${page.name}`} aria-label="Current page name" defaultValue={page.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = page.name; else renamePage(page.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
               : <button className="canvas-page-open" type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}
@@ -2499,11 +2563,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           <button role="tab" aria-selected={sidePanel === "layers"} onClick={() => setSidePanel("layers")}><Stack size={13} /> Layers</button>
           <button role="tab" aria-selected={sidePanel === "assets"} onClick={() => setSidePanel("assets")}><DiamondsFour size={13} /> Assets</button>
         </div>
-        {sidePanel === "layers" ? <div className="canvas-layer-list">
-          <header><span>Frame 1</span><small>{nodes.length}</small></header>
-          {layerRows.map((node) => {
+        {sidePanel === "layers" ? <div ref={layerListRef} className="canvas-layer-list" role="list" aria-label="Canvas layer list" onScroll={(event) => setLayerViewport((current) => ({ ...current, scrollTop: event.currentTarget.scrollTop }))}>
+          <header role="presentation"><span>Frame 1</span><small>{nodes.length}</small></header>
+          {layerWindow.before > 0 && <div className="canvas-layer-spacer" style={{ height: layerWindow.before }} aria-hidden="true" />}
+          {visibleLayerRows.map((node, windowIndex) => {
             const selected = selectedIds.includes(node.id);
-            return <div className={`canvas-layer-row ${selected ? "selected" : ""} ${node.parentId ? "nested" : ""} ${dragLayerId === node.id ? "dragging" : ""}`} style={{ "--layer-depth": layerDepth(node) } as React.CSSProperties} key={node.id} draggable onDragStart={(event) => { setDragLayerId(node.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", node.id); }} onDragEnd={() => setDragLayerId(null)} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDrop={(event) => { event.preventDefault(); const sourceId = dragLayerId ?? event.dataTransfer.getData("text/plain"); moveLayerInTree(sourceId, node.id, event.shiftKey); setDragLayerId(null); }} title={node.type === "frame" ? "Drop to reorder. Hold Shift while dropping to nest inside this frame." : "Drag to reorder layers"}>
+            const position = layerWindow.start + windowIndex;
+            return <div role="listitem" aria-posinset={position + 1} aria-setsize={layerRows.length} className={`canvas-layer-row ${selected ? "selected" : ""} ${node.parentId ? "nested" : ""} ${dragLayerId === node.id ? "dragging" : ""}`} style={{ "--layer-depth": layerTree.depthById.get(node.id) ?? 0 } as React.CSSProperties} key={node.id} draggable onDragStart={(event) => { setDragLayerId(node.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", node.id); }} onDragEnd={() => setDragLayerId(null)} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDrop={(event) => { event.preventDefault(); const sourceId = dragLayerId ?? event.dataTransfer.getData("text/plain"); moveLayerInTree(sourceId, node.id, event.shiftKey); setDragLayerId(null); }} title={node.type === "frame" ? "Drop to reorder. Hold Shift while dropping to nest inside this frame." : "Drag to reorder layers"}>
               <DotsSixVertical size={13} aria-hidden="true" />
               <button className="canvas-layer-name" type="button" aria-pressed={selected} onClick={(event) => selectLayerNode(event, node)}>
                 {node.type === "component" ? <DiamondsFour size={14} /> : node.type === "text" ? <TextT size={14} /> : node.type === "ellipse" ? <Circle size={14} /> : node.type === "line" ? <LineSegment size={14} /> : node.type === "arrow" ? <ArrowRight size={14} /> : node.type === "path" || node.type === "boolean" ? <Path size={14} /> : node.type === "image" ? <ImageSquare size={14} /> : node.type === "frame" ? <BoundingBox size={14} /> : <Square size={14} />}
@@ -2513,6 +2579,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
               <button className="canvas-layer-visibility" type="button" aria-label={`${node.hidden ? "Show" : "Hide"} ${node.name ?? node.type}`} onClick={() => commitCanvas(nodes.map((item) => item.id === node.id ? { ...item, hidden: !item.hidden } as CanvasNode : item))}>{node.hidden ? <EyeSlash size={13} /> : <Eye size={13} />}</button>
             </div>;
           })}
+          {layerWindow.after > 0 && <div className="canvas-layer-spacer" style={{ height: layerWindow.after }} aria-hidden="true" />}
           {nodes.length === 0 && <p>No layers yet</p>}
         </div> : <div className="canvas-assets-panel">
           <label className="canvas-asset-search"><span className="sr-only">Search components</span><input value={assetSearch} onChange={(event) => setAssetSearch(event.target.value)} placeholder="Search components" /></label>
@@ -2594,16 +2661,16 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             <pattern id="khadim-canvas-grid" width={snapGridSize} height={snapGridSize} patternUnits="userSpaceOnUse"><circle cx=".75" cy=".75" r=".55" /></pattern>
             <filter id="khadim-canvas-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="18" floodOpacity=".16" /></filter>
             <marker id="canvas-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker>
-            {nodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame" && Boolean(node.clipContent)).map((frame) => <clipPath id={`canvas-clip-${frame.id}`} key={frame.id} clipPathUnits="userSpaceOnUse"><rect x={frame.x} y={frame.y} width={frame.width} height={frame.height} rx={frame.radius ?? 0} transform={frame.rotation ? `rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})` : undefined} /></clipPath>)}
-            {nodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component" && nodes.some((candidate) => candidate.type !== "component" && candidate.maskId === node.id)).map((mask) => <clipPath id={`canvas-mask-${mask.id}`} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse"><g transform={mask.rotation ? `rotate(${mask.rotation} ${mask.x + mask.width / 2} ${mask.y + mask.height / 2})` : undefined}>{renderPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0 }, `mask-shape:${mask.id}`)}</g></clipPath>)}
+            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame" && Boolean(node.clipContent)).map((frame) => <clipPath id={`canvas-clip-${frame.id}`} key={frame.id} clipPathUnits="userSpaceOnUse"><rect x={frame.x} y={frame.y} width={frame.width} height={frame.height} rx={frame.radius ?? 0} transform={frame.rotation ? `rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})` : undefined} /></clipPath>)}
+            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component" && maskSourceIds.has(node.id)).map((mask) => <clipPath id={`canvas-mask-${mask.id}`} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse"><g transform={mask.rotation ? `rotate(${mask.rotation} ${mask.x + mask.width / 2} ${mask.y + mask.height / 2})` : undefined}>{renderPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0 }, `mask-shape:${mask.id}`)}</g></clipPath>)}
           </defs>
           <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
             <text className="canvas-frame-label" x="0" y="-15">Frame 1 · {canvasFrame.width} × {canvasFrame.height}</text>
             <rect className="canvas-frame" width={canvasFrame.width} height={canvasFrame.height} style={{ fill: pageAppState.viewBackgroundColor }} />
             <rect className="canvas-grid" width={canvasFrame.width} height={canvasFrame.height} fill="url(#khadim-canvas-grid)" />
             {guidesVisible && rulerGuides.map((guide) => guide.axis === "x" ? <line className="canvas-ruler-guide" key={guide.id} x1={guide.position} x2={guide.position} y1={-1000} y2={canvasFrame.height + 1000} stroke={guide.color ?? "#2563eb"} vectorEffect="non-scaling-stroke" /> : <line className="canvas-ruler-guide" key={guide.id} x1={-1000} x2={canvasFrame.width + 1000} y1={guide.position} y2={guide.position} stroke={guide.color ?? "#2563eb"} vectorEffect="non-scaling-stroke" />)}
-            {nodes.map(renderCanvasNode)}
-            {nodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame").map(renderFrameLayoutGrids)}
+            {renderedNodes.map(renderCanvasNode)}
+            {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame").map(renderFrameLayoutGrids)}
             {guides.x !== undefined && <line className="canvas-smart-guide" x1={guides.x} x2={guides.x} y1={-1000} y2={1600} vectorEffect="non-scaling-stroke" />}
             {guides.y !== undefined && <line className="canvas-smart-guide" x1={-1000} x2={1960} y1={guides.y} y2={guides.y} vectorEffect="non-scaling-stroke" />}
             {selectedNodes.filter((node) => !hasNodeOrAncestorFlag(node, "hidden")).map((node) => {
