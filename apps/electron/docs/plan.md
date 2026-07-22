@@ -163,7 +163,7 @@ the following behavior as working unless a focused test proves otherwise:
   new chat or Studio behavior instead of moving feature state back into
   `App.tsx`.
 
-The latest completed checks on July 22, 2026, were `438` passing tests, a clean
+The latest completed checks on July 22, 2026, were `445` passing tests, a clean
 TypeScript check, and a successful production build. A packaging smoke check
 also staged and executed Bun `1.3.13` beside the Khadim CLI slot. Packaged
 Electron audits verified the main-chat and artifact split, light and dark
@@ -276,6 +276,21 @@ The preview can switch flows and reset directly to each starting screen.
 Deleting a start screen repairs every affected flow, and undo restores the
 prior flow set. The legacy `prototypeStartPageId` remains a compatibility
 mirror of the first flow.
+
+Pages can now use an optional prototype viewport that is smaller than the full
+authored page. You can choose vertical, horizontal, or two-axis scrolling,
+see the viewport boundary on the editing canvas, and choose whether returning
+through prototype history restores the previous scroll position. Any primitive
+or component layer can use **Fix when scrolling**. The player separates the
+topmost fixed subtrees from scrolling SVG content, keeps their hotspots pinned
+and keyboard operable, and applies the same behavior inside overlays. Enabling
+the setting promotes the fixed subtree above scrolling layers to make the
+stacking contract explicit. Boolean groups remain atomic when an operand is
+fixed. Fresh navigation and flow changes reset to the origin. Smart transitions
+involving a scrollable page fall back to dissolve because the two moving
+coordinate systems don't define one stable matching-layer transform.
+Persistence bounds viewport dimensions to the page, enforces the non-scrolling
+axis and topmost fixed-layer order, and validates fixed flags as booleans.
 
 Penpot currently documents dissolve, slide, and push transitions. Khadim keeps
 its existing dissolve and slide transitions and adds a smart transition as an

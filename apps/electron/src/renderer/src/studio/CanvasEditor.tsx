@@ -50,6 +50,7 @@ import { canvasGradientVector } from "../../../shared/canvas-paint";
 import { booleanCanvasNodes, canBooleanNode, svgPathBounds, type CanvasBooleanOperation } from "../../../shared/vector-boolean";
 import { importSvgToCanvasNodes } from "./svg-import";
 import { CanvasPrototypePreview } from "./CanvasPrototypePreview";
+import { canvasPrototypePageLayers } from "./canvas-prototype";
 import {
   applyFrameLayout,
   applyFrameResizeConstraints,
@@ -564,7 +565,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   }, [content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeFlows, incomingPrototypeStartPageId, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
 
   function syncedPages(nextNodes: CanvasNode[], nextAppState: CanvasPage["appState"] = { ...(pagesRef.current.find((page) => page.id === activePageIdRef.current)?.appState ?? content.appState), snapToGrid, viewport: viewportRef.current }, nextFrame = canvasFrame, sourcePages = pagesRef.current): CanvasPage[] {
-    const page: CanvasPage = { id: activePageIdRef.current, name: sourcePages.find((candidate) => candidate.id === activePageIdRef.current)?.name ?? "Page 1", frame: nextFrame, elements: nextNodes, appState: nextAppState };
+    const existing = sourcePages.find((candidate) => candidate.id === activePageIdRef.current);
+    const prototypeViewport = existing?.prototypeViewport ? {
+      ...existing.prototypeViewport,
+      width: existing.prototypeViewport.direction === "vertical" ? nextFrame.width : Math.min(nextFrame.width, existing.prototypeViewport.width),
+      height: existing.prototypeViewport.direction === "horizontal" ? nextFrame.height : Math.min(nextFrame.height, existing.prototypeViewport.height),
+    } : undefined;
+    const page: CanvasPage = { ...existing, id: activePageIdRef.current, name: existing?.name ?? "Page 1", frame: nextFrame, elements: nextNodes, appState: nextAppState, prototypeViewport };
     return sourcePages.some((candidate) => candidate.id === page.id) ? sourcePages.map((candidate) => candidate.id === page.id ? page : candidate) : [...sourcePages, page];
   }
 
@@ -600,7 +607,11 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()];
       futureRef.current = [];
     }
-    const resolvedNodes = resolveCanvasConnectors(resolveBooleanGroups(nextNodes)) as CanvasNode[];
+    const connectedNodes = resolveCanvasConnectors(resolveBooleanGroups(nextNodes)) as CanvasNode[];
+    const currentPage = pagesRef.current.find((page) => page.id === activePageIdRef.current);
+    const prototypeLayers = canvasPrototypePageLayers({ id: currentPage?.id ?? activePageIdRef.current, name: currentPage?.name ?? "Page", frame: currentPage?.frame ?? canvasFrame, elements: connectedNodes, appState: currentPage?.appState ?? content.appState, prototypeViewport: currentPage?.prototypeViewport });
+    const connectedById = new Map(connectedNodes.map((node) => [node.id, node]));
+    const resolvedNodes = [...prototypeLayers.scrollingElementIds, ...prototypeLayers.fixedElementIds].flatMap((id) => connectedById.get(id) ?? []) as CanvasNode[];
     const nextAppState = { ...(pagesRef.current.find((page) => page.id === activePageIdRef.current)?.appState ?? content.appState), snapToGrid, viewport: viewportRef.current };
     const nextPages = syncedPages(resolvedNodes, nextAppState);
     const signature = sceneDocumentSignature(resolvedNodes, nextComponents, nextStyles, nextPages, activePageIdRef.current, nextTextStyles, nextEffectStyles, nextTokenCollections);
@@ -802,6 +813,18 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     setPages(nextPages);
     lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages);
     onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: nextPages.find((page) => page.id === activePageIdRef.current)!.appState } });
+  }
+
+  function patchActivePrototypeViewport(prototypeViewport: CanvasPage["prototypeViewport"]): void {
+    const current = pagesRef.current.find((page) => page.id === activePageIdRef.current);
+    if (!current || JSON.stringify(current.prototypeViewport) === JSON.stringify(prototypeViewport)) return;
+    if (shouldRecordInspectorHistory("page:prototype-viewport")) { pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()]; futureRef.current = []; }
+    const nextPages = syncedPages(nodesRef.current).map((page) => page.id === activePageIdRef.current ? { ...page, prototypeViewport } : page);
+    pagesRef.current = nextPages;
+    setPages(nextPages);
+    lastCommittedSignatureRef.current = sceneDocumentSignature(nodesRef.current, componentsRef.current, paintStylesRef.current, nextPages);
+    setHistoryRevision((revision) => revision + 1);
+    onChange({ ...artifact, lifecycle: "draft", updatedAt: new Date().toISOString(), content: { ...content, frame: canvasFrame, elements: nodesRef.current, components: componentsRef.current, styles: paintStylesRef.current, textStyles: textStylesRef.current, effectStyles: effectStylesRef.current, tokenCollections: tokenCollectionsRef.current, pages: nextPages, activePageId: activePageIdRef.current, prototypeFlows: prototypeFlowsRef.current, prototypeStartPageId: prototypeStartPageIdRef.current, appState: current.appState } });
   }
 
   function resizeActivePageFrame(width: number, height: number, fit = false): void {
@@ -2818,6 +2841,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             <rect className="canvas-grid" width={canvasFrame.width} height={canvasFrame.height} fill="url(#khadim-canvas-grid)" />
             {guidesVisible && rulerGuides.map((guide) => guide.axis === "x" ? <line className="canvas-ruler-guide" key={guide.id} x1={guide.position} x2={guide.position} y1={-1000} y2={canvasFrame.height + 1000} stroke={guide.color ?? "#2563eb"} vectorEffect="non-scaling-stroke" /> : <line className="canvas-ruler-guide" key={guide.id} x1={-1000} x2={canvasFrame.width + 1000} y1={guide.position} y2={guide.position} stroke={guide.color ?? "#2563eb"} vectorEffect="non-scaling-stroke" />)}
             {renderedNodes.map(renderCanvasNode)}
+            {activePage?.prototypeViewport && <g className="canvas-prototype-viewport-outline" aria-hidden="true" pointerEvents="none"><rect width={activePage.prototypeViewport.width} height={activePage.prototypeViewport.height} vectorEffect="non-scaling-stroke" /><text x={12 / viewport.zoom} y={activePage.prototypeViewport.height - 10 / viewport.zoom} fontSize={10 / viewport.zoom}>Prototype viewport</text></g>}
             {renderedNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame").map(renderFrameLayoutGrids)}
             <g className="canvas-snap-feedback" aria-hidden="true">
               {snapFeedback.lines.map((line, index) => line.axis === "x"
@@ -2961,6 +2985,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           })}{selectedNode.componentRole === "instance" && Object.keys(selectedNode.overrides ?? {}).length > 0 && <button className="canvas-reset-overrides" type="button" onClick={resetSelectedOverrides}>Reset overrides</button>}</section>}
           <section className="canvas-inspector-section canvas-prototype-section">
             <h3><span>Prototype</span><button type="button" disabled={usedPrototypeTriggers.size >= 3} onClick={addPrototypeInteraction}><Plus size={12} /> Interaction</button></h3>
+            <label className="canvas-toggle-row"><input aria-label="Fix layer when prototype scrolls" type="checkbox" checked={Boolean(selectedNode.fixedInPrototype)} onChange={(event) => patchSelected({ fixedInPrototype: event.target.checked || undefined })} /><span>Fix when scrolling</span></label>
             <label><span>Smart animate key</span><input aria-label="Smart animate key" maxLength={240} placeholder={selectedNode.name ?? nodeLabel(selectedNode)} value={selectedNode.prototypeKey ?? ""} onChange={(event) => patchSelected({ prototypeKey: event.target.value || undefined })} /></label>
             <p className="canvas-field-hint">Matching keys work at any depth. Unique top-level names are matched automatically.</p>
             {(selectedNode.interactions ?? []).map((interaction, index) => <div className="canvas-prototype-interaction" key={interaction.id}>
@@ -3012,6 +3037,10 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {selectedNode.type !== "component" && selectedNode.type !== "boolean" && <section className="canvas-inspector-section"><button className="canvas-component-action" onClick={createComponentFromSelection}><DiamondsFour size={15} /><span><strong>Create component</strong><small>Reuse this layer as an asset</small></span></button></section>}
           <div className="canvas-inspector-actions"><button type="button" onClick={selectedNode.type === "component" && selectedNode.componentRole === "instance" ? detachSelectedInstance : duplicateSelected}>{selectedNode.type === "component" && selectedNode.componentRole === "instance" ? <><LinkBreak size={14} /> Detach</> : selectedNode.type === "component" ? <><DiamondsFour size={14} /> Instance</> : <><Copy size={14} /> Duplicate</>}</button><button type="button" onClick={toggleSelectedLock}>{selectedNode.locked ? <><LockSimpleOpen size={14} /> Unlock</> : <><LockSimple size={14} /> Lock</>}</button><button className="danger" type="button" onClick={removeSelected}><Trash size={14} /> Delete</button></div>
         </> : <div className="canvas-inspector-empty"><Selection size={22} /><strong>Nothing selected</strong><p>Shift-click or drag a marquee to select multiple layers.</p><label className="canvas-snap-setting"><input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapMode(event.target.checked)} /><span><GridFour size={14} /><span><strong>Snap to 8 px grid</strong><small>Hold Ctrl/⌘ to bypass all snapping</small></span></span></label></div>}
+        <section className="canvas-inspector-section canvas-prototype-viewport-settings"><h3>Prototype viewport</h3><label className="canvas-toggle-row"><input aria-label="Enable prototype scrolling" type="checkbox" checked={Boolean(activePage?.prototypeViewport)} onChange={(event) => patchActivePrototypeViewport(event.target.checked ? { width: canvasFrame.width, height: Math.max(64, Math.min(canvasFrame.height, 844)), direction: "vertical", preservePosition: false } : undefined)} /><span>Enable scrolling</span></label>{activePage?.prototypeViewport && <><label><span>Direction</span><select aria-label="Prototype scroll direction" value={activePage.prototypeViewport.direction} onChange={(event) => {
+          const direction = event.target.value as NonNullable<CanvasPage["prototypeViewport"]>["direction"];
+          patchActivePrototypeViewport({ ...activePage.prototypeViewport!, direction, width: direction === "vertical" ? canvasFrame.width : activePage.prototypeViewport!.width, height: direction === "horizontal" ? canvasFrame.height : activePage.prototypeViewport!.height });
+        }}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option><option value="both">Both directions</option></select></label><div className="canvas-property-grid"><label><span>W</span><input aria-label="Prototype viewport width" type="number" min="64" max={canvasFrame.width} disabled={activePage.prototypeViewport.direction === "vertical"} value={Math.round(activePage.prototypeViewport.width)} onChange={(event) => patchActivePrototypeViewport({ ...activePage.prototypeViewport!, width: Math.min(canvasFrame.width, Math.max(64, Number(event.target.value))) })} /></label><label><span>H</span><input aria-label="Prototype viewport height" type="number" min="64" max={canvasFrame.height} disabled={activePage.prototypeViewport.direction === "horizontal"} value={Math.round(activePage.prototypeViewport.height)} onChange={(event) => patchActivePrototypeViewport({ ...activePage.prototypeViewport!, height: Math.min(canvasFrame.height, Math.max(64, Number(event.target.value))) })} /></label></div><label className="canvas-toggle-row"><input aria-label="Remember prototype scroll position" type="checkbox" checked={activePage.prototypeViewport.preservePosition} onChange={(event) => patchActivePrototypeViewport({ ...activePage.prototypeViewport!, preservePosition: event.target.checked })} /><span>Remember position when returning</span></label><p className="canvas-field-hint">The page size is the full scrollable content. Fixed layers stay pinned to this viewport.</p></>}</section>
         <section className="canvas-inspector-section canvas-page-settings"><h3>Page</h3><label><span>Preset</span><select aria-label="Page size preset" value={currentPagePreset} onChange={(event) => {
           const preset = canvasPagePresets.find((candidate) => candidate.id === event.target.value);
           if (preset) resizeActivePageFrame(preset.width, preset.height, true);

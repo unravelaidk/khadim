@@ -165,24 +165,56 @@ function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offse
   return rotationWrapper(content, finite(node.rotation, 0), x, y, width, height);
 }
 
-function renderCanvasNode(node: CanvasElement, components: CanvasComponentDefinition[], nodes: CanvasElement[], explicitIds?: Set<string>): string {
-  if (node.parentId && nodes.some((candidate) => candidate.id === node.parentId && candidate.type === "boolean") && (!explicitIds?.has(node.id) || explicitIds.has(node.parentId))) return "";
-  let ancestorId = node.parentId;
-  const visited = new Set<string>();
-  const clipAncestorIds: string[] = [];
-  while (ancestorId && !visited.has(ancestorId)) {
-    visited.add(ancestorId);
-    const ancestor = nodes.find((candidate) => candidate.id === ancestorId);
-    if (ancestor?.hidden) return "";
-    if (ancestor?.type === "frame" && ancestor.clipContent) clipAncestorIds.push(ancestor.id);
-    ancestorId = ancestor?.parentId;
+interface CanvasRenderIndex {
+  nodesById: Map<string, CanvasElement>;
+  ancestorStateById: Map<string, CanvasRenderAncestorState>;
+  maskSourceIds: Set<string>;
+  booleanChildrenByParent: Map<string, CanvasPrimitiveElement[]>;
+  componentsById: Map<string, CanvasComponentDefinition>;
+}
+
+interface CanvasRenderAncestorState {
+  hidden: boolean;
+  clipIds: string[];
+}
+
+function canvasRenderAncestorStates(elements: CanvasElement[]): Map<string, CanvasRenderAncestorState> {
+  const byId = new Map(elements.map((element) => [element.id, element]));
+  const stateById = new Map<string, CanvasRenderAncestorState>();
+  for (const element of elements) {
+    if (stateById.has(element.id)) continue;
+    const path: CanvasElement[] = [];
+    const visited = new Set<string>();
+    let current: CanvasElement | undefined = element;
+    while (current && !stateById.has(current.id) && !visited.has(current.id)) {
+      visited.add(current.id);
+      path.push(current);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    let inherited = current ? stateById.get(current.id)! : { hidden: false, clipIds: [] };
+    for (let pathIndex = path.length - 1; pathIndex >= 0; pathIndex -= 1) {
+      const node = path[pathIndex];
+      inherited = {
+        hidden: inherited.hidden || Boolean(node.hidden),
+        clipIds: node.type === "frame" && node.clipContent ? [...inherited.clipIds, node.id] : inherited.clipIds,
+      };
+      stateById.set(node.id, inherited);
+    }
   }
-  if (node.hidden || nodes.some((candidate) => candidate.type !== "component" && candidate.maskId === node.id)) return "";
+  return stateById;
+}
+
+function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explicitIds?: Set<string>): string {
+  if (node.parentId && index.nodesById.get(node.parentId)?.type === "boolean" && (!explicitIds?.has(node.id) || explicitIds.has(node.parentId))) return "";
+  const ancestorState = node.parentId ? index.ancestorStateById.get(node.parentId) : undefined;
+  if (ancestorState?.hidden) return "";
+  const clipAncestorIds = ancestorState?.clipIds ?? [];
+  if (node.hidden || index.maskSourceIds.has(node.id)) return "";
   const wrapAncestorClips = (rendered: string): string => clipAncestorIds.reduce((nested, frameId) => `<g clip-path="url(#canvas-clip-${escapeHtml(frameId)})">${nested}</g>`, rendered);
   const wrapMask = (rendered: string): string => node.type !== "component" && node.maskId ? `<g clip-path="url(#canvas-mask-${escapeHtml(node.maskId)})">${rendered}</g>` : rendered;
   if (node.type !== "component") {
     const renderedNode = node.type === "boolean" ? (() => {
-      const children = nodes.filter((candidate): candidate is CanvasPrimitiveElement => candidate.parentId === node.id && candidate.type !== "component" && candidate.type !== "boolean" && canBooleanNode(candidate));
+      const children = index.booleanChildrenByParent.get(node.id) ?? [];
       const result = node.booleanOperation ? booleanCanvasNodes(children, node.booleanOperation) : null;
       return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, opacity: node.opacity, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, shadow: node.shadow, parentId: node.parentId } : null;
     })() : node;
@@ -190,13 +222,15 @@ function renderCanvasNode(node: CanvasElement, components: CanvasComponentDefini
     const rendered = renderCanvasPrimitive(renderedNode);
     return wrapAncestorClips(wrapMask(rendered));
   }
-  const definition = components.find((component) => component.id === node.componentId);
+  const definition = index.componentsById.get(node.componentId);
   if (!definition || !Array.isArray(definition.nodes)) return "";
   const width = finite(node.width, finite(definition.width, 1));
   const height = finite(node.height, finite(definition.height, 1));
   const scaleX = width / Math.max(1, finite(definition.width, width));
   const scaleY = height / Math.max(1, finite(definition.height, height));
   const overrides = node.overrides ?? {};
+  const effectiveDefinitionNodes = definition.nodes.map((child) => ({ ...child, ...overrides[child.id] }));
+  const componentAncestorState = canvasRenderAncestorStates(effectiveDefinitionNodes);
   const clipId = (frameId: string): string => `canvas-component-clip-${escapeHtml(node.id)}-${escapeHtml(frameId)}`;
   const maskId = (sourceId: string): string => `canvas-component-mask-${escapeHtml(node.id)}-${escapeHtml(sourceId)}`;
   const internalMaskSourceIds = new Set(definition.nodes.flatMap((child) => {
@@ -218,17 +252,9 @@ function renderCanvasNode(node: CanvasElement, components: CanvasComponentDefini
   }).join("");
   const renderedChildren = definition.nodes.map((child) => {
     if (internalMaskSourceIds.has(child.id)) return "";
-    let parentId = child.parentId;
-    const visitedParents = new Set<string>();
-    const internalClipIds: string[] = [];
-    while (parentId && !visitedParents.has(parentId)) {
-      visitedParents.add(parentId);
-      const ancestor = definition.nodes.find((candidate) => candidate.id === parentId);
-      if (!ancestor) break;
-      if ({ ...ancestor, ...overrides[ancestor.id] }.hidden) return "";
-      if (ancestor.type === "frame" && ancestor.clipContent) internalClipIds.push(ancestor.id);
-      parentId = ancestor.parentId;
-    }
+    const ancestorState = child.parentId ? componentAncestorState.get(child.parentId) : undefined;
+    if (ancestorState?.hidden) return "";
+    const internalClipIds = ancestorState?.clipIds ?? [];
     const effective = { ...child, ...overrides[child.id] };
     const renderedChild = renderCanvasPrimitive(child, finite(node.x, 0), finite(node.y, 0), scaleX, scaleY, overrides[child.id], opacity(node.opacity), `canvas-component-gradient-${node.id}-${child.id}`);
     const maskedChild = effective.maskId ? `<g clip-path="url(#${maskId(effective.maskId)})">${renderedChild}</g>` : renderedChild;
@@ -254,6 +280,19 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
   const height = Math.max(1, finite(bounds.height, pageHeight));
   const background = safeColor(content.appState.viewBackgroundColor);
   const resolvedElements = resolveCanvasConnectors(content.elements);
+  const renderIndex: CanvasRenderIndex = {
+    nodesById: new Map(resolvedElements.map((element) => [element.id, element])),
+    ancestorStateById: canvasRenderAncestorStates(resolvedElements),
+    maskSourceIds: new Set(resolvedElements.flatMap((element) => element.type !== "component" && element.maskId ? [element.maskId] : [])),
+    booleanChildrenByParent: new Map(),
+    componentsById: new Map(content.components.map((component) => [component.id, component])),
+  };
+  for (const element of resolvedElements) {
+    if (!element.parentId || element.type === "component" || element.type === "boolean" || !canBooleanNode(element)) continue;
+    const parent = renderIndex.nodesById.get(element.parentId);
+    if (parent?.type !== "boolean") continue;
+    renderIndex.booleanChildrenByParent.set(parent.id, [...(renderIndex.booleanChildrenByParent.get(parent.id) ?? []), element]);
+  }
   const clips = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type === "frame" && Boolean(element.clipContent)).map((frame) => `<clipPath id="canvas-clip-${escapeHtml(frame.id)}" clipPathUnits="userSpaceOnUse"><rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}" rx="${finite(frame.radius, 0)}"${frame.rotation ? ` transform="rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})"` : ""}/></clipPath>`).join("");
   const maskIds = new Set(resolvedElements.flatMap((element) => element.type !== "component" && element.maskId ? [element.maskId] : []));
   const masks = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type !== "component" && maskIds.has(element.id)).map((mask) => `<clipPath id="canvas-mask-${escapeHtml(mask.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0 })}</clipPath>`).join("");
@@ -270,7 +309,7 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
     return definition.nodes.map((node) => gradientDefinition({ ...node, ...element.overrides?.[node.id] }, `canvas-component-gradient-${element.id}-${node.id}`));
   }).join("");
   const exportIds = options.elementIds ? new Set(options.elementIds) : undefined;
-  const elements = resolvedElements.filter((element) => !exportIds || exportIds.has(element.id)).map((element) => renderCanvasNode(element, content.components, resolvedElements, exportIds)).join("");
+  const elements = resolvedElements.filter((element) => !exportIds || exportIds.has(element.id)).map((element) => renderCanvasNode(element, renderIndex, exportIds)).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${finite(bounds.x, 0)} ${finite(bounds.y, 0)} ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeHtml(title)}"><style>text{font-family:"Atkinson Hyperlegible Next Variable","Segoe UI",sans-serif}</style><defs><marker id="canvas-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker>${clips}${masks}${gradients}</defs>${options.transparent ? "" : `<rect x="${finite(bounds.x, 0)}" y="${finite(bounds.y, 0)}" width="${width}" height="${height}" fill="${background}"/>`}${elements}</svg>`;
 }
 

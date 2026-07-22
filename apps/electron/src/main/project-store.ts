@@ -386,7 +386,7 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
   }
   if (element.opacity !== undefined && !isFiniteCanvasNumber(element.opacity, 0, 1)) return false;
   for (const key of ["radius", "strokeWidth", "strokeDash", "fontSize", "lineHeight"]) if (element[key] !== undefined && !isFiniteCanvasNumber(element[key], 0, 100_000)) return false;
-  for (const key of ["hidden", "locked", "lineFlip", "clipContent"]) if (element[key] !== undefined && typeof element[key] !== "boolean") return false;
+  for (const key of ["hidden", "locked", "lineFlip", "clipContent", "fixedInPrototype"]) if (element[key] !== undefined && typeof element[key] !== "boolean") return false;
   if (element.fontStyle !== undefined && !["normal", "italic"].includes(String(element.fontStyle))) return false;
   if (element.textAlign !== undefined && !["left", "center", "right"].includes(String(element.textAlign))) return false;
   if (element.layoutPosition !== undefined && !["static", "absolute"].includes(String(element.layoutPosition))) return false;
@@ -437,6 +437,52 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
   return true;
 }
 
+function canvasPrototypeFixedIds(elements: Record<string, unknown>[]): Set<string> {
+  const byId = new Map(elements.map((element) => [element.id as string, element]));
+  const declarations = new Set(elements.filter((element) => element.fixedInPrototype === true).map((element) => element.id as string));
+  const booleanAncestorById = new Map<string, string | undefined>();
+  for (const element of elements) {
+    if (booleanAncestorById.has(element.id as string)) continue;
+    const path: Record<string, unknown>[] = [];
+    const visited = new Set<string>();
+    let current: Record<string, unknown> | undefined = element;
+    while (current && !booleanAncestorById.has(current.id as string) && !visited.has(current.id as string)) {
+      visited.add(current.id as string);
+      path.push(current);
+      current = current.parentId ? byId.get(current.parentId as string) : undefined;
+    }
+    let booleanAncestor = current ? booleanAncestorById.get(current.id as string) : undefined;
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      if (path[index].type === "boolean") booleanAncestor = path[index].id as string;
+      booleanAncestorById.set(path[index].id as string, booleanAncestor);
+    }
+  }
+  for (const declaration of [...declarations]) {
+    const booleanAncestor = booleanAncestorById.get(declaration);
+    if (booleanAncestor) declarations.add(booleanAncestor);
+  }
+  const fixedById = new Map<string, boolean>();
+  const fixed = new Set<string>();
+  for (const element of elements) {
+    if (fixedById.has(element.id as string)) continue;
+    const path: Record<string, unknown>[] = [];
+    const visited = new Set<string>();
+    let current: Record<string, unknown> | undefined = element;
+    while (current && !fixedById.has(current.id as string) && !visited.has(current.id as string)) {
+      visited.add(current.id as string);
+      path.push(current);
+      current = current.parentId ? byId.get(current.parentId as string) : undefined;
+    }
+    let inheritedFixed = current ? fixedById.get(current.id as string) ?? false : false;
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      inheritedFixed ||= declarations.has(path[index].id as string);
+      fixedById.set(path[index].id as string, inheritedFixed);
+      if (inheritedFixed) fixed.add(path[index].id as string);
+    }
+  }
+  return fixed;
+}
+
 function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinations = true): boolean {
   if (!Array.isArray(data.elements) || data.elements.length > 10_000 || !data.elements.every((element) => isCanvasElement(element))) return false;
   const elements = data.elements as Record<string, unknown>[];
@@ -450,6 +496,12 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
     && !["rectangle", "ellipse", "frame", "path"].includes(String(element.type)))) return false;
   if (elements.some((element) => element.maskId !== undefined && (!elementIds.has(element.maskId as string) || element.maskId === element.id))) return false;
   if (hasCanvasParentCycle(elements)) return false;
+  const fixedElementIds = canvasPrototypeFixedIds(elements);
+  let reachedFixedLayer = false;
+  for (const element of elements) {
+    if (fixedElementIds.has(element.id as string)) reachedFixedLayer = true;
+    else if (reachedFixedLayer) return false;
+  }
   if (elements.some((element) => element.type === "arrow" && [element.startBindingId, element.endBindingId].some((id) => id !== undefined && (!elementIds.has(id as string) || id === element.id)))) return false;
   if (!Array.isArray(data.components) || data.components.length > 1_000 || !data.components.every((value) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -578,10 +630,19 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
   if (data.pages !== undefined) {
     if (!Array.isArray(data.pages) || data.pages.length < 1 || data.pages.length > 500 || !isBoundedString(data.activePageId, 240)) return false;
     const pages = data.pages as Record<string, unknown>[];
-    if (pages.some((page) => typeof page !== "object" || page === null || Array.isArray(page)
-      || !isBoundedString(page.id, 240)
-      || !isBoundedString(page.name, 1_000)
-      || !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeFlows: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false))) return false;
+    if (pages.some((page) => {
+      if (typeof page !== "object" || page === null || Array.isArray(page) || !isBoundedString(page.id, 240) || !isBoundedString(page.name, 1_000)) return true;
+      const pageFrame = page.frame as Record<string, unknown> | undefined;
+      if (page.prototypeViewport !== undefined) {
+        if (typeof page.prototypeViewport !== "object" || page.prototypeViewport === null || Array.isArray(page.prototypeViewport) || !pageFrame) return true;
+        const viewport = page.prototypeViewport as Record<string, unknown>;
+        if (!isFiniteCanvasNumber(viewport.width, 64, Number(pageFrame.width)) || !isFiniteCanvasNumber(viewport.height, 64, Number(pageFrame.height))
+          || !["vertical", "horizontal", "both"].includes(String(viewport.direction)) || typeof viewport.preservePosition !== "boolean"
+          || viewport.direction === "vertical" && viewport.width !== pageFrame.width
+          || viewport.direction === "horizontal" && viewport.height !== pageFrame.height) return true;
+      }
+      return !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeFlows: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false);
+    })) return false;
     if (new Set(pages.map((page) => page.id)).size !== pages.length) return false;
     if (validatePrototypeDestinations) {
       const pageIds = new Set(pages.map((page) => page.id as string));

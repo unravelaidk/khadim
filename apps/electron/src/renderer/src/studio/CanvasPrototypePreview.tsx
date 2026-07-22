@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import type { CanvasArtifactContent, CanvasElement, CanvasPage, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasPrototypeOverlay } from "../../../shared/types";
 import { nodeLabel } from "./canvas-model";
-import { canvasPrototypeLayerMatches } from "./canvas-prototype";
+import { canvasPrototypeLayerMatches, canvasPrototypePageLayers } from "./canvas-prototype";
 
 interface CanvasPrototypePreviewProps {
   title: string;
@@ -19,6 +19,12 @@ interface PrototypeOverlayInstance {
   pageId: string;
   options: CanvasPrototypeOverlay;
   transition?: CanvasPrototypeInteraction["transition"];
+}
+
+interface PrototypeHistoryEntry {
+  pageId: string;
+  scrollLeft: number;
+  scrollTop: number;
 }
 
 const defaultOverlay: CanvasPrototypeOverlay = { position: "center", background: "dim", closeOnOutsideClick: true };
@@ -87,28 +93,38 @@ function svgSource(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+function prototypeViewport(page: CanvasPage): { width: number; height: number } {
+  return page.prototypeViewport ?? page.frame;
+}
+
 export function CanvasPrototypePreview({ title, content, pages, flows, initialFlowId, onClose }: CanvasPrototypePreviewProps): React.JSX.Element {
   const initialFlow = flows.find((flow) => flow.id === initialFlowId) ?? flows[0];
   const initialId = pages.some((page) => page.id === initialFlow?.startPageId) ? initialFlow.startPageId : pages[0]?.id;
   const [activeFlowId, setActiveFlowId] = useState(initialFlow?.id ?? "");
-  const [history, setHistory] = useState<string[]>(initialId ? [initialId] : []);
+  const [history, setHistory] = useState<PrototypeHistoryEntry[]>(initialId ? [{ pageId: initialId, scrollLeft: 0, scrollTop: 0 }] : []);
   const [transition, setTransition] = useState<CanvasPrototypeInteraction["transition"]>();
   const [transitionSourcePageId, setTransitionSourcePageId] = useState<string>();
   const [overlays, setOverlays] = useState<PrototypeOverlayInstance[]>([]);
   const dialogRef = useRef<HTMLElement>(null);
   const headerBackRef = useRef<HTMLButtonElement>(null);
   const overlayLayerRef = useRef<HTMLDivElement>(null);
+  const screenScrollRef = useRef<HTMLDivElement>(null);
   const overlaysRef = useRef(overlays);
   const overlayFocusRef = useRef(new Map<string, HTMLElement>());
   const executedTimersRef = useRef(new Set<string>());
   overlaysRef.current = overlays;
-  const activePageId = history.at(-1);
+  const activePageId = history.at(-1)?.pageId;
   const page = pages.find((candidate) => candidate.id === activePageId) ?? pages[0];
   const activeFlow = flows.find((flow) => flow.id === activeFlowId) ?? flows[0];
   const topOverlay = overlays.at(-1);
   const overlayPage = topOverlay ? pages.find((candidate) => candidate.id === topOverlay.pageId) : undefined;
 
   const focusPreview = useCallback(() => window.setTimeout(() => dialogRef.current?.focus(), 0), []);
+  const captureCurrentScroll = useCallback((current: PrototypeHistoryEntry[]): PrototypeHistoryEntry[] => {
+    const scroll = screenScrollRef.current;
+    if (!scroll || !current.length) return current;
+    return current.map((entry, index) => index === current.length - 1 ? { ...entry, scrollLeft: scroll.scrollLeft, scrollTop: scroll.scrollTop } : entry);
+  }, []);
   const closeTopOverlay = useCallback(() => {
     const closing = overlaysRef.current.at(-1);
     if (!closing) return;
@@ -118,15 +134,22 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     window.setTimeout(() => (returnFocus?.isConnected ? returnFocus : dialogRef.current)?.focus(), 0);
   }, []);
 
+  const goBack = useCallback(() => {
+    executedTimersRef.current.clear();
+    setTransition(undefined);
+    setTransitionSourcePageId(undefined);
+    setOverlays([]);
+    setHistory((current) => {
+      const captured = captureCurrentScroll(current);
+      return captured.length > 1 ? captured.slice(0, -1) : captured;
+    });
+    focusPreview();
+  }, [captureCurrentScroll, focusPreview]);
+
   const run = useCallback((interaction: CanvasPrototypeInteraction): void => {
     if (interaction.action === "close-overlay") { closeTopOverlay(); return; }
     if (interaction.action === "back") {
-      executedTimersRef.current.clear();
-      setTransition(undefined);
-      setTransitionSourcePageId(undefined);
-      setOverlays([]);
-      setHistory((current) => current.length > 1 ? current.slice(0, -1) : current);
-      focusPreview();
+      goBack();
       return;
     }
     if (interaction.action === "open-url") {
@@ -149,9 +172,9 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     setTransition(interaction.transition);
     setTransitionSourcePageId(page?.id);
     setOverlays([]);
-    setHistory((current) => [...current, interaction.destinationPageId!]);
+    setHistory((current) => [...captureCurrentScroll(current), { pageId: interaction.destinationPageId!, scrollLeft: 0, scrollTop: 0 }]);
     focusPreview();
-  }, [closeTopOverlay, focusPreview, page?.id, pages]);
+  }, [captureCurrentScroll, closeTopOverlay, focusPreview, goBack, page?.id, pages]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -172,6 +195,17 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
   }, []);
 
   useEffect(() => {
+    const entry = history.at(-1);
+    const timeout = window.setTimeout(() => {
+      const scroll = screenScrollRef.current;
+      if (!scroll || !entry) return;
+      scroll.scrollLeft = page?.prototypeViewport?.preservePosition ? entry.scrollLeft : 0;
+      scroll.scrollTop = page?.prototypeViewport?.preservePosition ? entry.scrollTop : 0;
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [activeFlowId, history.length, page?.id, page?.prototypeViewport?.preservePosition]);
+
+  useEffect(() => {
     if (!topOverlay) return;
     const timeout = window.setTimeout(() => {
       const firstHotspot = overlayLayerRef.current?.querySelector<HTMLElement>(".canvas-prototype-hotspot");
@@ -189,14 +223,11 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
         return;
       }
       if (event.key === "ArrowLeft") {
+        if (document.activeElement?.closest(".canvas-prototype-scroll.horizontal, .canvas-prototype-scroll.both")) return;
         if (overlaysRef.current.length) { event.preventDefault(); closeTopOverlay(); return; }
         if (history.length > 1) {
           event.preventDefault();
-          executedTimersRef.current.clear();
-          setTransition(undefined);
-          setTransitionSourcePageId(undefined);
-          setHistory((current) => current.slice(0, -1));
-          focusPreview();
+          goBack();
         }
         return;
       }
@@ -210,7 +241,7 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeTopOverlay, focusPreview, history.length, onClose]);
+  }, [closeTopOverlay, goBack, history.length, onClose]);
 
   useEffect(() => {
     const timedPage = overlayPage ?? page;
@@ -227,8 +258,12 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [activeFlowId, history.length, overlayPage, page, run, topOverlay]);
 
-  const svg = useMemo(() => page ? pageSvg(content, page, title) : "", [content, page, title]);
-  const overlaySvg = useMemo(() => overlayPage ? pageSvg(content, overlayPage, title) : "", [content, overlayPage, title]);
+  const pageLayers = useMemo(() => page ? canvasPrototypePageLayers(page) : undefined, [page]);
+  const overlayLayers = useMemo(() => overlayPage ? canvasPrototypePageLayers(overlayPage) : undefined, [overlayPage]);
+  const scrollingSvg = useMemo(() => page ? pageSvg(content, page, title, pageLayers?.fixedElementIds.size ? pageLayers.scrollingElementIds : undefined) : "", [content, page, pageLayers, title]);
+  const fixedSvg = useMemo(() => page && pageLayers?.fixedElementIds.size ? pageSvg(content, page, title, [...pageLayers.fixedElementIds], true) : "", [content, page, pageLayers, title]);
+  const overlayScrollingSvg = useMemo(() => overlayPage ? pageSvg(content, overlayPage, title, overlayLayers?.fixedElementIds.size ? overlayLayers.scrollingElementIds : undefined) : "", [content, overlayLayers, overlayPage, title]);
+  const overlayFixedSvg = useMemo(() => overlayPage && overlayLayers?.fixedElementIds.size ? pageSvg(content, overlayPage, title, [...overlayLayers.fixedElementIds], true) : "", [content, overlayLayers, overlayPage, title]);
   const transitionSourcePage = pages.find((candidate) => candidate.id === transitionSourcePageId);
   const smartMatches = useMemo(() => transition?.type === "smart" ? canvasPrototypeLayerMatches(transitionSourcePage, page) : [], [page, transition?.type, transitionSourcePage]);
   const smartActive = transition?.type === "smart" && smartMatches.length > 0;
@@ -247,7 +282,7 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     if (!flow || !pages.some((candidate) => candidate.id === flow.startPageId)) return;
     executedTimersRef.current.clear();
     setActiveFlowId(flow.id);
-    setHistory([flow.startPageId]);
+    setHistory([{ pageId: flow.startPageId, scrollLeft: 0, scrollTop: 0 }]);
     setTransition(undefined);
     setTransitionSourcePageId(undefined);
     setOverlays([]);
@@ -270,8 +305,8 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     } as React.CSSProperties;
   }
 
-  function renderHotspots(targetPage: CanvasPage, keyPrefix: string): React.ReactNode {
-    return targetPage.elements.filter((node) => !node.hidden && node.interactions?.length).map((node) => {
+  function renderHotspots(targetPage: CanvasPage, keyPrefix: string, fixedIds?: Set<string>, fixed?: boolean): React.ReactNode {
+    return targetPage.elements.filter((node) => !node.hidden && node.interactions?.length && (fixed === undefined || fixedIds!.has(node.id) === fixed)).map((node) => {
       const click = interactionFor(node, "click");
       const hover = interactionFor(node, "hover");
       const interaction = click ?? hover;
@@ -297,8 +332,28 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     });
   }
 
+  function renderPageSurface(targetPage: CanvasPage, keyPrefix: string, scrollingSource: string, fixedSource: string, fixedIds: Set<string>, alt: string, scrollRef?: React.RefObject<HTMLDivElement | null>): React.ReactNode {
+    const viewport = targetPage.prototypeViewport;
+    if (!viewport) return <><img src={svgSource(scrollingSource)} alt={alt} draggable={false} />{renderHotspots(targetPage, keyPrefix)}</>;
+    const contentStyle = { width: `${targetPage.frame.width / viewport.width * 100}%`, height: `${targetPage.frame.height / viewport.height * 100}%` };
+    return <>
+      <div ref={scrollRef} className={`canvas-prototype-scroll ${viewport.direction}`} role="region" aria-label={`${targetPage.name} scrollable prototype`} tabIndex={0}>
+        <div className="canvas-prototype-scroll-content" style={contentStyle}>
+          <img src={svgSource(scrollingSource)} alt={alt} draggable={false} />
+          {renderHotspots(targetPage, `${keyPrefix}:scrolling`, fixedIds, false)}
+        </div>
+      </div>
+      {fixedSource && <div className="canvas-prototype-fixed-content" style={contentStyle}>
+        <img src={svgSource(fixedSource)} alt="" aria-hidden="true" draggable={false} />
+        {renderHotspots(targetPage, `${keyPrefix}:fixed`, fixedIds, true)}
+      </div>}
+    </>;
+  }
+
   if (!page) return <div className="canvas-prototype-preview"><button type="button" onClick={onClose}>Close preview</button></div>;
-  const overlayWidth = overlayPage ? Math.min(92, Math.max(16, overlayPage.frame.width / page.frame.width * 100)) : 0;
+  const pageViewport = prototypeViewport(page);
+  const overlayViewport = overlayPage ? prototypeViewport(overlayPage) : undefined;
+  const overlayWidth = overlayViewport ? Math.min(92, Math.max(16, overlayViewport.width / pageViewport.width * 100)) : 0;
 
   return (
     <section ref={dialogRef} className="canvas-prototype-preview" role="dialog" aria-modal="true" aria-label="Canvas prototype preview" aria-describedby="canvas-prototype-help" tabIndex={-1}>
@@ -308,22 +363,18 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
           {flows.length > 1 && <select aria-label="Preview prototype flow" value={activeFlowId} onChange={(event) => switchFlow(event.target.value)}>{flows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name}</option>)}</select>}
           <button ref={headerBackRef} type="button" aria-label={overlayPage ? "Close prototype overlay" : "Previous prototype screen"} disabled={!overlayPage && history.length <= 1} onClick={() => {
             if (overlayPage) { closeTopOverlay(); return; }
-            executedTimersRef.current.clear();
-            setTransition(undefined);
-            setTransitionSourcePageId(undefined);
-            setHistory((current) => current.slice(0, -1));
-            focusPreview();
+            goBack();
           }}><CaretLeft size={15} /></button>
           <button type="button" aria-label="Close prototype preview" onClick={onClose}><X size={15} /></button>
         </div>
       </header>
       <output className="sr-only" aria-live="polite" aria-atomic="true">{activeFlow?.name ?? "Prototype"}: {page.name}{overlayPage ? `. ${overlayPage.name} overlay open.` : "."}</output>
       <div className="canvas-prototype-matte">
-        <div className="canvas-prototype-stage" style={{ aspectRatio: `${page.frame.width} / ${page.frame.height}` }}>
+        <div className="canvas-prototype-stage" style={{ aspectRatio: `${pageViewport.width} / ${pageViewport.height}` }}>
           <div
             className={`canvas-prototype-screen ${smartActive ? "smart" : transitionClass(transition)}`}
             inert={Boolean(topOverlay)}
-            key={`${page.id}:${history.length}`}
+            key={`${activeFlowId}:${page.id}:${history.length}`}
             style={{ background: page.appState.viewBackgroundColor, animationDuration: transition ? `${transition.duration}ms` : undefined, animationTimingFunction: transition?.easing, "--prototype-duration": transition ? `${transition.duration}ms` : undefined, "--prototype-easing": transition?.easing } as React.CSSProperties}
           >
             {smartActive ? <>
@@ -333,8 +384,8 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
                 <img className="canvas-prototype-smart-source" src={svgSource(match.sourceSvg)} alt="" draggable={false} style={smartLayerStyle(match.source, match.destination, "source")} />
                 <img className="canvas-prototype-smart-destination" src={svgSource(match.destinationSvg)} alt="" draggable={false} style={smartLayerStyle(match.source, match.destination, "destination")} />
               </span>)}
-            </> : <img src={svgSource(svg)} alt={`${page.name} prototype screen`} draggable={false} />}
-            {renderHotspots(page, "page")}
+            </> : renderPageSurface(page, "page", scrollingSvg, fixedSvg, pageLayers!.fixedElementIds, `${page.name} prototype screen`, screenScrollRef)}
+            {smartActive && renderHotspots(page, "page")}
           </div>
           {topOverlay && overlayPage && <div ref={overlayLayerRef} className={`canvas-prototype-overlay-layer ${topOverlay.options.position} ${topOverlay.options.background}`}>
             {topOverlay.options.closeOnOutsideClick
@@ -344,15 +395,14 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
               className={`canvas-prototype-overlay-screen ${transitionClass(topOverlay.transition)}`}
               role="region"
               aria-label={`${overlayPage.name} overlay`}
-              style={{ width: `${overlayWidth}%`, aspectRatio: `${overlayPage.frame.width} / ${overlayPage.frame.height}`, background: overlayPage.appState.viewBackgroundColor, animationDuration: topOverlay.transition ? `${topOverlay.transition.duration}ms` : undefined, animationTimingFunction: topOverlay.transition?.easing }}
+              style={{ width: `${overlayWidth}%`, aspectRatio: `${overlayViewport!.width} / ${overlayViewport!.height}`, background: overlayPage.appState.viewBackgroundColor, animationDuration: topOverlay.transition ? `${topOverlay.transition.duration}ms` : undefined, animationTimingFunction: topOverlay.transition?.easing }}
             >
-              <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(overlaySvg)}`} alt={`${overlayPage.name} overlay screen`} draggable={false} />
-              {renderHotspots(overlayPage, `overlay:${topOverlay.id}`)}
+              {renderPageSurface(overlayPage, `overlay:${topOverlay.id}`, overlayScrollingSvg, overlayFixedSvg, overlayLayers!.fixedElementIds, `${overlayPage.name} overlay screen`)}
             </div>
           </div>}
         </div>
       </div>
-      <p id="canvas-prototype-help">Activate highlighted hotspots to run interactions. Escape closes the active overlay, then returns to the editor.</p>
+      <p id="canvas-prototype-help">Scroll the active screen and activate highlighted hotspots. Escape closes the active overlay, then returns to the editor.</p>
     </section>
   );
 }

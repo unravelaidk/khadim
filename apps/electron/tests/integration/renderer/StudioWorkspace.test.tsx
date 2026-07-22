@@ -1035,6 +1035,39 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(within(preview).getByRole("status")).toHaveTextContent("Alternate journey: Details");
   });
 
+  it("authors undoable prototype viewports and fixed scrolling layers", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-scroll-prototype", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const elements = [
+      { id: "header", type: "frame" as const, name: "Header", x: 0, y: 0, width: 400, height: 72, color: "#ffffff" },
+      { id: "body", type: "rectangle" as const, name: "Body", x: 0, y: 72, width: 400, height: 1128, color: "#f8fafc" },
+    ];
+    artifact.content.frame = { width: 400, height: 1200 };
+    artifact.content.elements = elements;
+    artifact.content.appState = appState;
+    artifact.content.pages = [{ id: "home", name: "Home", frame: artifact.content.frame, elements, appState }];
+    artifact.content.activePageId = "home";
+    const onChange = vi.fn();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Enable prototype scrolling" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.pages[0].prototypeViewport).toEqual({ width: 400, height: 844, direction: "vertical", preservePosition: false });
+    expect(document.querySelector(".canvas-prototype-viewport-outline")).not.toBeNull();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Prototype viewport height" }), { target: { value: "400" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Remember prototype scroll position" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Fix layer when prototype scrolls" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.pages[0].prototypeViewport).toEqual({ width: 400, height: 400, direction: "vertical", preservePosition: true });
+    expect(onChange.mock.calls.at(-1)?.[0].content.pages[0].elements.map((element: { id: string }) => element.id)).toEqual(["body", "header"]);
+    expect(onChange.mock.calls.at(-1)?.[0].content.pages[0].elements[1]).toMatchObject({ id: "header", fixedInPrototype: true });
+
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(screen.getByRole("checkbox", { name: "Fix layer when prototype scrolls" })).not.toBeChecked();
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(screen.getByRole("checkbox", { name: "Enable prototype scrolling" })).not.toBeChecked();
+    expect(document.querySelector(".canvas-prototype-viewport-outline")).toBeNull();
+  });
+
   it("keeps prototype hotspots keyboard reachable and clips them to visible frame bounds", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-prototype-a11y", "2026-07-22T10:00:00.000Z");
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");

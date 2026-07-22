@@ -10,6 +10,70 @@ export interface CanvasPrototypeLayerMatch {
 
 const maxSmartLayerMatches = 32;
 
+export interface CanvasPrototypePageLayers {
+  fixedRootIds: string[];
+  fixedElementIds: Set<string>;
+  scrollingElementIds: string[];
+}
+
+/** Partitions a page into scrolling content and topmost fixed layer subtrees in linear time. */
+export function canvasPrototypePageLayers(page: CanvasPage): CanvasPrototypePageLayers {
+  const elementsById = new Map(page.elements.map((element) => [element.id, element]));
+  const fixedDeclarations = new Set(page.elements.filter((element) => element.fixedInPrototype).map((element) => element.id));
+  const booleanAncestorById = new Map<string, string | undefined>();
+  for (const element of page.elements) {
+    if (booleanAncestorById.has(element.id)) continue;
+    const path: CanvasElement[] = [];
+    const visited = new Set<string>();
+    let current: CanvasElement | undefined = element;
+    while (current && !booleanAncestorById.has(current.id) && !visited.has(current.id)) {
+      visited.add(current.id);
+      path.push(current);
+      current = current.parentId ? elementsById.get(current.parentId) : undefined;
+    }
+    let booleanAncestor = current ? booleanAncestorById.get(current.id) : undefined;
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      if (path[index].type === "boolean") booleanAncestor = path[index].id;
+      booleanAncestorById.set(path[index].id, booleanAncestor);
+    }
+  }
+  for (const declaration of [...fixedDeclarations]) {
+    const booleanAncestor = booleanAncestorById.get(declaration);
+    if (booleanAncestor) fixedDeclarations.add(booleanAncestor);
+  }
+  const fixedById = new Map<string, boolean>();
+  const fixedRootById = new Map<string, string | undefined>();
+  for (const element of page.elements) {
+    if (fixedById.has(element.id)) continue;
+    const path: CanvasElement[] = [];
+    const visited = new Set<string>();
+    let current: CanvasElement | undefined = element;
+    while (current && !fixedById.has(current.id) && !visited.has(current.id)) {
+      visited.add(current.id);
+      path.push(current);
+      current = current.parentId ? elementsById.get(current.parentId) : undefined;
+    }
+    let inheritedFixed = current ? fixedById.get(current.id) ?? false : false;
+    let inheritedRoot = current ? fixedRootById.get(current.id) : undefined;
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const node = path[index];
+      if (!inheritedFixed && fixedDeclarations.has(node.id)) {
+        inheritedFixed = true;
+        inheritedRoot = node.id;
+      }
+      fixedById.set(node.id, inheritedFixed);
+      fixedRootById.set(node.id, inheritedRoot);
+    }
+  }
+  const fixedElementIds = new Set(page.elements.filter((element) => fixedById.get(element.id)).map((element) => element.id));
+  const fixedRootIds = page.elements.filter((element) => fixedRootById.get(element.id) === element.id).map((element) => element.id);
+  return {
+    fixedRootIds,
+    fixedElementIds,
+    scrollingElementIds: page.elements.filter((element) => !fixedElementIds.has(element.id)).map((element) => element.id),
+  };
+}
+
 interface PrototypePageIndex {
   childrenById: Map<string, string[]>;
   depthById: Map<string, number>;
@@ -118,7 +182,7 @@ function related(index: PrototypePageIndex, firstId: string, secondId: string): 
 
 /** Matches a bounded set of non-overlapping visible layers between equal-sized screens. */
 export function canvasPrototypeLayerMatches(source: CanvasPage | undefined, destination: CanvasPage | undefined): CanvasPrototypeLayerMatch[] {
-  if (!source || !destination || source.frame.width !== destination.frame.width || source.frame.height !== destination.frame.height) return [];
+  if (!source || !destination || source.prototypeViewport || destination.prototypeViewport || source.frame.width !== destination.frame.width || source.frame.height !== destination.frame.height) return [];
   const sourceIndex = pageIndex(source);
   const destinationIndex = pageIndex(destination);
   const candidates = [

@@ -500,6 +500,14 @@ export interface CanvasPrototypeOverlay {
   closeOnOutsideClick: boolean;
 }
 
+/** A prototype viewport smaller than the authored page, enabling scrollable previews. */
+export interface CanvasPrototypeViewport {
+  width: number;
+  height: number;
+  direction: "vertical" | "horizontal" | "both";
+  preservePosition: boolean;
+}
+
 /** A serializable prototype link owned by a canvas layer. */
 export interface CanvasPrototypeInteraction {
   id: string;
@@ -580,6 +588,8 @@ export interface CanvasPrimitiveElement {
   interactions?: CanvasPrototypeInteraction[];
   /** Stable cross-page key used by smart prototype transitions. */
   prototypeKey?: string;
+  /** Keep this layer subtree pinned to the prototype viewport while the page scrolls. */
+  fixedInPrototype?: boolean;
   /** Operation used by a non-destructive boolean group. Its direct children remain editable. */
   booleanOperation?: Exclude<CanvasBooleanOperation, "flatten">;
 }
@@ -605,6 +615,8 @@ export interface CanvasComponentElement {
   interactions?: CanvasPrototypeInteraction[];
   /** Stable cross-page key used by smart prototype transitions. */
   prototypeKey?: string;
+  /** Keep this layer subtree pinned to the prototype viewport while the page scrolls. */
+  fixedInPrototype?: boolean;
   componentId: string;
   componentRole: "main" | "instance";
   overrides?: Record<string, Partial<CanvasPrimitiveElement>>;
@@ -664,6 +676,8 @@ export interface CanvasPage {
   frame: { width: number; height: number };
   elements: CanvasElement[];
   appState: CanvasAppState;
+  /** Omitted when the prototype uses the full page as a non-scrolling viewport. */
+  prototypeViewport?: CanvasPrototypeViewport;
 }
 
 export interface CanvasAssetFile {

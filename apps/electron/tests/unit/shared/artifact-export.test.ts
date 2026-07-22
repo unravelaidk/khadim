@@ -303,6 +303,27 @@ describe("renderArtifactForPdf", () => {
     const childSvg = renderCanvasSvg(content, "Boolean operand", { bounds: { x: 20, y: 20, width: 100, height: 100 }, transparent: true, elementIds: ["bottom"] });
     expect(childSvg).toContain('<rect x="20" y="20" width="100" height="100"');
     expect(childSvg).toContain('fill="#f59e0b"');
+    const groupSvg = renderCanvasSvg(content, "Fixed boolean group", { transparent: true, elementIds: ["boolean", "bottom", "top"] });
+    expect(groupSvg).toContain('d="M 20 20 L 170 20');
+    expect(groupSvg).not.toContain('<rect x="20" y="20" width="100"');
+  });
+
+  it("exports deeply nested large scenes with indexed ancestor state", () => {
+    const elements = Array.from({ length: 8_000 }, (_, index) => ({
+      id: `deep-${index}`,
+      parentId: index ? `deep-${index - 1}` : undefined,
+      type: "rectangle" as const,
+      x: index,
+      y: index,
+      width: 10,
+      height: 10,
+      color: "#ffffff",
+    }));
+    const startedAt = performance.now();
+    const svg = renderCanvasSvg({ format: "khadim-canvas", sceneVersion: 1, frame: { width: 10_000, height: 10_000 }, elements, components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {} }, "Large scene");
+
+    expect(svg.match(/<rect /g)).toHaveLength(8_001);
+    expect(performance.now() - startedAt).toBeLessThan(5_000);
   });
 
   it("preserves hidden ancestors and internal frame clipping in component exports", () => {

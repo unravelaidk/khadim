@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T22:23:43+02:00",
+  "capturedAt": "2026-07-22T22:50:39+02:00",
   "repository": "https://github.com/penpot/penpot",
   "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
   "scope": [
@@ -50,6 +50,11 @@
       "area": "prototype flows and animation",
       "evidence": "Penpot stores named prototype flows as starting points for separate journeys. Its current user guide documents dissolve, slide, and push transitions, but does not document matching-layer animation.",
       "khadimDecision": "Persist up to 64 named flows with valid page starts and keep the legacy start-page field as a first-flow mirror. Add smart animation as a Khadim extension: match explicit keys at any layer depth, then unique top-level names or stable IDs; animate a bounded non-overlapping set only between equal-sized screens and fall back to dissolve otherwise."
+    },
+    {
+      "area": "prototype scrolling and fixed layers",
+      "evidence": "Penpot's prototype guide exposes a shape-level Fix when scrolling constraint for fixed headers, navigation bars, and floating actions, and the viewer keeps those layers in their authored viewport position while the prototype content scrolls.",
+      "khadimDecision": "Keep the page frame as the full authored content and store an optional bounded prototype viewport with vertical, horizontal, or two-axis scrolling. Persist fixedInPrototype on any page layer, promote fixed subtrees above scrolling content, treat boolean groups as atomic, keep fixed hotspots interactive, and make history-position restoration an explicit page option."
     }
   ],
   "implementedFromComparison": [
@@ -59,6 +64,7 @@
     "Accessible in-canvas prototype playback with navigation history and overlay focus management",
     "Multiple named prototype flows with inline authoring, independent start screens, flow-aware playback, page-deletion repair, and undo/redo",
     "Smart matching-layer transitions with explicit layer keys, unique-name and stable-ID fallback, nested-layer rendering, duration and easing, dissolve fallback, and reduced-motion handling",
+    "Scrollable page and overlay prototype viewports with fixed layer subtrees, aligned hotspots, keyboard-focusable scroll regions, optional history-position restoration, and an on-canvas viewport boundary",
     "Deletion cleanup for interactions targeting removed pages",
     "Page ordering, prototype start screens, lazy thumbnails, and multi-page PDF output",
     "Shared large-scene geometry indexing, viewport culling, and virtualized layer rails",
@@ -69,6 +75,6 @@
     "Semantic canvas command and undo transaction modules",
     "Extended equal-spacing sequence snapping and true rotated-frame grid snapping",
     "Nested component cycle validation",
-    "Prototype scroll-container behavior"
+    "Selection-aware agent patches for prototype interactions"
   ]
 }

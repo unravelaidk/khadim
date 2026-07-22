@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canvasPrototypeLayerMatches } from "../../../src/renderer/src/studio/canvas-prototype";
+import { canvasPrototypeLayerMatches, canvasPrototypePageLayers } from "../../../src/renderer/src/studio/canvas-prototype";
 import type { CanvasPage } from "../../../src/shared/types";
 
 const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
@@ -35,6 +35,35 @@ describe("canvas prototype matching", () => {
 
     expect(canvasPrototypeLayerMatches(source, destination).map((match) => match.key)).toEqual(["name:Logo"]);
     expect(canvasPrototypeLayerMatches(source, { ...destination, frame: { width: 400, height: 300 } })).toEqual([]);
+    expect(canvasPrototypeLayerMatches({ ...source, prototypeViewport: { width: 960, height: 400, direction: "vertical", preservePosition: false } }, destination)).toEqual([]);
+  });
+
+  it("pins complete topmost fixed subtrees and leaves unrelated layers scrolling", () => {
+    const page: CanvasPage = { id: "long", name: "Long page", frame: { width: 400, height: 1600 }, appState, prototypeViewport: { width: 400, height: 800, direction: "vertical", preservePosition: true }, elements: [
+      { id: "body", type: "frame", x: 0, y: 72, width: 400, height: 1528, color: "#f8fafc" },
+      { id: "card", parentId: "body", type: "rectangle", x: 24, y: 120, width: 352, height: 180, color: "#ffffff" },
+      { id: "header", type: "frame", fixedInPrototype: true, x: 0, y: 0, width: 400, height: 72, color: "#ffffff" },
+      { id: "logo", parentId: "header", type: "rectangle", fixedInPrototype: true, x: 24, y: 16, width: 40, height: 40, color: "#2563eb" },
+    ] };
+
+    const layers = canvasPrototypePageLayers(page);
+    expect(layers.fixedRootIds).toEqual(["header"]);
+    expect([...layers.fixedElementIds]).toEqual(["header", "logo"]);
+    expect(layers.scrollingElementIds).toEqual(["body", "card"]);
+  });
+
+  it("treats a boolean group as atomic when one of its operands is fixed", () => {
+    const page: CanvasPage = { id: "boolean", name: "Boolean", frame: { width: 400, height: 800 }, appState, elements: [
+      { id: "content", type: "rectangle", x: 0, y: 100, width: 400, height: 700, color: "#ffffff" },
+      { id: "shape", type: "boolean", booleanOperation: "union", x: 20, y: 20, width: 120, height: 60, color: "#2563eb" },
+      { id: "operand-a", parentId: "shape", type: "rectangle", fixedInPrototype: true, x: 20, y: 20, width: 80, height: 60, color: "#2563eb" },
+      { id: "operand-b", parentId: "shape", type: "ellipse", x: 60, y: 20, width: 80, height: 60, color: "#2563eb" },
+    ] };
+
+    const layers = canvasPrototypePageLayers(page);
+    expect(layers.fixedRootIds).toEqual(["shape"]);
+    expect([...layers.fixedElementIds]).toEqual(["shape", "operand-a", "operand-b"]);
+    expect(layers.scrollingElementIds).toEqual(["content"]);
   });
 
   it("bounds the number of independently rendered smart layers", () => {

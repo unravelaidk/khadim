@@ -411,6 +411,16 @@ describe("ProjectStore", () => {
     const prototypeArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [prototypeButton], activePageId: "page-a", prototypeFlows: [{ id: "main", name: "Main journey", startPageId: "page-b" }, { id: "alternate", name: "Alternate journey", startPageId: "page-a" }], prototypeStartPageId: "page-b", pages: prototypePages } };
     await store.saveArtifacts(project.id, [prototypeArtifact]);
     await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([prototypeArtifact]);
+    const fixedPrototypeButton: CanvasPrimitiveElement = { ...prototypeButton, fixedInPrototype: true };
+    const scrollingPrototypePages: CanvasPage[] = prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [fixedPrototypeButton], prototypeViewport: { width: page.frame.width, height: 400, direction: "vertical", preservePosition: true } } : page);
+    const scrollingPrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [fixedPrototypeButton], activePageId: "page-a", pages: scrollingPrototypePages } };
+    await store.saveArtifacts(project.id, [scrollingPrototype]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([scrollingPrototype]);
+    const invalidViewport = { ...scrollingPrototype, content: { ...scrollingPrototype.content, pages: scrollingPrototypePages.map((page) => page.id === "page-a" ? { ...page, prototypeViewport: { width: 500, height: 400, direction: "vertical", preservePosition: true } } : page) } } as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [invalidViewport])).rejects.toThrow("artifact library is invalid");
+    const scrollingLayer: CanvasPrimitiveElement = { id: "scrolling-content", type: "rectangle", x: 0, y: 100, width: 400, height: 500, color: "#ffffff" };
+    const invalidFixedOrder = { ...scrollingPrototype, content: { ...scrollingPrototype.content, elements: [fixedPrototypeButton, scrollingLayer], pages: scrollingPrototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [fixedPrototypeButton, scrollingLayer] } : page) } } as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [invalidFixedOrder])).rejects.toThrow("artifact library is invalid");
     const stalePrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "missing" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "missing" }] }] } : page) } };
     await expect(store.saveArtifacts(project.id, [stalePrototype])).rejects.toThrow("artifact library is invalid");
     const unsafePrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "bad-url", trigger: "click", action: "open-url", url: "javascript:alert(1)" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "bad-url", trigger: "click", action: "open-url", url: "javascript:alert(1)" }] }] } : page) } };

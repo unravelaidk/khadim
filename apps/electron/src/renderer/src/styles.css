@@ -2764,6 +2764,8 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 .canvas-grid { fill: var(--line); opacity: .54; }
 .canvas-frame { fill: white; stroke: color-mix(in oklch, var(--text-3) 24%, transparent); stroke-width: 1px; vector-effect: non-scaling-stroke; filter: url(#khadim-canvas-shadow); }
 .canvas-frame-label { fill: var(--text-2); font: 600 11px/1 "Atkinson Hyperlegible Next Variable", sans-serif; user-select: none; }
+.canvas-prototype-viewport-outline rect { fill: none; stroke: color-mix(in oklch, var(--blue) 72%, white); stroke-width: 1.5px; stroke-dasharray: 7 5; }
+.canvas-prototype-viewport-outline text { fill: color-mix(in oklch, var(--blue) 78%, var(--text)); font-weight: 650; paint-order: stroke; stroke: color-mix(in oklch, var(--surface) 88%, transparent); stroke-width: 3px; }
 .canvas-stage text.canvas-node { font-family: "Atkinson Hyperlegible Next Variable", sans-serif; user-select: none; }
 .canvas-node { cursor: move; }
 .canvas-vector-node { fill-rule: evenodd; }
@@ -2944,6 +2946,17 @@ button.browser-address:hover .browser-address-open { opacity: 1; transform: tran
 .canvas-prototype-stage { position: relative; width: min(92%, 1100px); max-height: 100%; box-shadow: 0 6px 8px color-mix(in oklch, var(--shadow-color) 62%, transparent); }
 .canvas-prototype-screen { position: relative; width: 100%; height: 100%; overflow: hidden; transform-origin: center; }
 .canvas-prototype-screen > img { width: 100%; height: 100%; display: block; object-fit: contain; user-select: none; }
+.canvas-prototype-scroll { position: absolute; inset: 0; width: 100%; height: 100%; outline: 0; overscroll-behavior: contain; scrollbar-color: color-mix(in oklch, var(--text-3) 55%, transparent) transparent; scrollbar-width: thin; }
+.canvas-prototype-scroll.vertical { overflow-x: hidden; overflow-y: auto; }
+.canvas-prototype-scroll.horizontal { overflow-x: auto; overflow-y: hidden; }
+.canvas-prototype-scroll.both { overflow: auto; }
+.canvas-prototype-scroll:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--blue) 68%, transparent); }
+.canvas-prototype-scroll-content,
+.canvas-prototype-fixed-content { position: relative; flex: none; }
+.canvas-prototype-scroll-content > img,
+.canvas-prototype-fixed-content > img { width: 100%; height: 100%; display: block; object-fit: fill; user-select: none; pointer-events: none; }
+.canvas-prototype-fixed-content { position: absolute; z-index: 3; top: 0; left: 0; overflow: hidden; pointer-events: none; }
+.canvas-prototype-fixed-content .canvas-prototype-hotspot { pointer-events: auto; }
 .canvas-prototype-screen.smart > img,
 .canvas-prototype-smart-pair > img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; user-select: none; pointer-events: none; }
 .canvas-prototype-smart-source-base { z-index: 1; animation: canvas-prototype-smart-source-base var(--prototype-duration, 280ms) var(--prototype-easing, ease-out) both; }
