@@ -11,7 +11,7 @@ import type { PluginManager } from "../../../src/main/plugins/plugin-manager";
 import { applySequencedAgentEvent } from "../../../src/shared/agent-event-reducer";
 import type { AgentStreamEvent, Conversation } from "../../../src/shared/types";
 
-const modulePath = resolve(process.cwd(), "plugins/builtin/opencode/dist/opencode.wasm");
+const modulePath = resolve(process.cwd(), "plugins/builtin/opencode/opencode.wasm");
 const servers: Array<ReturnType<typeof createServer>> = [];
 const temporaryDirectories: string[] = [];
 
@@ -26,7 +26,7 @@ function actualOpenCodePluginManager(baseUrl: string): PluginManager {
     get: async () => ({ entry: {
       id: "khadim.opencode",
       name: "OpenCode",
-      version: "0.2.1",
+      version: "0.3.0",
       description: "Test",
       enabled: true,
       bundled: true,
@@ -45,7 +45,7 @@ function actualOpenCodePluginManager(baseUrl: string): PluginManager {
 describe("bundled OpenCode WebAssembly plugin", () => {
   it("loads through the production ABI and exposes its harness", async () => {
     await expect(inspectCorePlugin(modulePath)).resolves.toEqual({
-      info: { id: "khadim.opencode", name: "OpenCode", version: "0.2.1", apiVersion: 1 },
+      info: { id: "khadim.opencode", name: "OpenCode", version: "0.3.0", apiVersion: 1 },
       capabilities: {
         harnesses: [{
           id: "opencode",
@@ -66,7 +66,8 @@ describe("bundled OpenCode WebAssembly plugin", () => {
       prompt: "Say hello",
       systemPrompt: "Be concise.",
       model: { provider: "openai", model: "gpt-5" },
-      config: { baseUrl: "http://127.0.0.1:4096/", useKhadimModel: true },
+      mode: "plan",
+      config: { baseUrl: "http://127.0.0.1:4096/" },
     };
 
     await expect(callCorePlugin(modulePath, "harness.endpoint", context)).resolves.toEqual({
@@ -80,6 +81,7 @@ describe("bundled OpenCode WebAssembly plugin", () => {
         parts: [{ type: "text", text: "Say hello" }],
         system: "Be concise.",
         model: { providerID: "openai", modelID: "gpt-5" },
+        agent: "plan",
       },
     });
     await expect(callCorePlugin(modulePath, "harness.event", {
@@ -90,6 +92,44 @@ describe("bundled OpenCode WebAssembly plugin", () => {
         properties: { sessionID: "session-one", messageID: "message-one", partID: "part-one", field: "text", delta: "Hello" },
       },
     })).resolves.toEqual({ events: [{ event_type: "text_delta", content: "Hello" }] });
+    await expect(callCorePlugin(modulePath, "harness.event", {
+      ...context,
+      remoteSessionId: "session-one",
+      event: {
+        type: "question.asked",
+        properties: {
+          id: "request-one",
+          sessionID: "session-one",
+          questions: [{
+            header: "Delivery",
+            question: "How should this ship?",
+            options: [{ label: "Now", description: "Release immediately" }],
+            multiple: false,
+          }],
+        },
+      },
+    })).resolves.toEqual({ events: [{
+      event_type: "question",
+      metadata: {
+        requestId: "request-one",
+        questions: [{
+          id: "question-0-delivery",
+          header: "Delivery",
+          question: "How should this ship?",
+          options: [{ label: "Now", description: "Release immediately" }],
+          multiSelect: false,
+        }],
+      },
+    }] });
+    await expect(callCorePlugin(modulePath, "harness.question.reply", {
+      ...context,
+      questionRequestId: "request/one",
+      questionAnswers: { "question-0-delivery": ["Now"] },
+    })).resolves.toEqual({
+      method: "POST",
+      path: "/question/request%2Fone/reply",
+      body: { answers: [["Now"]] },
+    });
   });
 
   it("keeps OpenCode tool events valid through chat persistence", async () => {
@@ -202,7 +242,11 @@ describe("bundled OpenCode WebAssembly plugin", () => {
     }, (event) => events.push(event));
     await run.closed;
 
-    expect(promptBody).toEqual({ parts: [{ type: "text", text: "Say hello" }], system: "Be concise." });
+    expect(promptBody).toEqual({
+      parts: [{ type: "text", text: "Say hello" }],
+      system: "Be concise.",
+      model: { providerID: "openai", modelID: "gpt-5" },
+    });
     expect(events).toEqual([
       { event_type: "text_delta", content: "Hello from OpenCode" },
       { event_type: "done", content: "Run completed." },

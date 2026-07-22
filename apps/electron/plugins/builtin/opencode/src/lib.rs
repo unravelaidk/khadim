@@ -8,7 +8,7 @@ impl Plugin for OpenCodePlugin {
         PluginInfo {
             id: "khadim.opencode".to_string(),
             name: "OpenCode".to_string(),
-            version: "0.2.1".to_string(),
+            version: "0.3.0".to_string(),
             api_version: 1,
         }
     }
@@ -38,6 +38,8 @@ impl Plugin for OpenCodePlugin {
             "harness.session.parse" => parse_session(context),
             "harness.events" => Ok(request("GET", "/event", None)),
             "harness.prompt" => prompt_request(context),
+            "harness.question.reply" => question_reply_request(context),
+            "harness.approval.reply" => approval_reply_request(context),
             "harness.abort" => Ok(request("POST", &format!("/session/{}/abort", session_id(context)?), None)),
             "harness.event" => map_event(context),
             _ => Err(format!("Unsupported OpenCode operation: {operation}")),
@@ -104,20 +106,49 @@ fn prompt_request(context: &Map<String, Value>) -> Result<Value, String> {
     if let Some(system) = context.get("systemPrompt").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) {
         body["system"] = Value::String(system.to_string());
     }
-    if let Some(agent) = config_string(context, "agent")? { body["agent"] = Value::String(agent); }
-    let configured_provider = config_string(context, "providerId")?;
-    let configured_model = config_string(context, "modelId")?;
-    let use_khadim_model = config(context)?.get("useKhadimModel").and_then(Value::as_bool).unwrap_or(false);
-    let model = match (configured_provider, configured_model) {
-        (Some(provider), Some(model)) => Some(json!({ "providerID": provider, "modelID": model })),
-        (None, None) if use_khadim_model => context.get("model").and_then(Value::as_object).and_then(|model| {
-            Some(json!({ "providerID": model.get("provider")?.as_str()?, "modelID": model.get("model")?.as_str()? }))
-        }),
-        (None, None) => None,
-        _ => return Err("OpenCode providerId and modelId must be configured together".to_string()),
-    };
-    if let Some(model) = model { body["model"] = model; }
+    if let Some(agent) = context.get("mode").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) {
+        body["agent"] = Value::String(agent.trim().to_string());
+    } else if let Some(agent) = config_string(context, "agent")? {
+        body["agent"] = Value::String(agent);
+    }
+    let model = context.get("model").and_then(Value::as_object).ok_or("Selected chat model is missing")?;
+    let provider = model.get("provider").and_then(Value::as_str).filter(|value| !value.is_empty())
+        .ok_or("Selected chat model provider is missing")?;
+    let model_id = model.get("model").and_then(Value::as_str).filter(|value| !value.is_empty())
+        .ok_or("Selected chat model ID is missing")?;
+    body["model"] = json!({ "providerID": provider, "modelID": model_id });
     Ok(request("POST", &format!("/session/{}/prompt_async", session_id(context)?), Some(body)))
+}
+
+fn question_reply_request(context: &Map<String, Value>) -> Result<Value, String> {
+    let request_id = context.get("questionRequestId").and_then(Value::as_str).filter(|value| !value.is_empty())
+        .map(url_segment).ok_or("OpenCode question request id is missing")?;
+    let answers = context.get("questionAnswers").and_then(Value::as_object)
+        .ok_or("OpenCode question answers are missing")?;
+    let mut ordered = answers.iter().filter_map(|(id, answer)| {
+        let index = id.strip_prefix("question-")?.split('-').next()?.parse::<usize>().ok()?;
+        let values = answer.as_array()?.iter().filter_map(Value::as_str).map(Value::from).collect::<Vec<_>>();
+        Some((index, Value::Array(values)))
+    }).collect::<Vec<_>>();
+    ordered.sort_by_key(|(index, _)| *index);
+    Ok(request(
+        "POST",
+        &format!("/question/{request_id}/reply"),
+        Some(json!({ "answers": ordered.into_iter().map(|(_, answer)| answer).collect::<Vec<_>>() })),
+    ))
+}
+
+fn approval_reply_request(context: &Map<String, Value>) -> Result<Value, String> {
+    let request_id = context.get("approvalRequestId").and_then(Value::as_str).filter(|value| !value.is_empty())
+        .map(url_segment).ok_or("OpenCode approval request id is missing")?;
+    let decision = context.get("approvalDecision").and_then(Value::as_str).ok_or("OpenCode approval decision is missing")?;
+    let reply = match decision {
+        "accept" => "once",
+        "acceptForSession" => "always",
+        "decline" | "cancel" => "reject",
+        _ => return Err("OpenCode approval decision is invalid".to_string()),
+    };
+    Ok(request("POST", &format!("/permission/{request_id}/reply"), Some(json!({ "reply": reply }))))
 }
 
 fn map_event(context: &Map<String, Value>) -> Result<Value, String> {
@@ -134,6 +165,16 @@ fn map_event(context: &Map<String, Value>) -> Result<Value, String> {
         "message.part.updated" => map_part(properties),
         "message.part.delta" => map_part_delta(properties),
         "session.next.text.delta" => map_text_delta(properties),
+        "question.asked" if event_session == wanted_session => map_question(properties),
+        "question.replied" | "question.rejected" => {
+            let request_id = properties.and_then(|props| props.get("requestID")).and_then(Value::as_str).unwrap_or("");
+            json!({ "events": [{ "event_type": "question", "metadata": { "requestId": request_id, "resolved": true } }] })
+        }
+        "permission.asked" if event_session == wanted_session => map_permission(properties),
+        "permission.replied" => {
+            let request_id = properties.and_then(|props| props.get("requestID")).and_then(Value::as_str).unwrap_or("");
+            json!({ "events": [{ "event_type": "approval", "metadata": { "requestId": request_id, "resolved": true } }] })
+        }
         "session.status" if event_session == wanted_session => map_session_status(properties),
         "session.idle" if event_session == wanted_session => json!({ "events": [{ "event_type": "done", "content": "Run completed." }], "terminal": true }),
         "session.error" if event_session.is_empty() || event_session == wanted_session => {
@@ -143,6 +184,60 @@ fn map_event(context: &Map<String, Value>) -> Result<Value, String> {
         _ => json!({ "events": [] }),
     };
     Ok(result)
+}
+
+fn map_permission(properties: Option<&Map<String, Value>>) -> Value {
+    let Some(properties) = properties else { return json!({ "events": [] }); };
+    let Some(request_id) = properties.get("id").and_then(Value::as_str).filter(|value| !value.is_empty()) else { return json!({ "events": [] }); };
+    let permission = properties.get("permission").and_then(Value::as_str).unwrap_or("tool");
+    let kind = if permission.contains("bash") || permission.contains("command") { "command" }
+        else if permission.contains("read") { "file-read" }
+        else if permission.contains("edit") || permission.contains("write") { "file-change" }
+        else { "tool" };
+    let patterns = properties.get("patterns").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect::<Vec<_>>();
+    let detail = if patterns.is_empty() { permission.to_string() } else { patterns.join("\n") };
+    let title = if kind == "command" { "Run this command?" } else if kind == "file-read" { "Allow this file read?" } else if kind == "file-change" { "Allow this file change?" } else { "Allow this tool?" };
+    json!({ "events": [{ "event_type": "approval", "metadata": {
+        "requestId": request_id, "kind": kind, "title": title, "detail": detail
+    } }] })
+}
+
+fn question_id(index: usize, header: &str) -> String {
+    let slug = header.trim().to_ascii_lowercase().chars().map(|character| {
+        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') { character } else { '-' }
+    }).collect::<String>();
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() { format!("question-{index}") } else { format!("question-{index}-{slug}") }
+}
+
+fn map_question(properties: Option<&Map<String, Value>>) -> Value {
+    let Some(properties) = properties else { return json!({ "events": [] }); };
+    let Some(request_id) = properties.get("id").and_then(Value::as_str).filter(|value| !value.is_empty()) else {
+        return json!({ "events": [] });
+    };
+    let questions = properties.get("questions").and_then(Value::as_array).into_iter().flatten().enumerate().filter_map(|(index, value)| {
+        let question = value.as_object()?;
+        let prompt = question.get("question").and_then(Value::as_str)?.trim();
+        if prompt.is_empty() { return None; }
+        let header = question.get("header").and_then(Value::as_str).filter(|value| !value.trim().is_empty()).unwrap_or("Question");
+        let options = question.get("options").and_then(Value::as_array).into_iter().flatten().filter_map(|value| {
+            let option = value.as_object()?;
+            let label = option.get("label").and_then(Value::as_str)?.trim();
+            if label.is_empty() { return None; }
+            let description = option.get("description").and_then(Value::as_str).filter(|value| !value.trim().is_empty()).unwrap_or(label);
+            Some(json!({ "label": label, "description": description }))
+        }).collect::<Vec<_>>();
+        Some(json!({
+            "id": question_id(index, header),
+            "header": header,
+            "question": prompt,
+            "options": options,
+            "multiSelect": question.get("multiple").and_then(Value::as_bool).unwrap_or(false)
+        }))
+    }).collect::<Vec<_>>();
+    if questions.is_empty() { json!({ "events": [] }) } else {
+        json!({ "events": [{ "event_type": "question", "metadata": { "requestId": request_id, "questions": questions } }] })
+    }
 }
 
 fn map_session_status(properties: Option<&Map<String, Value>>) -> Value {

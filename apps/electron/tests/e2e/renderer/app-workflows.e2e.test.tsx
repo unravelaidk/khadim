@@ -51,6 +51,8 @@ function createDesktopApi() {
     agent: {
       start,
       abort: vi.fn(async () => undefined),
+      answerQuestion: vi.fn(async () => undefined),
+      answerApproval: vi.fn(async () => undefined),
       recover: vi.fn(async () => []),
       acknowledge: vi.fn(async () => undefined),
       onEvent: (nextListener) => {
@@ -182,6 +184,74 @@ describe("project chat workflow", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("The agent process could not start.");
   });
 
+  it("surfaces a harness question in the composer and sends its answer to the active run", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Prepare the release{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const run = desktop.start.mock.calls[0][0];
+
+    act(() => desktop.emit({
+      runId: run.runId,
+      sequence: 1,
+      event: {
+        event_type: "question",
+        metadata: {
+          requestId: "request-one",
+          questions: [{
+            id: "delivery",
+            header: "Delivery",
+            question: "When should this ship?",
+            options: [],
+          }],
+        },
+      },
+    }));
+
+    expect(await screen.findByText("When should this ship?")).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Custom answer" }), "Tomorrow");
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+
+    await waitFor(() => expect(desktop.api.agent.answerQuestion).toHaveBeenCalledWith(
+      run.runId,
+      "request-one",
+      { delivery: ["Tomorrow"] },
+    ));
+    expect(screen.queryByText("When should this ship?")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a harness approval and sends the selected decision", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Run the checks{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const run = desktop.start.mock.calls[0][0];
+
+    act(() => desktop.emit({
+      runId: run.runId,
+      sequence: 1,
+      event: {
+        event_type: "approval",
+        metadata: { requestId: "approval-one", kind: "command", title: "Run this command?", detail: "bun test" },
+      },
+    }));
+
+    expect(await screen.findByText("Run this command?")).toBeInTheDocument();
+    expect(screen.getByText("bun test")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Always allow" }));
+
+    await waitFor(() => expect(desktop.api.agent.answerApproval).toHaveBeenCalledWith(
+      run.runId,
+      "approval-one",
+      "acceptForSession",
+    ));
+    expect(screen.queryByText("Run this command?")).not.toBeInTheDocument();
+  });
+
   it("creates document, website, and canvas artifacts in one persistent Studio workspace", async () => {
     const desktop = createDesktopApi();
     Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
@@ -239,13 +309,29 @@ describe("project chat workflow", () => {
     await waitFor(() => expect(desktop.api.artifacts.stopPreview).toHaveBeenCalled());
     await user.click(screen.getByRole("button", { name: "Create artifact" }));
     await user.click(screen.getByRole("menuitem", { name: /Canvas/ }));
-    expect(screen.getByRole("img", { name: "Canvas artwork" })).toBeInTheDocument();
-    expect(desktop.artifacts.get(projectA.id)?.[0]).toMatchObject({ kind: "canvas", content: { format: "excalidraw" } });
+    expect(screen.getByRole("application", { name: "Canvas artwork" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Canvas layers and assets" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Canvas settings" })).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Canvas tools" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Rectangle$/ }));
+    expect(screen.getByRole("button", { name: "Hide Rectangle" })).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "X position" })).toHaveValue(96);
+    await user.click(screen.getByRole("button", { name: "Duplicate" }));
+    expect(screen.getAllByText("Rectangle copy")).not.toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.queryAllByText("Rectangle copy")).toHaveLength(0);
+    await waitFor(() => expect(desktop.artifacts.get(projectA.id)?.[0]?.content).toMatchObject({
+      format: "khadim-canvas",
+      sceneVersion: 1,
+      frame: { width: 960, height: 600 },
+      elements: [expect.objectContaining({ type: "rectangle", x: 96, y: 88, width: 180, height: 120 })],
+    }));
+    expect(desktop.artifacts.get(projectA.id)?.[0]).toMatchObject({ kind: "canvas", content: { format: "khadim-canvas", sceneVersion: 1 } });
   });
 
   it("keeps Studio beside chat and applies an agent edit through the normal run snapshot", async () => {
     const desktop = createDesktopApi();
-    vi.mocked(desktop.api.artifacts.preview!).mockResolvedValueOnce({ url: "about:blank?revision=1" }).mockRejectedValue(new Error("src/StudioPage.jsx: Unexpected token"));
+    vi.mocked(desktop.api.artifacts.preview!).mockResolvedValueOnce({ url: "about:blank?revision=1" }).mockResolvedValue({ url: "about:blank?revision=2" });
     Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
     const user = userEvent.setup();
     render(<App />);
@@ -331,10 +417,47 @@ describe("project chat workflow", () => {
     await waitFor(() => expect(desktop.chats.get(projectA.id)?.[0]?.runs?.[0]).toMatchObject({ status: "complete" }));
     expect(screen.getByText("Updated the headline.")).toBeInTheDocument();
     expect(screen.queryByText(/componentPatches/)).not.toBeInTheDocument();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Latest changes couldn’t be shown");
-    expect(screen.getByTitle("Untitled website preview")).toHaveAttribute("src", "about:blank?revision=1");
-    await user.click(screen.getByRole("button", { name: "Open source" }));
-    expect(screen.getByRole("tab", { name: "Code" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(screen.getByTitle("Untitled website preview")).toHaveAttribute("src", "about:blank?revision=2"));
+    expect(screen.getByText("Changes applied to the artifact.")).toBeInTheDocument();
+  });
+
+  it("refreshes an open document page as soon as an agent edit is applied", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Studio" }));
+    await user.click(await screen.findByRole("button", { name: "Document" }));
+    expect(screen.getByTitle("Untitled document editable page")).toHaveAttribute("srcdoc", expect.stringContaining("A clear title for the work"));
+
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Turn this into a field report{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const request = desktop.start.mock.calls[0][0];
+    const revisedHtml = "<!doctype html><html><body><h1>Field report</h1><p>The inspection is complete.</p></body></html>";
+
+    act(() => desktop.emit({
+      runId: request.runId,
+      sequence: 1,
+      event: {
+        event_type: "step_complete",
+        content: "Updated the report.",
+        metadata: {
+          id: "edit-document",
+          title: "Updated document",
+          tool: "artifact_edit",
+          artifactId: request.artifactId,
+          artifactEdit: { title: "Field report", html: revisedHtml },
+          changeCount: 2,
+        },
+      },
+    }));
+
+    await waitFor(() => expect(screen.getByTitle("Field report editable page")).toHaveAttribute("srcdoc", expect.stringContaining("The inspection is complete")));
+    expect(desktop.artifacts.get(projectA.id)?.[0]).toMatchObject({ title: "Field report", content: { format: "document-html", html: revisedHtml } });
+
+    act(() => desktop.emit({ runId: request.runId, sequence: 2, event: { event_type: "done" } }));
+    expect(await screen.findByText("Changes applied to the artifact.")).toBeInTheDocument();
   });
 
   it("searches global destinations from the command palette with the keyboard", async () => {
@@ -409,13 +532,14 @@ describe("project chat workflow", () => {
 
     await user.click(await screen.findByRole("button", { name: /Agents/ }));
     await user.click(screen.getByRole("button", { name: "New agent" }));
+    await user.click(screen.getByRole("button", { name: /Blank agent/ }));
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Customer follow-up");
-    await user.type(screen.getByRole("textbox", { name: "Behavior" }), "Write concise customer replies and ask before sending.");
+    await user.type(screen.getByRole("textbox", { name: "Instructions" }), "Write concise customer replies and ask before sending.");
     await user.click(screen.getByRole("button", { name: /Project files/ }));
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
     expect(screen.getByRole("heading", { name: "Customer follow-up" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Start a new chat with Customer follow-up" }));
+    await user.click(screen.getByRole("button", { name: "Start chat" }));
     await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Reply to Alex{Enter}");
 
     await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
@@ -423,10 +547,72 @@ describe("project chat workflow", () => {
       prompt: "Reply to Alex",
       systemPrompt: "Write concise customer replies and ask before sending.",
       enabledTools: ["web"],
+      enabledApps: [],
     });
     expect(JSON.parse(localStorage.getItem("khadim.agents.v1") ?? "[]")).toEqual([
       expect.objectContaining({ name: "Customer follow-up", type: "agent", connectors: ["web"] }),
     ]);
+  });
+
+  it("configures a template agent with a scoped Google app allowlist and supports edit and delete", async () => {
+    const desktop = createDesktopApi();
+    vi.mocked(desktop.api.google.get).mockResolvedValue({
+      configured: true,
+      connected: true,
+      credentialStatus: "ready",
+      email: "owner@example.com",
+      scopes: [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+      ],
+    });
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Agents/ }));
+    const newAgentButton = screen.getByRole("button", { name: "New agent" });
+    await user.click(newAgentButton);
+    expect(screen.getByRole("dialog", { name: "Agent templates" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Customer follow-up/ })).toHaveFocus());
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Agent templates" })).not.toBeInTheDocument();
+    expect(newAgentButton).toHaveFocus();
+    await user.click(newAgentButton);
+    await user.click(screen.getByRole("button", { name: /Meeting brief/ }));
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Meeting brief");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Environment" }), "rpa");
+    expect(screen.getByRole("button", { name: /Google Calendar/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Google Drive/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^Gmail\b/ })).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("button", { name: "Create agent" }));
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const description = screen.getByRole("textbox", { name: "Short description" });
+    await user.clear(description);
+    await user.type(description, "Prepares the agenda and decision brief.");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.getByText("Prepares the agenda and decision brief.", { selector: ".agent-profile-identity p" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Start chat" }));
+    await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Brief tomorrow's meeting{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    expect(desktop.start.mock.calls[0][0]).toMatchObject({
+      prompt: "Brief tomorrow's meeting",
+      enabledTools: ["files", "apps"],
+      enabledApps: ["calendar", "drive"],
+    });
+    expect(desktop.chats.get(projectA.id)?.[0]?.runs?.[0]).toMatchObject({ harness: "rpa", enabledApps: ["calendar", "drive"] });
+
+    await user.click(screen.getByRole("button", { name: /Agents/ }));
+    expect(screen.getByText(/^1 run\b/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete agent" }));
+    expect(screen.getByText("Existing chats keep their saved run snapshots.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete agent" }));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("khadim.agents.v1") ?? "[]")).toEqual([]));
+    expect(screen.getByRole("heading", { name: "Everyday" })).toBeInTheDocument();
   });
 
   it("keeps a running chat and its generated artifact bound to the originating project", async () => {

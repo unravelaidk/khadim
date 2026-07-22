@@ -1,4 +1,4 @@
-import type { AgentStreamEvent } from "./types";
+import type { AgentApprovalDecision, AgentQuestionAnswers, AgentRuntimeMode, AgentStreamEvent } from "./types";
 
 export const KHADIM_PLUGIN_API_VERSION = 1 as const;
 export const KHADIM_PLUGIN_MANIFEST = "khadim.plugin.json";
@@ -46,6 +46,39 @@ export interface PluginHarnessDescriptor {
   name: string;
   description: string;
   icon?: string;
+}
+
+/** A model reported by the selected harness runtime, not Khadim's direct-API catalog. */
+export interface PluginHarnessModel {
+  /** Provider-qualified for multi-provider harnesses such as OpenCode. */
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  detail?: string;
+  isDefault?: boolean;
+}
+
+/** A native interaction mode reported by a harness runtime. */
+export interface PluginHarnessMode {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
+/** A slash command discovered from a harness runtime (for example Claude Code skills). */
+export interface PluginHarnessCommand {
+  name: string;
+  description?: string;
+  argumentHint?: string;
+  aliases?: string[];
+}
+
+export interface PluginHarnessCatalog {
+  models: PluginHarnessModel[];
+  modes: PluginHarnessMode[];
+  commands?: PluginHarnessCommand[];
 }
 
 export interface PluginConfigFieldStatus extends PluginConfigField {
@@ -109,6 +142,12 @@ export interface PluginHarnessCallContext {
   prompt?: string;
   systemPrompt?: string;
   model?: { provider: string; model: string };
+  mode?: string;
+  runtimeMode?: AgentRuntimeMode;
+  questionRequestId?: string;
+  questionAnswers?: AgentQuestionAnswers;
+  approvalRequestId?: string;
+  approvalDecision?: AgentApprovalDecision;
   config: Record<string, string | number | boolean>;
 }
 

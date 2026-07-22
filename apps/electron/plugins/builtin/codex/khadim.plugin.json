@@ -1,0 +1,17 @@
+{
+  "apiVersion": 1,
+  "id": "khadim.codex",
+  "name": "Codex",
+  "version": "0.1.0",
+  "description": "Runs Khadim chats through the local Codex CLI app-server.",
+  "author": "Khadim contributors",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://developers.openai.com/codex/app-server",
+  "main": "codex.wasm",
+  "defaultEnabled": true,
+  "capabilities": ["harness"],
+  "permissions": { "network": { "allowedHosts": ["127.0.0.1", "localhost", "::1"], "allowHttp": true } },
+  "config": [
+    { "key": "binaryPath", "label": "Binary path", "description": "Codex CLI executable. Install and authenticate Codex before using this harness.", "type": "string", "default": "codex" }
+  ]
+}

@@ -94,7 +94,7 @@ export function BrowserPreview({ title, html, runtime, onOpenSource }: BrowserPr
       ) : runtime?.status === "error" ? (
         <div className="browser-preview-state error" role="alert"><strong>Preview could not start</strong><small>{runtime.error}</small>{onOpenSource && <button type="button" onClick={onOpenSource}>Open source</button>}</div>
       ) : (
-        <iframe title={`${title} preview`} srcDoc={html} sandbox="" />
+        <iframe key={`static:${reloadKey}`} title={`${title} preview`} srcDoc={html} sandbox="" />
       )}
       {runtime?.status === "error" && runtime.url && (
         <div className="browser-preview-error" role="alert">
@@ -110,7 +110,7 @@ export function BrowserPreview({ title, html, runtime, onOpenSource }: BrowserPr
       <section className="browser-frame" aria-label={`${title} browser preview`}>
         <header className="browser-frame-bar">
           <span className="browser-dots" aria-hidden="true"><i /><i /><i /></span>
-          <button type="button" className="browser-reload" aria-label="Reload preview" title="Reload preview" onClick={() => setReloadKey((current) => current + 1)} disabled={!runtime?.url}><ArrowClockwise size={14} /></button>
+          <button type="button" className="browser-reload" aria-label="Reload preview" title="Reload preview" onClick={() => setReloadKey((current) => current + 1)}><ArrowClockwise size={14} /></button>
           {openableUrl ? (
             <button type="button" className="browser-address" aria-label="Open preview in browser" title={openableUrl} onClick={() => void window.khadim.shell.openExternal(openableUrl)}>
               <GlobeSimple size={13} weight="bold" /><span>{previewAddress(openableUrl)}</span><ArrowSquareOut className="browser-address-open" size={12} weight="bold" />

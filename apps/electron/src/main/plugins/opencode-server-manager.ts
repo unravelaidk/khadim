@@ -1,15 +1,17 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { constants, accessSync, existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
-import { delimiter, extname, join } from "node:path";
+import { join } from "node:path";
 import { terminateProcessTree } from "../process-lifecycle";
+import { resolveExecutable } from "./executable-resolution";
+import type { NativeToolMcpEndpoint } from "../native-tool-mcp-host";
 
 export interface PrepareOpenCodeInput {
   pluginId: string;
   bundled: boolean;
   engineSessionKey: string;
   config: Record<string, string | number | boolean>;
+  nativeToolMcp?: NativeToolMcpEndpoint;
 }
 
 interface ManagedServer {
@@ -33,43 +35,6 @@ const outputLimit = 16 * 1024;
 function appendBounded(current: string, chunk: string): string {
   const next = `${current}${chunk}`;
   return next.length <= outputLimit ? next : next.slice(-outputLimit);
-}
-
-function executable(path: string): boolean {
-  try {
-    accessSync(path, process.platform === "win32" ? constants.F_OK : constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function commandExtensions(command: string): string[] {
-  if (process.platform !== "win32" || extname(command)) return [""];
-  return (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").map((value) => value.toLowerCase());
-}
-
-function resolveBinary(configured: string): string {
-  const value = configured.trim() || "opencode";
-  const expanded = value.startsWith("~/") || value.startsWith("~\\") ? join(homedir(), value.slice(2)) : value;
-  if (expanded.includes("/") || expanded.includes("\\")) return expanded;
-  const extensions = commandExtensions(expanded);
-  const directories = [
-    ...(process.env.PATH ?? "").split(delimiter),
-    join(homedir(), ".opencode", "bin"),
-    join(homedir(), ".local", "bin"),
-    join(homedir(), ".bun", "bin"),
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-  ];
-  for (const directory of directories) {
-    if (!directory) continue;
-    for (const extension of extensions) {
-      const candidate = join(directory, `${expanded}${extension}`);
-      if (existsSync(candidate) && executable(candidate)) return candidate;
-    }
-  }
-  return expanded;
 }
 
 function allocateLoopbackPort(): Promise<number> {
@@ -126,6 +91,9 @@ export class OpenCodeServerManager {
     // even when the user never chose an externally managed server. Migrate
     // that one historical value to the v0.2 blank-means-managed behavior.
     if (externalUrl && externalUrl.replace(/\/$/, "") !== legacyDefaultServerUrl) {
+      if (input.nativeToolMcp?.hasTools) {
+        throw new Error("The configured external OpenCode server cannot receive this run's Studio or connected-app tools. Clear Server URL in Apps so Khadim can start a tool-enabled OpenCode server.");
+      }
       return { ...input.config, baseUrl: externalUrl };
     }
     if (this.#stopping) throw new Error("Khadim is shutting down and cannot start OpenCode.");
@@ -161,8 +129,24 @@ export class OpenCodeServerManager {
     if (this.#stopping) throw new Error("Khadim is shutting down and cannot start OpenCode.");
     const configuredBinary = typeof input.config.binaryPath === "string" ? input.config.binaryPath : "opencode";
     if (configuredBinary.includes("\0") || configuredBinary.length > 4_096) throw new Error("OpenCode Binary path is invalid.");
-    const binary = resolveBinary(configuredBinary);
-    const environment: NodeJS.ProcessEnv = { ...process.env, OPENCODE_CONFIG_CONTENT: "{}" };
+    const binary = resolveExecutable(configuredBinary, {
+      fallback: "opencode",
+      searchDirectories: [join(homedir(), ".opencode", "bin")],
+    });
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(input.nativeToolMcp ? {
+        mcp: {
+          khadim: {
+            type: "remote",
+            url: input.nativeToolMcp.url,
+            enabled: true,
+            oauth: false,
+            headers: { Authorization: `Bearer ${input.nativeToolMcp.token}` },
+          },
+        },
+      } : {}),
+    };
     if (typeof input.config.password === "string" && input.config.password) environment.OPENCODE_SERVER_PASSWORD = input.config.password;
     if (typeof input.config.username === "string" && input.config.username) environment.OPENCODE_SERVER_USERNAME = input.config.username;
     let child: ChildProcess;

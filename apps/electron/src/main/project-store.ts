@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { googleWorkspaceServiceIds } from "../shared/google-workspace";
 import { isHarnessMode } from "../shared/plugins";
 import type { Artifact, Conversation, Project } from "../shared/types";
 import { safeModelBaseUrl } from "./model-endpoint-policy";
@@ -110,8 +111,15 @@ function isAgentRun(value: unknown, conversation: Record<string, unknown>, messa
   if (run.completedAt !== undefined && !isBoundedString(run.completedAt, 80)) return false;
   if (run.lastEventSequence !== undefined && (!Number.isSafeInteger(run.lastEventSequence) || (run.lastEventSequence as number) < 0)) return false;
   if (!isHarnessMode(run.harness)) return false;
+  if (run.runtimeMode !== undefined && !["approval-required", "auto-accept-edits", "full-access"].includes(String(run.runtimeMode))) return false;
+  if (run.interactionMode !== undefined && !isBoundedString(run.interactionMode, 160)) return false;
+  if (run.multiAgent !== undefined && typeof run.multiAgent !== "boolean") return false;
   if (!Array.isArray(run.enabledTools) || run.enabledTools.length > 100 || !run.enabledTools.every((tool) => isBoundedString(tool, 120))) return false;
   if (new Set(run.enabledTools).size !== run.enabledTools.length) return false;
+  if (run.enabledApps !== undefined && (!Array.isArray(run.enabledApps)
+    || run.enabledApps.length > googleWorkspaceServiceIds.length
+    || !run.enabledApps.every((appId) => typeof appId === "string" && googleWorkspaceServiceIds.includes(appId as (typeof googleWorkspaceServiceIds)[number]))
+    || new Set(run.enabledApps).size !== run.enabledApps.length)) return false;
   for (const [key, required] of [["agent", ["id", "name", "systemPrompt"]], ["model", ["id", "name", "provider", "model"]]] as const) {
     const nested = run[key];
     if (typeof nested !== "object" || nested === null || Array.isArray(nested)) return false;
@@ -201,8 +209,8 @@ function isArtifact(value: unknown): value is Artifact {
       || !Number.isFinite(settings.margin)
       || settings.margin < 0
       || settings.margin > 80) return false;
-  } else if (data.format !== "excalidraw" || !Array.isArray(data.elements) || typeof data.appState !== "object" || data.appState === null || typeof data.files !== "object" || data.files === null) {
-    return false;
+  } else {
+    if (data.format !== "khadim-canvas" || data.sceneVersion !== 1 || !isCanvasScene(data)) return false;
   }
   if (artifact.provenance !== undefined) {
     if (typeof artifact.provenance !== "object" || artifact.provenance === null || Array.isArray(artifact.provenance)) return false;
@@ -241,6 +249,334 @@ function isVisualDocument(value: unknown): boolean {
   }
 }
 
+function isFiniteCanvasNumber(value: unknown, minimum = -100_000, maximum = 100_000): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+function isCanvasGradient(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const gradient = value as Record<string, unknown>;
+  return gradient.type === "linear"
+    && isFiniteCanvasNumber(gradient.angle, -360_000, 360_000)
+    && Array.isArray(gradient.stops)
+    && gradient.stops.length >= 2
+    && gradient.stops.length <= 16
+    && gradient.stops.every((value) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+      const stop = value as Record<string, unknown>;
+      return isFiniteCanvasNumber(stop.offset, 0, 1)
+        && isBoundedString(stop.color, 80)
+        && (stop.opacity === undefined || isFiniteCanvasNumber(stop.opacity, 0, 1));
+    });
+}
+
+function isCanvasShadow(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const shadow = value as Record<string, unknown>;
+  return isBoundedString(shadow.color, 80)
+    && isFiniteCanvasNumber(shadow.x, -10_000, 10_000)
+    && isFiniteCanvasNumber(shadow.y, -10_000, 10_000)
+    && isFiniteCanvasNumber(shadow.blur, 0, 10_000)
+    && isFiniteCanvasNumber(shadow.opacity, 0, 1);
+}
+
+function isCanvasLayout(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const layout = value as Record<string, unknown>;
+  return ["row", "column"].includes(String(layout.direction))
+    && ["start", "center", "end"].includes(String(layout.align))
+    && ["start", "center", "end", "space-between"].includes(String(layout.justify))
+    && ["fixed", "hug"].includes(String(layout.sizing))
+    && isFiniteCanvasNumber(layout.gap, 0, 100_000)
+    && isFiniteCanvasNumber(layout.padding, 0, 100_000);
+}
+
+function hasCanvasParentCycle(nodes: Record<string, unknown>[]): boolean {
+  const parentById = new Map(nodes.map((node) => [node.id as string, node.parentId as string | undefined]));
+  for (const node of nodes) {
+    const visited = new Set<string>();
+    let current: string | undefined = node.id as string;
+    while (current) {
+      if (visited.has(current)) return true;
+      visited.add(current);
+      current = parentById.get(current);
+    }
+  }
+  return false;
+}
+
+function isCanvasPrototypeInteraction(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const interaction = value as Record<string, unknown>;
+  if (!isBoundedString(interaction.id, 240) || !["click", "hover"].includes(String(interaction.trigger)) || !["navigate", "back", "open-url"].includes(String(interaction.action))) return false;
+  if (interaction.action === "navigate" && (!isBoundedString(interaction.destinationPageId, 240) || interaction.url !== undefined)) return false;
+  if (interaction.action === "back" && (interaction.destinationPageId !== undefined || interaction.url !== undefined || interaction.transition !== undefined)) return false;
+  if (interaction.action === "open-url") {
+    if (interaction.destinationPageId !== undefined || interaction.transition !== undefined) return false;
+    if (interaction.url !== undefined) {
+      if (!isBoundedString(interaction.url, 2_048)) return false;
+      try {
+        const parsed = new URL(interaction.url as string);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+      } catch {
+        return false;
+      }
+    }
+  }
+  if (interaction.transition !== undefined) {
+    if (interaction.action !== "navigate" || typeof interaction.transition !== "object" || interaction.transition === null || Array.isArray(interaction.transition)) return false;
+    const transition = interaction.transition as Record<string, unknown>;
+    if (!["instant", "dissolve", "slide"].includes(String(transition.type)) || !isFiniteCanvasNumber(transition.duration, 0, 5_000) || !["linear", "ease", "ease-in", "ease-out", "ease-in-out"].includes(String(transition.easing))) return false;
+    if (transition.direction !== undefined && !["left", "right", "up", "down"].includes(String(transition.direction))) return false;
+    if (transition.type !== "slide" && transition.direction !== undefined) return false;
+  }
+  return true;
+}
+
+function isCanvasElement(value: unknown, allowComponent = true): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const element = value as Record<string, unknown>;
+  const types = allowComponent ? ["rectangle", "ellipse", "line", "path", "arrow", "text", "image", "frame", "boolean", "component"] : ["rectangle", "ellipse", "line", "path", "arrow", "text", "image", "frame"];
+  if (!isBoundedString(element.id, 240) || !types.includes(String(element.type))) return false;
+  if (!isBoundedString(element.color, 80)) return false;
+  if (!["x", "y", "width", "height"].every((key) => isFiniteCanvasNumber(element[key]))) return false;
+  if ((element.width as number) < 0 || (element.height as number) < 0) return false;
+  for (const key of ["name", "parentId", "groupId", "maskId", "color", "strokeColor", "text", "src", "alt", "startBindingId", "endBindingId", "fontFamily"]) {
+    if (element[key] !== undefined && !isBoundedString(element[key], key === "src" ? 15 * 1024 * 1024 : key === "text" ? 250_000 : 1_000, true)) return false;
+  }
+  if (element.fillGradient !== undefined && !isCanvasGradient(element.fillGradient)) return false;
+  if (element.fillStyleId !== undefined && !isBoundedString(element.fillStyleId, 240)) return false;
+  if (element.textStyleId !== undefined && (element.type !== "text" || !isBoundedString(element.textStyleId, 240))) return false;
+  if (element.effectStyleId !== undefined && !isBoundedString(element.effectStyleId, 240)) return false;
+  if (element.tokenBindings !== undefined) {
+    if (typeof element.tokenBindings !== "object" || element.tokenBindings === null || Array.isArray(element.tokenBindings)) return false;
+    const bindings = element.tokenBindings as Record<string, unknown>;
+    if (Object.keys(bindings).some((key) => !["fill", "stroke", "radius", "opacity", "gap", "padding"].includes(key)) || Object.values(bindings).some((value) => !isBoundedString(value, 240))) return false;
+  }
+  if (element.svgPathData !== undefined && (element.type !== "path" || !isBoundedString(element.svgPathData, 1_000_000) || !/^[\s0-9eE+.,MmLlHhVvCcSsQqTtAaZz-]+$/.test(element.svgPathData as string))) return false;
+  if (element.svgTransform !== undefined && (element.type !== "path" || !isBoundedString(element.svgTransform, 4_000) || !/^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\s*\(\s*[-+0-9.eE,\s]+\)\s*)*$/.test(element.svgTransform as string))) return false;
+  if (element.svgViewBox !== undefined) {
+    if (element.type !== "path" || typeof element.svgViewBox !== "object" || element.svgViewBox === null || Array.isArray(element.svgViewBox)) return false;
+    const viewBox = element.svgViewBox as Record<string, unknown>;
+    if (!isFiniteCanvasNumber(viewBox.x) || !isFiniteCanvasNumber(viewBox.y) || !isFiniteCanvasNumber(viewBox.width, .0001, 100_000) || !isFiniteCanvasNumber(viewBox.height, .0001, 100_000)) return false;
+  }
+  for (const key of ["rotation", "fontWeight", "letterSpacing"]) {
+    if (element[key] !== undefined && !isFiniteCanvasNumber(element[key])) return false;
+  }
+  if (element.opacity !== undefined && !isFiniteCanvasNumber(element.opacity, 0, 1)) return false;
+  for (const key of ["radius", "strokeWidth", "strokeDash", "fontSize", "lineHeight"]) if (element[key] !== undefined && !isFiniteCanvasNumber(element[key], 0, 100_000)) return false;
+  for (const key of ["hidden", "locked", "lineFlip", "clipContent"]) if (element[key] !== undefined && typeof element[key] !== "boolean") return false;
+  if (element.fontStyle !== undefined && !["normal", "italic"].includes(String(element.fontStyle))) return false;
+  if (element.textAlign !== undefined && !["left", "center", "right"].includes(String(element.textAlign))) return false;
+  if (element.layoutPosition !== undefined && !["static", "absolute"].includes(String(element.layoutPosition))) return false;
+  if (element.interactions !== undefined) {
+    if (!allowComponent || !Array.isArray(element.interactions) || element.interactions.length > 2 || !element.interactions.every(isCanvasPrototypeInteraction)) return false;
+    const interactions = element.interactions as Array<Record<string, unknown>>;
+    if (new Set(interactions.map((interaction) => interaction.id)).size !== interactions.length || new Set(interactions.map((interaction) => interaction.trigger)).size !== interactions.length) return false;
+  }
+  if (element.shadow !== undefined && !isCanvasShadow(element.shadow)) return false;
+  if (element.layout !== undefined && (element.type !== "frame" || !isCanvasLayout(element.layout))) return false;
+  if (element.layoutGrids !== undefined && (element.type !== "frame" || !Array.isArray(element.layoutGrids) || element.layoutGrids.length > 16 || element.layoutGrids.some((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+    const grid = value as Record<string, unknown>;
+    return !isBoundedString(grid.id, 240) || !["square", "columns", "rows"].includes(String(grid.type)) || typeof grid.visible !== "boolean" || !isBoundedString(grid.color, 80)
+      || !isFiniteCanvasNumber(grid.opacity, 0, 1) || (grid.size !== undefined && !isFiniteCanvasNumber(grid.size, 1, 10_000)) || (grid.count !== undefined && !isFiniteCanvasNumber(grid.count, 1, 100))
+      || (grid.gutter !== undefined && !isFiniteCanvasNumber(grid.gutter, 0, 100_000)) || (grid.margin !== undefined && !isFiniteCanvasNumber(grid.margin, 0, 100_000));
+  }))) return false;
+  if (element.type === "path" || element.type === "arrow") {
+    const validPoints = Array.isArray(element.points)
+      && element.points.length >= 2
+      && element.points.length <= 20_000
+      && element.points.every((point) => typeof point === "object" && point !== null && !Array.isArray(point)
+        && isFiniteCanvasNumber((point as Record<string, unknown>).x, -10, 10)
+        && isFiniteCanvasNumber((point as Record<string, unknown>).y, -10, 10)
+        && ((point as Record<string, unknown>).nodeType === undefined || ["corner", "smooth"].includes(String((point as Record<string, unknown>).nodeType)))
+        && ["handleIn", "handleOut"].every((key) => {
+          const handle = (point as Record<string, unknown>)[key];
+          return handle === undefined || typeof handle === "object" && handle !== null && !Array.isArray(handle)
+            && isFiniteCanvasNumber((handle as Record<string, unknown>).x, -100_000, 100_000)
+            && isFiniteCanvasNumber((handle as Record<string, unknown>).y, -100_000, 100_000);
+        }));
+    const validImportedPath = element.type === "path" && element.svgPathData !== undefined && element.svgViewBox !== undefined;
+    if (!validPoints && !validImportedPath) return false;
+  }
+  if (element.pathSmoothing !== undefined && !isFiniteCanvasNumber(element.pathSmoothing, 0, 1)) return false;
+  if (element.pathClosed !== undefined && typeof element.pathClosed !== "boolean") return false;
+  if (element.fillRule !== undefined && !["nonzero", "evenodd"].includes(String(element.fillRule))) return false;
+  if (element.startCap !== undefined && !["none", "arrow", "round"].includes(String(element.startCap))) return false;
+  if (element.endCap !== undefined && !["none", "arrow", "round"].includes(String(element.endCap))) return false;
+  if (element.constraintH !== undefined && !["left", "right", "left-right", "center", "scale"].includes(String(element.constraintH))) return false;
+  if (element.constraintV !== undefined && !["top", "bottom", "top-bottom", "center", "scale"].includes(String(element.constraintV))) return false;
+  if (element.type === "boolean" && !["union", "difference", "intersection", "exclusion"].includes(String(element.booleanOperation))) return false;
+  if (element.type !== "boolean" && element.booleanOperation !== undefined) return false;
+  if (element.type === "component") {
+    if (!isBoundedString(element.componentId, 240) || !["main", "instance"].includes(String(element.componentRole))) return false;
+    if (element.overrides !== undefined && (typeof element.overrides !== "object" || element.overrides === null || Array.isArray(element.overrides))) return false;
+  }
+  return true;
+}
+
+function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinations = true): boolean {
+  if (!Array.isArray(data.elements) || data.elements.length > 10_000 || !data.elements.every((element) => isCanvasElement(element))) return false;
+  const elements = data.elements as Record<string, unknown>[];
+  const elementIds = new Set(elements.map((element) => element.id as string));
+  if (elementIds.size !== elements.length) return false;
+  if (elements.some((element) => element.parentId !== undefined && (!elementIds.has(element.parentId as string) || element.parentId === element.id))) return false;
+  const booleanIds = new Set(elements.filter((element) => element.type === "boolean").map((element) => element.id as string));
+  if (elements.some((element) => element.type === "boolean" && elements.filter((candidate) => candidate.parentId === element.id).length < 2)) return false;
+  if (elements.some((element) => element.type === "boolean" && element.parentId !== undefined && booleanIds.has(element.parentId as string))) return false;
+  if (elements.some((element) => element.parentId !== undefined && booleanIds.has(element.parentId as string)
+    && !["rectangle", "ellipse", "frame", "path"].includes(String(element.type)))) return false;
+  if (elements.some((element) => element.maskId !== undefined && (!elementIds.has(element.maskId as string) || element.maskId === element.id))) return false;
+  if (hasCanvasParentCycle(elements)) return false;
+  if (elements.some((element) => element.type === "arrow" && [element.startBindingId, element.endBindingId].some((id) => id !== undefined && (!elementIds.has(id as string) || id === element.id)))) return false;
+  if (!Array.isArray(data.components) || data.components.length > 1_000 || !data.components.every((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+    const component = value as Record<string, unknown>;
+    return isBoundedString(component.id, 240)
+      && isBoundedString(component.name, 1_000)
+      && (component.variantSetId === undefined || isBoundedString(component.variantSetId, 240))
+      && (component.variantSetName === undefined || isBoundedString(component.variantSetName, 1_000))
+      && (component.variantProperties === undefined || typeof component.variantProperties === "object" && component.variantProperties !== null && !Array.isArray(component.variantProperties)
+        && Object.entries(component.variantProperties as Record<string, unknown>).length <= 16
+        && Object.entries(component.variantProperties as Record<string, unknown>).every(([key, property]) => isBoundedString(key, 240) && isBoundedString(property, 1_000)))
+      && isFiniteCanvasNumber(component.width, 1)
+      && isFiniteCanvasNumber(component.height, 1)
+      && Array.isArray(component.nodes)
+      && component.nodes.length <= 2_000
+      && component.nodes.every((node) => isCanvasElement(node, false));
+  })) return false;
+  const components = data.components as Record<string, unknown>[];
+  const componentIds = new Set(components.map((component) => component.id as string));
+  if (componentIds.size !== components.length) return false;
+  for (const component of components) {
+    const componentNodes = component.nodes as Record<string, unknown>[];
+    const nodeIds = new Set(componentNodes.map((node) => node.id as string));
+    if (nodeIds.size !== componentNodes.length) return false;
+    if (componentNodes.some((node) => node.parentId !== undefined && (!nodeIds.has(node.parentId as string) || node.parentId === node.id))) return false;
+    if (componentNodes.some((node) => node.maskId !== undefined && (!nodeIds.has(node.maskId as string) || node.maskId === node.id))) return false;
+    if (componentNodes.some((node) => node.startBindingId !== undefined && (!nodeIds.has(node.startBindingId as string) || node.startBindingId === node.id))) return false;
+    if (componentNodes.some((node) => node.endBindingId !== undefined && (!nodeIds.has(node.endBindingId as string) || node.endBindingId === node.id))) return false;
+    if (hasCanvasParentCycle(componentNodes)) return false;
+  }
+  if (elements.some((element) => element.type === "component" && !componentIds.has(element.componentId as string))) return false;
+  if (data.styles !== undefined && (!Array.isArray(data.styles)
+    || data.styles.length > 2_000
+    || data.styles.some((value) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+      const style = value as Record<string, unknown>;
+      return !isBoundedString(style.id, 240)
+        || !isBoundedString(style.name, 1_000)
+        || !isBoundedString(style.color, 80)
+        || (style.gradient !== undefined && !isCanvasGradient(style.gradient));
+    })
+    || new Set(data.styles.map((style) => (style as Record<string, unknown>).id)).size !== data.styles.length)) return false;
+  const styleIds = new Set((data.styles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
+  if ([...elements.filter((element) => element.type !== "component"), ...components.flatMap((component) => component.nodes as Record<string, unknown>[])].some((element) => element.fillStyleId !== undefined && !styleIds.has(element.fillStyleId as string))) return false;
+  if (data.textStyles !== undefined && (!Array.isArray(data.textStyles) || data.textStyles.length > 2_000 || data.textStyles.some((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+    const style = value as Record<string, unknown>;
+    return !isBoundedString(style.id, 240) || !isBoundedString(style.name, 1_000) || !isBoundedString(style.fontFamily, 240)
+      || !isFiniteCanvasNumber(style.fontSize, 1, 100_000) || !isFiniteCanvasNumber(style.fontWeight, 1, 1_000)
+      || !["normal", "italic"].includes(String(style.fontStyle)) || !["left", "center", "right"].includes(String(style.textAlign))
+      || !isFiniteCanvasNumber(style.lineHeight, .1, 100) || !isFiniteCanvasNumber(style.letterSpacing);
+  }) || new Set(data.textStyles.map((style) => (style as Record<string, unknown>).id)).size !== data.textStyles.length)) return false;
+  if (data.effectStyles !== undefined && (!Array.isArray(data.effectStyles) || data.effectStyles.length > 2_000 || data.effectStyles.some((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+    const style = value as Record<string, unknown>;
+    return !isBoundedString(style.id, 240) || !isBoundedString(style.name, 1_000) || !isCanvasShadow(style.shadow);
+  }) || new Set(data.effectStyles.map((style) => (style as Record<string, unknown>).id)).size !== data.effectStyles.length)) return false;
+  const textStyleIds = new Set((data.textStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
+  const effectStyleIds = new Set((data.effectStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
+  const allPrimitiveNodes = [...elements.filter((element) => element.type !== "component"), ...components.flatMap((component) => component.nodes as Record<string, unknown>[])];
+  if (allPrimitiveNodes.some((element) => element.textStyleId !== undefined && !textStyleIds.has(element.textStyleId as string))) return false;
+  if (allPrimitiveNodes.some((element) => element.effectStyleId !== undefined && !effectStyleIds.has(element.effectStyleId as string))) return false;
+  if (data.tokenCollections !== undefined) {
+    if (!Array.isArray(data.tokenCollections) || data.tokenCollections.length > 100 || data.tokenCollections.some((value) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+      const collection = value as Record<string, unknown>;
+      if (!isBoundedString(collection.id, 240) || !isBoundedString(collection.name, 1_000) || !Array.isArray(collection.modes) || !collection.modes.length || collection.modes.length > 32
+        || collection.modes.some((mode) => !isBoundedString(mode, 240)) || new Set(collection.modes).size !== collection.modes.length || !collection.modes.includes(collection.activeMode)
+        || !Array.isArray(collection.tokens) || collection.tokens.length > 2_000) return true;
+      const modes = collection.modes as string[];
+      return collection.tokens.some((tokenValue) => {
+        if (typeof tokenValue !== "object" || tokenValue === null || Array.isArray(tokenValue)) return true;
+        const token = tokenValue as Record<string, unknown>;
+        if (!isBoundedString(token.id, 240) || !isBoundedString(token.name, 1_000) || !["color", "number"].includes(String(token.type)) || typeof token.values !== "object" || token.values === null || Array.isArray(token.values)) return true;
+        const values = token.values as Record<string, unknown>;
+        return modes.some((mode) => !(mode in values)) || Object.keys(values).some((mode) => !modes.includes(mode)) || Object.values(values).some((item) => token.type === "color" ? !isBoundedString(item, 80) : !isFiniteCanvasNumber(item));
+      });
+    })) return false;
+    const tokenIds = new Set((data.tokenCollections as Array<Record<string, unknown>>).flatMap((collection) => (collection.tokens as Array<Record<string, unknown>>).map((token) => token.id as string)));
+    if (tokenIds.size !== (data.tokenCollections as Array<Record<string, unknown>>).reduce((count, collection) => count + (collection.tokens as unknown[]).length, 0)) return false;
+    if (allPrimitiveNodes.some((node) => node.tokenBindings && Object.values(node.tokenBindings as Record<string, unknown>).some((tokenId) => !tokenIds.has(tokenId as string)))) return false;
+  } else if (allPrimitiveNodes.some((node) => node.tokenBindings !== undefined)) return false;
+  for (const element of elements) {
+    if (element.type !== "component" || element.overrides === undefined) continue;
+    const definition = components.find((component) => component.id === element.componentId)!;
+    const sources = new Map((definition.nodes as Record<string, unknown>[]).map((node) => [node.id as string, node]));
+    for (const [nodeId, value] of Object.entries(element.overrides as Record<string, unknown>)) {
+      const source = sources.get(nodeId);
+      if (!source || typeof value !== "object" || value === null || Array.isArray(value)) return false;
+      const override = value as Record<string, unknown>;
+      if (override.id !== undefined || override.type !== undefined || override.parentId !== undefined || !isCanvasElement({ ...source, ...override }, false)) return false;
+    }
+  }
+  const frame = data.frame;
+  if (typeof frame !== "object" || frame === null || Array.isArray(frame)) return false;
+  const bounds = frame as Record<string, unknown>;
+  if (!isFiniteCanvasNumber(bounds.width, 64) || !isFiniteCanvasNumber(bounds.height, 64)) return false;
+  if (typeof data.appState !== "object" || data.appState === null || Array.isArray(data.appState)) return false;
+  const appState = data.appState as Record<string, unknown>;
+  if (!isBoundedString(appState.viewBackgroundColor, 80) || typeof appState.snapToGrid !== "boolean") return false;
+  if (appState.viewport !== undefined) {
+    if (typeof appState.viewport !== "object" || appState.viewport === null || Array.isArray(appState.viewport)) return false;
+    const viewport = appState.viewport as Record<string, unknown>;
+    if (!isFiniteCanvasNumber(viewport.x) || !isFiniteCanvasNumber(viewport.y) || !isFiniteCanvasNumber(viewport.zoom, .05, 16)) return false;
+  }
+  for (const key of ["rulersVisible", "guidesVisible", "guidesLocked"]) if (appState[key] !== undefined && typeof appState[key] !== "boolean") return false;
+  if (appState.guides !== undefined && (!Array.isArray(appState.guides)
+    || appState.guides.length > 2_000
+    || appState.guides.some((value) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+      const guide = value as Record<string, unknown>;
+      return !isBoundedString(guide.id, 240)
+        || !["x", "y"].includes(String(guide.axis))
+        || !isFiniteCanvasNumber(guide.position)
+        || (guide.color !== undefined && !isBoundedString(guide.color, 80))
+        || (guide.locked !== undefined && typeof guide.locked !== "boolean");
+    })
+    || new Set(appState.guides.map((guide) => (guide as Record<string, unknown>).id)).size !== appState.guides.length)) return false;
+  if (typeof data.files !== "object" || data.files === null || Array.isArray(data.files)) return false;
+  const files = Object.entries(data.files as Record<string, unknown>);
+  if (files.length > 1_000 || files.some(([id, value]) => {
+    if (!isBoundedString(id, 240) || typeof value !== "object" || value === null || Array.isArray(value)) return true;
+    const file = value as Record<string, unknown>;
+    return !isBoundedString(file.name, 1_000) || !isBoundedString(file.mimeType, 240) || !isBoundedString(file.data, 15 * 1024 * 1024);
+  })) return false;
+  if (data.pages !== undefined) {
+    if (!Array.isArray(data.pages) || data.pages.length < 1 || data.pages.length > 500 || !isBoundedString(data.activePageId, 240)) return false;
+    const pages = data.pages as Record<string, unknown>[];
+    if (pages.some((page) => typeof page !== "object" || page === null || Array.isArray(page)
+      || !isBoundedString(page.id, 240)
+      || !isBoundedString(page.name, 1_000)
+      || !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false))) return false;
+    if (new Set(pages.map((page) => page.id)).size !== pages.length) return false;
+    if (validatePrototypeDestinations) {
+      const pageIds = new Set(pages.map((page) => page.id as string));
+      const destinations = pages.flatMap((page) => (page.elements as Array<Record<string, unknown>>).flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => interaction.action === "navigate" ? [interaction.destinationPageId as string] : []) ?? []));
+      if (destinations.some((destination) => !pageIds.has(destination))) return false;
+    }
+    const activePage = pages.find((page) => page.id === data.activePageId);
+    if (!activePage || JSON.stringify(activePage.frame) !== JSON.stringify(data.frame) || JSON.stringify(activePage.elements) !== JSON.stringify(data.elements) || JSON.stringify(activePage.appState) !== JSON.stringify(data.appState)) return false;
+  } else if (data.activePageId !== undefined || validatePrototypeDestinations && elements.some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => interaction.action === "navigate"))) return false;
+  try {
+    return JSON.stringify(data).length <= 50 * 1024 * 1024;
+  } catch {
+    return false;
+  }
+}
+
 function isLegacyConversation(value: unknown): value is LegacyConversation {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   return isConversation({ ...(value as Record<string, unknown>), projectId: "legacy", engineSessionKey: "legacy" });
@@ -260,6 +596,27 @@ function titleFromHtml(html: string): string {
 
 function normalizeArtifact(value: unknown, projectId: string): Artifact | null {
   if (isArtifact(value)) return value.projectId === projectId ? value : null;
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const artifact = value as Record<string, unknown>;
+    const content = artifact.content;
+    if (artifact.kind === "canvas" && typeof content === "object" && content !== null && !Array.isArray(content)) {
+      const legacy = content as Record<string, unknown>;
+      if (legacy.format === "excalidraw" && Array.isArray(legacy.elements) && legacy.elements.every((element) => isCanvasElement(element))) {
+        const migrated = {
+          ...artifact,
+          content: {
+            ...legacy,
+            format: "khadim-canvas",
+            sceneVersion: 1,
+            frame: { width: 960, height: 600 },
+            components: Array.isArray(legacy.components) ? legacy.components : [],
+            appState: { viewBackgroundColor: "#ffffff", snapToGrid: true, ...(legacy.appState as object ?? {}) },
+          },
+        };
+        if (isArtifact(migrated)) return migrated.projectId === projectId ? migrated : null;
+      }
+    }
+  }
   if (!isLegacyArtifact(value)) return null;
   const hasAgentSource = Boolean(value.sourceRunId || value.sourceMessageId || value.sourceConversationId || value.status === "generated");
   return {

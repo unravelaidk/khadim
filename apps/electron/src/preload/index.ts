@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AgentEventEnvelope, AgentRunRequest, ArtifactDraft, ArtifactPreviewRequest, Conversation, DiscordSettings, DiscordSettingsUpdate, GoogleConnectRequest, KhadimClient, SearchSettingsUpdate, SettingsUpdate } from "../shared/types";
+import type { AgentApprovalDecision, AgentEventEnvelope, AgentQuestionAnswers, AgentRunRequest, ArtifactDraft, ArtifactPreviewRequest, Conversation, DiscordSettings, DiscordSettingsUpdate, GoogleConnectRequest, KhadimClient, SearchSettingsUpdate, SettingsUpdate } from "../shared/types";
 import type { PluginConfigUpdate } from "../shared/plugins";
 
 const api: KhadimClient = {
@@ -12,6 +12,8 @@ const api: KhadimClient = {
   agent: {
     start: (request: AgentRunRequest) => ipcRenderer.invoke("agent:start", request),
     abort: (runId: string) => ipcRenderer.invoke("agent:abort", runId),
+    answerQuestion: (runId: string, requestId: string, answers: AgentQuestionAnswers) => ipcRenderer.invoke("agent:answer-question", runId, requestId, answers),
+    answerApproval: (runId: string, requestId: string, decision: AgentApprovalDecision) => ipcRenderer.invoke("agent:answer-approval", runId, requestId, decision),
     recover: () => ipcRenderer.invoke("agent:recover"),
     acknowledge: (runId: string) => ipcRenderer.invoke("agent:acknowledge", runId),
     onEvent: (listener) => {
@@ -34,6 +36,11 @@ const api: KhadimClient = {
     list: (projectId: string) => ipcRenderer.invoke("conversations:list", projectId),
     save: (conversation: Conversation) => ipcRenderer.invoke("conversations:save", conversation),
     remove: (projectId: string, id: string) => ipcRenderer.invoke("conversations:remove", projectId, id),
+    exportMarkdown: (suggestedName: string, markdown: string) => ipcRenderer.invoke("conversations:export-markdown", suggestedName, markdown),
+  },
+  app: {
+    version: () => ipcRenderer.invoke("app:version"),
+    configDirectory: () => ipcRenderer.invoke("app:config-directory"),
   },
   artifacts: {
     list: (projectId: string) => ipcRenderer.invoke("artifacts:list", projectId),
@@ -48,7 +55,7 @@ const api: KhadimClient = {
     chooseWorkspace: () => ipcRenderer.invoke("settings:choose-workspace"),
   },
   models: {
-    catalog: () => ipcRenderer.invoke("models:catalog"),
+    catalog: (refresh = false) => ipcRenderer.invoke("models:catalog", refresh),
     syncCodex: (activate = false) => ipcRenderer.invoke("models:sync-codex", activate),
   },
   auth: {
@@ -84,6 +91,10 @@ const api: KhadimClient = {
   plugins: {
     list: () => ipcRenderer.invoke("plugins:list"),
     harnesses: () => ipcRenderer.invoke("plugins:harnesses"),
+    models: (harnessId, projectPath) => ipcRenderer.invoke("plugins:models", harnessId, projectPath),
+    modes: (harnessId, projectPath) => ipcRenderer.invoke("plugins:modes", harnessId, projectPath),
+    commands: (harnessId, projectPath) => ipcRenderer.invoke("plugins:commands", harnessId, projectPath),
+    refreshCatalog: (harnessId, projectPath) => ipcRenderer.invoke("plugins:refresh-catalog", harnessId, projectPath),
     chooseAndInstall: () => ipcRenderer.invoke("plugins:choose-and-install"),
     setEnabled: (pluginId: string, enabled: boolean) => ipcRenderer.invoke("plugins:set-enabled", pluginId, enabled),
     configure: (pluginId: string, update: PluginConfigUpdate) => ipcRenderer.invoke("plugins:configure", pluginId, update),

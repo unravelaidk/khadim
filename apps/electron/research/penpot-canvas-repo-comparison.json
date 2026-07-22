@@ -1,0 +1,58 @@
+{
+  "capturedAt": "2026-07-22T20:10:00+02:00",
+  "repository": "https://github.com/penpot/penpot",
+  "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
+  "scope": [
+    "frontend/src/app/main/data/workspace",
+    "frontend/src/app/main/ui/workspace",
+    "common/src/app/common"
+  ],
+  "primarySources": [
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape/interactions.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/data/workspace/interactions.cljs",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/files/changes_builder.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/data/workspace/undo.cljs",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/geom/snap.cljc"
+  ],
+  "findings": [
+    {
+      "area": "prototype interactions",
+      "evidence": "Penpot stores triggers, actions, destinations, URLs, overlay settings, and animation data on shapes as validated semantic records. Workspace events edit those records; the viewer interprets them separately.",
+      "khadimDecision": "Store prototype links on CanvasElement records. Keep authoring, persistence, SVG export, and prototype playback independent so prototype data cannot change static rendering."
+    },
+    {
+      "area": "document changes and undo",
+      "evidence": "Penpot builds paired redo and undo changes through changes_builder and groups continuous operations into explicit undo transactions. Its workspace undo stack is capped at 50 entries.",
+      "khadimDecision": "Keep Khadim's existing 50-snapshot cap for now, but extract semantic canvas commands and transaction grouping before adding collaboration or history inspection. CanvasEditor should not remain the long-term mutation boundary."
+    },
+    {
+      "area": "geometry and rendering",
+      "evidence": "Penpot shares path, transform, bounds, constraints, snapping, and shape-tree logic from common modules while editable workspace rendering and export rendering remain separate consumers.",
+      "khadimDecision": "Continue moving deterministic geometry into src/shared and keep CanvasEditor focused on gestures and presentation. Use renderCanvasSvg as the export/prototype render path rather than cloning editor-only SVG markup."
+    },
+    {
+      "area": "snapping",
+      "evidence": "Penpot derives snap points from semantic shape geometry, including corners, centers, and frame edge midpoints, and models guides as snap inputs.",
+      "khadimDecision": "Extend Khadim smart guides beyond bounding-edge matches to center and frame-midpoint candidates, with tests in shared geometry."
+    },
+    {
+      "area": "component safety",
+      "evidence": "Penpot's change layer prevents structural edits that would create component nesting loops or mutate protected component-copy structure.",
+      "khadimDecision": "Add explicit component-cycle and parent-cycle validation to Khadim's semantic command layer before supporting nested component instances."
+    }
+  ],
+  "implementedFromComparison": [
+    "Serializable click and hover triggers on primitive and component layers",
+    "Navigate, previous-screen, and protocol-validated external URL actions",
+    "Instant, dissolve, and directional slide transitions with duration and easing",
+    "In-canvas prototype playback with navigation history",
+    "Deletion cleanup for interactions targeting removed pages"
+  ],
+  "nextHighValueGaps": [
+    "Overlay actions and multiple named prototype flows",
+    "Semantic canvas command and undo transaction modules",
+    "Center, midpoint, and guide-aware snapping in shared geometry",
+    "Nested component cycle validation",
+    "Prototype keyboard focus order and scroll-container behavior"
+  ]
+}

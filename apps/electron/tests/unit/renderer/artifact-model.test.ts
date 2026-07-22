@@ -75,13 +75,22 @@ describe("createArtifact", () => {
       createdAt: "2026-07-17T10:00:00.000Z",
       updatedAt: "2026-07-17T10:00:00.000Z",
     });
-    expect(artifact.content.format).toBe(kind === "document" ? "document-html" : "excalidraw");
+    expect(artifact.content.format).toBe(kind === "document" ? "document-html" : "khadim-canvas");
     if (kind === "document") {
       expect(artifact.content).toMatchObject({
         format: "document-html",
         html: expect.stringContaining("<!doctype html>"),
         baselineHtml: expect.stringContaining("<!doctype html>"),
         page: { size: "A4", orientation: "portrait", margin: 24 },
+      });
+    } else {
+      expect(artifact.content).toMatchObject({
+        format: "khadim-canvas",
+        sceneVersion: 1,
+        frame: { width: 960, height: 600 },
+        elements: [],
+        components: [],
+        appState: { snapToGrid: true },
       });
     }
   });

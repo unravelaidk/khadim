@@ -14,23 +14,35 @@ import {
   Monitor,
   Plus,
   MagnifyingGlass as Search,
+  ShieldCheck,
   Square,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type {
+  AgentApprovalDecision,
+  AgentApprovalRequest,
+  AgentQuestionAnswers,
+  AgentQuestionRequest,
+  AgentRuntimeMode,
   ChatAttachment,
   HarnessMode,
   ModelConfig,
   PluginHarnessDescriptor,
+  PluginHarnessCommand,
+  PluginHarnessMode,
   SkillEntry,
   TokenUsage,
 } from "../../../shared/types";
 import type { AgentDefinition } from "../agents/types";
+import { chatCommands } from "../../../shared/chat-commands";
 import { compactNumber } from "../shared/text";
 import { ModelIcon } from "../ui/ModelIcon";
 import { PluginLogo } from "../ui/PluginLogo";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { AttachmentBadge } from "./AttachmentBadge";
+import { ApprovalPanel } from "./ApprovalPanel";
+import { QuestionPanel } from "./QuestionPanel";
 import { toolOptions } from "./tool-options";
 
 interface ComposerProps {
@@ -52,21 +64,68 @@ interface ComposerProps {
   modelName: string;
   provider: string;
   models: ModelConfig[];
+  modes?: PluginHarnessMode[];
+  modeId?: string;
   enabledTools: string[];
   onToggleTool: (toolId: string) => void;
   harness: HarnessMode;
   pluginHarnesses?: PluginHarnessDescriptor[];
+  harnessCommands?: PluginHarnessCommand[];
   onSelectModel: (modelId: string) => void;
+  onSelectMode?: (modeId: string) => void;
+  runtimeMode: AgentRuntimeMode;
+  onSelectRuntimeMode: (mode: AgentRuntimeMode) => void;
   onSelectHarness: (harness: HarnessMode) => void;
+  modelsLoading?: boolean;
+  modelsError?: string;
   usage?: TokenUsage;
   projectName?: string;
   projectAvailable?: boolean;
+  pendingQuestion?: AgentQuestionRequest;
+  questionResponding?: boolean;
+  onAnswerQuestion?: (answers: AgentQuestionAnswers) => Promise<void>;
+  pendingApproval?: AgentApprovalRequest;
+  approvalResponding?: boolean;
+  onApprovalDecision?: (decision: AgentApprovalDecision) => Promise<void>;
 }
 
 interface ComposerAttachment {
   name: string;
   content: string;
   type: string;
+}
+
+type ComposerMenuName = "capabilities" | "skills" | "agent" | "model" | "mode" | "runtime";
+
+function composerMenuPlacement(menu: ComposerMenuName, trigger: HTMLButtonElement): CSSProperties {
+  const triggerRect = trigger.getBoundingClientRect();
+  const wrapperRect = trigger.parentElement?.getBoundingClientRect() ?? triggerRect;
+  const headerBottom = document.querySelector<HTMLElement>(".app-header")?.getBoundingClientRect().bottom ?? 0;
+  const viewportPadding = 12;
+  const triggerGap = 8;
+  const desiredWidth = menu === "capabilities" || menu === "skills" ? 336 : menu === "model" ? 320 : 280;
+  const desiredHeight = menu === "capabilities" || menu === "skills" ? 560 : 420;
+  const width = Math.min(desiredWidth, window.innerWidth - viewportPadding * 2);
+  const availableAbove = Math.max(0, triggerRect.top - headerBottom - viewportPadding - triggerGap);
+  const availableBelow = Math.max(0, window.innerHeight - triggerRect.bottom - viewportPadding - triggerGap);
+  const placeAbove = availableAbove >= Math.min(desiredHeight, 260) || availableAbove >= availableBelow;
+  const availableHeight = placeAbove ? availableAbove : availableBelow;
+  const preferredLeft = menu === "model" || menu === "mode" || menu === "runtime" ? triggerRect.right - width : triggerRect.left;
+  const left = Math.min(
+    Math.max(viewportPadding, preferredLeft),
+    Math.max(viewportPadding, window.innerWidth - width - viewportPadding),
+  );
+  const horizontalOrigin = menu === "model" || menu === "mode" || menu === "runtime" ? "right" : "left";
+
+  return {
+    position: "absolute",
+    left: left - wrapperRect.left,
+    right: "auto",
+    top: placeAbove ? "auto" : triggerRect.bottom + triggerGap - wrapperRect.top,
+    bottom: placeAbove ? wrapperRect.bottom - triggerRect.top + triggerGap : "auto",
+    maxHeight: Math.min(desiredHeight, availableHeight),
+    transformOrigin: `${placeAbove ? "bottom" : "top"} ${horizontalOrigin}`,
+  };
 }
 
 function friendlyModelName(model: string): string {
@@ -93,28 +152,51 @@ export function Composer({
   onSelectAgent,
   modelName,
   models,
+  modes = [],
+  modeId,
   enabledTools,
   onToggleTool,
   harness,
   pluginHarnesses = [],
+  harnessCommands = [],
   onSelectModel,
+  onSelectMode,
+  runtimeMode,
+  onSelectRuntimeMode,
   onSelectHarness,
+  modelsLoading = false,
+  modelsError,
   usage,
   projectName,
   projectAvailable,
+  pendingQuestion,
+  questionResponding = false,
+  onAnswerQuestion,
+  pendingApproval,
+  approvalResponding = false,
+  onApprovalDecision,
 }: ComposerProps): React.JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
-  const [openMenu, setOpenMenu] = useState<
-    "capabilities" | "skills" | "agent" | "model" | null
-  >(null);
+  const [openMenu, setOpenMenu] = useState<ComposerMenuName | null>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [modelQuery, setModelQuery] = useState("");
+  const [commandIndex, setCommandIndex] = useState(0);
   const activeModel = models.find((model) => model.isActive);
+  const activeMode = modes.find((mode) => mode.id === modeId) ?? modes.find((mode) => mode.isDefault) ?? modes[0];
+  const activePluginHarness = pluginHarnesses.find((pluginHarness) => pluginHarness.id === harness);
+  const runtimeOptions: Array<{ id: AgentRuntimeMode; name: string; description: string }> = [
+    { id: "approval-required", name: "Ask first", description: "Confirm commands and file changes" },
+    { id: "auto-accept-edits", name: "Auto-edit", description: "Allow edits; ask for other risky actions" },
+    { id: "full-access", name: "Full access", description: "Run without approval prompts" },
+  ];
+  const activeRuntime = runtimeOptions.find((mode) => mode.id === runtimeMode) ?? runtimeOptions[0];
+  const modelSelectorLabel = activePluginHarness ? `Choose model for ${activePluginHarness.name}` : "Choose model";
   const activeAgent = agents.find((agent) => agent.id === agentId);
   const normalizedModelQuery = modelQuery.trim().toLowerCase();
   const visibleModels = models.filter(
@@ -124,10 +206,35 @@ export function Composer({
         .toLowerCase()
         .includes(normalizedModelQuery),
   );
+  const availableCommands = [
+    ...chatCommands.map((command) => ({ name: command.name, usage: command.usage, description: command.description, native: false })),
+    ...harnessCommands.flatMap((command) => [command.name, ...(command.aliases ?? [])]
+      .filter((name) => !chatCommands.some((builtIn) => builtIn.name === name.toLowerCase()))
+      .map((name) => ({
+        name,
+        usage: `/${name}${command.argumentHint ? ` ${command.argumentHint}` : ""}`,
+        description: command.description || "Harness command",
+        native: true,
+      }))),
+  ];
+  const commandQuery = prompt.match(/^\/([^\s\n]*)$/)?.[1]?.toLowerCase();
+  const visibleCommands = commandQuery === undefined
+    ? []
+    : availableCommands.filter((command) => `${command.name} ${command.description}`.toLowerCase().includes(commandQuery));
+  const activeCommandIndex = Math.min(commandIndex, Math.max(0, visibleCommands.length - 1));
+
+  function chooseCommand(index: number): void {
+    const command = visibleCommands[index];
+    if (!command) return;
+    setPrompt(`/${command.name}${command.usage !== `/${command.name}` ? " " : ""}`);
+    setCommandIndex(0);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
 
   function toggleMenu(menu: typeof openMenu, trigger: HTMLButtonElement): void {
     const opening = openMenu !== menu;
     activeMenuTriggerRef.current = opening ? trigger : null;
+    setMenuStyle(opening && menu ? composerMenuPlacement(menu, trigger) : {});
     if (menu === "model" && opening) setModelQuery("");
     setOpenMenu(opening ? menu : null);
   }
@@ -135,6 +242,7 @@ export function Composer({
   function closeMenu(restoreFocus = false): void {
     const trigger = activeMenuTriggerRef.current;
     setOpenMenu(null);
+    setMenuStyle({});
     activeMenuTriggerRef.current = null;
     if (restoreFocus) window.setTimeout(() => trigger?.focus(), 0);
   }
@@ -187,12 +295,21 @@ export function Composer({
       )
         closeMenu();
     };
+    const updatePlacement = () => {
+      if (activeMenuTriggerRef.current) {
+        setMenuStyle(composerMenuPlacement(openMenu, activeMenuTriggerRef.current));
+      }
+    };
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
     return () => {
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
     };
   }, [openMenu]);
 
@@ -322,11 +439,61 @@ export function Composer({
             {attachmentError}
           </p>
         )}
+        {pendingQuestion && onAnswerQuestion && (
+          <QuestionPanel request={pendingQuestion} responding={questionResponding} onAnswer={onAnswerQuestion} />
+        )}
+        {pendingApproval && onApprovalDecision && (
+          <ApprovalPanel request={pendingApproval} responding={approvalResponding} onDecision={onApprovalDecision} />
+        )}
+        {visibleCommands.length > 0 && (
+          <div className="slash-command-menu" role="listbox" aria-label="Chat commands">
+            {visibleCommands.map((command, index) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={activeCommandIndex === index}
+                className={activeCommandIndex === index ? "selected" : ""}
+                key={command.name}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setCommandIndex(index)}
+                onClick={() => chooseCommand(index)}
+              >
+                <strong>{command.usage}</strong>
+                <small>{command.description}</small>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={inputRef}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
+            if (visibleCommands.length > 0 && event.key === "ArrowDown") {
+              event.preventDefault();
+              setCommandIndex((current) => (current + 1) % visibleCommands.length);
+              return;
+            }
+            if (visibleCommands.length > 0 && event.key === "ArrowUp") {
+              event.preventDefault();
+              setCommandIndex((current) => (current - 1 + visibleCommands.length) % visibleCommands.length);
+              return;
+            }
+            if (visibleCommands.length > 0 && event.key === "Enter" && prompt.toLowerCase() === `/${visibleCommands[activeCommandIndex]?.name.toLowerCase()}`) {
+              event.preventDefault();
+              void submit();
+              return;
+            }
+            if (visibleCommands.length > 0 && (event.key === "Tab" || event.key === "Enter")) {
+              event.preventDefault();
+              chooseCommand(activeCommandIndex);
+              return;
+            }
+            if (visibleCommands.length > 0 && event.key === "Escape") {
+              event.preventDefault();
+              setPrompt(prompt.slice(1));
+              return;
+            }
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               void submit();
@@ -370,6 +537,7 @@ export function Composer({
                   className="composer-menu agent-menu"
                   role="menu"
                   aria-label="Agent"
+                  style={menuStyle}
                   onKeyDown={handleMenuKeyDown}
                 >
                   <span className="composer-menu-heading">Agent</span>
@@ -421,6 +589,7 @@ export function Composer({
                   className="composer-menu capability-selector"
                   role="menu"
                   aria-label="Tool permissions"
+                  style={menuStyle}
                   onKeyDown={handleMenuKeyDown}
                 >
                   <div className="capability-selector-header">
@@ -524,6 +693,7 @@ export function Composer({
                   className="composer-menu skills-menu capability-selector"
                   role="menu"
                   aria-label="Skills"
+                  style={menuStyle}
                   onKeyDown={handleMenuKeyDown}
                 >
                   <div className="capability-selector-header">
@@ -580,12 +750,86 @@ export function Composer({
             </span>
           </div>
           <div className="composer-submit-tools">
+            {activePluginHarness && (
+              <span className="composer-menu-wrap mode-wrap">
+                <button
+                  className="composer-mode"
+                  onClick={(event) => toggleMenu("runtime", event.currentTarget)}
+                  title={`Runtime access: ${activeRuntime.name}`}
+                  aria-label={`Choose runtime access, currently ${activeRuntime.name}`}
+                  aria-haspopup="menu"
+                  aria-expanded={openMenu === "runtime"}
+                >
+                  <ShieldCheck size={16} />
+                  <span>{activeRuntime.name}</span>
+                  <ChevronDown size={13} />
+                </button>
+                {openMenu === "runtime" && (
+                  <div className="composer-menu mode-menu" role="menu" aria-label="Runtime access" style={menuStyle} onKeyDown={handleMenuKeyDown}>
+                    <span className="composer-menu-heading">Runtime access</span>
+                    {runtimeOptions.map((mode) => (
+                      <button role="menuitemradio" aria-checked={runtimeMode === mode.id} className={runtimeMode === mode.id ? "selected" : ""} key={mode.id} onClick={() => { onSelectRuntimeMode(mode.id); closeMenu(true); }}>
+                        <ShieldCheck size={17} />
+                        <span><strong>{mode.name}</strong><small>{mode.description}</small></span>
+                        {runtimeMode === mode.id && <Check size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </span>
+            )}
+            {activePluginHarness && activeMode && onSelectMode && (
+              <span className="composer-menu-wrap mode-wrap">
+                <button
+                  className="composer-mode"
+                  onClick={(event) => toggleMenu("mode", event.currentTarget)}
+                  title={`${activePluginHarness.name} mode: ${activeMode.name}`}
+                  aria-label={`Choose mode for ${activePluginHarness.name}, currently ${activeMode.name}`}
+                  aria-haspopup="menu"
+                  aria-expanded={openMenu === "mode"}
+                >
+                  <Gauge size={16} />
+                  <span>{activeMode.name}</span>
+                  <ChevronDown size={13} />
+                </button>
+                {openMenu === "mode" && (
+                  <div
+                    className="composer-menu mode-menu"
+                    role="menu"
+                    aria-label={`${activePluginHarness.name} mode`}
+                    style={menuStyle}
+                    onKeyDown={handleMenuKeyDown}
+                  >
+                    <span className="composer-menu-heading">{activePluginHarness.name} mode</span>
+                    {modes.map((mode) => (
+                      <button
+                        role="menuitemradio"
+                        aria-checked={activeMode.id === mode.id}
+                        className={activeMode.id === mode.id ? "selected" : ""}
+                        key={mode.id}
+                        onClick={() => {
+                          onSelectMode(mode.id);
+                          closeMenu(true);
+                        }}
+                      >
+                        <Gauge size={17} />
+                        <span>
+                          <strong>{mode.name}</strong>
+                          {mode.description && <small>{mode.description}</small>}
+                        </span>
+                        {activeMode.id === mode.id && <Check size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </span>
+            )}
             <span className="composer-menu-wrap model-wrap">
               <button
                 className="composer-model"
                 onClick={(event) => toggleMenu("model", event.currentTarget)}
-                title="Choose model"
-                aria-label="Choose model"
+                title={modelSelectorLabel}
+                aria-label={modelSelectorLabel}
                 aria-haspopup="menu"
                 aria-expanded={openMenu === "model"}
               >
@@ -600,12 +844,17 @@ export function Composer({
                   className="composer-menu model-menu"
                   role="menu"
                   aria-label="Model"
+                  style={menuStyle}
                   onKeyDown={handleMenuKeyDown}
                 >
                   <div className="model-menu-header">
                     <span>
-                      <strong>Models</strong>
-                      <small>{models.length} configured</small>
+                      <strong>{activePluginHarness ? `${activePluginHarness.name} model` : "Models"}</strong>
+                      <small>{modelsLoading
+                        ? "Loading from harness…"
+                        : activePluginHarness
+                          ? `${models.length} available from ${activePluginHarness.name}`
+                          : `${models.length} configured for chat`}</small>
                     </span>
                     {models.length > 5 && (
                       <label>
@@ -648,7 +897,13 @@ export function Composer({
                     ))}
                     {models.length === 0 && (
                       <small className="model-menu-empty">
-                        Add a model in Settings.
+                        {modelsLoading
+                          ? "Loading available models…"
+                          : modelsError
+                            ? modelsError
+                            : activePluginHarness
+                              ? `${activePluginHarness.name} did not report any available models.`
+                              : "Add a model in Settings."}
                       </small>
                     )}
                     {models.length > 0 && visibleModels.length === 0 && (

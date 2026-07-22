@@ -1,0 +1,20 @@
+{
+  "apiVersion": 1,
+  "id": "khadim.cursor",
+  "name": "Cursor",
+  "version": "0.1.0",
+  "description": "Runs Khadim chats through the local Cursor Agent CLI.",
+  "author": "Khadim contributors",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://cursor.com/docs/cli/acp",
+  "main": "cursor.wasm",
+  "defaultEnabled": true,
+  "capabilities": ["harness"],
+  "permissions": { "network": { "allowedHosts": ["127.0.0.1", "localhost", "::1"], "allowHttp": true } },
+  "config": [
+    { "key": "binaryPath", "label": "Binary path", "description": "Cursor Agent CLI executable.", "type": "string", "default": "cursor-agent" },
+    { "key": "apiEndpoint", "label": "API endpoint", "description": "Optional Cursor API endpoint passed to the CLI.", "type": "string" },
+    { "key": "authMethod", "label": "Authentication method", "description": "ACP authentication method. The default is cursor_login.", "type": "string", "default": "cursor_login" },
+    { "key": "customModels", "label": "Custom models", "description": "Optional comma-separated Cursor model IDs. Auto uses the CLI session default.", "type": "string", "default": "auto" }
+  ]
+}

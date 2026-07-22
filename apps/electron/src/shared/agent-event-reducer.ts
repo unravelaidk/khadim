@@ -5,14 +5,15 @@ export const EMPTY_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cach
 export function updateToolCalls(current: ToolCallActivity[] = [], event: AgentStreamEvent): ToolCallActivity[] {
   if (!event.event_type.startsWith("step_")) return current;
   const metadata = event.metadata ?? {};
-  const tool = typeof metadata.tool === "string" && metadata.tool.trim() ? metadata.tool : "tool";
-  if (tool === "model") return current;
-  const id = typeof metadata.id === "string" && metadata.id.trim() ? metadata.id : `${tool}-${current.length}`;
+  const metadataTool = typeof metadata.tool === "string" && metadata.tool.trim() ? metadata.tool : undefined;
+  if (metadataTool === "model") return current;
+  const id = typeof metadata.id === "string" && metadata.id.trim() ? metadata.id : `${metadataTool ?? "tool"}-${current.length}`;
   const existingIndex = current.findIndex((activity) => activity.id === id);
   const existing = existingIndex >= 0 ? current[existingIndex] : null;
+  const tool = metadataTool ?? existing?.tool ?? "tool";
   const title = typeof metadata.title === "string" && metadata.title.trim()
     ? metadata.title
-    : event.content?.trim() || `Running ${tool}`;
+    : existing?.title ?? (event.content?.trim() || `Running ${tool}`);
   const status = event.event_type === "step_complete"
     ? metadata.is_error === true ? "error" : "complete"
     : "running";

@@ -1,0 +1,89 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyFrameResizeConstraints,
+  applyFrameLayout,
+  canvasPages,
+  descendantIds,
+  effectivePrimitive,
+  isCanvasNode,
+  selectionRect,
+} from "../../../src/renderer/src/studio/canvas-model";
+import type { CanvasComponentNode, CanvasNode, CanvasPrimitiveNode } from "../../../src/renderer/src/studio/canvas-model";
+
+const frame: CanvasPrimitiveNode = {
+  id: "frame-a",
+  type: "frame",
+  name: "Stack",
+  x: 40,
+  y: 60,
+  width: 300,
+  height: 120,
+  color: "#ffffff",
+  layout: { direction: "row", align: "center", justify: "start", gap: 12, padding: 20, sizing: "hug" },
+};
+
+const first: CanvasPrimitiveNode = { id: "first", parentId: frame.id, type: "rectangle", x: 0, y: 0, width: 80, height: 40, color: "#2563eb" };
+const second: CanvasPrimitiveNode = { id: "second", parentId: frame.id, type: "ellipse", x: 0, y: 0, width: 48, height: 48, color: "#f59e0b" };
+
+describe("Khadim canvas scene model", () => {
+  it("recognizes native designer primitives and rejects unrelated Excalidraw records", () => {
+    expect(isCanvasNode(first)).toBe(true);
+    expect(isCanvasNode({ ...second, type: "line" })).toBe(true);
+    expect(isCanvasNode({ ...second, type: "image", src: "data:image/png;base64,AA==" })).toBe(true);
+    expect(isCanvasNode({ id: "legacy", type: "rectangle", x: 0, y: 0, width: 20, height: 20, color: "#fff", version: 1 })).toBe(true);
+    expect(isCanvasNode({ id: "real-excalidraw", type: "rectangle", x: 0, y: 0, width: 20, height: 20 })).toBe(false);
+    expect(isCanvasNode({ id: "path", type: "freedraw", points: [[0, 0], [2, 4]] })).toBe(false);
+  });
+
+  it("lays out frame children using explicit parent links and hug sizing", () => {
+    const grandchild: CanvasPrimitiveNode = { ...second, id: "grandchild", parentId: first.id, x: 10, y: 12, width: 20, height: 20 };
+    const result = applyFrameLayout([frame, first, second, grandchild], frame.id, []);
+    expect(result.find((node) => node.id === frame.id)).toMatchObject({ width: 180, height: 88 });
+    expect(result.find((node) => node.id === first.id)).toMatchObject({ x: 60, y: 84 });
+    expect(result.find((node) => node.id === second.id)).toMatchObject({ x: 152, y: 80 });
+    expect(result.find((node) => node.id === grandchild.id)).toMatchObject({ x: 70, y: 96 });
+  });
+
+  it("propagates nested hug-size changes through ancestor auto-layout frames", () => {
+    const outer: CanvasPrimitiveNode = { ...frame, id: "outer", x: 0, y: 0, layout: { ...frame.layout!, direction: "column" } };
+    const inner: CanvasPrimitiveNode = { ...frame, id: "inner", parentId: outer.id, x: 20, y: 20, width: 80, height: 60 };
+    const leaf: CanvasPrimitiveNode = { ...first, id: "leaf", parentId: inner.id, width: 160, height: 30 };
+    const result = applyFrameLayout([outer, inner, leaf], inner.id, []);
+    expect(result.find((node) => node.id === inner.id)).toMatchObject({ width: 200, height: 70 });
+    expect(result.find((node) => node.id === outer.id)).toMatchObject({ width: 240, height: 110 });
+  });
+
+  it("tracks descendants and computes selection bounds without relying on rendering", () => {
+    const nested: CanvasNode = { ...first, id: "nested", parentId: second.id };
+    expect(descendantIds([frame, first, second, nested], [frame.id])).toEqual(expect.arrayContaining([first.id, second.id, nested.id]));
+    expect(selectionRect([first, second], [])).toEqual({ x: 0, y: 0, width: 80, height: 48 });
+  });
+
+  it("keeps instance overrides local to the linked component copy", () => {
+    const source: CanvasPrimitiveNode = { ...first, id: "label", type: "text", text: "Continue" };
+    const instance: CanvasComponentNode = { id: "instance", type: "component", componentId: "button", componentRole: "instance", x: 0, y: 0, width: 80, height: 40, color: "#2563eb", overrides: { label: { text: "Ship now", color: "#ffffff" } } };
+    expect(effectivePrimitive(source, instance)).toMatchObject({ text: "Ship now", color: "#ffffff" });
+    expect(source.text).toBe("Continue");
+  });
+
+  it("applies explicit frame constraints recursively during resize", () => {
+    const fixedFrame: CanvasPrimitiveNode = { ...frame, id: "fixed", x: 100, y: 100, width: 200, height: 160, layout: undefined };
+    const rightBottom: CanvasPrimitiveNode = { ...first, id: "right-bottom", parentId: fixedFrame.id, x: 240, y: 210, width: 40, height: 30, constraintH: "right", constraintV: "bottom" };
+    const stretched: CanvasPrimitiveNode = { ...first, id: "stretched", parentId: fixedFrame.id, x: 120, y: 130, width: 160, height: 80, constraintH: "left-right", constraintV: "top-bottom" };
+    const scaledFrame: CanvasPrimitiveNode = { ...fixedFrame, id: "scaled-frame", parentId: fixedFrame.id, x: 140, y: 140, width: 100, height: 80, constraintH: "scale", constraintV: "scale" };
+    const nested: CanvasPrimitiveNode = { ...first, id: "nested", parentId: scaledFrame.id, x: 160, y: 160, width: 20, height: 20, constraintH: "right", constraintV: "bottom" };
+    const before = [fixedFrame, rightBottom, stretched, scaledFrame, nested];
+    const resized = before.map((node) => node.id === fixedFrame.id ? { ...node, width: 400, height: 320 } : node);
+    const result = applyFrameResizeConstraints(before, resized, fixedFrame.id);
+
+    expect(result.find((node) => node.id === rightBottom.id)).toMatchObject({ x: 440, y: 370, width: 40, height: 30 });
+    expect(result.find((node) => node.id === stretched.id)).toMatchObject({ x: 120, y: 130, width: 360, height: 240 });
+    expect(result.find((node) => node.id === scaledFrame.id)).toMatchObject({ x: 180, y: 180, width: 200, height: 160 });
+    expect(result.find((node) => node.id === nested.id)).toMatchObject({ x: 300, y: 280, width: 20, height: 20 });
+  });
+
+  it("upgrades a legacy single-page scene into a stable page snapshot", () => {
+    const pages = canvasPages({ format: "khadim-canvas", sceneVersion: 1, frame: { width: 960, height: 600 }, elements: [first], components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {} });
+    expect(pages).toEqual([{ id: "page-1", name: "Page 1", frame: { width: 960, height: 600 }, elements: [first], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true } }]);
+  });
+});

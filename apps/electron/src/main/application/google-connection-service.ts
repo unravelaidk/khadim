@@ -109,17 +109,17 @@ export class GoogleConnectionService {
 
   async accessToken(): Promise<string> {
     const stored = await this.repository.read();
-    if (!stored.encryptedRefreshToken || !stored.subject) throw new Error("Connect Gmail in Apps before enabling connected applications.");
+    if (!stored.encryptedRefreshToken || !stored.subject) throw new Error("Connect Google Workspace in Apps before enabling connected applications.");
     const decrypted = this.credentials.decrypt(stored.encryptedRefreshToken);
-    if (!decrypted) throw new Error("The saved Google credential is locked. Reconnect Gmail in Apps.");
+    if (!decrypted) throw new Error("The saved Google credential is locked. Reconnect Google Workspace in Apps.");
     let envelope: StoredRefreshTokenEnvelope;
     try {
       envelope = JSON.parse(decrypted) as StoredRefreshTokenEnvelope;
     } catch {
-      throw new Error("The saved Google credential is invalid. Reconnect Gmail in Apps.");
+      throw new Error("The saved Google credential is invalid. Reconnect Google Workspace in Apps.");
     }
     if (envelope.kind !== "khadim.google-refresh-token" || envelope.version !== 1 || envelope.subject !== stored.subject || !envelope.token) {
-      throw new Error("The saved Google credential does not match this account. Reconnect Gmail in Apps.");
+      throw new Error("The saved Google credential does not match this account. Reconnect Google Workspace in Apps.");
     }
     const clientSecret = stored.encryptedClientSecret
       ? this.credentials.decrypt(stored.encryptedClientSecret)

@@ -1,0 +1,19 @@
+{
+  "apiVersion": 1,
+  "id": "khadim.grok",
+  "name": "Grok",
+  "version": "0.1.0",
+  "description": "Runs Khadim chats through the local Grok CLI agent.",
+  "author": "Khadim contributors",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/xai-org/grok-cli",
+  "main": "grok.wasm",
+  "defaultEnabled": true,
+  "capabilities": ["harness"],
+  "permissions": { "network": { "allowedHosts": ["127.0.0.1", "localhost", "::1"], "allowHttp": true } },
+  "config": [
+    { "key": "binaryPath", "label": "Binary path", "description": "Grok CLI executable.", "type": "string", "default": "grok" },
+    { "key": "authMethod", "label": "Authentication method", "description": "ACP authentication method. Uses xai.api_key when XAI_API_KEY is set, otherwise cached_token.", "type": "string" },
+    { "key": "customModels", "label": "Custom models", "description": "Optional comma-separated Grok model IDs.", "type": "string", "default": "grok-build" }
+  ]
+}

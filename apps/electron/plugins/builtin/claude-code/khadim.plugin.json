@@ -1,0 +1,72 @@
+{
+  "apiVersion": 1,
+  "id": "khadim.claude-code",
+  "name": "Claude Code",
+  "version": "0.2.0",
+  "description": "Runs Khadim chats through the local Claude Code CLI.",
+  "author": "Khadim contributors",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://docs.anthropic.com/en/docs/claude-code/overview",
+  "main": "claude-code.wasm",
+  "defaultEnabled": true,
+  "capabilities": ["harness"],
+  "permissions": {
+    "network": {
+      "allowedHosts": ["127.0.0.1", "localhost", "::1"],
+      "allowHttp": true
+    }
+  },
+  "config": [
+    {
+      "key": "binaryPath",
+      "label": "Binary path",
+      "description": "Claude Code executable. Install and authenticate Claude Code before using this harness.",
+      "type": "string",
+      "default": "claude"
+    },
+    {
+      "key": "claudeHome",
+      "label": "Claude config directory",
+      "description": "Optional CLAUDE_CONFIG_DIR for an isolated Claude Code account and settings without changing the operating-system home directory.",
+      "type": "string"
+    },
+    {
+      "key": "permissionMode",
+      "label": "Permission mode",
+      "description": "Claude Code permission mode: default, acceptEdits, dontAsk, plan, auto, or bypassPermissions.",
+      "type": "string",
+      "default": "acceptEdits"
+    },
+    {
+      "key": "tools",
+      "label": "Available tools",
+      "description": "Optional comma-separated restriction on which Claude Code tools are available.",
+      "type": "string"
+    },
+    {
+      "key": "preapprovedTools",
+      "label": "Pre-approved tools",
+      "description": "Optional comma-separated tools that may run without a permission prompt. This does not restrict tool availability.",
+      "type": "string"
+    },
+    {
+      "key": "disallowedTools",
+      "label": "Disallowed tools",
+      "description": "Optional comma-separated Claude Code tool denylist.",
+      "type": "string"
+    },
+    {
+      "key": "effort",
+      "label": "Reasoning effort",
+      "description": "Optional Claude effort level: low, medium, high, xhigh, or max.",
+      "type": "string"
+    },
+    {
+      "key": "loadProjectSettings",
+      "label": "Trust project settings",
+      "description": "Load project and local Claude settings, including hooks and MCP servers that can execute with your user permissions. Enable only for trusted projects.",
+      "type": "boolean",
+      "default": false
+    }
+  ]
+}

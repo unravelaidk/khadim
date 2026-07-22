@@ -2,11 +2,15 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { GoogleOAuthAdapter, GoogleOAuthGrant } from "../application/google-connection-service";
+import { googleWorkspaceScopes } from "../../shared/google-workspace";
 
 const scopes = [
   "openid",
   "email",
-  "https://www.googleapis.com/auth/gmail.readonly",
+  googleWorkspaceScopes.gmail,
+  googleWorkspaceScopes.drive,
+  googleWorkspaceScopes.calendarList,
+  googleWorkspaceScopes.calendarEvents,
 ] as const;
 
 interface TokenResponse {
@@ -103,7 +107,7 @@ export class GoogleOAuthClient implements GoogleOAuthAdapter {
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     });
-    if (!token.access_token) throw new Error("Google access expired. Reconnect Gmail in Apps.");
+    if (!token.access_token) throw new Error("Google access expired. Reconnect Google Workspace in Apps.");
     return token.access_token;
   }
 

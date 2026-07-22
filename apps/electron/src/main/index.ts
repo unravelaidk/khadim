@@ -6,7 +6,7 @@ import type { Readable, Writable } from "node:stream";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
-import type { AgentRunRequest, AgentStreamEvent, AppSettings, ArtifactPreviewRequest, CodexAuthSession, CodexAuthStatus, DiscordSettings, DiscordSettingsUpdate, GoogleConnectRequest, ModelCatalogProvider, Project, SettingsUpdate, SkillEntry } from "../shared/types";
+import type { AgentApprovalDecision, AgentQuestionAnswers, AgentRunRequest, AgentStreamEvent, AppSettings, ArtifactPreviewRequest, CodexAuthSession, CodexAuthStatus, DiscordSettings, DiscordSettingsUpdate, GoogleConnectRequest, ModelCatalogProvider, Project, SettingsUpdate, SkillEntry } from "../shared/types";
 import { credentialPolicyArgs, executionPolicyArgs, processSupervisionArgs, skillRuntimeArgs } from "./agent-run-policy";
 import { decodeModelCredential, hasSameCredentialScope } from "./domain/credential-policy";
 import { createProjectActivationOperations } from "./application/project-activation";
@@ -36,6 +36,8 @@ import { ArtifactPreviewRuntime } from "./artifact-preview-runtime";
 import { createArtifactAgentTools } from "./artifact-agent-tools";
 import { createNativeToolHost, type NativeTool, type NativeToolHost } from "./native-tool-host";
 import { createGmailNativeTools } from "./gmail-native-tools";
+import { createGoogleCalendarNativeTools, createGoogleDriveNativeTools } from "./google-workspace-native-tools";
+import { googleWorkspaceServiceEnabled } from "../shared/google-workspace";
 import { GoogleConnectionService, normalizeStoredGoogleConnection } from "./application/google-connection-service";
 import { GoogleOAuthClient } from "./infrastructure/google-oauth-client";
 import { isPluginHarnessId, type PluginConfigUpdate, type PluginHarnessId } from "../shared/plugins";
@@ -43,6 +45,10 @@ import { PluginManager, normalizePluginState, type StoredPluginState } from "./p
 import { WasmPluginRuntime } from "./plugins/wasm-plugin";
 import { PluginHarnessRunner, type ActivePluginHarnessRun } from "./plugins/harness-runner";
 import { OpenCodeServerManager } from "./plugins/opencode-server-manager";
+import { ClaudeCodeServerManager } from "./plugins/claude-code-server-manager";
+import { CliHarnessServerManager } from "./plugins/cli-harness-server-manager";
+import { PluginHarnessModelCatalog } from "./plugins/harness-model-catalog";
+import { NativeToolMcpHostManager } from "./native-tool-mcp-host";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const activeRuns = new Map<string, ChildProcess>();
@@ -61,6 +67,7 @@ const startingRuns = new Map<string, {
 }>();
 const runEventBuffer = new RunEventBuffer();
 const artifactPreviewRuntime = new ArtifactPreviewRuntime();
+const pluginNativeToolMcpHosts = new NativeToolMcpHostManager();
 const criticalOperations = new Set<Promise<unknown>>();
 let projectStore: ProjectDataRepository | null = null;
 let settingsStore: SettingsRepository | null = null;
@@ -76,6 +83,9 @@ let projectService: ProjectService | null = null;
 let pluginManager: PluginManager | null = null;
 let pluginHarnessRunner: PluginHarnessRunner | null = null;
 let openCodeServerManager: OpenCodeServerManager | null = null;
+let claudeCodeServerManager: ClaudeCodeServerManager | null = null;
+let cliHarnessServerManager: CliHarnessServerManager | null = null;
+let pluginHarnessModelCatalog: PluginHarnessModelCatalog | null = null;
 let pluginStateRepository: JsonDocumentRepository<StoredPluginState> | null = null;
 let quitReady = false;
 let isQuitting = false;
@@ -226,6 +236,12 @@ function capabilityPrompt(request: AgentRunRequest, enabledSkills: SkillEntry[])
     sections.push(enabled.length > 0
       ? `Enabled tool groups: ${enabled.join(", ")}. Use only tools that belong to these enabled groups.`
       : "No optional tool groups are enabled. Do not call optional tools; answer using reasoning only.");
+  }
+  if (request.enabledTools?.includes("apps") && request.enabledApps) {
+    const appLabels = { gmail: "Gmail", drive: "Google Drive", calendar: "Google Calendar" } as const;
+    sections.push(request.enabledApps.length > 0
+      ? `Connected app allowlist: ${request.enabledApps.map((id) => appLabels[id]).join(", ")}. Do not use connected applications outside this list.`
+      : "Connected applications are enabled as a group, but this agent has no individual apps allowed. Do not call connected app tools.");
   }
   if (request.artifactId) {
     sections.push(`The selected Studio artifact is bound to this run as ${request.artifactId}. Inspect it with artifact_read and update that same record with artifact_edit; never create a replacement artifact. Artifact paths such as /src/App.tsx are virtual paths accepted only by those artifact tools. Project file read/write/edit tools are unavailable for this run.`);
@@ -615,6 +631,38 @@ async function terminateRun(runId: string): Promise<void> {
   await terminateProcessTree(child, closed);
 }
 
+async function answerRunQuestion(runId: string, requestId: string, answers: AgentQuestionAnswers): Promise<void> {
+  if (!/^[0-9a-f-]{36}$/i.test(runId)) throw new Error("Invalid run ID");
+  if (!requestId.trim() || requestId.length > 512) throw new Error("Invalid question request ID");
+  if (!answers || typeof answers !== "object" || Array.isArray(answers)) throw new Error("Invalid question answers");
+  const normalized: AgentQuestionAnswers = {};
+  for (const [questionId, values] of Object.entries(answers)) {
+    if (!questionId.trim() || questionId.length > 512 || !Array.isArray(values) || values.length > 32) {
+      throw new Error("Invalid question answers");
+    }
+    normalized[questionId] = values.map((value) => {
+      if (typeof value !== "string" || value.length > 16_384) throw new Error("Invalid question answer");
+      return value;
+    });
+  }
+  const run = activePluginRuns.get(runId);
+  if (!run) throw new Error("This question is no longer active.");
+  await run.respondToQuestion(requestId, normalized);
+  emitTo(runId, { event_type: "question", metadata: { requestId, resolved: true } });
+}
+
+async function answerRunApproval(runId: string, requestId: string, decision: AgentApprovalDecision): Promise<void> {
+  if (!/^[0-9a-f-]{36}$/i.test(runId)) throw new Error("Invalid run ID");
+  if (!requestId.trim() || requestId.length > 512) throw new Error("Invalid approval request ID");
+  if (decision !== "accept" && decision !== "acceptForSession" && decision !== "decline" && decision !== "cancel") {
+    throw new Error("Invalid approval decision");
+  }
+  const run = activePluginRuns.get(runId);
+  if (!run) throw new Error("This approval is no longer active.");
+  await run.respondToApproval(requestId, decision);
+  emitTo(runId, { event_type: "approval", metadata: { requestId, decision, resolved: true } });
+}
+
 function ownerWindow(event: IpcMainInvokeEvent): BrowserWindow {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (!owner || owner.isDestroyed()) throw new Error("The app window is no longer available.");
@@ -692,13 +740,31 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
     };
     if (finishCancelledStart()) return { runId };
 
+    const nativeTools: NativeTool[] = [];
+    if (run.enabledTools.includes("apps")) {
+      const allowedApps = new Set(run.enabledApps ?? ["gmail", "drive", "calendar"]);
+      if (allowedApps.size > 0) {
+        const google = await applicationGoogleConnection().get();
+        if (!google.connected) throw new Error("Connect Google Workspace in Apps before enabling connected applications.");
+        if (allowedApps.has("gmail") && googleWorkspaceServiceEnabled(google.scopes, "gmail")) nativeTools.push(...createGmailNativeTools(applicationGoogleConnection()));
+        if (allowedApps.has("drive") && googleWorkspaceServiceEnabled(google.scopes, "drive")) nativeTools.push(...createGoogleDriveNativeTools(applicationGoogleConnection()));
+        if (allowedApps.has("calendar") && googleWorkspaceServiceEnabled(google.scopes, "calendar")) nativeTools.push(...createGoogleCalendarNativeTools(applicationGoogleConnection()));
+        if (nativeTools.length === 0) throw new Error("Update Google Workspace access in Apps before using this agent's connected applications.");
+      }
+    }
+    if (artifactId) nativeTools.push(...await createArtifactAgentTools(projects(), { projectId: project.id, artifactId }));
+    if (finishCancelledStart()) return { runId };
+
     if (isPluginHarnessId(run.harness)) {
-      if (artifactId) throw new Error("Plugin harnesses do not yet expose Studio artifact tools. Choose the Assistant harness for artifact edits.");
-      if (run.enabledTools.includes("apps")) throw new Error("Connected app tools currently require the Assistant or Computer control runtime.");
       const enabledSkills = (await skills().discover()).filter((skill) => skill.enabled);
       if (finishCancelledStart()) return { runId };
+      const nativeToolMcp = await pluginNativeToolMcpHosts.prepare(request.engineSessionKey, nativeTools);
+      if (finishCancelledStart()) {
+        await pluginNativeToolMcpHosts.clear(request.engineSessionKey);
+        return { runId };
+      }
       const systemPrompt = capabilityPrompt(
-        { ...request, systemPrompt: run.agent.systemPrompt, enabledTools: run.enabledTools },
+        { ...request, systemPrompt: run.agent.systemPrompt, enabledTools: run.enabledTools, enabledApps: run.enabledApps },
         enabledSkills,
       );
       runEventBuffer.register({
@@ -715,12 +781,24 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
         prompt: request.prompt.trim(),
         systemPrompt: systemPrompt || undefined,
         model: { provider: run.model.provider, model: run.model.model },
+        runtimeMode: run.runtimeMode ?? "approval-required",
+        interactionMode: run.interactionMode,
+        nativeToolMcp,
       }, (event) => emitTo(runId, event));
-      activePluginRuns.set(runId, handle);
-      runClosePromises.set(runId, handle.closed);
+      const closed = handle.closed.finally(() => pluginNativeToolMcpHosts.clear(request.engineSessionKey));
+      const managedHandle: ActivePluginHarnessRun = {
+        ...handle,
+        closed,
+        abort: async () => {
+          await handle.abort();
+          await closed;
+        },
+      };
+      activePluginRuns.set(runId, managedHandle);
+      runClosePromises.set(runId, closed);
       activeEngineSessions.set(request.engineSessionKey, runId);
       engineSessionByRun.set(runId, request.engineSessionKey);
-      void handle.closed.finally(() => {
+      void closed.finally(() => {
         activePluginRuns.delete(runId);
         runClosePromises.delete(runId);
         activeEngineSessions.delete(request.engineSessionKey);
@@ -745,7 +823,7 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
     if (finishCancelledStart()) return { runId };
     args.push(...skillRuntimeArgs(enabledSkills));
     const systemPrompt = capabilityPrompt(
-      { ...request, systemPrompt: run.agent.systemPrompt, enabledTools: run.enabledTools },
+      { ...request, systemPrompt: run.agent.systemPrompt, enabledTools: run.enabledTools, enabledApps: run.enabledApps },
       enabledSkills,
     );
     const search = run.enabledTools.includes("web") ? await applicationSearchSettings().runConfiguration() : null;
@@ -769,13 +847,6 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
     }
     const env = buildRunEnvironment(process.env, run.model.provider, apiKey, run.model.baseUrl);
     if (search) Object.assign(env, search.env);
-    const nativeTools: NativeTool[] = [];
-    if (run.enabledTools.includes("apps")) {
-      const google = await applicationGoogleConnection().get();
-      if (!google.connected) throw new Error("Connect Gmail in Apps before enabling connected applications.");
-      nativeTools.push(...createGmailNativeTools(applicationGoogleConnection()));
-    }
-    if (artifactId) nativeTools.push(...await createArtifactAgentTools(projects(), { projectId: project.id, artifactId }));
     let nativeToolHost: NativeToolHost | null = nativeTools.length > 0 ? await createNativeToolHost(nativeTools) : null;
     if (nativeToolHost) Object.assign(env, nativeToolHost.env);
 
@@ -1105,7 +1176,10 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
     new WasmPluginRuntime(currentDir),
   );
   openCodeServerManager = new OpenCodeServerManager();
-  pluginHarnessRunner = new PluginHarnessRunner(pluginManager, openCodeServerManager);
+  claudeCodeServerManager = new ClaudeCodeServerManager();
+  cliHarnessServerManager = new CliHarnessServerManager();
+  pluginHarnessModelCatalog = new PluginHarnessModelCatalog(pluginManager);
+  pluginHarnessRunner = new PluginHarnessRunner(pluginManager, [openCodeServerManager, claudeCodeServerManager, cliHarnessServerManager]);
   await pluginManager.discover();
   await initializeProjectContext();
   createWindow();
@@ -1136,6 +1210,8 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
   });
   ipcMain.handle("agent:start", (_event, request: AgentRunRequest) => startAgent(request));
   ipcMain.handle("agent:abort", (_event, runId: string) => terminateRun(runId));
+  ipcMain.handle("agent:answer-question", (_event, runId: string, requestId: string, answers: AgentQuestionAnswers) => answerRunQuestion(runId, requestId, answers));
+  ipcMain.handle("agent:answer-approval", (_event, runId: string, requestId: string, decision: AgentApprovalDecision) => answerRunApproval(runId, requestId, decision));
   ipcMain.handle("agent:recover", () => runEventBuffer.listRecoverable());
   ipcMain.handle("agent:acknowledge", (_event, runId: string) => {
     runEventBuffer.acknowledge(runId);
@@ -1145,8 +1221,28 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
   ipcMain.handle("projects:open", (_event, projectId: string) => projectActivation.open(projectId));
   ipcMain.handle("projects:check-availability", (_event, projectId: string) => projects().checkProjectAvailability(projectId));
   ipcMain.handle("projects:rename", (_event, projectId: string, name: string) => projects().renameProject(projectId, name));
-  ipcMain.handle("projects:relocate", (_event, projectId: string, rootPath: string) => applicationProjects().relocate(projectId, rootPath));
-  ipcMain.handle("projects:remove", (_event, projectId: string) => applicationProjects().remove(projectId));
+  ipcMain.handle("projects:relocate", async (_event, projectId: string, rootPath: string) => {
+    const conversations = await projects().listConversations(projectId);
+    const result = await applicationProjects().relocate(projectId, rootPath);
+    await Promise.all(conversations.flatMap(({ engineSessionKey }) => [
+      openCodeServerManager?.stop(engineSessionKey),
+      claudeCodeServerManager?.stop(engineSessionKey),
+      cliHarnessServerManager?.stop(engineSessionKey),
+      pluginNativeToolMcpHosts.stop(engineSessionKey),
+    ]));
+    return result;
+  });
+  ipcMain.handle("projects:remove", async (_event, projectId: string) => {
+    const conversations = await projects().listConversations(projectId);
+    const result = await applicationProjects().remove(projectId);
+    await Promise.all(conversations.flatMap(({ engineSessionKey }) => [
+      openCodeServerManager?.stop(engineSessionKey),
+      claudeCodeServerManager?.stop(engineSessionKey),
+      cliHarnessServerManager?.stop(engineSessionKey),
+      pluginNativeToolMcpHosts.stop(engineSessionKey),
+    ]));
+    return result;
+  });
   ipcMain.handle("projects:choose-directory", async (event) => {
     const result = await dialog.showOpenDialog(ownerWindow(event), { properties: ["openDirectory", "createDirectory"] });
     return result.canceled ? null : result.filePaths[0] ?? null;
@@ -1175,12 +1271,28 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
       }
       await deleteCliSession(engineSessionKey);
       await openCodeServerManager?.stop(engineSessionKey);
+      await claudeCodeServerManager?.stop(engineSessionKey);
+      await cliHarnessServerManager?.stop(engineSessionKey);
+      await pluginNativeToolMcpHosts.stop(engineSessionKey);
       await projects().removeConversation(projectId, id);
       for (const run of bufferedRuns) runEventBuffer.acknowledge(run.runId);
     } finally {
       deletingEngineSessions.delete(engineSessionKey);
     }
   }));
+  ipcMain.handle("conversations:export-markdown", async (_event, suggestedName: string, markdown: string) => {
+    if (typeof suggestedName !== "string" || typeof markdown !== "string" || markdown.length > 20_000_000) throw new Error("Invalid conversation export");
+    const safeName = suggestedName.trim().replace(/[\\/:*?"<>|]/g, "-").slice(0, 120) || "khadim-conversation";
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath: `${safeName}.md`,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, markdown, "utf8");
+    return result.filePath;
+  });
+  ipcMain.handle("app:version", () => app.getVersion());
+  ipcMain.handle("app:config-directory", () => app.getPath("userData"));
   ipcMain.handle("artifacts:list", (_event, projectId: string) => projects().listArtifacts(projectId));
   ipcMain.handle("artifacts:save", (_event, projectId: string, drafts) => projects().saveArtifacts(projectId, drafts));
   ipcMain.handle("artifacts:preview", (_event, request: ArtifactPreviewRequest) => artifactPreviewRuntime.start(request));
@@ -1231,7 +1343,10 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(ownerWindow(event), { properties: ["openDirectory", "createDirectory"] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
-  ipcMain.handle("models:catalog", () => loadModelCatalog());
+  ipcMain.handle("models:catalog", (_event, refresh = false) => {
+    if (refresh === true) modelCatalogCache = null;
+    return loadModelCatalog();
+  });
   ipcMain.handle("models:sync-codex", (_event, activate: boolean) => {
     if (typeof activate !== "boolean") throw new Error("Invalid Codex activation state.");
     return syncCodexModels(activate);
@@ -1251,6 +1366,30 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
   ipcMain.handle("skills:toggle", (_event, skillId: string, enabled: boolean) => skills().setEnabled(skillId, enabled));
   ipcMain.handle("plugins:list", () => plugins().list());
   ipcMain.handle("plugins:harnesses", () => plugins().harnesses());
+  ipcMain.handle("plugins:models", (_event, harnessId: PluginHarnessId, projectPath: string) => {
+    if (!isPluginHarnessId(harnessId)) throw new Error("Invalid plugin harness id.");
+    if (typeof projectPath !== "string" || !projectPath.trim()) throw new Error("A project path is required for model discovery.");
+    if (!pluginHarnessModelCatalog) throw new Error("Plugin model discovery is not ready.");
+    return pluginHarnessModelCatalog.models(harnessId, projectPath);
+  });
+  ipcMain.handle("plugins:modes", (_event, harnessId: PluginHarnessId, projectPath: string) => {
+    if (!isPluginHarnessId(harnessId)) throw new Error("Invalid plugin harness id.");
+    if (typeof projectPath !== "string" || !projectPath.trim()) throw new Error("A project path is required for mode discovery.");
+    if (!pluginHarnessModelCatalog) throw new Error("Plugin mode discovery is not ready.");
+    return pluginHarnessModelCatalog.modes(harnessId, projectPath);
+  });
+  ipcMain.handle("plugins:commands", (_event, harnessId: PluginHarnessId, projectPath: string) => {
+    if (!isPluginHarnessId(harnessId)) throw new Error("Invalid plugin harness id.");
+    if (typeof projectPath !== "string" || !projectPath.trim()) throw new Error("A project path is required for command discovery.");
+    if (!pluginHarnessModelCatalog) throw new Error("Plugin command discovery is not ready.");
+    return pluginHarnessModelCatalog.commands(harnessId, projectPath);
+  });
+  ipcMain.handle("plugins:refresh-catalog", (_event, harnessId: PluginHarnessId, projectPath: string) => {
+    if (!isPluginHarnessId(harnessId)) throw new Error("Invalid plugin harness id.");
+    if (typeof projectPath !== "string" || !projectPath.trim()) throw new Error("A project path is required for catalog discovery.");
+    if (!pluginHarnessModelCatalog) throw new Error("Plugin catalog discovery is not ready.");
+    return pluginHarnessModelCatalog.refresh(harnessId, projectPath);
+  });
   ipcMain.handle("plugins:choose-and-install", async (event) => {
     const result = await dialog.showOpenDialog(ownerWindow(event), { properties: ["openDirectory"], title: "Install Khadim plugin" });
     return result.canceled || !result.filePaths[0] ? null : plugins().install(result.filePaths[0]);
@@ -1337,6 +1476,9 @@ async function drainForShutdown(): Promise<void> {
   ]);
   await Promise.allSettled(Array.from(runIds, (runId) => terminateRun(runId)));
   await openCodeServerManager?.stopAll();
+  await claudeCodeServerManager?.stopAll();
+  await cliHarnessServerManager?.stopAll();
+  await pluginNativeToolMcpHosts.stopAll();
   await waitForCriticalOperations();
   // Renderer acknowledgement is sent only after the terminal conversation
   // save completes. Keeping the window alive until here prevents quit-time

@@ -13,7 +13,6 @@ import {
   NotePencil as FilePenLine,
   Kanban as FolderKanban,
   FolderOpen,
-  EnvelopeSimple,
   GlobeHemisphereWest as Globe2,
   List as Menu,
   Minus,
@@ -32,12 +31,14 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/source-serif-4";
-import type { AgentEventEnvelope, AgentRun, AgentRunRecoverySnapshot, AppSettings, ArtifactDraft, ArtifactKind, ChatAttachment, ChatMessage, Conversation, GoogleConnection, HarnessMode, PluginHarnessDescriptor, Project, ProjectAvailability, TokenUsage, ToolCallActivity } from "../../shared/types";
+import type { AgentApprovalDecision, AgentApprovalRequest, AgentEventEnvelope, AgentQuestion, AgentQuestionAnswers, AgentQuestionRequest, AgentRun, AgentRunRecoverySnapshot, AgentRuntimeMode, AppSettings, ArtifactDraft, ArtifactKind, ChatAttachment, ChatMessage, Conversation, GoogleConnection, HarnessMode, ModelConfig, PluginHarnessCommand, PluginHarnessDescriptor, PluginHarnessMode, PluginHarnessModel, Project, ProjectAvailability, TokenUsage, ToolCallActivity } from "../../shared/types";
+import { isPluginHarnessId } from "../../shared/plugins";
 import { parseStudioArtifactEditPayload } from "../../shared/studio-artifact-edit";
 import { applySequencedAgentEvent, conversationUsage, reconcileTerminalAssistant } from "../../shared/agent-event-reducer";
 import { commandHelp, parseChatCommand } from "../../shared/chat-commands";
 import { artifactHtml, artifactTitle, createArtifact, deleteArtifact, discardArtifactChanges, isSiteContent } from "./artifact-model";
 import type { AgentDefinition } from "./agents/types";
+import { AgentsView } from "./agents/AgentsView";
 import { AppsView } from "./capabilities/AppsView";
 import { AttachmentBadge } from "./chat/AttachmentBadge";
 import { Composer } from "./chat/Composer";
@@ -50,10 +51,10 @@ import { StudioWorkspace, type StudioAgentStatus } from "./studio/StudioWorkspac
 import { applyStudioArtifactEdit, parseStudioArtifactEdit, studioAgentPrompt, type StudioArtifactEdit } from "./studio/studio-agent-edit";
 import { AccountDialog, SettingsDialog } from "./settings/SettingsDialogs";
 import { applyDocumentTheme } from "./theme/document-theme";
+import { AnimatedPhosphorIcon } from "./ui/AnimatedPhosphorIcon";
 import { Logo } from "./ui/Logo";
 import { ModelIcon } from "./ui/ModelIcon";
 import { Badge } from "./ui/primitives";
-import { ToggleSwitch } from "./ui/ToggleSwitch";
 
 const starterPrompts = [
   { label: "Plan my week", prompt: "Help me plan a realistic week around my priorities. Ask me what you need to know first." },
@@ -61,6 +62,73 @@ const starterPrompts = [
   { label: "Research something", prompt: "Help me research a topic and turn the findings into a clear, practical brief." },
   { label: "Automate a task", prompt: "Help me automate a repetitive task on my computer. Start by understanding the exact workflow." },
 ];
+
+const pluginModelSelectionStorageKey = "khadim.plugin-model-selections.v1";
+const pluginModeSelectionStorageKey = "khadim.plugin-mode-selections.v1";
+const runtimeModeStorageKey = "khadim.runtime-mode.v1";
+const multiAgentStorageKey = "khadim.multi-agent.v1";
+const promptHistoryStorageKey = "khadim.prompt-history.v1";
+
+function loadStringSelections(key = pluginModelSelectionStorageKey): Record<string, string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? "{}") as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+  } catch {
+    return {};
+  }
+}
+
+function questionRequestFromEvent(event: AgentEventEnvelope["event"]): AgentQuestionRequest | null {
+  if (event.event_type !== "question" || event.metadata?.resolved === true) return null;
+  const requestId = event.metadata?.requestId;
+  const rawQuestions = event.metadata?.questions;
+  if (typeof requestId !== "string" || !requestId.trim() || !Array.isArray(rawQuestions)) return null;
+  const questions = rawQuestions.map<AgentQuestion | null>((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const raw = value as Record<string, unknown>;
+    if (typeof raw.id !== "string" || typeof raw.header !== "string" || typeof raw.question !== "string" || !Array.isArray(raw.options)) return null;
+    const options = raw.options.flatMap((option) => {
+      if (!option || typeof option !== "object" || Array.isArray(option)) return [];
+      const record = option as Record<string, unknown>;
+      if (typeof record.label !== "string" || !record.label.trim()) return [];
+      return [{ label: record.label, ...(typeof record.description === "string" ? { description: record.description } : {}) }];
+    });
+    if (!raw.id.trim() || !raw.header.trim() || !raw.question.trim()) return null;
+    return { id: raw.id, header: raw.header, question: raw.question, options, ...(raw.multiSelect === true ? { multiSelect: true } : {}) };
+  }).filter((question): question is AgentQuestion => question !== null);
+  return questions.length > 0 ? { requestId, questions } : null;
+}
+
+function approvalRequestFromEvent(event: AgentEventEnvelope["event"]): AgentApprovalRequest | null {
+  if (event.event_type !== "approval" || event.metadata?.resolved === true) return null;
+  const requestId = event.metadata?.requestId;
+  const kind = event.metadata?.kind;
+  const title = event.metadata?.title;
+  if (typeof requestId !== "string" || !requestId.trim()) return null;
+  if (kind !== "command" && kind !== "file-read" && kind !== "file-change" && kind !== "tool") return null;
+  if (typeof title !== "string" || !title.trim()) return null;
+  return { requestId, kind, title, ...(typeof event.metadata?.detail === "string" ? { detail: event.metadata.detail } : {}) };
+}
+
+function loadRuntimeMode(): AgentRuntimeMode {
+  const saved = localStorage.getItem(runtimeModeStorageKey);
+  return saved === "auto-accept-edits" || saved === "full-access" ? saved : "approval-required";
+}
+
+function loadPromptHistory(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(promptHistoryStorageKey) ?? "[]") as unknown;
+    return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string").slice(-100) : [];
+  } catch {
+    return [];
+  }
+}
+
+function conversationMarkdown(conversation: Conversation): string {
+  const body = conversation.messages.map((message) => `## ${message.role === "user" ? "You" : "Khadim"}\n\n${message.content}`).join("\n\n");
+  return `# ${conversation.title}\n\n${body}\n`;
+}
 
 type AppMode = "chat" | "agent" | "studio";
 type AppView = "welcome" | "project" | "artifacts" | "apps";
@@ -182,7 +250,8 @@ const defaultAgent: AgentDefinition = {
   color: "coral",
   description: "A practical generalist for writing, planning, research, and everyday work.",
   prompt: "You are an approachable personal AI assistant. Be practical, clear, and proactive.",
-  connectors: ["web", "files"],
+  connectors: ["web", "files", "apps"],
+  appAccess: ["gmail", "drive", "calendar"],
   builtIn: true,
 };
 
@@ -191,7 +260,15 @@ const agentStorageKey = "khadim.agents.v1";
 function loadAgents(): AgentDefinition[] {
   try {
     const stored = JSON.parse(localStorage.getItem(agentStorageKey) ?? "[]") as AgentDefinition[];
-    const customAgents = stored.filter((agent) => agent.id !== defaultAgent.id && agent.type === "agent" && agent.name && agent.prompt);
+    const validColors = new Set<AgentDefinition["color"]>(["coral", "blue", "orange", "pink"]);
+    const validApps = new Set(["gmail", "drive", "calendar"]);
+    const customAgents = stored.filter((agent) => agent.id !== defaultAgent.id && agent.type === "agent" && agent.name && agent.prompt).map((agent) => ({
+      ...agent,
+      description: typeof agent.description === "string" ? agent.description : "Custom agent",
+      connectors: Array.isArray(agent.connectors) ? agent.connectors.filter((id): id is string => typeof id === "string" && toolOptions.some((tool) => tool.id === id)) : [],
+      appAccess: Array.isArray(agent.appAccess) ? agent.appAccess.filter((id) => validApps.has(id)) : agent.connectors?.includes("apps") ? ["gmail", "drive", "calendar"] : [],
+      color: validColors.has(agent.color) ? agent.color : "blue",
+    } satisfies AgentDefinition));
     return [defaultAgent, ...customAgents];
   } catch {
     return [defaultAgent];
@@ -318,6 +395,13 @@ function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<{ runId: string; request: AgentQuestionRequest } | null>(null);
+  const [questionResponding, setQuestionResponding] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<{ runId: string; request: AgentApprovalRequest } | null>(null);
+  const [approvalResponding, setApprovalResponding] = useState(false);
+  const [runtimeMode, setRuntimeModeState] = useState<AgentRuntimeMode>(loadRuntimeMode);
+  const [multiAgent, setMultiAgentState] = useState(() => localStorage.getItem(multiAgentStorageKey) === "true");
+  const [promptHistory, setPromptHistory] = useState<string[]>(loadPromptHistory);
   const [isCompact, setIsCompact] = useState(() => window.matchMedia("(max-width: 841px)").matches);
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia("(max-width: 841px)").matches);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -330,6 +414,13 @@ function App(): React.JSX.Element {
   const [studioAgentStatus, setStudioAgentStatus] = useState<(StudioAgentStatus & { artifactId: string }) | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [pluginHarnesses, setPluginHarnesses] = useState<PluginHarnessDescriptor[]>([]);
+  const [pluginModels, setPluginModels] = useState<Record<string, PluginHarnessModel[]>>({});
+  const [pluginModelSelections, setPluginModelSelections] = useState<Record<string, string>>(() => loadStringSelections());
+  const [pluginModes, setPluginModes] = useState<Record<string, PluginHarnessMode[]>>({});
+  const [pluginCommands, setPluginCommands] = useState<Record<string, PluginHarnessCommand[]>>({});
+  const [pluginModeSelections, setPluginModeSelections] = useState<Record<string, string>>(() => loadStringSelections(pluginModeSelectionStorageKey));
+  const [pluginModelsLoading, setPluginModelsLoading] = useState<string | null>(null);
+  const [pluginModelErrors, setPluginModelErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<AppMode>("chat");
   const [activeView, setActiveView] = useState<AppView>("welcome");
@@ -337,7 +428,7 @@ function App(): React.JSX.Element {
   const [selectedAgentId, setSelectedAgentId] = useState("everyday");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [enabledTools, setEnabledTools] = useState<string[]>(() => toolOptions.filter((tool) => tool.defaultEnabled).map((tool) => tool.id));
-  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleConnection, setGoogleConnection] = useState<GoogleConnection | null>(null);
   const [systemPromptOverride, setSystemPromptOverride] = useState<string | null>(null);
   const runIdRef = useRef<string | null>(null);
   const activeProjectIdRef = useRef<string | null>(null);
@@ -366,6 +457,25 @@ function App(): React.JSX.Element {
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? defaultAgent;
   const selectedModel = settings?.models.find((model) => model.isActive);
+  const activePluginHarnessId = settings?.harness && isPluginHarnessId(settings.harness) ? settings.harness : null;
+  const activePluginModels = activePluginHarnessId ? pluginModels[activePluginHarnessId] ?? [] : [];
+  const selectedPluginModelId = activePluginHarnessId
+    ? pluginModelSelections[activePluginHarnessId] ?? activePluginModels.find((model) => model.isDefault)?.id ?? activePluginModels[0]?.id
+    : undefined;
+  const activePluginModes = activePluginHarnessId ? pluginModes[activePluginHarnessId] ?? [] : [];
+  const activePluginCommands = activePluginHarnessId ? pluginCommands[activePluginHarnessId] ?? [] : [];
+  const selectedPluginModeId = activePluginHarnessId
+    ? pluginModeSelections[activePluginHarnessId] ?? activePluginModes.find((mode) => mode.isDefault)?.id ?? activePluginModes[0]?.id
+    : undefined;
+  const chatModels: ModelConfig[] = activePluginHarnessId
+    ? activePluginModels.map((model, index) => ({
+        ...model,
+        isDefault: model.isDefault ?? index === 0,
+        isActive: model.id === selectedPluginModelId,
+        hasApiKey: true,
+      }))
+    : settings?.models ?? [];
+  const activeChatModel = chatModels.find((model) => model.isActive) ?? chatModels[0];
   const visibleConversations = conversations;
   const isMac = window.khadim.platform === "darwin";
   const platformClass = isMac
@@ -407,6 +517,59 @@ function App(): React.JSX.Element {
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, []);
+
+  useEffect(() => {
+    const harnessId = activePluginHarnessId;
+    const projectPath = activeProject?.rootPath;
+    if (!harnessId || !projectPath || !window.khadim.plugins?.models || !window.khadim.plugins.modes) return;
+    let cancelled = false;
+    setPluginModelsLoading(harnessId);
+    setPluginModelErrors((current) => {
+      const next = { ...current };
+      delete next[harnessId];
+      return next;
+    });
+    void Promise.all([
+      window.khadim.plugins.models(harnessId, projectPath),
+      window.khadim.plugins.modes(harnessId, projectPath),
+      window.khadim.plugins.commands?.(harnessId, projectPath) ?? Promise.resolve([]),
+    ]).then(([models, modes, commands]) => {
+      if (cancelled) return;
+      setPluginModels((current) => ({ ...current, [harnessId]: models }));
+      setPluginModes((current) => ({ ...current, [harnessId]: modes }));
+      setPluginCommands((current) => ({ ...current, [harnessId]: commands }));
+      setPluginModelSelections((current) => {
+        const selected = models.some((model) => model.id === current[harnessId])
+          ? current[harnessId]
+          : models.find((model) => model.isDefault)?.id ?? models[0]?.id;
+        const next = { ...current };
+        if (selected) next[harnessId] = selected;
+        else delete next[harnessId];
+        localStorage.setItem(pluginModelSelectionStorageKey, JSON.stringify(next));
+        return next;
+      });
+      setPluginModeSelections((current) => {
+        const selected = modes.some((mode) => mode.id === current[harnessId])
+          ? current[harnessId]
+          : modes.find((mode) => mode.isDefault)?.id ?? modes[0]?.id;
+        const next = { ...current };
+        if (selected) next[harnessId] = selected;
+        else delete next[harnessId];
+        localStorage.setItem(pluginModeSelectionStorageKey, JSON.stringify(next));
+        return next;
+      });
+    }).catch((cause: unknown) => {
+      if (cancelled) return;
+      const message = cause instanceof Error ? cause.message : "Models could not be loaded from this harness.";
+      setPluginModels((current) => ({ ...current, [harnessId]: [] }));
+      setPluginModes((current) => ({ ...current, [harnessId]: [] }));
+      setPluginCommands((current) => ({ ...current, [harnessId]: [] }));
+      setPluginModelErrors((current) => ({ ...current, [harnessId]: message }));
+    }).finally(() => {
+      if (!cancelled) setPluginModelsLoading((current) => current === harnessId ? null : current);
+    });
+    return () => { cancelled = true; };
+  }, [activePluginHarnessId, activeProject?.rootPath, pluginHarnesses]);
 
   useEffect(() => {
     const refresh = () => void window.khadim.plugins?.harnesses().then(setPluginHarnesses).catch((cause: unknown) => {
@@ -743,7 +906,7 @@ function App(): React.JSX.Element {
     let active = true;
     const applyConnection = (connection: GoogleConnection) => {
       if (!active) return;
-      setGoogleConnected(connection.connected);
+      setGoogleConnection(connection);
       setEnabledTools((current) => connection.connected
         ? current.includes("apps") ? current : [...current, "apps"]
         : current.filter((id) => id !== "apps"));
@@ -847,6 +1010,26 @@ function App(): React.JSX.Element {
       return;
     }
 
+    if (event.event_type === "question") {
+      const requestId = event.metadata?.requestId;
+      if (event.metadata?.resolved === true) {
+        setPendingQuestion((current) => current?.runId === runId && current.request.requestId === requestId ? null : current);
+      } else {
+        const request = questionRequestFromEvent(event);
+        if (request) setPendingQuestion({ runId, request });
+      }
+    }
+
+    if (event.event_type === "approval") {
+      const requestId = event.metadata?.requestId;
+      if (event.metadata?.resolved === true) {
+        setPendingApproval((current) => current?.runId === runId && current.request.requestId === requestId ? null : current);
+      } else {
+        const request = approvalRequestFromEvent(event);
+        if (request) setPendingApproval({ runId, request });
+      }
+    }
+
     let updated = applySequencedAgentEvent(
       cached,
       runId,
@@ -882,7 +1065,7 @@ function App(): React.JSX.Element {
         setStudioAgentStatus({
           artifactId: editedArtifact.id,
           phase: event.event_type === "done" ? "complete" : "running",
-          message: event.event_type === "done" ? "Change applied to the selected component." : "Change applied. Finishing the response…",
+          message: event.event_type === "done" ? "Changes applied to the artifact." : "Changes applied. Finishing the response…",
         });
         updated = {
           ...updated,
@@ -906,7 +1089,7 @@ function App(): React.JSX.Element {
           ...updated,
           messages: updated.messages.map((message) => message.id === assistant.id ? { ...message, content: readable } : message),
         };
-        setStudioAgentStatus({ artifactId: studioTarget.artifactId, phase: "complete", message: "Change applied to the selected component." });
+        setStudioAgentStatus({ artifactId: studioTarget.artifactId, phase: "complete", message: "Changes applied to the artifact." });
       } else if (assistant && studioTarget) {
         const currentArtifacts = artifactCacheRef.current.get(studioTarget.projectId) ?? [];
         const sourceArtifact = currentArtifacts.find((artifact) => artifact.id === studioTarget.artifactId);
@@ -975,6 +1158,9 @@ function App(): React.JSX.Element {
       return;
     }
 
+    setPendingQuestion((current) => current?.runId === runId ? null : current);
+    setPendingApproval((current) => current?.runId === runId ? null : current);
+
     clearScheduledConversationSave(updated.id);
     pendingStudioEditRunsRef.current.delete(runId);
     appliedStudioEditRunsRef.current.delete(runId);
@@ -1026,6 +1212,11 @@ function App(): React.JSX.Element {
   async function sendPrompt(value = prompt, visibleValue = value, attachments: ChatAttachment[] = [], studioEditTarget?: StudioEditTarget): Promise<boolean> {
     const content = value.trim();
     if (!content || runIdRef.current) return false;
+    setPromptHistory((current) => {
+      const next = [...current.filter((entry) => entry !== content), content].slice(-100);
+      localStorage.setItem(promptHistoryStorageKey, JSON.stringify(next));
+      return next;
+    });
     const command = parseChatCommand(content);
     if (command) return executeDesktopCommand(content, command.name, command.argument);
     if (!activeProjectId) {
@@ -1036,8 +1227,10 @@ function App(): React.JSX.Element {
       setError("Locate this project's folder before starting a chat.");
       return false;
     }
-    if (!settings || !selectedModel) {
-      setError("Configure an active model before starting a chat.");
+    if (!settings || !activeChatModel) {
+      setError(activePluginHarnessId
+        ? pluginModelErrors[activePluginHarnessId] ?? "Wait for the selected harness to report its available models."
+        : "Configure an active model before starting a chat.");
       return false;
     }
     const visibleContent = visibleValue.trim() || "Review the attached files.";
@@ -1057,15 +1250,19 @@ function App(): React.JSX.Element {
       createdAt: now,
       agent: { id: selectedAgent.id, name: selectedAgent.name, type: selectedAgent.type, systemPrompt: systemPromptOverride ?? selectedAgent.prompt },
       model: {
-        id: selectedModel.id,
-        name: selectedModel.name,
-        provider: selectedModel.provider,
-        model: selectedModel.model,
-        baseUrl: selectedModel.baseUrl,
-        temperature: selectedModel.temperature,
+        id: activeChatModel.id,
+        name: activeChatModel.name,
+        provider: activeChatModel.provider,
+        model: activeChatModel.model,
+        baseUrl: activeChatModel.baseUrl,
+        temperature: activeChatModel.temperature,
       },
       harness: settings.harness,
+      runtimeMode,
+      ...(selectedPluginModeId ? { interactionMode: selectedPluginModeId } : {}),
+      multiAgent,
       enabledTools: [...enabledTools],
+      enabledApps: enabledTools.includes("apps") ? [...(selectedAgent.appAccess ?? ["gmail", "drive", "calendar"])] : [],
       ...(studioEditTarget ? { artifactId: studioEditTarget.artifactId } : {}),
     };
     const nextConversation: Conversation = selected ? {
@@ -1147,6 +1344,7 @@ function App(): React.JSX.Element {
         prompt: content,
         systemPrompt: systemPromptOverride ?? selectedAgent.prompt,
         enabledTools,
+        enabledApps: enabledTools.includes("apps") ? [...(selectedAgent.appAccess ?? ["gmail", "drive", "calendar"])] : [],
       });
       pendingLaunch.startResult = startResult.then(() => undefined, () => undefined);
       await startResult;
@@ -1218,7 +1416,11 @@ function App(): React.JSX.Element {
     if (name === "help") return appendCommandResponse(raw, commandHelp());
     if (name === "settings" || name === "login") {
       setSettingsIntent(name === "login"
-        ? { section: "model", provider: argument === "codex" || argument === "openai-codex" ? "openai-codex" : undefined }
+        ? { section: "model", provider: argument === "codex" || argument === "openai-codex"
+          ? "openai-codex"
+          : argument === "copilot" || argument === "github-copilot"
+            ? "github-copilot"
+            : undefined }
         : null);
       setSettingsOpen(true);
       setPrompt("");
@@ -1226,11 +1428,13 @@ function App(): React.JSX.Element {
     }
     if (name === "model") {
       if (!settings) return false;
-      if (!argument) return appendCommandResponse(raw, settings.models.map((model) => `- **${model.name}** (${model.id})${model.isActive ? " · active" : ""}`).join("\n") || "No models configured.");
+      const availableModels = activePluginHarnessId ? activePluginModels : settings.models;
+      if (!argument) return appendCommandResponse(raw, availableModels.map((model) => `- **${model.name}** (${model.id})${model.id === activeChatModel?.id ? " · active" : ""}`).join("\n") || "No models configured.");
       const normalized = argument.toLowerCase();
-      const model = settings.models.find((candidate) => [candidate.id, candidate.name, candidate.model].some((value) => value.toLowerCase() === normalized));
+      const model = availableModels.find((candidate) => [candidate.id, candidate.name, candidate.model].some((value) => value.toLowerCase() === normalized));
       if (!model) return appendCommandResponse(raw, "Model not found. Use `/model` to list configured models.");
-      await updateQuickSettings({ modelId: model.id });
+      if (activePluginHarnessId) selectChatModel(model.id);
+      else await updateQuickSettings({ modelId: model.id });
       return appendCommandResponse(raw, `Now using **${model.name}** (${model.provider}/${model.model}).`);
     }
     if (name === "provider" || name === "providers") {
@@ -1243,10 +1447,13 @@ function App(): React.JSX.Element {
       return appendCommandResponse(raw, `Now using **${model.name}** from ${model.provider}.`);
     }
     if (name === "harness") {
-      if (!argument) return appendCommandResponse(raw, `Current capability: **${settings?.harness ?? "assistant"}**.`);
-      if (argument !== "assistant" && argument !== "rpa") return appendCommandResponse(raw, "Capability must be `assistant` or `rpa`.");
-      await updateQuickSettings({ harness: argument });
-      return appendCommandResponse(raw, `Now using the **${argument}** capability.`);
+      const choices: Array<{ id: HarnessMode; name: string }> = [{ id: "assistant", name: "Assistant" }, { id: "rpa", name: "Computer control" }, ...pluginHarnesses.map((harness) => ({ id: harness.id, name: harness.name }))];
+      if (!argument) return appendCommandResponse(raw, `Current capability: **${settings?.harness ?? "assistant"}**.\n\n${choices.map((choice) => `- ${choice.name} (\`${choice.id}\`)`).join("\n")}`);
+      const normalized = argument.toLowerCase();
+      const choice = choices.find((candidate) => candidate.id.toLowerCase() === normalized || candidate.name.toLowerCase() === normalized);
+      if (!choice) return appendCommandResponse(raw, "Capability not found. Use `/harness` to list available runners.");
+      await updateQuickSettings({ harness: choice.id });
+      return appendCommandResponse(raw, `Now using the **${choice.name}** capability.`);
     }
     if (name === "system") {
       if (!argument) return appendCommandResponse(raw, systemPromptOverride ?? selectedAgent.prompt);
@@ -1293,17 +1500,39 @@ function App(): React.JSX.Element {
       const usage = conversationUsage(selected);
       return appendCommandResponse(raw, `Input: **${usage.input}** · Output: **${usage.output}** · Cache read: **${usage.cacheRead}** · Cache write: **${usage.cacheWrite}**`);
     }
-    if (name === "history") return appendCommandResponse(raw, selected?.messages.filter((message) => message.role === "user").slice(-20).map((message) => `- ${message.content.slice(0, 180)}`).join("\n") || "No prompt history in this chat.");
+    if (name === "history") return appendCommandResponse(raw, promptHistory.slice(-20).reverse().map((entry) => `- ${entry.slice(0, 180)}`).join("\n") || "No local prompt history.");
+    if (name === "clear-history") {
+      localStorage.removeItem(promptHistoryStorageKey);
+      setPromptHistory([]);
+      return appendCommandResponse(raw, "Cleared local prompt history.");
+    }
     if (name === "copy") {
       const content = selected?.messages.filter((message) => message.role === "assistant" && message.content).at(-1)?.content;
       if (!content) return appendCommandResponse(raw, "There is no assistant response to copy.");
       await navigator.clipboard.writeText(content);
       return appendCommandResponse(raw, "Copied the last assistant response.");
     }
-    if (name === "config") return appendCommandResponse(raw, `Project: **${activeProject?.name ?? "None"}**\nModel: **${selectedModel?.name ?? "None"}**\nCapability: **${settings?.harness ?? "assistant"}**`);
-    if (name === "version") return appendCommandResponse(raw, "Khadim 0.1.0");
+    if (name === "export") {
+      if (!selected) return appendCommandResponse(raw, "There is no conversation to export.");
+      if (!window.khadim.conversations.exportMarkdown) return appendCommandResponse(raw, "Conversation export is not supported by this desktop transport.");
+      const path = await window.khadim.conversations.exportMarkdown(selected.title, conversationMarkdown(selected));
+      setPrompt("");
+      return path ? appendCommandResponse(raw, `Exported the conversation to \`${path}\`.`) : true;
+    }
+    if (name === "config") {
+      const directory = await window.khadim.app?.configDirectory();
+      return appendCommandResponse(raw, `Config directory: ${directory ? `\`${directory}\`` : "Unavailable"}\n\nProject: **${activeProject?.name ?? "None"}**\nModel: **${activeChatModel?.name ?? "None"}**\nCapability: **${settings?.harness ?? "assistant"}**\nRuntime: **${runtimeMode}**\nMulti-agent: **${multiAgent ? "on" : "off"}**`);
+    }
+    if (name === "version") return appendCommandResponse(raw, `Khadim ${await window.khadim.app?.version() ?? "0.1.0"}`);
     if (name === "refresh-models") {
-      const catalog = await window.khadim.models.catalog();
+      if (activePluginHarnessId && activeProject?.rootPath && window.khadim.plugins?.refreshCatalog) {
+        const catalog = await window.khadim.plugins.refreshCatalog(activePluginHarnessId, activeProject.rootPath);
+        setPluginModels((current) => ({ ...current, [activePluginHarnessId]: catalog.models }));
+        setPluginModes((current) => ({ ...current, [activePluginHarnessId]: catalog.modes }));
+        setPluginCommands((current) => ({ ...current, [activePluginHarnessId]: catalog.commands ?? [] }));
+        return appendCommandResponse(raw, `Refreshed **${catalog.models.length}** models, **${catalog.modes.length}** modes, and **${catalog.commands?.length ?? 0}** commands from the selected harness.`);
+      }
+      const catalog = await window.khadim.models.catalog(true);
       return appendCommandResponse(raw, `Refreshed **${catalog.reduce((total, provider) => total + provider.models.length, 0)}** models across **${catalog.length}** providers.`);
     }
     if (name === "theme") {
@@ -1312,7 +1541,11 @@ function App(): React.JSX.Element {
       setPrompt("");
       return true;
     }
-    if (name === "multi" || name === "multi-agent") return appendCommandResponse(raw, "Multi-agent mode is not available yet.");
+    if (name === "multi" || name === "multi-agent") {
+      const next = argument ? !["off", "false", "0", "disable"].includes(argument.toLowerCase()) : !multiAgent;
+      setMultiAgent(next);
+      return appendCommandResponse(raw, `Multi-agent mode is now **${next ? "on" : "off"}** for Assistant and Computer control runs.`);
+    }
     return appendCommandResponse(raw, `\`/${name}\` is not available in this chat.`);
   }
 
@@ -1354,6 +1587,46 @@ function App(): React.JSX.Element {
       return false;
     }
     return true;
+  }
+
+  async function answerPendingQuestion(answers: AgentQuestionAnswers): Promise<void> {
+    const pending = pendingQuestion;
+    if (!pending || questionResponding) return;
+    setQuestionResponding(true);
+    setError(null);
+    try {
+      await window.khadim.agent.answerQuestion(pending.runId, pending.request.requestId, answers);
+      setPendingQuestion((current) => current?.runId === pending.runId && current.request.requestId === pending.request.requestId ? null : current);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The answer could not be sent.");
+    } finally {
+      setQuestionResponding(false);
+    }
+  }
+
+  async function answerPendingApproval(decision: AgentApprovalDecision): Promise<void> {
+    const pending = pendingApproval;
+    if (!pending || approvalResponding) return;
+    setApprovalResponding(true);
+    setError(null);
+    try {
+      await window.khadim.agent.answerApproval(pending.runId, pending.request.requestId, decision);
+      setPendingApproval((current) => current?.runId === pending.runId && current.request.requestId === pending.request.requestId ? null : current);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The approval response could not be sent.");
+    } finally {
+      setApprovalResponding(false);
+    }
+  }
+
+  function selectRuntimeMode(mode: AgentRuntimeMode): void {
+    localStorage.setItem(runtimeModeStorageKey, mode);
+    setRuntimeModeState(mode);
+  }
+
+  function setMultiAgent(enabled: boolean): void {
+    localStorage.setItem(multiAgentStorageKey, String(enabled));
+    setMultiAgentState(enabled);
   }
 
   async function deleteConversation(id: string): Promise<void> {
@@ -1408,9 +1681,9 @@ function App(): React.JSX.Element {
     }
   }
 
-  function saveArtifactDraftsNow(drafts: ArtifactDraft[]): void {
+  function saveArtifactDraftsNow(drafts: ArtifactDraft[], skipScheduledSave = true): void {
     if (!artifactDraftState.projectId) return;
-    skipNextArtifactSaveRef.current = true;
+    if (skipScheduledSave) skipNextArtifactSaveRef.current = true;
     const requestId = ++artifactSaveRequestRef.current;
     setArtifactSaveState("saving");
     void window.khadim.artifacts.save(artifactDraftState.projectId, drafts)
@@ -1495,6 +1768,7 @@ function App(): React.JSX.Element {
     setArtifactDraftState((current) => ({ ...current, drafts }));
     setArtifactSaveState(flush ? "saving" : "dirty");
     setStudioArtifact(next);
+    setStudioAgentStatus((current) => current?.artifactId === next.id && current.phase === "complete" ? null : current);
     if (flush) saveArtifactDraftsNow(drafts);
   }
 
@@ -1614,16 +1888,35 @@ function App(): React.JSX.Element {
     if (!agent) return;
     setSelectedAgentId(agent.id);
     const nextTools = agent.connectors.filter((id) => toolOptions.some((tool) => tool.id === id));
-    if (googleConnected && agent.builtIn && !nextTools.includes("apps")) nextTools.push("apps");
+    if (!googleConnection?.connected) {
+      const appIndex = nextTools.indexOf("apps");
+      if (appIndex >= 0) nextTools.splice(appIndex, 1);
+    }
     setEnabledTools(nextTools);
     setSystemPromptOverride(null);
+    if (agent.modelId || agent.harness) void updateQuickSettings({ modelId: agent.modelId, harness: agent.harness });
   }
 
   function createAgent(agent: AgentDefinition): void {
     setAgents((current) => [...current, agent]);
     setSelectedAgentId(agent.id);
-    setEnabledTools(agent.connectors);
+    setEnabledTools(agent.connectors.filter((id) => id !== "apps" || googleConnection?.connected));
     setSystemPromptOverride(null);
+    if (agent.modelId || agent.harness) void updateQuickSettings({ modelId: agent.modelId, harness: agent.harness });
+  }
+
+  function updateAgent(agent: AgentDefinition): void {
+    setAgents((current) => current.map((candidate) => candidate.id === agent.id ? agent : candidate));
+    if (selectedAgentId === agent.id) {
+      setEnabledTools(agent.connectors.filter((id) => id !== "apps" || googleConnection?.connected));
+      setSystemPromptOverride(null);
+      if (agent.modelId || agent.harness) void updateQuickSettings({ modelId: agent.modelId, harness: agent.harness });
+    }
+  }
+
+  function deleteAgent(agentId: string): void {
+    setAgents((current) => current.filter((candidate) => candidate.id !== agentId));
+    if (selectedAgentId === agentId) selectAgent(defaultAgent.id);
   }
 
   function chooseView(view: AppView): void {
@@ -1833,6 +2126,36 @@ function App(): React.JSX.Element {
     }
   }
 
+  function selectChatModel(modelId: string): void {
+    const harnessId = activePluginHarnessId;
+    if (!harnessId) {
+      void updateQuickSettings({ modelId });
+      return;
+    }
+    if (!activePluginModels.some((model) => model.id === modelId)) {
+      setError("That model is no longer available from the selected harness.");
+      return;
+    }
+    setPluginModelSelections((current) => {
+      const next = { ...current, [harnessId]: modelId };
+      localStorage.setItem(pluginModelSelectionStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function selectChatMode(modeId: string): void {
+    const harnessId = activePluginHarnessId;
+    if (!harnessId || !activePluginModes.some((mode) => mode.id === modeId)) {
+      setError("That mode is no longer available from the selected harness.");
+      return;
+    }
+    setPluginModeSelections((current) => {
+      const next = { ...current, [harnessId]: modeId };
+      localStorage.setItem(pluginModeSelectionStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   async function applySavedSettings(next: AppSettings): Promise<void> {
     if (next.activeProjectId === activeProjectId) {
       setSettings(next);
@@ -1933,15 +2256,23 @@ function App(): React.JSX.Element {
             agentName={selectedAgent.name}
             agents={agents}
             onSelectAgent={selectAgent}
-            modelName={settings?.model || "Choose model"}
-            provider={settings?.provider || "anthropic"}
-            models={settings?.models ?? []}
+            modelName={activeChatModel?.name || (activePluginHarnessId && pluginModelsLoading === activePluginHarnessId ? "Loading models" : "Choose model")}
+            provider={activeChatModel?.provider || settings?.provider || "anthropic"}
+            models={chatModels}
+            modes={activePluginModes}
+            modeId={selectedPluginModeId}
             enabledTools={enabledTools}
             onToggleTool={(toolId) => setEnabledTools((current) => current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId])}
             harness={settings?.harness || "assistant"}
             pluginHarnesses={pluginHarnesses}
-            onSelectModel={(modelId) => void updateQuickSettings({ modelId })}
+            harnessCommands={activePluginCommands}
+            onSelectModel={selectChatModel}
+            onSelectMode={selectChatMode}
+            runtimeMode={runtimeMode}
+            onSelectRuntimeMode={selectRuntimeMode}
             onSelectHarness={(harness) => void updateQuickSettings({ harness })}
+            modelsLoading={Boolean(activePluginHarnessId && pluginModelsLoading === activePluginHarnessId)}
+            modelsError={activePluginHarnessId ? pluginModelErrors[activePluginHarnessId] : undefined}
             projectName={activeProject?.name}
             projectAvailable={activeProject ? projectAvailability[activeProject.id]?.available !== false : undefined}
           />
@@ -2022,7 +2353,7 @@ function App(): React.JSX.Element {
           })}
         </div>
         <div className="composer-dock">
-          <Composer prompt={prompt} setPrompt={setPrompt} onSend={sendMainChatPrompt} onStop={stopRun} running={Boolean(activeRunId)} inputRef={promptRef} agentId={selectedAgentId} agentName={selectedAgent.name} agents={agents} onSelectAgent={selectAgent} modelName={settings?.model || "Choose model"} provider={settings?.provider || "anthropic"} models={settings?.models ?? []} enabledTools={enabledTools} onToggleTool={(toolId) => setEnabledTools((current) => current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId])} harness={settings?.harness || "assistant"} pluginHarnesses={pluginHarnesses} onSelectModel={(modelId) => void updateQuickSettings({ modelId })} onSelectHarness={(harness) => void updateQuickSettings({ harness })} usage={conversationUsage(selected)} projectName={activeProject?.name} projectAvailable={activeProject ? projectAvailability[activeProject.id]?.available !== false : undefined} />
+          <Composer prompt={prompt} setPrompt={setPrompt} onSend={sendMainChatPrompt} onStop={stopRun} running={Boolean(activeRunId)} inputRef={promptRef} agentId={selectedAgentId} agentName={selectedAgent.name} agents={agents} onSelectAgent={selectAgent} modelName={activeChatModel?.name || (activePluginHarnessId && pluginModelsLoading === activePluginHarnessId ? "Loading models" : "Choose model")} provider={activeChatModel?.provider || settings?.provider || "anthropic"} models={chatModels} modes={activePluginModes} modeId={selectedPluginModeId} enabledTools={enabledTools} onToggleTool={(toolId) => setEnabledTools((current) => current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId])} harness={settings?.harness || "assistant"} pluginHarnesses={pluginHarnesses} harnessCommands={activePluginCommands} onSelectModel={selectChatModel} onSelectMode={selectChatMode} runtimeMode={runtimeMode} onSelectRuntimeMode={selectRuntimeMode} onSelectHarness={(harness) => void updateQuickSettings({ harness })} modelsLoading={Boolean(activePluginHarnessId && pluginModelsLoading === activePluginHarnessId)} modelsError={activePluginHarnessId ? pluginModelErrors[activePluginHarnessId] : undefined} usage={conversationUsage(selected)} projectName={activeProject?.name} projectAvailable={activeProject ? projectAvailability[activeProject.id]?.available !== false : undefined} pendingQuestion={pendingQuestion?.runId === activeRunId ? pendingQuestion.request : undefined} questionResponding={questionResponding} onAnswerQuestion={answerPendingQuestion} pendingApproval={pendingApproval?.runId === activeRunId ? pendingApproval.request : undefined} approvalResponding={approvalResponding} onApprovalDecision={answerPendingApproval} />
         </div>
       </section>
     );
@@ -2072,17 +2403,17 @@ function App(): React.JSX.Element {
         <div className="sidebar-header">
           <span>Workspace</span>
           <button className="icon-button desktop-only" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
-            <PanelLeftClose size={18} />
+            <AnimatedPhosphorIcon icon={PanelLeftClose} kind="collapse" size={18} />
           </button>
         </div>
         <nav className="primary-nav" aria-label="Primary">
-          <button onClick={newChat}><Plus size={18} /> New chat <kbd>{newChatShortcut}</kbd></button>
-          <button aria-current={activeView === "artifacts" ? "page" : undefined} className={activeView === "artifacts" ? "active" : ""} onClick={() => chooseView("artifacts")}><Blocks size={17} /> Artifacts</button>
-          <button aria-current={activeView === "apps" ? "page" : undefined} className={activeView === "apps" ? "active" : ""} onClick={() => chooseView("apps")}><AppWindow size={17} /> Apps <Badge className="new-badge">New</Badge></button>
+          <button onClick={newChat}><AnimatedPhosphorIcon icon={Plus} kind="add" size={18} /> New chat <kbd>{newChatShortcut}</kbd></button>
+          <button aria-current={activeView === "artifacts" ? "page" : undefined} className={activeView === "artifacts" ? "active" : ""} onClick={() => chooseView("artifacts")}><AnimatedPhosphorIcon icon={Blocks} kind="artifacts" size={17} /> Artifacts</button>
+          <button aria-current={activeView === "apps" ? "page" : undefined} className={activeView === "apps" ? "active" : ""} onClick={() => chooseView("apps")}><AnimatedPhosphorIcon icon={AppWindow} kind="apps" size={17} /> Apps <Badge className="new-badge">New</Badge></button>
         </nav>
         <div className="project-tree-heading">
           <span>Projects</span>
-          <button type="button" onClick={() => void addProject()} aria-label="Add project" title="Add project"><Plus size={15} /></button>
+          <button type="button" onClick={() => void addProject()} aria-label="Add project" title="Add project"><AnimatedPhosphorIcon icon={Plus} kind="add" size={15} /></button>
         </div>
         <nav className="project-tree" aria-label="Projects">
           {projects.map((project) => {
@@ -2094,12 +2425,12 @@ function App(): React.JSX.Element {
             return (
               <section className={`project-tree-item ${active ? "current-context" : ""} ${unavailable ? "unavailable" : ""}`} key={project.id}>
                 <div className="project-tree-row">
-                  <button className="project-disclosure" type="button" aria-expanded={expanded} aria-controls={`project-chats-${project.id}`} aria-label={`${expanded ? "Collapse" : "Expand"} ${project.name}`} onClick={() => void toggleProject(project.id)}><ChevronRight size={13} /></button>
+                  <button className="project-disclosure" type="button" aria-expanded={expanded} aria-controls={`project-chats-${project.id}`} aria-label={`${expanded ? "Collapse" : "Expand"} ${project.name}`} onClick={() => void toggleProject(project.id)}><AnimatedPhosphorIcon icon={ChevronRight} kind="disclosure" size={13} /></button>
                   <button className="project-tree-select" type="button" disabled={unavailable} aria-current={active && activeView === "project" ? "page" : undefined} onClick={() => void openProject(project.id)}>
-                    <FolderOpen size={16} />
+                    <AnimatedPhosphorIcon icon={FolderOpen} kind="project" size={16} />
                     <span><strong>{project.name}</strong><small>{active ? unavailable ? "Folder unavailable" : "Current project" : unavailable ? "Folder unavailable" : "Local project"}</small></span>
                   </button>
-                  {unavailable && <button className="project-locate" type="button" onClick={() => void relocateProject(project.id)} aria-label={`Locate ${project.name}`} title="Locate folder"><Search size={14} /></button>}
+                  {unavailable && <button className="project-locate" type="button" onClick={() => void relocateProject(project.id)} aria-label={`Locate ${project.name}`} title="Locate folder"><AnimatedPhosphorIcon icon={Search} kind="search" size={14} /></button>}
                 </div>
                 {expanded && (
                   <div className="project-tree-children" id={`project-chats-${project.id}`}>
@@ -2114,7 +2445,7 @@ function App(): React.JSX.Element {
                           </span>
                         ) : (
                           <button className="delete-chat" onClick={() => setPendingDeleteId(conversation.id)} aria-label={`Delete ${conversation.title}`}>
-                            <Trash2 size={14} />
+                            <AnimatedPhosphorIcon icon={Trash2} kind="delete" size={14} />
                           </button>
                         ))}
                       </div>
@@ -2129,7 +2460,7 @@ function App(): React.JSX.Element {
         </nav>
         <div className="sidebar-footer">
           <div className={`local-status ${activeProjectId && projectAvailability[activeProjectId]?.available === false ? "unavailable" : ""}`}><span /><div><strong>{activeProjectId && projectAvailability[activeProjectId]?.available === false ? "Folder unavailable" : "Local project"}</strong><small>{settings?.provider || "Configure provider"}</small></div></div>
-          <button onClick={() => { setSettingsIntent(null); setSettingsOpen(true); }}><Settings size={17} /> Settings</button>
+          <button onClick={() => { setSettingsIntent(null); setSettingsOpen(true); }}><AnimatedPhosphorIcon icon={Settings} kind="settings" size={17} /> Settings</button>
         </div>
       </aside>
 
@@ -2177,6 +2508,7 @@ function App(): React.JSX.Element {
                 agentBusy={Boolean(activeRunId)}
                 agentStatus={studioAgentStatus?.artifactId === studioArtifact.id ? studioAgentStatus : null}
                 onChange={updateStudioArtifact}
+                onRetrySave={() => saveArtifactDraftsNow(artifactDraftState.drafts, false)}
                 onClose={() => closeStudio()}
                 onExportPdf={() => void exportStudioPdf()}
                 onAskAgent={askAgentToEditStudio}
@@ -2187,7 +2519,19 @@ function App(): React.JSX.Element {
         {renderWorkspaceTopbar()}
 
         {activeMode === "agent" ? (
-          <AgentsView agents={agents} selectedId={selectedAgentId} onCreate={createAgent} onSelect={(id) => { selectAgent(id); setActiveMode("chat"); newChat(); }} />
+          <AgentsView
+            agents={agents}
+            selectedId={selectedAgentId}
+            models={settings?.models ?? []}
+            conversations={conversations}
+            harness={settings?.harness ?? "assistant"}
+            pluginHarnesses={pluginHarnesses}
+            googleConnection={googleConnection}
+            onCreate={createAgent}
+            onUpdate={updateAgent}
+            onDelete={deleteAgent}
+            onStart={(id) => { selectAgent(id); setActiveMode("chat"); newChat(); }}
+          />
         ) : activeView === "project" ? (
           <ProjectHome
             project={activeProject}
@@ -2230,130 +2574,6 @@ function App(): React.JSX.Element {
       )}
       {accountOpen && <AccountDialog onClose={() => setAccountOpen(false)} />}
     </main>
-  );
-}
-
-function AgentsView({ agents, selectedId, onCreate, onSelect }: {
-  agents: AgentDefinition[];
-  selectedId: string;
-  onCreate: (agent: AgentDefinition) => void;
-  onSelect: (id: string) => void;
-}): React.JSX.Element {
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [behavior, setBehavior] = useState("");
-  const [connectors, setConnectors] = useState<string[]>(["web", "files"]);
-
-  function toggleConnector(id: string): void {
-    setConnectors((current) => current.includes(id) ? current.filter((connector) => connector !== id) : [...current, id]);
-  }
-
-  function submitAgent(event: React.FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const trimmedName = name.trim();
-    const trimmedBehavior = behavior.trim();
-    if (!trimmedName || !trimmedBehavior) return;
-    onCreate({
-      id: createId(),
-      name: trimmedName,
-      type: "agent",
-      description: description.trim() || `A custom agent for ${trimmedName.toLowerCase()}.`,
-      prompt: trimmedBehavior,
-      connectors,
-      color: "blue",
-    });
-    setCreating(false);
-    setName("");
-    setDescription("");
-    setBehavior("");
-    setConnectors(["web", "files"]);
-  }
-
-  const currentAgent = agents.find((agent) => agent.id === selectedId) ?? defaultAgent;
-
-  return (
-    <section className="agent-workbench workspace-arrival" aria-labelledby="agents-title">
-      <header className="agent-workbench-header workspace-page-header">
-        <div className="surface-heading workspace-page-copy">
-          <span>Workspace</span>
-          <h1 id="agents-title">Agents</h1>
-          <p>Set a clear responsibility, instructions, and only the access each agent needs.</p>
-          <small className="agent-workbench-meta">
-            <i aria-hidden="true" /> {currentAgent.name} is ready
-            <span aria-hidden="true">/</span> {agents.length} configured
-          </small>
-        </div>
-        <button className="agent-create-button workspace-primary-action" type="button" onClick={() => setCreating(true)}>
-          <Plus size={17} /> New agent
-        </button>
-      </header>
-
-      {creating ? (
-        <form className="agent-editor" onSubmit={submitAgent}>
-          <div className="agent-editor-intro">
-            <span className="agent-editor-mark"><Bot size={20} /></span>
-            <span>New agent</span>
-            <h2>What should this agent own?</h2>
-            <p>Give it one recognizable responsibility. You can always add more agents for other jobs.</p>
-            <dl>
-              <div><dt>Identity</dt><dd>Name the job, not the technology.</dd></div>
-              <div><dt>Instructions</dt><dd>Set priorities and approval boundaries.</dd></div>
-              <div><dt>Access</dt><dd>Grant only what the job requires.</dd></div>
-            </dl>
-          </div>
-          <div className="agent-editor-fields">
-            <label><span>Name</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer follow-up" required /></label>
-            <label><span>Short description</span><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Prepares thoughtful replies and keeps leads moving" /></label>
-            <label className="agent-behavior-field"><span>Instructions</span><textarea aria-label="Behavior" value={behavior} onChange={(event) => setBehavior(event.target.value)} placeholder="You help me follow up with customers. Write concise, warm replies, check facts before making claims, and ask before sending anything." required rows={6} /><small>Describe its role, priorities, boundaries, and when it should ask for approval.</small></label>
-            <fieldset>
-              <legend>Access</legend>
-              <p>Choose what this agent may use while it works.</p>
-              <div className="agent-connector-options">
-                {toolOptions.map((tool) => (
-                  <button type="button" className={connectors.includes(tool.id) ? "selected" : ""} aria-pressed={connectors.includes(tool.id)} onClick={() => toggleConnector(tool.id)} key={tool.id}>
-                    {tool.id === "web" ? <Globe2 size={18} /> : tool.id === "apps" ? <EnvelopeSimple size={18} /> : <FolderOpen size={18} />}
-                    <span><strong>{tool.name}</strong><small>{tool.description}</small></span>
-                    <ToggleSwitch enabled={connectors.includes(tool.id)} />
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          </div>
-          <footer><button type="button" onClick={() => setCreating(false)}>Cancel</button><button className="primary" type="submit" disabled={!name.trim() || !behavior.trim()}>Create agent</button></footer>
-        </form>
-      ) : (
-        <section className="agent-roster-section" aria-labelledby="configured-agents-title">
-          <header><span><small>Ready to work</small><h2 id="configured-agents-title">Configured agents</h2></span><small>{agents.length} total</small></header>
-          <div className="agent-roster">
-            {agents.map((agent) => (
-              <article className={selectedId === agent.id ? "is-active" : ""} key={agent.id}>
-                <div className="agent-identity">
-                  <span className={`agent-avatar ${agent.color}`} aria-hidden="true">{agent.name.slice(0, 1).toUpperCase()}</span>
-                  <span><small>{agent.builtIn ? "Built in" : "Your agent"}</small><h2>{agent.name}</h2></span>
-                </div>
-                <div className="agent-role-copy">
-                  <p>{agent.description}</p>
-                  {selectedId === agent.id && <span className="agent-current"><Check size={12} /> Current agent</span>}
-                </div>
-                <div className="agent-config-summary">
-                  <strong>Access</strong>
-                  <span className="agent-access-list">
-                    {agent.connectors.length ? agent.connectors.map((id) => {
-                      const tool = toolOptions.find((option) => option.id === id);
-                      return <span key={id}>{id === "web" ? <Globe2 size={13} /> : id === "apps" ? <EnvelopeSimple size={13} /> : <FolderOpen size={13} />}{tool?.name ?? id}</span>;
-                    }) : <small>No access</small>}
-                  </span>
-                  <small className="agent-instruction-preview" title={agent.prompt}>{agent.prompt}</small>
-                </div>
-                <button className="agent-start-button" type="button" onClick={() => onSelect(agent.id)} aria-label={selectedId === agent.id ? `Start a new chat with ${agent.name}` : `Chat with ${agent.name}`}><MessageSquarePlus size={16} /><span>{selectedId === agent.id ? "New chat" : "Choose"}</span></button>
-              </article>
-            ))}
-            <button className="agent-roster-add" type="button" onClick={() => setCreating(true)}><Plus size={18} /><span><strong>Add another agent</strong><small>Give a different job its own instructions and access.</small></span></button>
-          </div>
-        </section>
-      )}
-    </section>
   );
 }
 

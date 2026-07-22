@@ -46,6 +46,8 @@ function installDesktopApi(): KhadimDesktopApi {
     agent: {
       start: vi.fn(async (request) => ({ runId: request.runId })),
       abort: vi.fn(async () => undefined),
+      answerQuestion: vi.fn(async () => undefined),
+      answerApproval: vi.fn(async () => undefined),
       recover: vi.fn(async () => []),
       acknowledge: vi.fn(async () => undefined),
       onEvent: vi.fn(() => () => undefined),

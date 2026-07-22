@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserPreview, calculatePreviewScale } from "../../../src/renderer/src/studio/BrowserPreview";
 
 describe("BrowserPreview", () => {
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("opens the live local URL in the system browser from the address control", async () => {
     let markRequestReceived: () => void = () => undefined;
@@ -35,13 +35,17 @@ describe("BrowserPreview", () => {
     );
 
     const address = screen.getByRole("button", { name: "Open preview in browser" });
+    const previewLoaded = new Promise<void>((resolve) => {
+      screen.getByTitle("Landing page preview").addEventListener("load", () => resolve(), { once: true });
+    });
     expect(address).toHaveTextContent(`127.0.0.1:${port}`);
     expect(container.querySelector(".browser-frame-bar")?.contains(address)).toBe(true);
     expect(container.querySelector(".artifact-preview-toolbar")).toBeNull();
 
     fireEvent.click(address);
     expect(openExternal).toHaveBeenCalledWith(previewUrl);
-    await requestReceived;
+    await Promise.all([requestReceived, previewLoaded]);
+    cleanup();
     await new Promise<void>((resolve, reject) => server.close((cause) => cause ? reject(cause) : resolve()));
   });
 
@@ -59,5 +63,14 @@ describe("BrowserPreview", () => {
     rerender(<BrowserPreview title="Landing page" html="" runtime={{ status: "error", url: "about:blank?revision=1", error: "A source error" }} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Latest changes couldn’t be shown");
     expect(screen.getByText("Previous preview")).toBeInTheDocument();
+  });
+
+  it("can reload a static document preview", () => {
+    render(<BrowserPreview title="Field report" html="<!doctype html><h1>Field report</h1>" />);
+    const firstFrame = screen.getByTitle("Field report preview");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload preview" }));
+
+    expect(screen.getByTitle("Field report preview")).not.toBe(firstFrame);
   });
 });

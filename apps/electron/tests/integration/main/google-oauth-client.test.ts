@@ -36,6 +36,11 @@ describe("Google desktop OAuth", () => {
       refreshToken: "refresh-token",
     });
     expect(openExternal).toHaveBeenCalledOnce();
+    const requestedScopes = new URL(vi.mocked(openExternal).mock.calls[0][0]).searchParams.get("scope") ?? "";
+    expect(requestedScopes).toContain("gmail.readonly");
+    expect(requestedScopes).toContain("drive.readonly");
+    expect(requestedScopes).toContain("calendar.calendarlist.readonly");
+    expect(requestedScopes).toContain("calendar.events.readonly");
   });
 
   it("cancels an outstanding browser flow", async () => {

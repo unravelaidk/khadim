@@ -1,8 +1,10 @@
 import type { CustomTheme, ThemeMode } from "./themes";
-import type { PluginConfigUpdate, PluginEntry, PluginHarnessDescriptor, PluginHarnessId } from "./plugins";
+import type { PluginConfigUpdate, PluginEntry, PluginHarnessCatalog, PluginHarnessCommand, PluginHarnessDescriptor, PluginHarnessId, PluginHarnessMode, PluginHarnessModel } from "./plugins";
+import type { GoogleWorkspaceServiceId } from "./google-workspace";
 export type { CustomTheme, ThemeMode, ThemePalette } from "./themes";
-export type { PluginEntry, PluginHarnessDescriptor } from "./plugins";
+export type { PluginEntry, PluginHarnessCommand, PluginHarnessDescriptor, PluginHarnessMode, PluginHarnessModel } from "./plugins";
 export type HarnessMode = "assistant" | "rpa" | PluginHarnessId;
+export type AgentRuntimeMode = "approval-required" | "auto-accept-edits" | "full-access";
 
 export interface ModelConfig {
   id: string;
@@ -140,6 +142,8 @@ export interface AgentRunRequest {
   prompt: string;
   systemPrompt?: string;
   enabledTools?: string[];
+  /** Native connected-app allowlist saved into the immutable run snapshot. */
+  enabledApps?: GoogleWorkspaceServiceId[];
 }
 
 export interface SkillEntry {
@@ -159,6 +163,36 @@ export interface AgentStreamEvent {
   event_type: string;
   content?: string | null;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface AgentQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface AgentQuestion {
+  id: string;
+  header: string;
+  question: string;
+  options: AgentQuestionOption[];
+  multiSelect?: boolean;
+}
+
+export interface AgentQuestionRequest {
+  requestId: string;
+  questions: AgentQuestion[];
+}
+
+export type AgentQuestionAnswers = Record<string, string[]>;
+
+export type AgentApprovalKind = "command" | "file-read" | "file-change" | "tool";
+export type AgentApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
+
+export interface AgentApprovalRequest {
+  requestId: string;
+  kind: AgentApprovalKind;
+  title: string;
+  detail?: string;
 }
 
 export interface AgentRunIdentity {
@@ -269,7 +303,12 @@ export interface AgentRun {
     temperature?: string;
   };
   harness: HarnessMode;
+  runtimeMode?: AgentRuntimeMode;
+  interactionMode?: string;
+  multiAgent?: boolean;
   enabledTools: string[];
+  /** Optional on chats saved before per-app permissions were introduced. */
+  enabledApps?: GoogleWorkspaceServiceId[];
 }
 
 export interface Conversation {
@@ -339,11 +378,295 @@ export interface HtmlDocumentArtifactContent {
   };
 }
 
+export type CanvasPrimitiveType = "rectangle" | "ellipse" | "line" | "path" | "arrow" | "text" | "image" | "frame" | "boolean";
+export type CanvasBooleanOperation = "union" | "difference" | "intersection" | "exclusion" | "flatten";
+
+export interface CanvasPoint {
+  /** Unit-space coordinate relative to the element bounds. */
+  x: number;
+  /** Unit-space coordinate relative to the element bounds. */
+  y: number;
+  /** Unit-space incoming Bézier control point. */
+  handleIn?: CanvasControlPoint;
+  /** Unit-space outgoing Bézier control point. */
+  handleOut?: CanvasControlPoint;
+  /** Smooth nodes keep their handles collinear; corner nodes may be edited independently. */
+  nodeType?: "corner" | "smooth";
+}
+
+export interface CanvasControlPoint {
+  x: number;
+  y: number;
+}
+
+export interface CanvasGradientStop {
+  offset: number;
+  color: string;
+  opacity?: number;
+}
+
+export interface CanvasLinearGradient {
+  type: "linear";
+  angle: number;
+  stops: CanvasGradientStop[];
+}
+
+export interface CanvasSvgViewBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CanvasPaintStyle {
+  id: string;
+  name: string;
+  color: string;
+  gradient?: CanvasLinearGradient;
+}
+
+export interface CanvasTextStyle {
+  id: string;
+  name: string;
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
+  textAlign: "left" | "center" | "right";
+  lineHeight: number;
+  letterSpacing: number;
+}
+
+export interface CanvasEffectStyle {
+  id: string;
+  name: string;
+  shadow: CanvasShadow;
+}
+
+export type CanvasHorizontalConstraint = "left" | "right" | "left-right" | "center" | "scale";
+export type CanvasVerticalConstraint = "top" | "bottom" | "top-bottom" | "center" | "scale";
+
+export interface CanvasShadow {
+  color: string;
+  x: number;
+  y: number;
+  blur: number;
+  opacity: number;
+}
+
+export interface CanvasAutoLayout {
+  direction: "row" | "column";
+  align: "start" | "center" | "end";
+  justify: "start" | "center" | "end" | "space-between";
+  gap: number;
+  padding: number;
+  sizing: "fixed" | "hug";
+}
+
+export interface CanvasLayoutGrid {
+  id: string;
+  type: "square" | "columns" | "rows";
+  visible: boolean;
+  color: string;
+  opacity: number;
+  size?: number;
+  count?: number;
+  gutter?: number;
+  margin?: number;
+}
+
+export type CanvasPrototypeTrigger = "click" | "hover";
+export type CanvasPrototypeAction = "navigate" | "back" | "open-url";
+
+export interface CanvasPrototypeTransition {
+  type: "instant" | "dissolve" | "slide";
+  duration: number;
+  easing: "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out";
+  direction?: "left" | "right" | "up" | "down";
+}
+
+/** A serializable prototype link owned by a canvas layer. */
+export interface CanvasPrototypeInteraction {
+  id: string;
+  trigger: CanvasPrototypeTrigger;
+  action: CanvasPrototypeAction;
+  destinationPageId?: string;
+  url?: string;
+  transition?: CanvasPrototypeTransition;
+}
+
+export interface CanvasPrimitiveElement {
+  id: string;
+  type: CanvasPrimitiveType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name?: string;
+  color: string;
+  fillGradient?: CanvasLinearGradient;
+  fillStyleId?: string;
+  opacity?: number;
+  rotation?: number;
+  hidden?: boolean;
+  locked?: boolean;
+  groupId?: string;
+  parentId?: string;
+  /** Non-destructive clipping reference to another closed primitive on the page. */
+  maskId?: string;
+  radius?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  strokeDash?: number;
+  shadow?: CanvasShadow;
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: number;
+  fontStyle?: "normal" | "italic";
+  textAlign?: "left" | "center" | "right";
+  lineHeight?: number;
+  letterSpacing?: number;
+  textStyleId?: string;
+  effectStyleId?: string;
+  tokenBindings?: {
+    fill?: string;
+    stroke?: string;
+    radius?: string;
+    opacity?: string;
+    gap?: string;
+    padding?: string;
+  };
+  src?: string;
+  alt?: string;
+  lineFlip?: boolean;
+  points?: CanvasPoint[];
+  /** Sanitized SVG path geometry kept as editable vector data rather than an image. */
+  svgPathData?: string;
+  /** Source coordinate system used to scale imported SVG path data with the layer bounds. */
+  svgViewBox?: CanvasSvgViewBox;
+  /** Sanitized SVG transform functions inherited by the imported shape. */
+  svgTransform?: string;
+  pathClosed?: boolean;
+  fillRule?: "nonzero" | "evenodd";
+  pathSmoothing?: number;
+  startCap?: "none" | "arrow" | "round";
+  endCap?: "none" | "arrow" | "round";
+  startBindingId?: string;
+  endBindingId?: string;
+  clipContent?: boolean;
+  layout?: CanvasAutoLayout;
+  layoutGrids?: CanvasLayoutGrid[];
+  layoutPosition?: "static" | "absolute";
+  constraintH?: CanvasHorizontalConstraint;
+  constraintV?: CanvasVerticalConstraint;
+  interactions?: CanvasPrototypeInteraction[];
+  /** Operation used by a non-destructive boolean group. Its direct children remain editable. */
+  booleanOperation?: Exclude<CanvasBooleanOperation, "flatten">;
+}
+
+export interface CanvasComponentElement {
+  id: string;
+  type: "component";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name?: string;
+  color: string;
+  opacity?: number;
+  rotation?: number;
+  hidden?: boolean;
+  locked?: boolean;
+  groupId?: string;
+  parentId?: string;
+  layoutPosition?: "static" | "absolute";
+  constraintH?: CanvasHorizontalConstraint;
+  constraintV?: CanvasVerticalConstraint;
+  interactions?: CanvasPrototypeInteraction[];
+  componentId: string;
+  componentRole: "main" | "instance";
+  overrides?: Record<string, Partial<CanvasPrimitiveElement>>;
+}
+
+export type CanvasElement = CanvasPrimitiveElement | CanvasComponentElement;
+
+export interface CanvasComponentDefinition {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  nodes: CanvasPrimitiveElement[];
+  builtIn?: boolean;
+  variantSetId?: string;
+  variantSetName?: string;
+  variantProperties?: Record<string, string>;
+}
+
+export interface CanvasDesignToken {
+  id: string;
+  name: string;
+  type: "color" | "number";
+  values: Record<string, string | number>;
+  description?: string;
+}
+
+export interface CanvasTokenCollection {
+  id: string;
+  name: string;
+  modes: string[];
+  activeMode: string;
+  tokens: CanvasDesignToken[];
+}
+
+export interface CanvasAppState {
+  viewBackgroundColor: string;
+  snapToGrid: boolean;
+  viewport?: { x: number; y: number; zoom: number };
+  rulersVisible?: boolean;
+  guidesVisible?: boolean;
+  guidesLocked?: boolean;
+  guides?: CanvasRulerGuide[];
+}
+
+export interface CanvasRulerGuide {
+  id: string;
+  axis: "x" | "y";
+  position: number;
+  color?: string;
+  locked?: boolean;
+}
+
+export interface CanvasPage {
+  id: string;
+  name: string;
+  frame: { width: number; height: number };
+  elements: CanvasElement[];
+  appState: CanvasAppState;
+}
+
+export interface CanvasAssetFile {
+  name: string;
+  mimeType: string;
+  data: string;
+}
+
 export interface CanvasArtifactContent {
-  format: "excalidraw";
-  elements: unknown[];
-  appState: Record<string, unknown>;
-  files: Record<string, unknown>;
+  /** Khadim's native, versioned scene format. Legacy `excalidraw` canvases are migrated on load. */
+  format: "khadim-canvas";
+  sceneVersion: 1;
+  frame: { width: number; height: number };
+  elements: CanvasElement[];
+  components: CanvasComponentDefinition[];
+  styles?: CanvasPaintStyle[];
+  textStyles?: CanvasTextStyle[];
+  effectStyles?: CanvasEffectStyle[];
+  tokenCollections?: CanvasTokenCollection[];
+  /** Page snapshots. Top-level frame/elements/appState mirror the active page for backwards-compatible agent edits. */
+  pages?: CanvasPage[];
+  activePageId?: string;
+  appState: CanvasAppState;
+  files: Record<string, CanvasAssetFile>;
 }
 
 export type ArtifactContent = SiteArtifactContent | WebProjectArtifactContent | DocumentArtifactContent | HtmlDocumentArtifactContent | CanvasArtifactContent;
@@ -405,6 +728,8 @@ export interface KhadimClient {
   agent: {
     start: (request: AgentRunRequest) => Promise<{ runId: string }>;
     abort: (runId: string) => Promise<void>;
+    answerQuestion: (runId: string, requestId: string, answers: AgentQuestionAnswers) => Promise<void>;
+    answerApproval: (runId: string, requestId: string, decision: AgentApprovalDecision) => Promise<void>;
     recover: () => Promise<AgentRunRecoverySnapshot[]>;
     acknowledge: (runId: string) => Promise<void>;
     onEvent: (listener: (envelope: AgentEventEnvelope) => void) => () => void;
@@ -423,6 +748,11 @@ export interface KhadimClient {
     list: (projectId: string) => Promise<Conversation[]>;
     save: (conversation: Conversation) => Promise<void>;
     remove: (projectId: string, id: string) => Promise<void>;
+    exportMarkdown?: (suggestedName: string, markdown: string) => Promise<string | null>;
+  };
+  app?: {
+    version: () => Promise<string>;
+    configDirectory: () => Promise<string>;
   };
   artifacts: {
     list: (projectId: string) => Promise<Artifact[]>;
@@ -437,7 +767,7 @@ export interface KhadimClient {
     chooseWorkspace: () => Promise<string | null>;
   };
   models: {
-    catalog: () => Promise<ModelCatalogProvider[]>;
+    catalog: (refresh?: boolean) => Promise<ModelCatalogProvider[]>;
     syncCodex: (activate?: boolean) => Promise<AppSettings>;
   };
   auth: {
@@ -467,6 +797,10 @@ export interface KhadimClient {
   plugins?: {
     list: () => Promise<PluginEntry[]>;
     harnesses: () => Promise<PluginHarnessDescriptor[]>;
+    models: (harnessId: PluginHarnessId, projectPath: string) => Promise<PluginHarnessModel[]>;
+    modes: (harnessId: PluginHarnessId, projectPath: string) => Promise<PluginHarnessMode[]>;
+    commands?: (harnessId: PluginHarnessId, projectPath: string) => Promise<PluginHarnessCommand[]>;
+    refreshCatalog?: (harnessId: PluginHarnessId, projectPath: string) => Promise<PluginHarnessCatalog>;
     chooseAndInstall: () => Promise<PluginEntry | null>;
     setEnabled: (pluginId: string, enabled: boolean) => Promise<PluginEntry>;
     configure: (pluginId: string, update: PluginConfigUpdate) => Promise<PluginEntry>;

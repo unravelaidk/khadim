@@ -22,7 +22,7 @@ export function processSupervisionArgs(): string[] {
  * helper always emits either a concrete allowlist or the `none` sentinel.
  */
 export function executionPolicyArgs(
-  run: Pick<AgentRun, "enabledTools" | "harness" | "model">,
+  run: Pick<AgentRun, "enabledTools" | "harness" | "model" | "multiAgent">,
   options: { artifactTools?: boolean } = {},
 ): string[] {
   const savedGroups = new Set(run.enabledTools);
@@ -35,6 +35,7 @@ export function executionPolicyArgs(
   if (options.artifactTools && !groups.includes("apps")) groups.push("apps");
 
   const args = ["--tool-groups", groups.length > 0 ? groups.join(",") : "none"];
+  if (run.multiAgent) args.push("--multi-agent");
   const rawTemperature = run.model.temperature?.trim();
   if (rawTemperature) {
     const temperature = Number(rawTemperature);

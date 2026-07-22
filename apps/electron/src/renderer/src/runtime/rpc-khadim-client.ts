@@ -1,5 +1,7 @@
 import type {
+  AgentApprovalDecision,
   AgentEventEnvelope,
+  AgentQuestionAnswers,
   AgentRunRequest,
   Artifact,
   Conversation,
@@ -12,10 +14,11 @@ import type {
 } from "../../../shared/types";
 
 export type KhadimRpcMethod =
-  | "agent.start" | "agent.abort" | "agent.recover" | "agent.acknowledge"
+  | "agent.start" | "agent.abort" | "agent.answerQuestion" | "agent.answerApproval" | "agent.recover" | "agent.acknowledge"
   | "projects.list" | "projects.add" | "projects.open" | "projects.checkAvailability"
   | "projects.rename" | "projects.relocate" | "projects.remove" | "projects.chooseDirectory"
-  | "conversations.list" | "conversations.save" | "conversations.remove"
+  | "conversations.list" | "conversations.save" | "conversations.remove" | "conversations.exportMarkdown"
+  | "app.version" | "app.configDirectory"
   | "artifacts.list" | "artifacts.save" | "artifacts.exportPdf"
   | "settings.get" | "settings.save" | "settings.chooseWorkspace"
   | "models.catalog" | "models.syncCodex"
@@ -54,6 +57,8 @@ export function createRpcKhadimClient(transport: KhadimRpcTransport, options: Kh
     agent: {
       start: (request: AgentRunRequest) => invoke("agent.start", request),
       abort: (runId: string) => invoke("agent.abort", runId),
+      answerQuestion: (runId: string, requestId: string, answers: AgentQuestionAnswers) => invoke("agent.answerQuestion", runId, requestId, answers),
+      answerApproval: (runId: string, requestId: string, decision: AgentApprovalDecision) => invoke("agent.answerApproval", runId, requestId, decision),
       recover: () => invoke("agent.recover"),
       acknowledge: (runId: string) => invoke("agent.acknowledge", runId),
       onEvent: (listener) => transport.subscribe((event) => { if (event.type === "agent.event") listener(event.payload); }),
@@ -72,6 +77,11 @@ export function createRpcKhadimClient(transport: KhadimRpcTransport, options: Kh
       list: (projectId: string) => invoke("conversations.list", projectId),
       save: (conversation: Conversation) => invoke("conversations.save", conversation),
       remove: (projectId: string, id: string) => invoke("conversations.remove", projectId, id),
+      exportMarkdown: (suggestedName: string, markdown: string) => invoke("conversations.exportMarkdown", suggestedName, markdown),
+    },
+    app: {
+      version: () => invoke("app.version"),
+      configDirectory: () => invoke("app.configDirectory"),
     },
     artifacts: {
       list: (projectId: string) => invoke("artifacts.list", projectId),
@@ -84,7 +94,7 @@ export function createRpcKhadimClient(transport: KhadimRpcTransport, options: Kh
       chooseWorkspace: () => invoke("settings.chooseWorkspace"),
     },
     models: {
-      catalog: () => invoke("models.catalog"),
+      catalog: (refresh = false) => invoke("models.catalog", refresh),
       syncCodex: (activate = false) => invoke("models.syncCodex", activate),
     },
     auth: {

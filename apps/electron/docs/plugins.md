@@ -155,20 +155,85 @@ request after permission checks.
 | `harness.session.parse` | Remote session ID parsed from the create response. |
 | `harness.events` | Server-sent event stream request. |
 | `harness.prompt` | Asynchronous prompt request. |
+| `harness.question.reply` | User answers for a pending harness question. |
+| `harness.approval.reply` | User decision for a pending permission request. |
 | `harness.event` | Normalized Khadim events mapped from one server event. |
 | `harness.abort` | Request that cancels the remote session. |
 
-The host persists the remote session mapping by plugin, project path, and chat
-session key. A later prompt in the same Khadim chat resumes the same remote
-session. If the remote server returns `404`, Khadim creates a new session and
-replaces the mapping.
+The host persists the remote session mapping by plugin and stable chat session
+key. A later prompt in the same Khadim chat resumes the same remote session,
+including after project relocation. If the remote server returns `404`, Khadim
+creates a new session and replaces the mapping.
 
-The bundled OpenCode harness additionally has a host-owned local server
-lifecycle. With an empty Server URL, Khadim resolves the configured OpenCode
-binary, starts `opencode serve` on a free loopback port, waits for readiness,
-reuses that process for the chat, and terminates it during app shutdown. A
-non-empty Server URL remains externally managed. This process privilege is not
-available to user-installed WebAssembly plugins.
+The prompt context includes the model, native interaction mode, and runtime
+access level selected in the chat composer. Every bundled harness passes the
+saved run choices to its native runtime, so the visible chat choices remain
+authoritative after you switch runners.
+
+Khadim ships five harnesses through the same WebAssembly capability boundary.
+Their native transports stay in narrowly scoped, host-owned managers.
+
+| Plugin | Native transport | Model selector source |
+| --- | --- | --- |
+| OpenCode | OpenCode HTTP server and event stream | Connected providers |
+| Claude Code | Claude Agent SDK | Installed CLI compatibility catalog |
+| Codex | Codex app-server JSON-RPC | App-server model catalog |
+| Cursor | Agent Client Protocol | CLI default plus configured IDs |
+| Grok | Agent Client Protocol | `grok-build` plus configured IDs |
+
+Model discovery stays host-owned as well. When a bundled harness is selected,
+the renderer asks the main process for that harness's catalog instead of
+showing Khadim's direct-API models. Claude Code is a curated catalog filtered
+by the installed `claude --version`. OpenCode reads authenticated provider
+models from `opencode models --verbose`; an explicitly configured loopback
+server is queried through `GET /provider` with the active project directory.
+Codex reads models and collaboration modes from its paginated app-server
+catalog. OpenCode reports primary agents as interaction modes, and Cursor
+exposes its supported `ask`, `architect`, and `code` modes. Cursor and Grok
+accept optional model IDs in plugin configuration because their ACP entry
+points don't expose a stable cross-version model-list request. Claude Code also
+reports its installed slash commands and skills through a local SDK
+initialization probe that doesn't send a model prompt. The composer merges
+those commands with Khadim's built-in command registry. User plugins don't
+receive CLI or server access merely by declaring a harness.
+
+The bundled harnesses additionally have host-owned local process lifecycles.
+With an empty Server URL, Khadim resolves the configured OpenCode binary,
+starts `opencode serve` on a free loopback port, waits for readiness, and
+reuses that process for the chat. The Claude Code bridge uses the Agent SDK and
+resumes the saved Claude session UUID. Codex runs `codex app-server`; Cursor
+runs `cursor-agent acp`; and Grok runs `grok agent stdio`. Khadim terminates
+owned runtimes during chat deletion and app shutdown. This process privilege
+is not available to user-installed WebAssembly plugins.
+
+Each bundled harness can use the same Studio artifact and connected-app tools
+as the direct Assistant runtime. Electron creates one token-authenticated,
+loopback-only MCP endpoint for each chat and replaces its tool registry from
+the immutable run snapshot. The registry includes only the selected artifact
+and the Google services allowed for that agent. Electron clears the registry
+when the run closes and stops the endpoint when you delete the chat, relocate
+or remove its project, or quit the app. Claude Code connects through its Agent
+SDK, managed OpenCode receives a remote MCP configuration, Codex receives an
+environment-backed MCP configuration, and Cursor and Grok receive the endpoint
+through ACP `session/new`. Credentials and artifact data stay in the main
+process and never enter the renderer or plugin WebAssembly module.
+
+An externally managed OpenCode server cannot be amended per run. If a run needs
+Studio or connected-app tools, leave **Server URL** blank so Khadim can start
+OpenCode with the bounded MCP configuration.
+
+All five adapters normalize interactive prompts to one `question` event. The
+composer presents single-select, multi-select, and custom-answer controls, then
+routes the answer to the originating protocol. Claude uses `AskUserQuestion`,
+OpenCode uses `question.asked`, Codex uses
+`item/tool/requestUserInput`, Cursor uses `cursor/ask_question`, and Grok uses
+`x.ai/ask_user_question`. Approval requests remain a distinct security
+contract. The composer presents **Approve once**, **Always allow**, **Decline**,
+and **Cancel turn**, then routes the decision to Claude, OpenCode, Codex, or an
+ACP harness. The runtime selector provides **Ask first**, **Auto-edit**, and
+**Full access** policies. These policies map to each native protocol's approval
+and sandbox settings, and a saved native mode can't silently widen the selected
+runtime access level.
 
 ## Install and manage plugins
 
@@ -211,7 +276,8 @@ the archive as design history, not as the Electron runtime contract.
 
 ## Next steps
 
-Build the bundled [OpenCode plugin](../plugins/builtin/opencode/README.md), or
-start a new plugin with one of the SDKs. Add new host capabilities only after
-defining their manifest permission, worker boundary, normalized result type,
-and cancellation behavior.
+Build the bundled [OpenCode plugin](../plugins/builtin/opencode/README.md) or
+[Claude Code plugin](../plugins/builtin/claude-code/README.md), or inspect the
+Codex, Cursor, and Grok packages under `plugins/builtin`. Start a new plugin
+with one of the SDKs. Add host capabilities only after defining their manifest
+permission, worker boundary, normalized result type, and cancellation behavior.

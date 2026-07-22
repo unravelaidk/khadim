@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ProjectStore } from "../../../src/main/project-store";
-import type { ArtifactDraft, Conversation } from "../../../src/shared/types";
+import type { ArtifactDraft, CanvasPage, CanvasPrimitiveElement, Conversation } from "../../../src/shared/types";
 
 const temporaryDirectories: string[] = [];
 
@@ -302,6 +302,150 @@ describe("ProjectStore", () => {
       createdAt: "2026-07-13T10:00:00.000Z",
       updatedAt: "2026-07-13T10:00:00.000Z",
     }]);
+  });
+
+  it("migrates Khadim's legacy custom canvas records without claiming Excalidraw compatibility", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "legacy-canvas-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory);
+    const project = await store.addProject(projectDirectory);
+    const artifactDirectory = join(dataDirectory, "projects", project.id);
+    await mkdir(artifactDirectory, { recursive: true });
+    await writeFile(join(artifactDirectory, "artifacts.json"), JSON.stringify([{
+      id: "legacy-canvas",
+      projectId: project.id,
+      title: "Legacy canvas",
+      schemaVersion: 2,
+      kind: "canvas",
+      lifecycle: "draft",
+      provenance: { origin: "user" },
+      createdAt: "2026-07-20T10:00:00.000Z",
+      updatedAt: "2026-07-20T10:00:00.000Z",
+      content: {
+        format: "excalidraw",
+        elements: [{ id: "shape", type: "rectangle", x: 20, y: 30, width: 100, height: 60, color: "#2563eb" }],
+        appState: { snapToGrid: false },
+        files: {},
+      },
+    }]), "utf8");
+
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([
+      expect.objectContaining({ content: expect.objectContaining({ format: "khadim-canvas", sceneVersion: 1, frame: { width: 960, height: 600 }, components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } }) }),
+    ]);
+  });
+
+  it("rejects actual Excalidraw records instead of silently dropping unsupported properties", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "foreign-canvas-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory);
+    const project = await store.addProject(projectDirectory);
+    const artifactDirectory = join(dataDirectory, "projects", project.id);
+    await mkdir(artifactDirectory, { recursive: true });
+    await writeFile(join(artifactDirectory, "artifacts.json"), JSON.stringify([{
+      id: "foreign-canvas",
+      projectId: project.id,
+      title: "Imported drawing",
+      schemaVersion: 2,
+      kind: "canvas",
+      lifecycle: "draft",
+      createdAt: "2026-07-20T10:00:00.000Z",
+      updatedAt: "2026-07-20T10:00:00.000Z",
+      content: { format: "excalidraw", elements: [{ id: "shape", type: "rectangle", x: 0, y: 0, width: 100, height: 80, version: 1, versionNonce: 42 }], appState: {}, files: {} },
+    }]), "utf8");
+
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).rejects.toThrow("artifact library is invalid");
+  });
+
+  it("persists bounded vector geometry and rejects malformed canvas paths", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "vector-canvas-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory);
+    const project = await store.addProject(projectDirectory);
+    const artifact: ArtifactDraft = {
+      id: "vector-canvas",
+      projectId: project.id,
+      title: "Vector canvas",
+      schemaVersion: 2,
+      kind: "canvas",
+      lifecycle: "draft",
+      provenance: { origin: "user" },
+      createdAt: "2026-07-22T10:00:00.000Z",
+      updatedAt: "2026-07-22T10:00:00.000Z",
+      content: {
+        format: "khadim-canvas",
+        sceneVersion: 1,
+        frame: { width: 960, height: 600 },
+        elements: [
+          { id: "target", type: "rectangle", x: 300, y: 200, width: 100, height: 80, color: "#ffffff", fillStyleId: "brand", fillGradient: { type: "linear", angle: 45, stops: [{ offset: 0, color: "#2563eb" }, { offset: 1, color: "#6652d9" }] } },
+          { id: "arrow", type: "arrow", x: 10, y: 20, width: 340, height: 220, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], color: "#17181c", endCap: "arrow", endBindingId: "target", constraintH: "scale", constraintV: "center" },
+        ],
+        components: [],
+        styles: [{ id: "brand", name: "Brand gradient", color: "#2563eb", gradient: { type: "linear", angle: 45, stops: [{ offset: 0, color: "#2563eb" }, { offset: 1, color: "#6652d9" }] } }],
+        appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
+        files: {},
+      },
+    };
+
+    await store.saveArtifacts(project.id, [artifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([artifact]);
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    const pagedArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, activePageId: "page-a", pages: [
+      { id: "page-a", name: "Flow", frame: artifact.content.frame, elements: artifact.content.elements, appState: artifact.content.appState },
+      { id: "page-b", name: "Archive", frame: { width: 1200, height: 800 }, elements: [], appState: { viewBackgroundColor: "#f8fafc", snapToGrid: false, guides: [{ id: "guide-a", axis: "x", position: 240 }] } },
+    ] } };
+    await store.saveArtifacts(project.id, [pagedArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([pagedArtifact]);
+    const prototypeButton: CanvasPrimitiveElement = { id: "prototype-button", type: "rectangle", x: 40, y: 40, width: 160, height: 48, color: "#2563eb", interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "page-b", transition: { type: "slide", duration: 180, easing: "ease-out", direction: "left" } }, { id: "docs", trigger: "hover", action: "open-url", url: "https://example.com/docs" }] };
+    const prototypePages: CanvasPage[] = [
+      { id: "page-a", name: "Flow", frame: artifact.content.frame, elements: [prototypeButton], appState: artifact.content.appState },
+      { id: "page-b", name: "Archive", frame: artifact.content.frame, elements: [], appState: artifact.content.appState },
+    ];
+    const prototypeArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [prototypeButton], activePageId: "page-a", pages: prototypePages } };
+    await store.saveArtifacts(project.id, [prototypeArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([prototypeArtifact]);
+    const stalePrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "missing" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "go", trigger: "click", action: "navigate", destinationPageId: "missing" }] }] } : page) } };
+    await expect(store.saveArtifacts(project.id, [stalePrototype])).rejects.toThrow("artifact library is invalid");
+    const unsafePrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "bad-url", trigger: "click", action: "open-url", url: "javascript:alert(1)" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "bad-url", trigger: "click", action: "open-url", url: "javascript:alert(1)" }] }] } : page) } };
+    await expect(store.saveArtifacts(project.id, [unsafePrototype])).rejects.toThrow("artifact library is invalid");
+    const duplicateTriggerPrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...prototypeButton, interactions: [{ id: "first", trigger: "click", action: "back" }, { id: "second", trigger: "click", action: "back" }] }], activePageId: "page-a", pages: prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [{ ...prototypeButton, interactions: [{ id: "first", trigger: "click", action: "back" }, { id: "second", trigger: "click", action: "back" }] }] } : page) } };
+    await expect(store.saveArtifacts(project.id, [duplicateTriggerPrototype])).rejects.toThrow("artifact library is invalid");
+    const systemArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
+      elements: [
+        { id: "frame", type: "frame", x: 0, y: 0, width: 400, height: 300, color: "#ffffff", layoutGrids: [{ id: "grid", type: "columns", visible: true, color: "#2563eb", opacity: .12, count: 12, gutter: 16, margin: 24 }] },
+        { id: "surface", parentId: "frame", type: "rectangle", x: 24, y: 24, width: 120, height: 80, color: "#2563eb", tokenBindings: { fill: "brand-token" } },
+        { id: "boolean", type: "boolean", booleanOperation: "union", x: 460, y: 20, width: 150, height: 100, color: "#2563eb" },
+        { id: "boolean-a", parentId: "boolean", type: "rectangle", x: 460, y: 20, width: 100, height: 100, color: "#2563eb" },
+        { id: "boolean-b", parentId: "boolean", type: "ellipse", x: 510, y: 20, width: 100, height: 100, color: "#2563eb" },
+        { id: "bezier", type: "path", x: 460, y: 160, width: 150, height: 80, color: "#17181c", points: [{ x: 0, y: 0, handleOut: { x: .25, y: -.2 }, nodeType: "smooth" }, { x: 1, y: 1, handleIn: { x: .75, y: 1.2 }, nodeType: "smooth" }] },
+      ],
+      components: [{ id: "button-default", name: "Button", width: 120, height: 40, variantSetId: "button-set", variantSetName: "Button", variantProperties: { State: "Default" }, nodes: [{ id: "surface", type: "rectangle", x: 0, y: 0, width: 120, height: 40, color: "#2563eb", tokenBindings: { fill: "brand-token" } }] }],
+      tokenCollections: [{ id: "core", name: "Core", modes: ["Light", "Dark"], activeMode: "Dark", tokens: [{ id: "brand-token", name: "Brand / Primary", type: "color", values: { Light: "#2563eb", Dark: "#93c5fd" } }] }],
+    } };
+    await store.saveArtifacts(project.id, [systemArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([systemArtifact]);
+    const malformed: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...(artifact.content.elements[1] as CanvasPrimitiveElement), points: [{ x: Number.NaN, y: 0 }] }] } };
+    await expect(store.saveArtifacts(project.id, [malformed])).rejects.toThrow("artifact library is invalid");
+    const malformedBoolean: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [
+      { id: "boolean", type: "boolean", booleanOperation: "union", x: 0, y: 0, width: 100, height: 100, color: "#fff" },
+      { id: "only-child", parentId: "boolean", type: "rectangle", x: 0, y: 0, width: 100, height: 100, color: "#fff" },
+    ] } };
+    await expect(store.saveArtifacts(project.id, [malformedBoolean])).rejects.toThrow("artifact library is invalid");
+    const malformedGradient: ArtifactDraft = { ...artifact, content: { ...artifact.content, styles: [{ id: "bad", name: "Bad", color: "#fff", gradient: { type: "linear", angle: 0, stops: [{ offset: 2, color: "#fff" }, { offset: 1, color: "#000" }] } }] } };
+    await expect(store.saveArtifacts(project.id, [malformedGradient])).rejects.toThrow("artifact library is invalid");
+    const danglingBinding: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ ...(artifact.content.elements[1] as CanvasPrimitiveElement), endBindingId: "missing-target" }] } };
+    await expect(store.saveArtifacts(project.id, [danglingBinding])).rejects.toThrow("artifact library is invalid");
+    const malformedViewport: ArtifactDraft = { ...artifact, content: { ...artifact.content, appState: { ...artifact.content.appState, viewport: { x: 0, y: 0, zoom: 0 } } } };
+    await expect(store.saveArtifacts(project.id, [malformedViewport])).rejects.toThrow("artifact library is invalid");
+    const malformedLayout: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ id: "frame", type: "frame", x: 0, y: 0, width: 200, height: 120, color: "#fff", layout: { direction: "row", align: "center", justify: "start", sizing: "fixed", gap: -4, padding: 12 } }] } };
+    await expect(store.saveArtifacts(project.id, [malformedLayout])).rejects.toThrow("artifact library is invalid");
+    const cyclicHierarchy: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [
+      { id: "a", parentId: "b", type: "frame", x: 0, y: 0, width: 200, height: 120, color: "#fff" },
+      { id: "b", parentId: "a", type: "rectangle", x: 20, y: 20, width: 60, height: 40, color: "#fff" },
+    ] } };
+    await expect(store.saveArtifacts(project.id, [cyclicHierarchy])).rejects.toThrow("artifact library is invalid");
   });
 
   it("persists a source-backed artifact tombstone across restarts", async () => {
@@ -664,6 +808,11 @@ describe("ProjectStore", () => {
     badEndpoint.messages[1].runId = "run-one";
     badEndpoint.runs![0].model.baseUrl = "file:///tmp/model";
     await expect(store.saveConversation(badEndpoint)).rejects.toThrow("chat is invalid");
+
+    const invalidApps = structuredClone(base);
+    invalidApps.messages[1].runId = "run-one";
+    Object.assign(invalidApps.runs![0], { enabledApps: ["drive", "not-a-google-service"] });
+    await expect(store.saveConversation(invalidApps)).rejects.toThrow("chat is invalid");
     await expect(store.listConversations(project.id)).resolves.toEqual([]);
 
     const selectedArtifactRun = structuredClone(base);

@@ -16,11 +16,13 @@ import {
   TextHTwo,
   TextItalic,
   TextT,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { renderHtmlDocument } from "../../../shared/artifact-export";
-import type { Artifact, ArtifactContent, CanvasArtifactContent, DocumentArtifactContent, HtmlDocumentArtifactContent, SiteArtifactContent, VisualDocumentData, WebProjectArtifactContent } from "../../../shared/types";
+import type { Artifact, ArtifactContent, DocumentArtifactContent, HtmlDocumentArtifactContent, SiteArtifactContent, VisualDocumentData, WebProjectArtifactContent } from "../../../shared/types";
 import { BrowserPreview, type ExecutablePreviewState } from "./BrowserPreview";
+import { CanvasEditor } from "./CanvasEditor";
 import { applyVisualDocument, updateWebProjectFile, webProjectStyles } from "./web-project";
 
 type SaveState = "loading" | "saved" | "dirty" | "saving" | "error";
@@ -38,6 +40,7 @@ interface StudioWorkspaceProps {
   agentBusy?: boolean;
   agentStatus?: StudioAgentStatus | null;
   onChange: (artifact: Artifact, flush?: boolean) => void;
+  onRetrySave?: () => void;
   onClose: () => void;
   onExportPdf: () => void;
   onAskAgent?: (instruction: string) => Promise<boolean>;
@@ -81,7 +84,7 @@ function updateContent(artifact: Artifact, content: ArtifactContent): Artifact {
 
 function DocumentEditor({ artifact, content, onChange }: { artifact: Artifact; content: DocumentArtifactContent; onChange: StudioWorkspaceProps["onChange"] }): React.JSX.Element {
   const [text, setText] = useState(() => textFromDocument(content.document));
-  useEffect(() => setText(textFromDocument(content.document)), [artifact.id]);
+  useEffect(() => setText(textFromDocument(content.document)), [artifact.id, content.document]);
 
   function edit(next: string): void {
     setText(next);
@@ -114,9 +117,25 @@ type DocumentCommand = "bold" | "italic" | "formatBlock" | "insertUnorderedList"
 function EditableDocumentFrame({ title, html, page, onChange }: { title: string; html: string; page: HtmlDocumentArtifactContent["page"]; onChange: (html: string) => void }): React.JSX.Element {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const onChangeRef = useRef(onChange);
-  const initialHtml = useRef(html);
+  const lastLocalHtmlRef = useRef<string | null>(null);
+  const incomingHtmlRef = useRef(html);
+  const captureRef = useRef<() => void>(() => undefined);
+  const [frameHtml, setFrameHtml] = useState(html);
+  const [frameRevision, setFrameRevision] = useState(0);
   const [ready, setReady] = useState(false);
   onChangeRef.current = onChange;
+
+  useEffect(() => {
+    // A parent render after local typing is an acknowledgement, not a reason to
+    // reload the iframe and destroy the selection. A different value is an
+    // external revision (for example, an agent edit) and must replace the page.
+    if (html === incomingHtmlRef.current) return;
+    incomingHtmlRef.current = html;
+    if (html === lastLocalHtmlRef.current) return;
+    setReady(false);
+    setFrameHtml(html);
+    setFrameRevision((current) => current + 1);
+  }, [html]);
 
   function connect(): (() => void) | undefined {
     const document = frameRef.current?.contentDocument;
@@ -126,11 +145,17 @@ function EditableDocumentFrame({ title, html, page, onChange }: { title: string;
     document.body.setAttribute("aria-label", "Document page");
     const capture = (): void => {
       const doctype = document.doctype ? `<!doctype ${document.doctype.name}>\n` : "<!doctype html>\n";
-      onChangeRef.current(`${doctype}${document.documentElement.outerHTML}`);
+      const nextHtml = `${doctype}${document.documentElement.outerHTML}`;
+      lastLocalHtmlRef.current = nextHtml;
+      onChangeRef.current(nextHtml);
     };
+    captureRef.current = capture;
     document.addEventListener("input", capture);
     setReady(true);
-    return () => document.removeEventListener("input", capture);
+    return () => {
+      captureRef.current = () => undefined;
+      document.removeEventListener("input", capture);
+    };
   }
 
   useEffect(() => {
@@ -141,12 +166,13 @@ function EditableDocumentFrame({ title, html, page, onChange }: { title: string;
     frame.addEventListener("load", loaded);
     if (frame.contentDocument?.readyState === "complete") loaded();
     return () => { frame.removeEventListener("load", loaded); disconnect?.(); };
-  }, []);
+  }, [frameRevision]);
 
   function command(name: DocumentCommand, value?: string): void {
     const document = frameRef.current?.contentDocument;
     if (!document) return;
     document.execCommand(name, false, value);
+    captureRef.current();
     frameRef.current?.contentWindow?.focus();
   }
 
@@ -168,7 +194,7 @@ function EditableDocumentFrame({ title, html, page, onChange }: { title: string;
       </div>
       <div className="html-document-canvas">
         <div className="html-document-page" style={{ width: pageWidth, minHeight: pageHeight }}>
-          <iframe ref={frameRef} title={`${title} editable page`} srcDoc={initialHtml.current} sandbox="allow-same-origin" />
+          <iframe key={frameRevision} ref={frameRef} title={`${title} editable page`} srcDoc={frameHtml} sandbox="allow-same-origin" />
         </div>
       </div>
     </main>
@@ -202,14 +228,22 @@ function HtmlDocumentEditor({ artifact, content, onChange }: { artifact: Artifac
 
   const source = <CodeWorkspace files={{ "/document.html": html }} selected="/document.html" onSelect={() => undefined} onEdit={(_path, value) => edit(value)} />;
   const preview = <BrowserPreview title={artifact.title} html={renderHtmlDocument({ ...content, html })} />;
+  const wordCount = useMemo(() => {
+    const body = new DOMParser().parseFromString(html, "text/html").body;
+    const text = body.innerText || body.textContent || "";
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }, [html]);
+  const customMargin = ![16, 24, 32].includes(content.page.margin);
 
   return (
     <div className="studio-site-shell document-html-shell">
       <div className="studio-contextbar">
         <DocumentTabs view={view} onChange={setView} />
         <div className="document-page-controls" aria-label="Page settings">
+          <span className="document-word-count">{wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}</span>
           <label><span>Size</span><select aria-label="Page size" value={content.page.size} onChange={(event) => setPage({ size: event.target.value as "A4" | "Letter" })}><option>A4</option><option>Letter</option></select></label>
           <label><span>Layout</span><select aria-label="Page orientation" value={content.page.orientation} onChange={(event) => setPage({ orientation: event.target.value as "portrait" | "landscape" })}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>
+          <label><span>Margin</span><select aria-label="Page margin" value={content.page.margin} onChange={(event) => setPage({ margin: Number(event.target.value) })}>{customMargin && <option value={content.page.margin}>Custom ({content.page.margin} mm)</option>}<option value={16}>Narrow</option><option value={24}>Normal</option><option value={32}>Wide</option></select></label>
         </div>
       </div>
       <div className={`studio-document-surface view-${view}`}>
@@ -275,13 +309,19 @@ function SiteEditor({ artifact, content, onChange }: { artifact: Artifact; conte
   const [view, setView] = useState<SiteView>("preview");
   const [html, setHtml] = useState(content.html);
   const [preview, setPreview] = useState(content.html);
-  useEffect(() => { setHtml(content.html); setPreview(content.html); }, [artifact.id]);
+  const lastLocalHtmlRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (content.html === lastLocalHtmlRef.current) return;
+    setHtml(content.html);
+    setPreview(content.html);
+  }, [artifact.id, content.html]);
   useEffect(() => {
     const timeout = window.setTimeout(() => setPreview(html), 180);
     return () => window.clearTimeout(timeout);
   }, [html]);
 
   function edit(next: string): void {
+    lastLocalHtmlRef.current = next;
     setHtml(next);
     onChange(updateContent(artifact, { ...content, html: next }));
   }
@@ -370,54 +410,7 @@ function WebProjectEditor({ artifact, content, agentName, modelName, agentBusy, 
   );
 }
 
-interface CanvasNode { id: string; type: "rectangle" | "text"; x: number; y: number; width: number; height: number; text?: string; color: string }
-
-function canvasNodes(content: CanvasArtifactContent): CanvasNode[] {
-  return content.elements.filter((value): value is CanvasNode => Boolean(value && typeof value === "object" && "id" in value && "type" in value)) as CanvasNode[];
-}
-
-function CanvasEditor({ artifact, content, onChange }: { artifact: Artifact; content: CanvasArtifactContent; onChange: StudioWorkspaceProps["onChange"] }): React.JSX.Element {
-  const nodes = useMemo(() => canvasNodes(content), [content]);
-  const [selected, setSelected] = useState<string | null>(nodes[0]?.id ?? null);
-  const selectedNode = nodes.find((node) => node.id === selected);
-
-  function setNodes(next: CanvasNode[]): void {
-    onChange(updateContent(artifact, { ...content, elements: next }));
-  }
-
-  function add(type: CanvasNode["type"]): void {
-    const id = crypto.randomUUID();
-    const offset = nodes.length * 18;
-    setNodes([...nodes, { id, type, x: 96 + offset, y: 88 + offset, width: 180, height: type === "text" ? 48 : 120, text: type === "text" ? "New idea" : undefined, color: "#6652d9" }]);
-    setSelected(id);
-  }
-
-  return (
-    <div className="studio-editor-layout canvas-layout">
-      <aside className="studio-toolrail" aria-label="Canvas tools">
-        <button type="button" onClick={() => add("rectangle")} aria-label="Add rectangle"><Selection size={18} /></button>
-        <button type="button" onClick={() => add("text")} aria-label="Add text"><TextT size={18} /></button>
-      </aside>
-      <main className="canvas-stage" onClick={() => setSelected(null)}>
-        <svg viewBox="0 0 1000 650" role="img" aria-label="Canvas artwork">
-          {nodes.map((node) => node.type === "text"
-            ? <text key={node.id} x={node.x} y={node.y + 30} fill={node.color} className={selected === node.id ? "selected" : ""} onClick={(event) => { event.stopPropagation(); setSelected(node.id); }}>{node.text}</text>
-            : <rect key={node.id} x={node.x} y={node.y} width={node.width} height={node.height} rx="8" fill={`${node.color}18`} stroke={node.color} strokeWidth={selected === node.id ? 4 : 2} onClick={(event) => { event.stopPropagation(); setSelected(node.id); }} />)}
-        </svg>
-        {nodes.length === 0 && <div className="canvas-empty"><Selection size={28} /><strong>Blank canvas</strong><span>Add a shape or text to begin.</span></div>}
-      </main>
-      <aside className="studio-inspector" aria-label="Canvas settings">
-        <header><SidebarSimple size={16} /><strong>Properties</strong></header>
-        {selectedNode ? <>
-          <label>Color<input type="color" value={selectedNode.color} onChange={(event) => setNodes(nodes.map((node) => node.id === selectedNode.id ? { ...node, color: event.target.value } : node))} /></label>
-          {selectedNode.type === "text" && <label>Text<input value={selectedNode.text} onChange={(event) => setNodes(nodes.map((node) => node.id === selectedNode.id ? { ...node, text: event.target.value } : node))} /></label>}
-        </> : <p>Select an object to edit its properties.</p>}
-      </aside>
-    </div>
-  );
-}
-
-export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", modelName = "Current model", agentBusy = false, agentStatus = null, onChange, onClose, onExportPdf, onAskAgent }: StudioWorkspaceProps): React.JSX.Element {
+export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", modelName = "Current model", agentBusy = false, agentStatus = null, onChange, onRetrySave, onClose, onExportPdf, onAskAgent }: StudioWorkspaceProps): React.JSX.Element {
   function rename(title: string): void {
     onChange({ ...artifact, title, updatedAt: new Date().toISOString() });
   }
@@ -429,15 +422,22 @@ export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", mod
         <span className={`studio-kind-mark ${artifact.kind}`}>{artifact.kind === "document" ? <FileText size={18} /> : artifact.kind === "site" ? <GlobeHemisphereWest size={18} /> : <Selection size={18} />}</span>
         <div className="studio-title-block">
           <input id="studio-workspace-title" value={artifact.title} onChange={(event) => rename(event.target.value)} aria-label="Artifact title" />
-          <span className={saveState === "error" ? "error" : ""} aria-live="polite">{kindLabels[artifact.kind]} · {saveLabel(saveState)}</span>
+          <span className={saveState === "error" ? "error" : ""} aria-live="polite">
+            {kindLabels[artifact.kind]} · {saveLabel(saveState)}
+            {saveState === "error" && onRetrySave && <button className="studio-save-retry" type="button" onClick={onRetrySave}><WarningCircle size={12} /> Retry</button>}
+          </span>
         </div>
+        {agentStatus && <span className={`studio-agent-status ${agentStatus.phase}`} role={agentStatus.phase === "error" ? "alert" : "status"} aria-live="polite">
+          {(agentStatus.phase === "starting" || agentStatus.phase === "running") && <span className="activity-spinner" />}
+          {agentStatus.message ?? (agentStatus.phase === "starting" ? "Preparing edit…" : agentStatus.phase === "running" ? `${agentName} is editing…` : agentStatus.phase === "complete" ? "Changes applied" : "Edit failed")}
+        </span>}
         <button className="studio-export" type="button" onClick={onExportPdf}>Export PDF</button>
       </header>
       {artifact.content.format === "tiptap" && <DocumentEditor artifact={artifact} content={artifact.content} onChange={onChange} />}
       {artifact.content.format === "document-html" && <HtmlDocumentEditor key={artifact.id} artifact={artifact} content={artifact.content} onChange={onChange} />}
       {artifact.content.format === "html" && <SiteEditor artifact={artifact} content={artifact.content} onChange={onChange} />}
       {artifact.content.format === "web-project" && <WebProjectEditor artifact={artifact} content={artifact.content} agentName={agentName} modelName={modelName} agentBusy={agentBusy} agentStatus={agentStatus} onChange={onChange} onAskAgent={onAskAgent} />}
-      {artifact.content.format === "excalidraw" && <CanvasEditor artifact={artifact} content={artifact.content} onChange={onChange} />}
+      {artifact.content.format === "khadim-canvas" && <CanvasEditor artifact={artifact} content={artifact.content} onChange={onChange} />}
     </section>
   );
 }

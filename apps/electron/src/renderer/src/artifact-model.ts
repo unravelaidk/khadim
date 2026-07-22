@@ -227,7 +227,7 @@ export function createArtifact(kind: ArtifactKind, projectId: string, id: string
     ...shared,
     kind,
     title: "Untitled canvas",
-    content: { format: "excalidraw", elements: [], appState: { viewBackgroundColor: "#ffffff" }, files: {} },
+    content: { format: "khadim-canvas", sceneVersion: 1, frame: { width: 960, height: 600 }, elements: [], components: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {} },
   };
   return {
     ...shared,
@@ -284,7 +284,7 @@ function emptyContent(content: ArtifactContent): ArtifactContent {
   if (content.format === "web-project") return { ...content, files: {}, baselineFiles: {}, previewHtml: "", baselinePreviewHtml: "", visual: content.visual ? { ...content.visual, data: { root: { props: {} }, content: [] } } : undefined };
   if (content.format === "tiptap") return { ...content, document: { type: "doc", content: [] } };
   if (content.format === "document-html") return { ...content, html: "", baselineHtml: "" };
-  return { ...content, elements: [], files: {} };
+  return { ...content, elements: [], components: [], files: {}, pages: undefined, activePageId: undefined };
 }
 
 /**

@@ -1,0 +1,94 @@
+{
+  "search_id": "search_9df6a6d031548169726fe18208921b0b",
+  "session_id": "session_9df6a6d031548169726fe18208921b0b",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://opencode.ai/docs/mcp-servers/",
+      "title": "MCP servers | OpenCode",
+      "publish_date": "2026-07-14",
+      "excerpts": [
+        "Here are all the options for configuring a local MCP server. Add remote MCP servers by <strong>setting type to &quot;remote&quot;.</strong>"
+      ]
+    },
+    {
+      "url": "https://mcp.directory/clients/opencode",
+      "title": "How to Add MCP Servers to opencode \u2014 MCP.Directory",
+      "publish_date": null,
+      "excerpts": [
+        "# How to Add MCP Servers to opencode\n[opencode.ai](https://opencode.ai)\nOpen-source terminal coding agent from the SST team. MCP servers go in the `mcp` block of opencode.json \u2014 `\"type\": \"local\"` with a command array for stdio servers, `\"type\": \"remote\"` with a URL for hosted ones. A project-root opencode.json overrides the global config.\n\n## Setup Guide\n### 1. Locate the config file\n`~/.config/opencode/opencode.json` Copy\n\n### 2. Add a server configuration\nAdd the following to your JSON config:\n```\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"filesystem\": {\n      \"type\": \"local\",\n      \"command\": [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/path/to/allowed/dir\"],\n      \"enabled\": true\n    },\n    \"my-remote-server\": {\n      \"type\": \"remote\",\n      \"url\": \"https://my-mcp-server.example.com/mcp\",\n      \"enabled\": true\n    }\n  }\n}\n```\nCopy\n\n### 3. Restart opencode\nRestart or reload opencode to pick up the new MCP server configuration.\n\n...\n\n## Popular MCP Servers for opencode\nSequential Thinking ### Sequential Thinking anthropic 80.5k Break down complex problems with Sequential Thinking, a structured tool and step by step math solver for dynamic, reflective solutions. Official Remote Popular\n9.8k 871\nInstall\n\n...\n\nFilesystem ### Filesystem anthropic 80.5k Learn how to use Python to read a file and manipulate local files safely through the Filesystem API. Official Popular\n2.5k 147\nInstall\n\n...\n\nContext7 ### Context7 upstash 48.2k Boost your AI code assistant with Context7: inject real-time API documentation from OpenAPI specification sources into your coding workflow. Official Remote Popular\n19.1k 910\nInstall\n\n...\n\nGitHub ### GitHub github 27.6k Extend your developer tools with GitHub MCP Server for advanced automation, supporting GitHub Student and student packages integration. Official Remote Popular\n5.1k 299\nInstall\n\n...\n\n### Quick Info\nConfig format json\nConfig path ~/.config/opencode/opencode.json\nCompatible servers 2303+\n\n### Convert config\nConvert MCP server configs between opencode and any of 8 supported clients.\nOpen config converter"
+      ]
+    },
+    {
+      "url": "https://opencode.ai/docs/de/mcp-servers",
+      "title": "MCP Server - opencode.ai",
+      "publish_date": null,
+      "excerpts": [
+        "# MCP Server\n## Aktivierung\nSie k\u00f6nnen den MCP-Server in Ihrem [OpenCode Config](https://opencode.ai/docs/config/) unter `mcp` definieren. F\u00fcgen Sie jedem MCP einen eindeutigen Namen hinzu. Sie k\u00f6nnen bei der Eingabe von LLM namentlich auf diesen MCP verweisen.\nopencode.jsonc\n```\n{ \"$schema\" : \"https://opencode.ai/config.json\" , \"mcp\" : { \"name-of-mcp-server\" : { // ... \"enabled\" : true , }, \"name-of-other-mcp-server\" : { // ... }, }, }\n```\nSie k\u00f6nnen einen Server auch deaktivieren, indem Sie `enabled` auf `false` setzen. Dies ist n\u00fctzlich, wenn Sie einen Server vor\u00fcbergehend deaktivieren m\u00f6chten, ohne ihn aus Ihrer Konfiguration zu entfernen.\n\n...\n\n### \u00dcberschreiben von Remote-Standardwerten\n```\n{ \"$schema\" : \"https://opencode.ai/config.json\" , \"mcp\" : { \"jira\" : { \"type\" : \"remote\" , \"url\" : \"https://jira.example.com/mcp\" , \"enabled\" : true } } }\n```\nIhre lokalen Konfigurationswerte \u00fcberschreiben die Remote-Standardwerte. Weitere Einzelheiten finden Sie unter config precedence .\n\n...\n\n## Remote\nF\u00fcgen Sie den Remote-MCP-Server hinzu, indem Sie `type` auf `\"remote\"` setzen.\nopencode.json\n```\n{ \"$schema\" : \"https://opencode.ai/config.json\" , \"mcp\" : { \"my-remote-mcp\" : { \"type\" : \"remote\" , \"url\" : \"https://my-mcp-server.com\" , \"enabled\" : true , \"headers\" : { \"Authorization\" : \"Bearer MY_API_KEY\" } } } }\n```\nDer `url` ist der URL des Remote-Servers MCP und mit der Option `headers` k\u00f6nnen Sie eine Liste von Headern \u00fcbergeben.\n\n### Optionen\n| Option | Geben Sie | ein Erforderlich | Beschreibung |\n| `type` | Zeichenfolge | Y | Typ der MCP-Serververbindung, muss `\"remote\"` sein. |\n| `url` | Zeichenfolge | Y | URL des Remote-Servers MCP. |\n| `headers` | Objekt | Header, die mit der Anfrage gesendet werden sollen. |  |\n\n...\n\n## OAuth\n### Automatisch\nF\u00fcr die meisten OAuth-f\u00e4higen MCP-Server ist keine spezielle Konfiguration erforderlich. Konfigurieren Sie einfach den Remote-Server:\nopencode.json\n```\n{ \"$schema\" : \"https://opencode.ai/config.json\" , \"mcp\" : { \"my-oauth-server\" : { \"type\" : \"remote\" , \"url\" : \"https://mcp.example.com/mcp\" } } }\n```\n\n...\n\n### Authentifizieren\n#### OAuth deaktivieren\n```\n{ \"$schema\" : \"https://opencode.ai/config.json\" , \"mcp\" : { \"my-api-key-server\" : { \"type\" : \"remote\" , \"url\" : \"https://mcp.example.com/mcp\" , \"oauth\" : false , \"headers\" : { \"Authorization\" : \"Bearer {env:MY_API_KEY}\" } } } }\n```\n\n...\n\n## Beispiele\n### Context7\n```\n{ \"$schema\" : \"https://opencode.ai/config.json\" , \"mcp\" : { \"context7\" : { \"type\" : \"remote\" , \"url\" : \"https://mcp.context7.com/mcp\" , \"headers\" : { \"CONTEXT7_API_KEY\" : \"{env:CONTEXT7_API_KEY}\" } } } }\n```\nHier gehen wir davon aus, dass Sie die Umgebungsvariable `CONTEXT7_API_KEY` festgelegt haben."
+      ]
+    },
+    {
+      "url": "https://open-code.ai/en/docs/mcp-servers",
+      "title": "OpenCode MCP Servers: Connect GitHub, Sentry, Databases ...",
+      "publish_date": null,
+      "excerpts": [
+        "OpenCode MCP Servers: Connect GitHub, Sentry, Databases ...\nAdd local or remote MCP servers with OAuth and fine-grained settings. Extend OpenCode with external tools while managing context and token costs."
+      ]
+    },
+    {
+      "url": "https://composio.dev/content/mcp-with-opencode",
+      "title": "description: Learn how to add MCP servers to OpenCode in 2026 and connect coding agents to GitHub, Slack, and Figma \u2014 without sacrificing LLM context space. title: How to Add MCP to OpenCode in 2026: Setup, Config & Examples | Composio image: https://framerusercontent.com/images/eBNkh1Rq4PUqBAPlUzbFWHr5IM.png",
+      "publish_date": null,
+      "excerpts": [
+        "# description: Learn how to add MCP servers to OpenCode in 2026 and connect coding agents to GitHub, Slack, and Figma \u2014 without sacrificing LLM context space.\ntitle: How to Add MCP to OpenCode in 2026: Setup, Config & Examples | Composio\nimage: https://framerusercontent.com/images/eBNkh1Rq4PUqBAPlUzbFWHr5IM.png > For AI agents: how to sign up > This is what an MCP gateway is for\nHere in this blog post, I\u2019ll walk you through how to set up Composio MCP with **Opencode**. You can add any other remote MCP the same way.\nYou can also use the CLI for connecting any apps to OpenCode.\ntitle: How to Add MCP to OpenCode in 2026: Setup, Config & Examples | Composio\nimage: https://framerusercontent.com/images/eBNkh1Rq4PUqBAPlUzbFWHr5IM.png > Connect external apps with OpenCode\n1. **Add the Composio MCP server**\n```  \nopencode mcp add  \n```\nThis launches an interactive prompt.\n2. **Fill in the fields**\ntitle: How to Add MCP to OpenCode in 2026: Setup, Config & Examples | Composio\nimage: https://framerusercontent.com/images/eBNkh1Rq4PUqBAPlUzbFWHr5IM.png > Connect external apps with OpenCode\n| Field | Value |\n| Name | composio |\n| Type | remote |\n| URL | https://connect.composio.dev/mcp |\n| Require OAuth | Yes |\n| Have client ID | No |\n| ![OpenCode MCP steps](https://framerusercontent.com/images/Hh79M9mhOa3p1J7pGdTlwJ57c.png) |  |\ntitle: How to Add MCP to OpenCode in 2026: Setup, Config & Examples | Composio\nimage: https://framerusercontent.com/images/eBNkh1Rq4PUqBAPlUzbFWHr5IM.png > Connect external apps with OpenCode\nAlternatively, you can skip the interactive prompt and paste the configuration directly into your OpenCode config file.\nOpen your global OpenCode config:\n```\nopen ~/.config/opencode/opencode.json\n```\nAdd this under the `mcp` key and save the file.\ntitle: How to Add MCP to OpenCode in 2026: Setup, Config & Examples | Composio\nimage: https://framerusercontent.com/images/eBNkh1Rq4PUqBAPlUzbFWHr5IM.png > Connect external apps with OpenCode\n```\n{\n  \"mcp\": {\n    \"composio\": {\n      \"type\": \"remote\",\n      \"url\": \"<https://connect.composio.dev/mcp>\",\n      \"enabled\": true\n    }\n  }\n}\n```\n**3. Authenticate**\nAuthenticate Composio MCP you just added\n```\nopencode mcp auth composio\n```"
+      ]
+    },
+    {
+      "url": "https://v2.opencode.ai/mcp-servers",
+      "title": "MCP servers - OpenCode",
+      "publish_date": "2026-07-13",
+      "excerpts": [
+        "# MCP servers\n## Configure servers\nDefine each server by a unique name under `mcp.servers` in your [OpenCode configuration](/config). V2 does not place server names directly under `mcp`.\n```jsonc title=\"opencode.jsonc\" theme={null}\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"servers\": {\n      \"my-server\": {\n        \"type\": \"local\",\n        \"command\": [\"npx\", \"-y\", \"example-mcp-server\"]\n      }\n    }\n  }\n}\n```\n\n...\n\n## Remote servers\n```jsonc title=\"opencode.jsonc\" theme={null}\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"servers\": {\n      \"context7\": {\n        \"type\": \"remote\",\n        \"url\": \"https://mcp.context7.com/mcp\",\n        \"oauth\": false,\n        \"headers\": {\n          \"CONTEXT7_API_KEY\": \"{env:CONTEXT7_API_KEY}\"\n```\n\n...\n\n## OAuth\n```jsonc title=\"opencode.jsonc\" theme={null}\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"servers\": {\n      \"company-tools\": {\n        \"type\": \"remote\",\n        \"url\": \"https://mcp.example.com/mcp\",\n        \"oauth\": {\n          \"client_id\": \"{env:MCP_CLIENT_ID}\",\n```\n\n...\n\n## Timeouts\n```jsonc title=\"opencode.jsonc\" theme={null}\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"timeout\": {\n      \"startup\": 45000,\n      \"catalog\": 30000,\n      \"execution\": 600000\n    },\n    \"servers\": {\n      \"slow-tools\": {\n        \"type\": \"remote\",\n        \"url\": \"https://mcp.example.com/mcp\",\n```\n\n...\n\n## Names and permissions\n```jsonc theme={null}\n{\n  \"mcp\": {\n    \"servers\": {\n      \"context7\": {\n        \"type\": \"remote\",\n        \"url\": \"https://mcp.context7.com/mcp\",\n        \"codemode\": false\n      }\n    }\n  }\n}\n```\nUse permission actions to hide or deny a server's tools without stopping its connection:\n\n...\n\n## CLI commands\n```bash theme={null}\n# Add a local server to the project config\nopencode2 mcp add everything --env LOG_LEVEL=info -- npx -y @modelcontextprotocol/server-everything\n\n# Add a remote server to the project config\nopencode2 mcp add context7 --url https://mcp.context7.com/mcp --header 'CONTEXT7_API_KEY={env:CONTEXT7_API_KEY}'\n\n# Add to the global config instead\nopencode2 mcp add context7 --global --url https://mcp.context7.com/mcp\n\n# List configured servers and connection status\nopencode2 mcp list\n\n# Authenticate or remove OAuth credentials\nopencode2 mcp auth context7\nopencode2 mcp logout context7\n```\n`mcp add` accepts either `--url` for a remote server or a command after `--` for a local server, not both. Use `--header NAME=VALUE` only with remote servers and `--env NAME=VALUE` only with local servers. Edit the config directly for OAuth, timeout, working-directory, or enablement settings."
+      ]
+    },
+    {
+      "url": "https://lobehub.com/pl/mcp/yourusername-opencode-mcp-server",
+      "title": "OpenCode MCP Server | MCP Servers \u00b7 LobeHub",
+      "publish_date": "2026-02-22",
+      "excerpts": [
+        "# OpenCode MCP Server\n## Konfiguracja instalacji\n```\n{\n  \"mcpServers\": {\n    \"yourusername-opencode-mcp-server\": {\n      \"args\": [\n        \"dist/index.js\",\n        \"stdio\"\n      ],\n      \"command\": \"node\"\n    }\n  }\n}\n```\n\nA Model Context Protocol (MCP) server that enables remote interaction with [OpenCode](https://opencode.ai) via HTTP API. This allows MCP clients like OpenClaw, Claude Desktop, or any MCP-compatible tool to control OpenCode agents remotely.\n\n## \ud83d\ude80 Features\n* **\ud83d\udd27 Flexible Configuration** : Environment variable defaults with per-request overrides\n* **\ud83d\udd10 Multiple Authentication** : Bearer Token, Basic Auth (username/password), or no auth\n* **\ud83c\udf10 Custom URL Support** : Each tool call can target different OpenCode servers\n* **\ud83d\udce1 Dual Mode** : Stdio (local) / SSE (remote) transports\n* **\ud83c\udfe5 Health Check** : Built-in connectivity testing\n\n...\n\n## \u2699\ufe0f Configuration\n```\n# OpenCode server URL (default: local)\nOPENCODE_URL=http://127.0.0.1:8848\n\n# Authentication type: basic | bearer | none\nOPENCODE_AUTH_TYPE=basic\n\n# For Basic Auth (default for opencode serve)\nOPENCODE_USERNAME=opencode\nOPENCODE_PASSWORD=your-password\n\n# For Bearer Token Auth (if configured)\n# OPENCODE_AUTH_TYPE=bearer\n# OPENCODE_TOKEN=your-token-here\n\n# MCP Server port (for SSE mode)\nPORT=3000\n```\n\n## \ud83c\udf10 Remote Access Setup\nTo access your OpenCode server remotely, you can use one of these methods:\n\n...\n\n## \ud83d\udd0c MCP Configuration\n### OpenClaw\n```\n{\n  \"mcpServers\": {\n    \"opencode-remote\": {\n      \"command\": \"node\",\n      \"args\": [\"/path/to/opencode-mcp-server/dist/index.js\", \"stdio\"],\n      \"env\": {\n        \"OPENCODE_URL\": \"http://127.0.0.1:8848\",\n        \"OPENCODE_USERNAME\": \"opencode\",\n        \"OPENCODE_PASSWORD\": \"your-password\",\n        \"OPENCODE_AUTH_TYPE\": \"basic\"\n      }\n    }\n  }\n}\n```\n\n...\n\n### Remote Server Example (using Tailscale)\n```\n{\n  \"mcpServers\": {\n    \"opencode-remote\": {\n      \"command\": \"node\",\n      \"args\": [\"/path/to/opencode-mcp-server/dist/index.js\", \"stdio\"],\n      \"env\": {\n        \"OPENCODE_URL\": \"http://100.72.207.100:8848\",\n        \"OPENCODE_USERNAME\": \"opencode\",\n```"
+      ]
+    },
+    {
+      "url": "https://thdxr.dev.opencode.ai/docs/mcp-servers/",
+      "title": "MCP servers | opencode",
+      "publish_date": "2025-08-04",
+      "excerpts": [
+        "... You can also disable a server by setting enabled to false. This is useful if you want to temporarily disable a server without removing it from your config. <strong>Add remote MCP servers under mcp with &quot;type&quot;: &quot;remote&quot;.</strong>"
+      ]
+    },
+    {
+      "url": "https://a2a-mcp.org/entry/opencode",
+      "title": "OpenCode MCP - Configure Local and Remote MCP Servers in OpenCode | a2a mcp",
+      "publish_date": null,
+      "excerpts": [
+        "# OpenCode MCP\n## Key Features\n* Adds external MCP tools to OpenCode through the `mcp` configuration object.\n* Supports local MCP servers started from a command array.\n* Supports remote MCP servers configured with a URL and optional headers.\n* Automatically makes added MCP tools available to the LLM alongside built-in OpenCode tools.\n* Supports enabling and disabling MCP servers globally or per agent through tool configuration.\n* Provides CLI commands for adding, listing, authenticating, logging out, and debugging MCP server connections.\n* Supports OAuth-enabled remote MCP servers, including automatic OAuth handling and manual authentication commands.\n\n...\n\n## Setup or Requirements\nOpenCode also provides `opencode mcp add` , which guides users through adding either a local or remote MCP server.\n\n## Compatibility\nOfficial documentation describes OpenCode connecting to both local and remote MCP servers. Local MCP servers are command-based subprocesses. Remote MCP servers are configured by URL and may use headers or OAuth. The documentation does not describe OpenCode itself as exposing a Model Context Protocol server endpoint.\n\n...\n\n## MCP Setup\n### Companion app or plugin\n* Use `opencode mcp add` to add a local or remote MCP server interactively, or edit OpenCode config manually.\n* Run `opencode mcp list` to check configured MCP servers and connection status.\n\n...\n\n### Client setup\n#### OpenCode\nTransport: `stdio`\n```\nopencode mcp add\n```\n```\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"my-local-mcp-server\": {\n      \"type\": \"local\",\n      \"command\": [\"npx\", \"-y\", \"my-mcp-command\"],\n      \"enabled\": true,\n      \"environment\": {\n        \"MY_ENV_VAR\": \"my_env_var_value\"\n      }\n    }\n  }\n}\n```\n\n...\n\nOpenCode documentation calls this a local MCP server. The local command is an array used to start the MCP server subprocess; this corresponds to command-based local MCP operation.\nTransport: `HTTP`\n```\nopencode mcp add\n```\n```\n{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"my-remote-mcp\": {\n      \"type\": \"remote\",\n      \"url\": \"https://my-mcp-server.com\",\n      \"enabled\": true,\n      \"headers\": {\n        \"Authorization\": \"Bearer MY_API_KEY\"\n      }\n    }\n  }\n}\n```\n* Install and authenticate OpenCode.\n* Confirm the remote MCP server URL.\n* Run `opencode mcp add` and choose a remote MCP server, or add a `type: \"remote\"` MCP entry with a URL to OpenCode config.\n* Add headers if the remote MCP server requires API-key or bearer-token authentication."
+      ]
+    },
+    {
+      "url": "https://github.com/Traves-Theberge/opencode-mcp",
+      "title": "GitHub - Traves-Theberge/opencode-mcp: MCP server that ...",
+      "publish_date": null,
+      "excerpts": [
+        "GitHub - Traves-Theberge/opencode-mcp: MCP server that ...\nMCP server that exposes OpenCode as a tool/subagent for IDEs and AI clients. OpenCode MCP Server allows any MCP-compatible client (Cursor, Windsurf, Claude Desktop, Claude Code, Opencode, Antigravity, Zed, etc.) to delegate coding tasks to OpenCode as a subagent."
+      ]
+    }
+  ],
+  "usage": [
+    {
+      "name": "sku_search",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

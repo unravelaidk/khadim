@@ -2,12 +2,12 @@
   "apiVersion": 1,
   "id": "khadim.opencode",
   "name": "OpenCode",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Runs Khadim chats through an OpenCode server harness.",
   "author": "Khadim contributors",
   "license": "AGPL-3.0-only",
   "homepage": "https://opencode.ai/docs/server/",
-  "main": "dist/opencode.wasm",
+  "main": "opencode.wasm",
   "defaultEnabled": true,
   "capabilities": ["harness"],
   "permissions": {
@@ -48,25 +48,6 @@
       "label": "OpenCode agent",
       "description": "Optional OpenCode agent name, such as build or plan.",
       "type": "string"
-    },
-    {
-      "key": "providerId",
-      "label": "OpenCode provider ID",
-      "description": "Optional provider override configured in OpenCode.",
-      "type": "string"
-    },
-    {
-      "key": "modelId",
-      "label": "OpenCode model ID",
-      "description": "Optional model override configured in OpenCode.",
-      "type": "string"
-    },
-    {
-      "key": "useKhadimModel",
-      "label": "Use Khadim model IDs",
-      "description": "Send the selected Khadim provider and model IDs when no OpenCode override is set.",
-      "type": "boolean",
-      "default": false
     }
   ]
 }

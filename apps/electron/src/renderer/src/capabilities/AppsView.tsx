@@ -18,6 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import type { DiscordSettings, GoogleConnection, HarnessMode, PluginEntry, Project, SearchProviderId, SearchSettings, SkillEntry } from "../../../shared/types";
 import { isPluginHarnessId } from "../../../shared/plugins";
+import { googleWorkspaceServiceEnabled, googleWorkspaceServices, hasCurrentGoogleWorkspaceGrant, type GoogleWorkspaceServiceId } from "../../../shared/google-workspace";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { PluginLogo } from "../ui/PluginLogo";
 
@@ -62,7 +63,6 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
   const connectors = [
     { name: "GitHub", description: "Review repositories, issues, and pull requests", logo: "github" },
     { name: "Slack", description: "Find conversations and summarize team updates", logo: "slack" },
-    { name: "Google Drive", description: "Search and work with documents and shared files", logo: "drive" },
     { name: "Asana", description: "Create tasks and keep projects moving", logo: "asana" },
     { name: "X / Twitter", description: "Research topics and monitor public conversations", logo: "x" },
   ] satisfies Array<{ name: string; description: string; logo: AppLogoName }>;
@@ -271,22 +271,29 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
   const visibleSearchProviders = searchProviderQueryMatch ? matchingSearchProviders : searchSettings?.providers ?? [];
   const searchProviderPanelOpen = searchProvidersOpen;
   const discordMatches = matches("Discord", "Continue conversations from authorized channels, threads, and direct messages");
-  const gmailMatches = matches("Gmail", "Search your inbox and summarize threads");
+  const googleServiceMatches: Record<GoogleWorkspaceServiceId, boolean> = {
+    gmail: matches("Gmail", "Search your inbox and read email threads"),
+    drive: matches("Google Drive Docs Sheets Slides", "Search and read documents spreadsheets presentations and shared files"),
+    calendar: matches("Google Calendar", "Review calendars schedules meetings and upcoming events"),
+  };
+  const googleWorkspaceMatches = matches("Google Workspace", "Connect Gmail Drive Calendar Docs Sheets and Slides") || Object.values(googleServiceMatches).some(Boolean);
   const showApps = category === "all" || category === "apps";
   const showSkills = category === "all" || category === "skills";
   const showIncluded = category === "all" || category === "included";
   const matchingPlugins = plugins.filter((plugin) => matches(plugin.name, plugin.description));
   const discordPluginHarnesses = plugins.filter((plugin) => plugin.enabled && !plugin.error).flatMap((plugin) => plugin.harnesses);
   const discordHarnessAvailable = !isPluginHarnessId(discordHarness) || discordPluginHarnesses.some((harness) => harness.id === discordHarness);
-  const appsHaveResults = webSearchMatches || gmailMatches || discordMatches || matchingPlugins.length > 0 || visibleConnectors.length > 0 || searchSettings === null;
+  const appsHaveResults = webSearchMatches || googleWorkspaceMatches || discordMatches || matchingPlugins.length > 0 || visibleConnectors.length > 0 || searchSettings === null;
   const skillsHaveResults = visibleSkills.length > 0 || skillsLoading || Boolean(skillsError);
   const includedHasResults = visibleSources.length > 0;
   const hasResults = (showApps && appsHaveResults) || (showSkills && skillsHaveResults) || (showIncluded && includedHasResults);
   const activeSearchProvider = searchSettings?.providers.find((provider) => provider.id === searchSettings.activeProvider);
   const activeSearchNeedsReconnect = activeSearchProvider?.credentialStatus === "locked";
   const enabledSkillCount = skills.filter((skill) => skill.enabled).length;
-  const connectedAppCount = Number(Boolean(googleConnection?.connected)) + Number(Boolean(discordSettings?.connected));
-  const availableAppCount = Number(webSearchMatches) + Number(gmailMatches) + Number(discordMatches);
+  const authorizedGoogleServices = googleConnection?.connected ? googleWorkspaceServices(googleConnection.scopes) : [];
+  const googleGrantCurrent = Boolean(googleConnection?.connected && hasCurrentGoogleWorkspaceGrant(googleConnection.scopes));
+  const connectedAppCount = authorizedGoogleServices.length + Number(Boolean(discordSettings?.connected));
+  const availableAppCount = Number(webSearchMatches) + Object.values(googleServiceMatches).filter(Boolean).length + Number(discordMatches);
 
   async function toggleSkill(skill: SkillEntry): Promise<void> {
     const enabled = !skill.enabled;
@@ -387,7 +394,7 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
       setGoogleClientId("");
       setGoogleClientSecret("");
     } catch (cause) {
-      setGoogleError(cause instanceof Error ? cause.message : "Gmail could not be connected.");
+      setGoogleError(cause instanceof Error ? cause.message : "Google Workspace could not be connected.");
     } finally {
       setSavingGoogle(false);
     }
@@ -401,7 +408,7 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
       setGoogleConnection(next);
       window.dispatchEvent(new CustomEvent("khadim:google-connection-changed", { detail: next }));
     } catch (cause) {
-      setGoogleError(cause instanceof Error ? cause.message : "Gmail could not be disconnected.");
+      setGoogleError(cause instanceof Error ? cause.message : "Google Workspace could not be disconnected.");
     } finally {
       setSavingGoogle(false);
     }
@@ -442,7 +449,7 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
       </nav>
 
       <div id="capability-panel">
-        {showApps && appsHaveResults && (webSearchMatches || gmailMatches || discordMatches || !normalizedQuery) && (
+        {showApps && appsHaveResults && (webSearchMatches || googleWorkspaceMatches || discordMatches || !normalizedQuery) && (
           <section className="application-section application-section-first" id="apps-ready">
             <header><div><h2>Available now</h2><p>Services you can configure and use today.</p></div><span>{availableAppCount} {normalizedQuery ? "matching" : "ready"}</span></header>
             {(searchSettingsError || googleError || discordError) && <div className="application-errors">{searchSettingsError && <p className="application-empty error" role="alert">{searchSettingsError}</p>}{googleError && <p className="application-empty error" role="alert">{googleError}</p>}{discordError && <p className="application-empty error" role="alert">{discordError}</p>}</div>}
@@ -476,20 +483,30 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
                 </div>
               )}
 
-              {gmailMatches && (
-                <div className="application-entry gmail-connector">
-                  <article className={`application-row ${googleConnection?.connected ? "is-connected" : ""}`}>
-                    <AppLogo name="gmail" />
-                    <span><strong>Gmail</strong><small>{googleConnection?.connected ? `Connected as ${googleConnection.email ?? "Google account"}` : googleConnection?.credentialStatus === "locked" ? "Saved access is locked; reconnect to restore it" : googleConnection?.configured ? "Search your inbox and summarize selected threads" : "Google OAuth is not configured in this build"}</small></span>
-                    {googleConnection?.connected
-                      ? <button className="connected connector-action" onClick={() => void disconnectGoogle()} disabled={savingGoogle}>Disconnect</button>
-                      : <button className="connector-action" aria-label="Connect Gmail" onClick={() => void connectGoogle()} disabled={savingGoogle || googleConnection === null || (!googleConnection.configured && (!googleClientId.trim() || !googleClientSecret.trim()))}><Plus size={13} /> {savingGoogle ? "Connecting…" : "Connect"}</button>}
+              {googleWorkspaceMatches && (
+                <div className="application-entry google-workspace-connector">
+                  <article className={`application-row google-workspace-account ${googleConnection?.connected ? "is-connected" : ""}`}>
+                    <span className="google-workspace-mark" aria-hidden="true"><AppLogo name="gmail" /><AppLogo name="drive" /></span>
+                    <span><strong>Google Workspace</strong><small>{googleConnection?.connected ? `${googleConnection.email ?? "Google account"} · ${authorizedGoogleServices.length} of 3 services ready` : googleConnection?.credentialStatus === "locked" ? "Saved access is locked; reconnect to restore it" : googleConnection?.configured ? "Connect one account for Gmail, Drive, and Calendar" : "Add a Google Desktop OAuth credential to connect"}</small></span>
+                    {googleConnection?.connected && googleGrantCurrent
+                      ? <button className="connected connector-action" aria-label="Disconnect Google Workspace" onClick={() => void disconnectGoogle()} disabled={savingGoogle}>Disconnect</button>
+                      : <button className="connector-action" aria-label={googleConnection?.connected ? "Update Google Workspace access" : "Connect Google Workspace"} onClick={() => void connectGoogle()} disabled={savingGoogle || googleConnection === null || (!googleConnection.configured && (!googleClientId.trim() || !googleClientSecret.trim()))}><Plus size={13} /> {savingGoogle ? "Connecting…" : googleConnection?.connected ? "Update access" : "Connect"}</button>}
                   </article>
+                  <div className="google-workspace-services" aria-label="Google Workspace services">
+                    {([
+                      { id: "gmail", name: "Gmail", description: "Search messages and read complete threads", logo: "gmail" },
+                      { id: "drive", name: "Drive", description: "Search and read Docs, Sheets, Slides, and text files", logo: "drive" },
+                      { id: "calendar", name: "Calendar", description: "List calendars and inspect upcoming events", logo: null },
+                    ] as const).filter((service) => !normalizedQuery || googleServiceMatches[service.id]).map((service) => {
+                      const enabled = Boolean(googleConnection?.connected && googleWorkspaceServiceEnabled(googleConnection.scopes, service.id));
+                      return <div className="google-workspace-service" key={service.id}>{service.logo ? <AppLogo name={service.logo} /> : <span className="app-logo calendar" aria-hidden="true"><span>31</span></span>}<span><strong>{service.name}</strong><small>{service.description}</small></span><span className={`workspace-service-state ${enabled ? "ready" : ""}`}>{enabled ? <><Check size={12} /> Ready</> : googleConnection?.connected ? "Needs access" : "Connect account"}</span></div>;
+                    })}
+                  </div>
                   {googleConnection && !googleConnection.connected && !googleConnection.configured && (
                     <div className="google-client-setup">
                       <label><span>Google Desktop OAuth client ID</span><input value={googleClientId} onChange={(event) => setGoogleClientId(event.target.value)} placeholder="123456789.apps.googleusercontent.com" autoComplete="off" /></label>
                       <label><span>Google Desktop OAuth client secret</span><input type="password" value={googleClientSecret} onChange={(event) => setGoogleClientSecret(event.target.value)} placeholder="GOCSPX-…" autoComplete="off" /></label>
-                      <p>Create a Desktop app credential in Google Cloud with the Gmail API enabled. The client secret and account tokens are encrypted in this device’s credential vault and never returned to the renderer.</p>
+                      <p>Create a Desktop app credential in Google Cloud and enable the Gmail, Drive, and Calendar APIs. Client secrets and account tokens stay encrypted in this device’s credential vault and are never returned to the renderer.</p>
                       <button type="button" onClick={() => void window.khadim.shell.openExternal("https://console.cloud.google.com/apis/credentials")}>Open Google Cloud</button>
                     </div>
                   )}

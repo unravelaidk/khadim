@@ -28,21 +28,26 @@
     "preview": "electron-vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.170",
+    "@anthropic-ai/sdk": "^0.93.0",
     "@fontsource-variable/atkinson-hyperlegible-next": "^5.2.6",
     "@fontsource-variable/source-serif-4": "^5.2.9",
     "@khadim/credential-vault": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@monaco-editor/react": "^4.7.0",
     "@phosphor-icons/react": "^2.1.10",
     "@puckeditor/core": "^0.22.2",
     "discord.js": "^14.22.1",
     "monaco-editor": "^0.55.1",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "react-router": "7.14.1",
     "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.1",
-    "vite": "^7.3.2"
+    "vite": "^7.3.2",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -80,7 +85,7 @@
       {
         "from": "plugins/builtin",
         "to": "plugins",
-        "filter": ["**/khadim.plugin.json", "**/dist/*.wasm"]
+        "filter": ["**/khadim.plugin.json", "*/opencode.wasm", "*/claude-code.wasm", "*/codex.wasm", "*/cursor.wasm", "*/grok.wasm"]
       },
       {
         "from": "build/sidecar",

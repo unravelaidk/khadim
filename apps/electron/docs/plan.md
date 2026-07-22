@@ -105,6 +105,55 @@ the following behavior as working unless a focused test proves otherwise:
   model from starting. The run falls back to DuckDuckGo, records the fallback
   as a completed web-search tool event, and keeps the configured provider
   selected so the user can reconnect it from **Apps**.
+- **Apps** now treats Google Workspace as one account with independently
+  visible Gmail, Drive, and Calendar grants. One desktop OAuth flow requests
+  the read-only scopes, reports partial legacy grants, and lets you update or
+  disconnect the account without exposing its tokens to the renderer.
+- Gmail, Drive, and Calendar execute through bounded main-process native tools.
+  Drive supports metadata and indexed-content search plus text export for Docs,
+  Sheets, Slides, and text-like files. Calendar lists calendars and bounded
+  event ranges. Every tool marks returned service content as untrusted.
+- **Agents** is a persistent master-detail workbench with job templates, custom
+  instructions, model and runtime defaults, tool-group access, a per-agent
+  Google service allowlist, duplication, editing, deletion, and direct chat
+  launch. The profile summarizes project-scoped run activity from saved chat
+  snapshots. Each run saves the selected app allowlist in its immutable
+  snapshot, and the main process exposes only the corresponding native tools.
+- A bundled Claude Code harness now mirrors the OpenCode plugin boundary. Its
+  WASM adapter maps Claude stream JSON into normalized text, tool, usage,
+  completion, and error events. A host-owned authenticated loopback bridge
+  runs `claude` in the active project, resumes a durable UUID per chat, and
+  terminates the process tree on cancellation, chat deletion, and shutdown.
+- Selecting a plugin runtime keeps model choice in the chat composer. The
+  selector now swaps to that runtime's own inventory: Claude Code uses a
+  curated list gated by the installed CLI version, while OpenCode reads its
+  connected-provider catalog from `opencode models --verbose` or an external
+  server's `GET /provider`. The selection is remembered per harness, saved in
+  the run snapshot, and passed to OpenCode or Claude Code, so Apps-level plugin
+  settings can't silently override the visible chat choice.
+- Codex, Cursor, and Grok are now bundled harness plugins beside Claude Code
+  and OpenCode. Host-owned bridges adapt Codex app-server JSON-RPC and the
+  Cursor and Grok ACP transports to the existing HTTP, event-stream, and WASM
+  harness boundary. Each harness has its own composer model inventory.
+- All five bundled harnesses can use the selected Studio artifact and the
+  agent's allowed Google services through one host-owned MCP surface per chat.
+  The main process replaces the tool registry for each immutable run snapshot,
+  clears it at the terminal event, and keeps tokens out of renderer and WASM
+  state. Claude Code, managed OpenCode, Codex, Cursor, and Grok receive the same
+  bounded tool definitions through their native MCP attachment points.
+- A shared composer question panel now handles single-choice, multi-choice,
+  and custom answers. Claude `AskUserQuestion`, OpenCode `question.asked`,
+  Codex `item/tool/requestUserInput`, Cursor `cursor/ask_question`, and Grok
+  `x.ai/ask_user_question` all map to the same durable `question` event and
+  answer IPC. Approvals remain a separate event type and use a dedicated card
+  with once, session, decline, and cancel decisions. The runtime selector maps
+  ask-first, automatic-edit, and full-access policies to Claude, OpenCode,
+  Codex, Cursor, and Grok.
+- The chat composer now merges all 26 Khadim CLI commands into an accessible
+  slash-command picker. Every registry command has a desktop action, including
+  conversation export, local history clearing, harness and harness-model
+  selection, catalog refresh, and native multi-agent toggling. Claude Code's
+  locally reported slash commands and skills join the same picker.
 - Compact layouts keep the application grid, composer, sidebar overlay, and
   stacked Studio within the viewport after the desktop-density style pass.
 - The renderer root now focuses on application orchestration. Chat composition,
@@ -114,7 +163,7 @@ the following behavior as working unless a focused test proves otherwise:
   new chat or Studio behavior instead of moving feature state back into
   `App.tsx`.
 
-The latest completed checks on July 18, 2026, were `237` passing tests, a clean
+The latest completed checks on July 22, 2026, were `340` passing tests, a clean
 TypeScript check, and a successful production build. A packaging smoke check
 also staged and executed Bun `1.3.13` beside the Khadim CLI slot. Packaged
 Electron audits verified the main-chat and artifact split, light and dark
@@ -150,7 +199,7 @@ Artifact
     │   ├── files, baselineFiles
     │   ├── previewHtml, baselinePreviewHtml
     │   └── visual: Puck data + editor identifier
-    └── excalidraw: scene elements
+    └── khadim-canvas: versioned pages, scene elements, assets, and app state
 ```
 
 Keep this rule: the visual model is canonical for visually managed React
@@ -158,8 +207,8 @@ components, the file map is canonical for source-only files, and the rendered
 preview is derived output. Don't make three independently editable sources of
 truth.
 
-Before adding real Excalidraw persistence, extend its content with serializable
-`appState` and binary-file metadata. Store large binary assets outside
+Canvas persistence includes serializable `appState` and binary-file metadata.
+The remaining lifecycle step is to store large binary assets outside
 `artifacts.json` and reference them by stable local IDs.
 
 ## Editor structure
@@ -189,11 +238,55 @@ the fastest path: click text and type; use the agent only for broader changes.
 
 ## Research conclusions
 
-Parallel Web research was re-run on July 18, 2026, against primary project
+Parallel Web research was last run on July 21, 2026, against primary project
 documentation and repositories. No academic sources are relevant because these
 are software integration and license decisions. React Router now presents v8
 as its current release, but v7 remains an intentional Khadim template boundary
 and has an official non-breaking path to v8.
+
+### Penpot canvas architecture
+
+A source-level comparison against Penpot commit
+`4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5` informed the native canvas path.
+The reusable boundary is semantic rather than visual: Penpot keeps shapes,
+prototype interactions, paths, transforms, constraints, and snap points as
+validated data; workspace gestures produce reversible document changes; and
+editable, viewer, and export renderers consume the same model independently.
+
+Khadim now follows that boundary for prototype interactions. Primitive and
+component layers can persist click and hover triggers for page navigation,
+previous-screen navigation, and protocol-validated external URLs. The Studio
+player interprets those records without changing static SVG or PDF export.
+Page deletion removes incoming links so saved artifacts cannot retain broken
+destinations. Instant, dissolve, and directional slide transitions store their
+duration and easing with the interaction. The preview is a modal interaction
+boundary: editor shortcuts are suspended, background controls are inert, focus
+is trapped and restored, hover interactions remain keyboard operable, and
+hotspots respect hidden ancestors, masks, and clipped frames. Persistence
+rejects malformed actions, unsafe URL protocols, duplicate triggers, and stale
+page destinations. PDF output emits every canvas page on a separate sheet.
+
+The next architectural extraction should follow Penpot's change-builder model:
+move semantic canvas commands and grouped undo transactions out of
+`CanvasEditor.tsx`, then extend shared snapping from bounding edges to corners,
+centers, frame edge midpoints, and guides. The raw comparison, exact upstream
+paths, and remaining gaps are recorded in
+[`penpot-canvas-repo-comparison.json`](../research/penpot-canvas-repo-comparison.json).
+
+### Google Workspace read-only integrations
+
+Use one Google desktop OAuth grant for the first read-only Workspace bundle:
+Gmail, Drive, and Calendar. Keep service availability independent because old
+grants can contain only Gmail. Use Drive `files.list` for bounded metadata and
+indexed-content search, `files.get?alt=media` for text-like blob files, and
+`files.export` for Google Docs, Sheets, and Slides. The official export table
+confirms `text/plain` for Docs and Slides and `text/csv` for the first sheet of
+a spreadsheet. Use Calendar's `calendarList.list` and `events.list` with a
+bounded result count and explicit time range. The raw captures are in
+[`google-workspace-readonly-apis.json`](../research/google-workspace-readonly-apis.json),
+[`google-drive-readonly-api.json`](../research/google-drive-readonly-api.json),
+and
+[`google-drive-export-formats.json`](../research/google-drive-export-formats.json).
 
 ### Puck for React visual composition
 
@@ -217,16 +310,17 @@ also notes that URI choice affects TypeScript import resolution and JSON schema
 selection. See the [Monaco repository](https://github.com/microsoft/monaco-editor)
 and [official Monaco site](https://microsoft.github.io/monaco-editor).
 
-### Excalidraw for the canvas
+### Native semantic canvas
 
-Replace the current SVG canvas placeholder with the official Excalidraw React
-package. The repository and package are MIT licensed. The package exports an
-embeddable React component, requires its CSS import, and fills a parent with a
-non-zero height. Integrate the package client-side, persist scene data through
-Khadim, and keep Khadim's artifact header and agent controls outside the
-Excalidraw surface. See the
-[Excalidraw package guide](https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw)
-and [Excalidraw license](https://github.com/excalidraw/excalidraw/blob/master/LICENSE).
+Keep Khadim's native, versioned canvas scene instead of replacing it with an
+embedded whiteboard. The editor now owns pages, frames, vector paths, editable
+SVG import, reusable components and variants, auto layout, constraints, grids,
+guides, masks, boolean shapes, connectors, tokens and styles, prototype
+interactions, and SVG/PNG/PDF export. Shared geometry, paint, boolean, and
+export modules keep the persisted model usable outside the editor UI. Penpot's
+architecture is the reference for the next extraction: editor gestures should
+become semantic, reversible commands while view and export remain independent
+consumers of the same model.
 
 ### Vite for executable web-project previews
 
@@ -272,6 +366,51 @@ artifact modes and local-first runtime. See the Codex app
 [browser documentation](https://developers.openai.com/codex/app/browser) and
 [feature overview](https://developers.openai.com/codex/app/features).
 
+### Claude Code harness integration
+
+Use Claude Code through a bundled WASM harness plus a host-owned process
+bridge. T3 Code's current Claude adapter confirms the important runtime
+boundaries: use the project directory, preserve a durable SDK session UUID,
+enable partial messages, keep tool events separate from assistant text, apply
+model and permission settings explicitly, and interrupt the owned runtime on
+cancel. Khadim keeps its existing HTTP and server-sent event harness ABI rather
+than importing T3 Code's provider framework.
+
+The bridge supplies an SDK session ID on the first turn and resumes it on later
+turns. It binds to `127.0.0.1` on an ephemeral port, requires a random bearer
+token, validates configuration before starting the SDK query, and never
+invokes a shell. The WebAssembly plugin remains sandboxed and process-free. See
+the
+[T3 Code Claude adapter](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/ClaudeAdapter.ts),
+[T3 Code Claude provider](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/ClaudeProvider.ts),
+and [Claude Agent SDK permission documentation](https://platform.claude.com/docs/en/agent-sdk/permissions).
+
+### Multi-harness questions and approval boundary
+
+Follow T3 Code's provider-specific adapters but preserve one Khadim renderer
+contract. T3 normalizes question request and resolution events across Claude,
+OpenCode, Codex, Cursor, and Grok, while each adapter translates the answer
+back to its native protocol. Khadim follows that division: plugins map events,
+the host owns pending response state, and the composer renders one sequential
+question flow.
+
+Questions and approvals remain different event types. A question supplies
+information the agent needs; an approval authorizes a potentially sensitive
+action. The host keeps pending approval state, emits the normalized request to
+the renderer, and returns once, session, decline, or cancel decisions in each
+native protocol's response shape. Runtime access is saved in the immutable run
+snapshot and caps native modes so an older saved mode can't silently grant more
+access. The research captures are
+[`t3code-harness-question-tools.json`](../research/t3code-harness-question-tools.json),
+[`harness-question-protocols.json`](../research/harness-question-protocols.json),
+and
+[`codex-cursor-grok-harness-protocols.json`](../research/codex-cursor-grok-harness-protocols.json).
+The cross-harness MCP captures are in
+[`plugin-harness-native-tools.json`](../research/plugin-harness-native-tools.json),
+[`acp-session-setup-extract.json`](../research/acp-session-setup-extract.json),
+[`codex-app-server-dynamic-tools.json`](../research/codex-app-server-dynamic-tools.json),
+and [`codex-http-mcp-config.json`](../research/codex-http-mcp-config.json).
+
 ### Electron for PDF output
 
 Keep PDF generation in the Electron main process. `webContents.printToPDF`
@@ -292,8 +431,9 @@ The research and product constraints rule out these directions for now:
 - Don't make raw generated HTML the only website format. Keep static HTML as a
   supported artifact, but use file-backed projects for React and future
   frameworks.
-- Don't build a canvas engine from scratch. Embed Excalidraw and own only the
-  persistence, artifact lifecycle, agent bridge, and Khadim-specific chrome.
+- Don't replace the semantic canvas with an embedded whiteboard. Khadim needs
+  design-system assets, component instances, layout rules, and prototype links
+  that remain available to agents, validators, viewers, and exporters.
 
 ## Ordered implementation plan
 
@@ -368,16 +508,15 @@ continues to use the scripts-disabled `srcDoc` path.
 Exit this phase when a multi-file React artifact with imports and CSS renders
 the same in Preview and PDF preparation.
 
-### Phase 3: complete the remaining editor placeholders
+### Phase 3: deepen the artifact editors
 
-Integrate maintained libraries after the website path is stable.
-
-1. Replace `CanvasEditor` with `@excalidraw/excalidraw` and persist elements,
-   app state, and binary files.
-2. Harden the HTML document editor with selection-scoped agent patches,
+1. Extract semantic canvas commands and grouped undo transactions from
+   `CanvasEditor`, then index geometry for large-scene hit testing and snapping.
+2. Add page reordering, thumbnails, explicit prototype start screens, overlay
+   actions, and selection-aware agent patch protocols.
+3. Harden the HTML document editor with selection-scoped agent patches,
    revision history, and long-document pagination fixtures.
-3. Add agent patch protocols for canvas selections.
-4. Add export fixtures for long documents, complex canvases, and compiled
+4. Add export fixtures for long documents, complex multi-page canvases, and compiled
    web-project print styles.
 
 Exit this phase when all three artifact kinds support direct editing, targeted
@@ -388,7 +527,7 @@ agent editing, persistence, reload, and PDF output.
 Finish the local-first product boundary after editor behavior is complete.
 
 1. Store large artifact assets outside the JSON collection with atomic writes.
-2. Add schema migrations for Puck data, Excalidraw scenes, and document nodes.
+2. Add schema migrations for Puck data, native canvas scenes, and document nodes.
 3. Add revision history and restore points before every agent edit.
 4. Add explicit dirty, saving, saved, conflict, and recovery states.
 5. Add import and export bundles that include files, visual data, and assets.
@@ -440,7 +579,11 @@ Use these files as the starting map for the next implementation session:
 - [`ToolActivityGroup.tsx`](../src/renderer/src/chat/ToolActivityGroup.tsx) owns
   the visible tool timeline and structured result details.
 - [`AppsView.tsx`](../src/renderer/src/capabilities/AppsView.tsx) owns search,
-  Discord, skills, and planned capability presentation.
+  Google Workspace, Discord, skills, and planned capability presentation.
+- [`AgentsView.tsx`](../src/renderer/src/agents/AgentsView.tsx) owns agent
+  templates, profiles, configuration, access review, and lifecycle actions.
+- [`google-workspace-native-tools.ts`](../src/main/google-workspace-native-tools.ts)
+  owns the bounded Drive and Calendar native tool definitions and execution.
 - [`SettingsDialogs.tsx`](../src/renderer/src/settings/SettingsDialogs.tsx) owns
   settings and account dialogs without coupling their local state to the app
   root.
@@ -475,7 +618,7 @@ bun run build
 
 For UI changes, also run the Electron app and inspect the Studio at desktop and
 compact widths. Automated DOM tests don't validate Puck overlay placement,
-canvas occlusion, focus restoration, or preview scale.
+canvas occlusion, animation quality, or preview scale.
 
 ## Sources
 
@@ -486,13 +629,21 @@ sources were not applicable to these integration decisions.
 - [Puck documentation](https://puckeditor.com/docs)
 - [Monaco Editor repository and MIT license](https://github.com/microsoft/monaco-editor)
 - [Monaco Editor official site](https://microsoft.github.io/monaco-editor)
-- [Excalidraw React package guide](https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw)
-- [Excalidraw MIT license](https://github.com/excalidraw/excalidraw/blob/master/LICENSE)
 - [Vite JavaScript API](https://vite.dev/guide/api-javascript)
 - [React Router Data Mode](https://reactrouter.com/start/data/custom)
 - [React Router route configuration](https://reactrouter.com/start/data/routing)
 - [Bun standalone executables](https://bun.sh/docs/bundler/executables)
 - [Electron `webContents.printToPDF` API](https://www.electronjs.org/docs/latest/api/web-contents#contentsprinttopdfoptions)
+- [T3 Code Claude adapter](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/ClaudeAdapter.ts)
+- [T3 Code Claude provider](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/ClaudeProvider.ts)
+- [Claude Agent SDK permissions](https://platform.claude.com/docs/en/agent-sdk/permissions)
+- [Claude Agent SDK user input](https://code.claude.com/docs/en/agent-sdk/user-input)
+- [OpenAI Codex app-server](https://developers.openai.com/codex/app-server)
+- [OpenAI Codex app-server protocol](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md)
+- [T3 Code repository](https://github.com/pingdotgg/t3code)
+- [Google Drive `files.list`](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)
+- [Google Drive export MIME types](https://developers.google.com/workspace/drive/api/guides/ref-export-formats)
+- [Google Calendar `events.list`](https://developers.google.com/workspace/calendar/api/v3/reference/events/list)
 
 ## Next steps
 
@@ -507,5 +658,5 @@ remaining work in this order:
    preserving the artifact path validation boundary.
 4. Add long-document pagination and PDF fixtures, plus selection-scoped
    document agent edits.
-5. Replace the canvas placeholder with Excalidraw after the website and document
-   paths remain stable under these changes.
+5. Continue the native canvas hardening work: command extraction, large-scene
+   indexing, page management, and richer prototype flows.

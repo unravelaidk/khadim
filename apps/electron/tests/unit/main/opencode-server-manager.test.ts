@@ -47,6 +47,7 @@ describe("managed OpenCode server", () => {
       bundled: true,
       engineSessionKey: "chat-one",
       config: { baseUrl: "", binaryPath: "/fake/opencode" },
+      nativeToolMcp: { url: "http://127.0.0.1:45555/mcp", token: "run-secret", hasTools: true },
     });
 
     expect(config.baseUrl).toBe("http://127.0.0.1:43123");
@@ -55,7 +56,14 @@ describe("managed OpenCode server", () => {
       ["serve", "--hostname=127.0.0.1", "--port=43123"],
       expect.objectContaining({ detached: process.platform !== "win32" }),
     );
-    expect((spawnProcess.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv }).env?.OPENCODE_CONFIG_CONTENT).toBe("{}");
+    expect(JSON.parse((spawnProcess.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv }).env?.OPENCODE_CONFIG_CONTENT ?? "{}"))
+      .toEqual({ mcp: { khadim: {
+        type: "remote",
+        url: "http://127.0.0.1:45555/mcp",
+        enabled: true,
+        oauth: false,
+        headers: { Authorization: "Bearer run-secret" },
+      } } });
 
     await manager.stopAll();
     expect(terminate).toHaveBeenCalledWith(child);
@@ -85,6 +93,12 @@ describe("managed OpenCode server", () => {
 
     expect(spawnProcess).toHaveBeenCalledOnce();
     expect(external.baseUrl).toBe("https://example.test");
+    await expect(manager.prepare({
+      ...local,
+      engineSessionKey: "chat-three",
+      config: { baseUrl: "https://example.test" },
+      nativeToolMcp: { url: "http://127.0.0.1:45555/mcp", token: "run-secret", hasTools: true },
+    })).rejects.toThrow("Clear Server URL in Apps");
     await manager.stop("chat-one");
     expect(terminate).toHaveBeenCalledWith(child);
     await manager.stopAll();

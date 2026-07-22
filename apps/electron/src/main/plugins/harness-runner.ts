@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AgentStreamEvent } from "../../shared/types";
+import type { AgentApprovalDecision, AgentQuestionAnswers, AgentRuntimeMode, AgentStreamEvent } from "../../shared/types";
 import {
   parsePluginHarnessId,
   type PluginHarnessCallContext,
@@ -9,6 +9,7 @@ import {
   type PluginNetworkPermissions,
 } from "../../shared/plugins";
 import type { PluginManager } from "./plugin-manager";
+import type { NativeToolMcpEndpoint } from "../native-tool-mcp-host";
 
 interface HarnessEndpoint {
   baseUrl: string;
@@ -22,10 +23,15 @@ export interface PluginHarnessRunInput {
   prompt: string;
   systemPrompt?: string;
   model: { provider: string; model: string };
+  runtimeMode?: AgentRuntimeMode;
+  interactionMode?: string;
+  nativeToolMcp?: NativeToolMcpEndpoint;
 }
 
 export interface ActivePluginHarnessRun {
   abort: () => Promise<void>;
+  respondToQuestion: (requestId: string, answers: AgentQuestionAnswers) => Promise<void>;
+  respondToApproval: (requestId: string, decision: AgentApprovalDecision) => Promise<void>;
   closed: Promise<void>;
 }
 
@@ -34,7 +40,9 @@ export interface PluginHarnessConfigurationPreparer {
     pluginId: string;
     bundled: boolean;
     engineSessionKey: string;
+    projectPath: string;
     config: Record<string, string | number | boolean>;
+    nativeToolMcp?: NativeToolMcpEndpoint;
   }): Promise<Record<string, string | number | boolean>>;
 }
 
@@ -52,11 +60,17 @@ const pluginEventTypes = new Set([
   "step_update",
   "step_complete",
   "usage",
+  "question",
+  "approval",
   "done",
   "error",
 ]);
 
-function sessionStoreKey(projectPath: string, engineSessionKey: string): string {
+function sessionStoreKey(engineSessionKey: string): string {
+  return `harness-session:v2:${createHash("sha256").update(engineSessionKey).digest("hex")}`;
+}
+
+function legacySessionStoreKey(projectPath: string, engineSessionKey: string): string {
   return `harness-session:${createHash("sha256").update(projectPath).update("\0").update(engineSessionKey).digest("hex")}`;
 }
 
@@ -178,39 +192,75 @@ function assertMappedEvent(value: unknown): AgentStreamEvent {
 }
 
 export class PluginHarnessRunner {
+  readonly #configurationPreparers: ReadonlyArray<PluginHarnessConfigurationPreparer>;
+
   constructor(
     private readonly plugins: PluginManager,
-    private readonly configurationPreparer?: PluginHarnessConfigurationPreparer,
-  ) {}
+    configurationPreparers: PluginHarnessConfigurationPreparer | ReadonlyArray<PluginHarnessConfigurationPreparer> = [],
+  ) {
+    this.#configurationPreparers = Array.isArray(configurationPreparers)
+      ? configurationPreparers
+      : [configurationPreparers as PluginHarnessConfigurationPreparer];
+  }
 
   start(input: PluginHarnessRunInput, emit: (event: AgentStreamEvent) => void): ActivePluginHarnessRun {
     const controller = new AbortController();
     let remoteSessionId: string | undefined;
     let abortRequest: { endpoint: HarnessEndpoint; request: PluginHttpRequest; permissions: PluginNetworkPermissions } | undefined;
+    let resolveQuestionResponder!: (responder: (requestId: string, answers: AgentQuestionAnswers) => Promise<void>) => void;
+    const questionResponder = new Promise<(requestId: string, answers: AgentQuestionAnswers) => Promise<void>>((resolve) => {
+      resolveQuestionResponder = resolve;
+    });
+    let resolveApprovalResponder!: (responder: (requestId: string, decision: AgentApprovalDecision) => Promise<void>) => void;
+    const approvalResponder = new Promise<(requestId: string, decision: AgentApprovalDecision) => Promise<void>>((resolve) => {
+      resolveApprovalResponder = resolve;
+    });
     let aborted = false;
-    const closed = this.execute(input, controller, emit, (sessionId, details) => {
+    const closed = this.execute(input, controller, emit, (sessionId, details, respondToQuestion, respondToApproval) => {
       remoteSessionId = sessionId;
       abortRequest = details;
+      resolveQuestionResponder(respondToQuestion);
+      resolveApprovalResponder(respondToApproval);
     }).catch((cause: unknown) => {
-      const wasAbort = aborted || controller.signal.aborted;
+      resolveQuestionResponder(async () => { throw cause; });
+      resolveApprovalResponder(async () => { throw cause; });
+      const wasAbort = aborted;
       emit(wasAbort
         ? { event_type: "error", content: "Run stopped.", metadata: { reason: "aborted" } }
         : { event_type: "error", content: cause instanceof Error ? cause.message : String(cause) });
     });
     return {
       closed,
+      respondToQuestion: async (requestId, answers) => {
+        if (aborted || controller.signal.aborted) throw new Error("This harness run is no longer accepting answers.");
+        const respond = await questionResponder;
+        await respond(requestId, answers);
+      },
+      respondToApproval: async (requestId, decision) => {
+        if (aborted || controller.signal.aborted) throw new Error("This harness run is no longer accepting approval decisions.");
+        const respond = await approvalResponder;
+        await respond(requestId, decision);
+      },
       abort: async () => {
         if (aborted) return closed;
         aborted = true;
-        controller.abort();
-        if (remoteSessionId && abortRequest) {
-          const abortController = new AbortController();
-          const timeout = setTimeout(() => abortController.abort(), 3_000);
-          try {
-            const url = resolveAllowedUrl(abortRequest.endpoint, abortRequest.request, abortRequest.permissions);
-            await httpJson(url, abortRequest.endpoint, abortRequest.request, abortController.signal).catch(() => undefined);
-          } finally { clearTimeout(timeout); }
+        try {
+          if (remoteSessionId && abortRequest) {
+            const abortController = new AbortController();
+            const timeout = setTimeout(() => abortController.abort(), 3_000);
+            try {
+              const url = resolveAllowedUrl(abortRequest.endpoint, abortRequest.request, abortRequest.permissions);
+              const result = await httpJson(url, abortRequest.endpoint, abortRequest.request, abortController.signal);
+              if (result.status < 200 || result.status >= 300) {
+                throw new Error(`Harness abort failed with HTTP ${result.status}: ${responseSummary(result.body)}`);
+              }
+            } finally { clearTimeout(timeout); }
+          }
+        } catch (cause) {
+          aborted = false;
+          throw cause;
         }
+        controller.abort();
         await closed;
       },
     };
@@ -220,7 +270,12 @@ export class PluginHarnessRunner {
     input: PluginHarnessRunInput,
     controller: AbortController,
     emit: (event: AgentStreamEvent) => void,
-    ready: (sessionId: string, abort: { endpoint: HarnessEndpoint; request: PluginHttpRequest; permissions: PluginNetworkPermissions }) => void,
+    ready: (
+      sessionId: string,
+      abort: { endpoint: HarnessEndpoint; request: PluginHttpRequest; permissions: PluginNetworkPermissions },
+      respond: (requestId: string, answers: AgentQuestionAnswers) => Promise<void>,
+      respondToApproval: (requestId: string, decision: AgentApprovalDecision) => Promise<void>,
+    ) => void,
   ): Promise<void> {
     const { pluginId, capabilityId } = parsePluginHarnessId(input.harnessId);
     const plugin = await this.plugins.get(pluginId);
@@ -228,14 +283,17 @@ export class PluginHarnessRunner {
     const permissions = plugin.entry.permissions.network;
     if (!permissions) throw new Error(`Plugin "${pluginId}" has no network permission for its harness.`);
     const savedConfig = await this.plugins.configuration(pluginId);
-    const config = this.configurationPreparer
-      ? await this.configurationPreparer.prepare({
+    let config = savedConfig;
+    for (const preparer of this.#configurationPreparers) {
+      config = await preparer.prepare({
         pluginId,
         bundled: plugin.entry.bundled,
         engineSessionKey: input.engineSessionKey,
-        config: savedConfig,
-      })
-      : savedConfig;
+        projectPath: input.projectPath,
+        config,
+        nativeToolMcp: input.nativeToolMcp,
+      });
+    }
     const baseContext: PluginHarnessCallContext = {
       harnessId: capabilityId,
       projectPath: input.projectPath,
@@ -243,6 +301,8 @@ export class PluginHarnessRunner {
       prompt: input.prompt,
       systemPrompt: input.systemPrompt,
       model: input.model,
+      mode: input.interactionMode,
+      runtimeMode: input.runtimeMode,
       config,
     };
     const endpoint = await this.plugins.call<HarnessEndpoint>(pluginId, "harness.endpoint", baseContext);
@@ -260,8 +320,12 @@ export class PluginHarnessRunner {
       return result;
     };
     await request("harness.health", baseContext);
-    const storeKey = sessionStoreKey(input.projectPath, input.engineSessionKey);
+    const storeKey = sessionStoreKey(input.engineSessionKey);
     let sessionId = await this.plugins.storeGet(pluginId, storeKey);
+    if (!sessionId) {
+      sessionId = await this.plugins.storeGet(pluginId, legacySessionStoreKey(input.projectPath, input.engineSessionKey));
+      if (sessionId) await this.plugins.storeSet(pluginId, storeKey, sessionId);
+    }
     if (sessionId) {
       const existing = await request("harness.session.get", { ...baseContext, remoteSessionId: sessionId }, true);
       if (existing.status === 404) sessionId = undefined;
@@ -285,7 +349,33 @@ export class PluginHarnessRunner {
     });
     if (!eventResponse.ok) throw new Error(`${plugin.entry.name} event stream failed with HTTP ${eventResponse.status}.`);
     const abortPlan = assertRequest(await this.plugins.call(pluginId, "harness.abort", context));
-    ready(sessionId, { endpoint, request: abortPlan, permissions });
+    const replyApproval = async (requestId: string, decision: AgentApprovalDecision): Promise<void> => {
+      await request("harness.approval.reply", {
+        ...context,
+        approvalRequestId: requestId,
+        approvalDecision: decision,
+      });
+    };
+    ready(
+      sessionId,
+      { endpoint, request: abortPlan, permissions },
+      async (requestId, answers) => {
+        await request("harness.question.reply", {
+          ...context,
+          questionRequestId: requestId,
+          questionAnswers: answers,
+        });
+      },
+      replyApproval,
+    );
+    const abortRemote = async (): Promise<void> => {
+      const url = resolveAllowedUrl(endpoint, abortPlan, permissions);
+      const timeout = AbortSignal.timeout(7_000);
+      const result = await httpJson(url, endpoint, abortPlan, timeout);
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`${plugin.entry.name} abort failed with HTTP ${result.status}: ${responseSummary(result.body)}`);
+      }
+    };
     const consume = (async () => {
       let terminal = false;
       for await (const data of sseData(eventResponse, controller.signal)) {
@@ -294,7 +384,24 @@ export class PluginHarnessRunner {
         catch { continue; }
         const mapped = await this.plugins.call<PluginHarnessEventResult>(pluginId, "harness.event", { ...context, event: rawEvent });
         if (!mapped || !Array.isArray(mapped.events)) throw new Error(`${plugin.entry.name} returned an invalid event mapping.`);
-        for (const event of mapped.events) emit(assertMappedEvent(event));
+        for (const event of mapped.events) {
+          const normalized = assertMappedEvent(event);
+          const requestId = normalized.event_type === "approval" && normalized.metadata?.resolved !== true
+            ? normalized.metadata?.requestId
+            : undefined;
+          const kind = normalized.metadata?.kind;
+          const automaticDecision = typeof requestId === "string"
+            ? input.runtimeMode === "full-access"
+              ? "acceptForSession"
+              : input.runtimeMode === "auto-accept-edits" && kind === "file-change"
+                ? "accept"
+                : undefined
+            : undefined;
+          if (automaticDecision && typeof requestId === "string") {
+            await replyApproval(requestId, automaticDecision);
+            emit({ event_type: "approval", metadata: { ...normalized.metadata, requestId, decision: automaticDecision, automatic: true, resolved: true } });
+          } else emit(normalized);
+        }
         if (mapped.terminal) { terminal = true; controller.abort(); break; }
       }
       if (!terminal && !controller.signal.aborted) throw new Error(`${plugin.entry.name} event stream ended before the session completed.`);
@@ -303,8 +410,17 @@ export class PluginHarnessRunner {
       await request("harness.prompt", context);
       await consume;
     } catch (cause) {
+      let abortCause: unknown;
+      try {
+        await abortRemote();
+      } catch (error) {
+        abortCause = error;
+      }
       controller.abort();
       await consume.catch(() => undefined);
+      if (abortCause) {
+        throw new AggregateError([cause, abortCause], `${plugin.entry.name} failed and its process could not be stopped safely.`);
+      }
       throw cause;
     }
   }

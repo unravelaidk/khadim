@@ -16,7 +16,7 @@ const project: Project = {
 const openCodePlugin: PluginEntry = {
   id: "khadim.opencode",
   name: "OpenCode",
-  version: "0.2.1",
+  version: "0.2.2",
   description: "Runs chats through OpenCode.",
   enabled: true,
   bundled: true,
@@ -40,6 +40,17 @@ function installOpenCodeApi(api: KhadimDesktopApi): void {
   api.plugins = {
     list: vi.fn(async () => [openCodePlugin]),
     harnesses: vi.fn(async () => openCodePlugin.harnesses),
+    models: vi.fn(async () => [
+      { id: "openai/gpt-5", name: "GPT 5", provider: "openai", model: "gpt-5", detail: "OpenAI" },
+      { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "google", model: "gemini-2.5-pro", detail: "Google" },
+    ]),
+    modes: vi.fn(async () => [
+      { id: "build", name: "Build", isDefault: true },
+      { id: "plan", name: "Plan", description: "Plan without editing" },
+    ]),
+    commands: vi.fn(async () => [
+      { name: "review", description: "Review the current project", argumentHint: "[focus]" },
+    ]),
     chooseAndInstall: vi.fn(async () => null),
     setEnabled: vi.fn(async () => openCodePlugin),
     configure: vi.fn(async () => openCodePlugin),
@@ -60,7 +71,7 @@ function installDesktopApi(): KhadimDesktopApi {
   };
   const api: KhadimDesktopApi = {
     platform: "linux",
-    agent: { start: vi.fn(async ({ runId }) => ({ runId })), abort: vi.fn(async () => undefined), recover: vi.fn(async () => []), acknowledge: vi.fn(async () => undefined), onEvent: vi.fn(() => () => undefined) },
+    agent: { start: vi.fn(async ({ runId }) => ({ runId })), abort: vi.fn(async () => undefined), answerQuestion: vi.fn(async () => undefined), answerApproval: vi.fn(async () => undefined), recover: vi.fn(async () => []), acknowledge: vi.fn(async () => undefined), onEvent: vi.fn(() => () => undefined) },
     projects: { list: vi.fn(async () => [project]), add: vi.fn(async () => project), open: vi.fn(async () => project), checkAvailability: vi.fn(async () => ({ project, available: true as const })), rename: vi.fn(async (_id, name) => ({ ...project, name })), relocate: vi.fn(async (_id, rootPath) => ({ ...project, rootPath })), remove: vi.fn(async () => ({ removedProjectId: project.id, activeProject: project })), chooseDirectory: vi.fn(async () => null) },
     conversations: { list: vi.fn(async () => []), save: vi.fn(async () => undefined), remove: vi.fn(async () => undefined) },
     artifacts: { list: vi.fn(async () => []), save: vi.fn(async () => undefined), exportPdf: vi.fn(async () => ({ canceled: true })) },
@@ -73,7 +84,7 @@ function installDesktopApi(): KhadimDesktopApi {
     },
     google: {
       get: vi.fn(async () => ({ configured: true, connected: false, credentialStatus: "missing" as const, scopes: [] })),
-      connect: vi.fn(async () => ({ configured: true, connected: true, credentialStatus: "ready" as const, email: "owner@example.com", scopes: ["https://www.googleapis.com/auth/gmail.readonly"] })),
+      connect: vi.fn(async () => ({ configured: true, connected: true, credentialStatus: "ready" as const, email: "owner@example.com", scopes: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly"] })),
       disconnect: vi.fn(async () => ({ configured: true, connected: false, credentialStatus: "missing" as const, scopes: [] })),
     },
     discord: {
@@ -112,7 +123,7 @@ describe("capability truthfulness", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
-    await user.click(await screen.findByRole("button", { name: "Show 5 planned" }));
+    await user.click(await screen.findByRole("button", { name: "Show 4 planned" }));
     const github = await screen.findByRole("button", { name: "GitHub connector unavailable" });
     expect(github).toBeDisabled();
     expect(screen.queryByText("One connected workspace")).not.toBeInTheDocument();
@@ -123,16 +134,17 @@ describe("capability truthfulness", () => {
     expect(await screen.findByRole("button", { name: "Disable Weekly briefing" })).toBeInTheDocument();
   });
 
-  it("connects and disconnects Gmail through the typed Google account API", async () => {
+  it("connects Google Workspace and exposes Gmail, Drive, and Calendar through the typed account API", async () => {
     const api = installDesktopApi();
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
-    await user.click(await screen.findByRole("button", { name: "Connect Gmail" }));
+    await user.click(await screen.findByRole("button", { name: "Connect Google Workspace" }));
     expect(api.google.connect).toHaveBeenCalledOnce();
-    expect(await screen.findByText("Connected as owner@example.com")).toBeInTheDocument();
-    vi.mocked(api.google.get).mockResolvedValue({ configured: true, connected: true, credentialStatus: "ready", email: "owner@example.com", scopes: ["https://www.googleapis.com/auth/gmail.readonly"] });
+    expect(await screen.findByText(/owner@example.com · 3 of 3 services ready/)).toBeInTheDocument();
+    expect(screen.getAllByText("Ready")).toHaveLength(3);
+    vi.mocked(api.google.get).mockResolvedValue({ configured: true, connected: true, credentialStatus: "ready", email: "owner@example.com", scopes: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly"] });
 
     await user.click(screen.getByRole("button", { name: /^New chat/ }));
     await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Summarize my unread email");
@@ -141,7 +153,7 @@ describe("capability truthfulness", () => {
     expect(vi.mocked(api.agent.start).mock.calls.at(-1)?.[0].enabledTools).toContain("apps");
 
     await user.click(screen.getByRole("button", { name: /Apps New/ }));
-    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    await user.click(screen.getByRole("button", { name: "Disconnect Google Workspace" }));
     expect(api.google.disconnect).toHaveBeenCalledOnce();
   });
 
@@ -156,7 +168,7 @@ describe("capability truthfulness", () => {
     const clientSecret = "GOCSPX-desktop-secret";
     await user.type(await screen.findByLabelText("Google Desktop OAuth client ID"), clientId);
     await user.type(screen.getByLabelText("Google Desktop OAuth client secret"), clientSecret);
-    await user.click(screen.getByRole("button", { name: "Connect Gmail" }));
+    await user.click(screen.getByRole("button", { name: "Connect Google Workspace" }));
 
     expect(api.google.connect).toHaveBeenCalledWith({ clientId, clientSecret });
   });
@@ -218,6 +230,107 @@ describe("capability truthfulness", () => {
     expect(api.conversations.save).toHaveBeenCalledWith(expect.objectContaining({
       runs: [expect.objectContaining({ harness: "plugin:khadim.opencode/opencode" })],
     }));
+  });
+
+  it("keeps connected-app access when an agent uses a plugin harness", async () => {
+    const api = installDesktopApi();
+    installOpenCodeApi(api);
+    vi.mocked(api.google.get).mockResolvedValue({
+      configured: true,
+      connected: true,
+      credentialStatus: "ready",
+      email: "owner@example.com",
+      scopes: [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+      ],
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Agents/ }));
+    await user.click(screen.getByRole("button", { name: "New agent" }));
+    await user.click(screen.getByRole("button", { name: /Meeting brief/ }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Environment" }), "plugin:khadim.opencode/opencode");
+
+    expect(screen.getByRole("button", { name: /Connected apps/ })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /Connected apps/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Google Calendar/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Google Drive/ })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Create agent" }));
+    expect(JSON.parse(localStorage.getItem("khadim.agents.v1") ?? "[]")).toEqual([
+      expect.objectContaining({
+        harness: "plugin:khadim.opencode/opencode",
+        connectors: ["files", "apps"],
+        appAccess: ["calendar", "drive"],
+      }),
+    ]);
+  });
+
+  it("selects the model for a plugin run from the chat composer", async () => {
+    const api = installDesktopApi();
+    installOpenCodeApi(api);
+    const initialSettings = await api.settings.get();
+    vi.mocked(api.settings.get).mockResolvedValue(structuredClone(initialSettings));
+    vi.mocked(api.settings.save).mockImplementation(async (update) => ({
+      ...initialSettings,
+      ...update,
+      models: update.models.map((model) => ({ ...model, hasApiKey: true })),
+      hasApiKey: true,
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Enable tools" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: /OpenCode/ }));
+    await waitFor(() => expect(api.settings.save).toHaveBeenCalledWith(expect.objectContaining({ harness: "plugin:khadim.opencode/opencode" })));
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Choose runtime access, currently Ask first" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: /Auto-edit/ }));
+    await user.click(await screen.findByRole("button", { name: "Choose mode for OpenCode, currently Build" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: /Plan/ }));
+    await user.click(screen.getByRole("button", { name: "Choose model for OpenCode" }));
+    expect(screen.queryByRole("menuitemradio", { name: /Claude Sonnet/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("menuitemradio", { name: /GPT 5/ }));
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Use the selected plugin model{Enter}");
+
+    await waitFor(() => expect(api.agent.start).toHaveBeenCalledOnce());
+    expect(api.conversations.save).toHaveBeenCalledWith(expect.objectContaining({
+      runs: [expect.objectContaining({
+        harness: "plugin:khadim.opencode/opencode",
+        runtimeMode: "auto-accept-edits",
+        interactionMode: "plan",
+        model: expect.objectContaining({ provider: "openai", model: "gpt-5" }),
+      })],
+    }));
+    expect(api.plugins?.models).toHaveBeenCalledWith("plugin:khadim.opencode/opencode", project.rootPath);
+    expect(api.plugins?.modes).toHaveBeenCalledWith("plugin:khadim.opencode/opencode", project.rootPath);
+    expect(api.plugins?.commands).toHaveBeenCalledWith("plugin:khadim.opencode/opencode", project.rootPath);
+  });
+
+  it("merges harness-reported commands into the slash picker", async () => {
+    const api = installDesktopApi();
+    installOpenCodeApi(api);
+    const initialSettings = await api.settings.get();
+    vi.mocked(api.settings.save).mockImplementation(async (update) => ({
+      ...initialSettings,
+      ...update,
+      models: update.models.map((model) => ({ ...model, hasApiKey: true })),
+      hasApiKey: true,
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Enable tools" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: /OpenCode/ }));
+    await user.keyboard("{Escape}");
+    const composer = screen.getByRole("textbox", { name: "Message Khadim" });
+    await user.type(composer, "/rev");
+    expect(await screen.findByRole("option", { name: /review.*Review the current project/i })).toBeInTheDocument();
+    await user.keyboard("{Tab}");
+    expect(composer).toHaveValue("/review ");
   });
 
   it("lets users clear an external plugin endpoint to restore managed startup", async () => {
