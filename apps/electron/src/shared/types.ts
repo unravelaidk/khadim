@@ -454,6 +454,37 @@ export interface CanvasShadow {
   opacity: number;
 }
 
+export type CanvasBlendMode =
+  | "normal"
+  | "darken"
+  | "multiply"
+  | "color-burn"
+  | "lighten"
+  | "screen"
+  | "color-dodge"
+  | "overlay"
+  | "soft-light"
+  | "hard-light"
+  | "difference"
+  | "exclusion"
+  | "hue"
+  | "saturation"
+  | "color"
+  | "luminosity";
+
+export interface CanvasBlurEffect {
+  value: number;
+  visible: boolean;
+}
+
+/** Per-corner radii in CSS clockwise order. */
+export interface CanvasCornerRadii {
+  topLeft: number;
+  topRight: number;
+  bottomRight: number;
+  bottomLeft: number;
+}
+
 export interface CanvasAutoLayout {
   direction: "row" | "column";
   align: "start" | "center" | "end";
@@ -532,6 +563,9 @@ export interface CanvasPrimitiveElement {
   fillGradient?: CanvasLinearGradient;
   fillStyleId?: string;
   opacity?: number;
+  blendMode?: CanvasBlendMode;
+  layerBlur?: CanvasBlurEffect;
+  backgroundBlur?: CanvasBlurEffect;
   rotation?: number;
   hidden?: boolean;
   locked?: boolean;
@@ -540,6 +574,7 @@ export interface CanvasPrimitiveElement {
   /** Non-destructive clipping reference to another closed primitive on the page. */
   maskId?: string;
   radius?: number;
+  cornerRadii?: CanvasCornerRadii;
   strokeColor?: string;
   strokeWidth?: number;
   strokeDash?: number;
@@ -604,6 +639,9 @@ export interface CanvasComponentElement {
   name?: string;
   color: string;
   opacity?: number;
+  blendMode?: CanvasBlendMode;
+  layerBlur?: CanvasBlurEffect;
+  backgroundBlur?: CanvasBlurEffect;
   rotation?: number;
   hidden?: boolean;
   locked?: boolean;

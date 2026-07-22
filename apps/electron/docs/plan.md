@@ -253,6 +253,21 @@ prototype interactions, paths, transforms, constraints, and snap points as
 validated data; workspace gestures produce reversible document changes; and
 editable, viewer, and export renderers consume the same model independently.
 
+Layer appearance follows the same contract. Primitive and component layers
+store one of Penpot's 16 blend modes plus bounded, independently visible layer
+and background blur effects. Rectangles, frames, and images can switch between
+a uniform radius and four clockwise corner radii. Shared geometry normalizes
+adjacent radii before both the editor and exporter build the same SVG path, so
+frame and bitmap clipping match the visible shape. Layer blur and blend modes
+remain available in static SVG, PNG, and PDF output. Background blur is a live
+editor and prototype-player effect and is intentionally omitted from static
+exports, matching Penpot's documented export limitation. All appearance
+controls use the shared undo history, component instances can apply effects to
+their complete subtree, and persistence rejects unknown blend modes, blur
+values above 100 pixels, and malformed or unsupported corner records. Instance
+detachment stays disabled while a group-level blend or blur is active because
+flattening that effect onto overlapping children would change the composition.
+
 Khadim now follows that boundary for prototype interactions. Primitive and
 component layers can persist click, hover, and timed triggers for page
 navigation, previous-screen navigation, protocol-validated external URLs, and

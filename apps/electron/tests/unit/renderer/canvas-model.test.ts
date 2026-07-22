@@ -265,11 +265,14 @@ describe("Khadim canvas scene model", () => {
   });
 
   it("culls distant scene nodes while retaining selected layers and dependencies", () => {
+    const components = [{ id: "blur-card", name: "Blur card", width: 80, height: 40, nodes: [{ ...first, id: "surface", x: 0, y: 0, layerBlur: { value: 80, visible: true } }] }];
     const nodes: CanvasNode[] = [
       { ...frame, id: "visible-parent", x: 0, y: 0, width: 500, height: 400 },
       { ...first, id: "visible", parentId: "visible-parent", x: 40, y: 40 },
       { ...first, id: "distant", x: 5_000, y: 5_000 },
       { ...first, id: "shadow-nearby", x: 1_070, y: 40, shadow: { color: "#000000", x: -120, y: 0, blur: 80, opacity: .2 } },
+      { ...first, id: "blur-nearby", x: 880, y: 40, layerBlur: { value: 50, visible: true } },
+      { id: "blur-component", type: "component", componentId: "blur-card", componentRole: "instance", x: 940, y: 140, width: 80, height: 40, color: "#ffffff" },
       { ...first, id: "curved-nearby", type: "path", x: 1_200, y: 80, width: 100, height: 100, points: [{ x: 0, y: 0, handleOut: { x: -8, y: 0 } }, { x: 1, y: 1, handleIn: { x: -8, y: 1 } }], strokeWidth: 2 },
       { ...first, id: "selected-distant", x: 6_000, y: 6_000, maskId: "mask" },
       { ...first, id: "mask", x: 6_000, y: 6_000 },
@@ -278,10 +281,10 @@ describe("Khadim canvas scene model", () => {
       { ...second, id: "operand-b", parentId: "boolean", x: 7_020, y: 7_000 },
     ];
 
-    const culled = canvasViewportElements(canvasGeometryIndex(nodes, []), { x: -100, y: -100, width: 900, height: 700 }, ["selected-distant"], "boolean");
+    const culled = canvasViewportElements(canvasGeometryIndex(nodes, components), { x: -100, y: -100, width: 900, height: 700 }, ["selected-distant"], "boolean");
     const ids = new Set(culled.map((node) => node.id));
 
-    expect(ids).toEqual(new Set(["visible-parent", "visible", "shadow-nearby", "curved-nearby", "selected-distant", "mask", "boolean", "operand-a", "operand-b"]));
+    expect(ids).toEqual(new Set(["visible-parent", "visible", "shadow-nearby", "blur-nearby", "blur-component", "curved-nearby", "selected-distant", "mask", "boolean", "operand-a", "operand-b"]));
     expect(ids.has("distant")).toBe(false);
   });
 

@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T22:50:39+02:00",
+  "capturedAt": "2026-07-22T23:19:00+02:00",
   "repository": "https://github.com/penpot/penpot",
   "commit": "4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5",
   "scope": [
@@ -16,7 +16,11 @@
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/workspace/viewport/snap_points.cljs",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/workspace/viewport/snap_distances.cljs",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/worker/snap.cljs",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape/blur.cljc",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/shape/radius.cljc",
     "https://help.penpot.app/user-guide/designing/workspace-basics/",
+    "https://help.penpot.app/user-guide/designing/layers/",
     "https://help.penpot.app/user-guide/prototyping-testing/prototyping/",
     "https://help.penpot.app/technical-guide/developer/data-model/penpot-file-format/"
   ],
@@ -35,6 +39,11 @@
       "area": "geometry and rendering",
       "evidence": "Penpot shares path, transform, bounds, constraints, snapping, and shape-tree logic from common modules while editable workspace rendering and export rendering remain separate consumers.",
       "khadimDecision": "Continue moving deterministic geometry into src/shared and keep CanvasEditor focused on gestures and presentation. Use renderCanvasSvg as the export/prototype render path rather than cloning editor-only SVG markup."
+    },
+    {
+      "area": "layer appearance",
+      "evidence": "Penpot defines 16 blend modes, separate layer and background blur fields, and r1 through r4 corner radii in its shape model. Its layer guide states that background blur needs WebGL and is not included in exported PNG, SVG, or PDF files.",
+      "khadimDecision": "Persist the same 16 blend modes, bounded visible blur records, and descriptive clockwise corner radii. Render blend and layer blur in the editor and static exporter, normalize independent corner geometry in one shared helper, and expose background blur in the live editor and prototype player while omitting it from static exports."
     },
     {
       "area": "snapping",
@@ -69,7 +78,8 @@
     "Page ordering, prototype start screens, lazy thumbnails, and multi-page PDF output",
     "Shared large-scene geometry indexing, viewport culling, and virtualized layer rails",
     "Fixed and hug auto-layout with alignment, distribution, padding, wrapping, and independent line gaps",
-    "Deterministic edge, center, page, frame, ruler-guide, layout-grid, equal-spacing, and pixel-grid snapping with transient distance feedback"
+    "Deterministic edge, center, page, frame, ruler-guide, layout-grid, equal-spacing, and pixel-grid snapping with transient distance feedback",
+    "Sixteen layer blend modes, bounded layer and background blur, and normalized independent corner radii across primitives, component instances, clipping, undo, persistence, and static export"
   ],
   "nextHighValueGaps": [
     "Semantic canvas command and undo transaction modules",

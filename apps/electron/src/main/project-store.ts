@@ -280,6 +280,22 @@ function isCanvasShadow(value: unknown): boolean {
     && isFiniteCanvasNumber(shadow.opacity, 0, 1);
 }
 
+function isCanvasBlur(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const blur = value as Record<string, unknown>;
+  return Object.keys(blur).every((key) => ["value", "visible"].includes(key))
+    && isFiniteCanvasNumber(blur.value, 0, 100)
+    && typeof blur.visible === "boolean";
+}
+
+function isCanvasCornerRadii(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const radii = value as Record<string, unknown>;
+  const keys = ["topLeft", "topRight", "bottomRight", "bottomLeft"];
+  return Object.keys(radii).length === keys.length
+    && keys.every((key) => isFiniteCanvasNumber(radii[key], 0, 100_000));
+}
+
 function isCanvasLayout(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const layout = value as Record<string, unknown>;
@@ -385,7 +401,11 @@ function isCanvasElement(value: unknown, allowComponent = true): boolean {
     if (element[key] !== undefined && !isFiniteCanvasNumber(element[key])) return false;
   }
   if (element.opacity !== undefined && !isFiniteCanvasNumber(element.opacity, 0, 1)) return false;
+  if (element.blendMode !== undefined && !["normal", "darken", "multiply", "color-burn", "lighten", "screen", "color-dodge", "overlay", "soft-light", "hard-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"].includes(String(element.blendMode))) return false;
+  if (element.layerBlur !== undefined && !isCanvasBlur(element.layerBlur)) return false;
+  if (element.backgroundBlur !== undefined && !isCanvasBlur(element.backgroundBlur)) return false;
   for (const key of ["radius", "strokeWidth", "strokeDash", "fontSize", "lineHeight"]) if (element[key] !== undefined && !isFiniteCanvasNumber(element[key], 0, 100_000)) return false;
+  if (element.cornerRadii !== undefined && (!isCanvasCornerRadii(element.cornerRadii) || !["rectangle", "frame", "image"].includes(String(element.type)))) return false;
   for (const key of ["hidden", "locked", "lineFlip", "clipContent", "fixedInPrototype"]) if (element[key] !== undefined && typeof element[key] !== "boolean") return false;
   if (element.fontStyle !== undefined && !["normal", "italic"].includes(String(element.fontStyle))) return false;
   if (element.textAlign !== undefined && !["left", "center", "right"].includes(String(element.textAlign))) return false;

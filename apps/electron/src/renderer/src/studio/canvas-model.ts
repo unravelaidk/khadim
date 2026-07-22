@@ -279,8 +279,11 @@ export function canvasGeometryIndex(nodes: CanvasNode[], components: CanvasCompo
       : undefined;
     const scale = definition ? Math.max(width / Math.max(1, definition.width), height / Math.max(1, definition.height)) : 1;
     const visualOutset = node.type === "component"
-      ? Math.max(0, ...(definition?.nodes.map((child) => ((child.strokeWidth ?? 0) / 2 + (child.shadow ? child.shadow.blur * 2 + Math.abs(child.shadow.x) + Math.abs(child.shadow.y) : 0)) * scale) ?? []))
-      : (node.strokeWidth ?? 0) / 2 + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0);
+      ? (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0) + Math.max(0, ...(definition?.nodes.map((child) => {
+        const effective = { ...child, ...node.overrides?.[child.id] };
+        return ((effective.strokeWidth ?? 0) / 2 + (effective.shadow ? effective.shadow.blur * 2 + Math.abs(effective.shadow.x) + Math.abs(effective.shadow.y) : 0) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 : 0)) * scale;
+      }) ?? []))
+      : (node.strokeWidth ?? 0) / 2 + (node.shadow ? node.shadow.blur * 2 + Math.abs(node.shadow.x) + Math.abs(node.shadow.y) : 0) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0);
     const rotated = pathRect
       ? rotatedRectAround(pathRect, node.rotation ?? 0, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
       : rotatedRect(rect, node.rotation);

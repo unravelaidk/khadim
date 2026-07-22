@@ -1,4 +1,4 @@
-import type { CanvasElement, CanvasPoint, CanvasPrimitiveElement } from "./types";
+import type { CanvasCornerRadii, CanvasElement, CanvasPoint, CanvasPrimitiveElement } from "./types";
 
 export interface CanvasAbsolutePoint {
   x: number;
@@ -19,6 +19,44 @@ export interface NormalizedCanvasPath {
   width: number;
   height: number;
   points: CanvasPoint[];
+}
+
+export function canvasCornerRadii(
+  width: number,
+  height: number,
+  radii: CanvasCornerRadii,
+  scale = 1,
+): CanvasCornerRadii {
+  const normalized = {
+    topLeft: Math.max(0, radii.topLeft * scale),
+    topRight: Math.max(0, radii.topRight * scale),
+    bottomRight: Math.max(0, radii.bottomRight * scale),
+    bottomLeft: Math.max(0, radii.bottomLeft * scale),
+  };
+  const ratios = [
+    normalized.topLeft + normalized.topRight ? width / (normalized.topLeft + normalized.topRight) : 1,
+    normalized.bottomLeft + normalized.bottomRight ? width / (normalized.bottomLeft + normalized.bottomRight) : 1,
+    normalized.topLeft + normalized.bottomLeft ? height / (normalized.topLeft + normalized.bottomLeft) : 1,
+    normalized.topRight + normalized.bottomRight ? height / (normalized.topRight + normalized.bottomRight) : 1,
+  ];
+  const factor = Math.min(1, ...ratios.filter(Number.isFinite));
+  return Object.fromEntries(Object.entries(normalized).map(([key, value]) => [key, value * factor])) as unknown as CanvasCornerRadii;
+}
+
+export function canvasRoundedRectPath(x: number, y: number, width: number, height: number, radii: CanvasCornerRadii, scale = 1): string {
+  const { topLeft, topRight, bottomRight, bottomLeft } = canvasCornerRadii(width, height, radii, scale);
+  return [
+    `M ${x + topLeft} ${y}`,
+    `H ${x + width - topRight}`,
+    topRight ? `A ${topRight} ${topRight} 0 0 1 ${x + width} ${y + topRight}` : `L ${x + width} ${y}`,
+    `V ${y + height - bottomRight}`,
+    bottomRight ? `A ${bottomRight} ${bottomRight} 0 0 1 ${x + width - bottomRight} ${y + height}` : `L ${x + width} ${y + height}`,
+    `H ${x + bottomLeft}`,
+    bottomLeft ? `A ${bottomLeft} ${bottomLeft} 0 0 1 ${x} ${y + height - bottomLeft}` : `L ${x} ${y + height}`,
+    `V ${y + topLeft}`,
+    topLeft ? `A ${topLeft} ${topLeft} 0 0 1 ${x + topLeft} ${y}` : `L ${x} ${y}`,
+    "Z",
+  ].join(" ");
 }
 
 export function normalizeCanvasPath(points: CanvasAbsolutePoint[]): NormalizedCanvasPath {

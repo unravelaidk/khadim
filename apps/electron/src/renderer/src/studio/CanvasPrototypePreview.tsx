@@ -86,7 +86,7 @@ function timedInteractions(page: CanvasPage): CanvasPrototypeInteraction[] {
 }
 
 function pageSvg(content: CanvasArtifactContent, page: CanvasPage, title: string, elementIds?: string[], transparent = false): string {
-  return renderCanvasSvg({ ...content, frame: page.frame, elements: page.elements, activePageId: page.id, appState: page.appState }, `${title} — ${page.name}`, { elementIds, transparent });
+  return renderCanvasSvg({ ...content, frame: page.frame, elements: page.elements, activePageId: page.id, appState: page.appState }, `${title} — ${page.name}`, { elementIds, transparent, liveEffects: true });
 }
 
 function svgSource(svg: string): string {

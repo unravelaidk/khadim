@@ -1,5 +1,5 @@
 import type { Artifact, CanvasArtifactContent, CanvasComponentDefinition, CanvasElement, CanvasPrimitiveElement, HtmlDocumentArtifactContent } from "./types";
-import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, resolveCanvasConnectors } from "./canvas-geometry";
+import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, resolveCanvasConnectors } from "./canvas-geometry";
 import { booleanCanvasNodes, canBooleanNode } from "./vector-boolean";
 import { canvasGradientVector } from "./canvas-paint";
 
@@ -119,16 +119,28 @@ function wrapCanvasText(text: string, width: number, fontSize: number): string[]
   });
 }
 
-function shadowStyle(node: CanvasPrimitiveElement): string {
-  if (!node.shadow) return "";
-  return ` style="filter:drop-shadow(${finite(node.shadow.x, 0)}px ${finite(node.shadow.y, 8)}px ${finite(node.shadow.blur, 18)}px ${colorWithOpacity(node.shadow.color, node.shadow.opacity)})"`;
+function appearanceStyle(node: Pick<CanvasElement, "blendMode" | "layerBlur" | "backgroundBlur"> & { shadow?: CanvasPrimitiveElement["shadow"] }, scale = 1, liveEffects = false): string {
+  const filters = [];
+  if (node.layerBlur?.visible && node.layerBlur.value > 0) filters.push(`blur(${finite(node.layerBlur.value, 0) * scale}px)`);
+  if (node.shadow) filters.push(`drop-shadow(${finite(node.shadow.x, 0)}px ${finite(node.shadow.y, 8)}px ${finite(node.shadow.blur, 18)}px ${colorWithOpacity(node.shadow.color, node.shadow.opacity)})`);
+  const declarations = [
+    filters.length ? `filter:${filters.join(" ")}` : "",
+    node.blendMode && node.blendMode !== "normal" ? `mix-blend-mode:${node.blendMode}` : "",
+    liveEffects && node.backgroundBlur?.visible && node.backgroundBlur.value > 0 ? `backdrop-filter:blur(${finite(node.backgroundBlur.value, 0) * scale}px)` : "",
+  ].filter(Boolean);
+  return declarations.length ? ` style="${declarations.join(";")}"` : "";
+}
+
+function roundedRectShape(node: CanvasPrimitiveElement, x: number, y: number, width: number, height: number, scale: number): { tag: "rect" | "path"; geometry: string } {
+  if (node.cornerRadii) return { tag: "path", geometry: `d="${canvasRoundedRectPath(x, y, width, height, node.cornerRadii, scale)}"` };
+  return { tag: "rect", geometry: `x="${x}" y="${y}" width="${width}" height="${height}" rx="${finite(node.radius, node.type === "frame" ? 4 : 8) * scale}"` };
 }
 
 function rotationWrapper(content: string, rotation: number, x: number, y: number, width: number, height: number): string {
   return rotation ? `<g transform="rotate(${rotation} ${x + width / 2} ${y + height / 2})">${content}</g>` : content;
 }
 
-function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offsetY = 0, scaleX = 1, scaleY = 1, override?: Partial<CanvasPrimitiveElement>, parentOpacity = 1, gradientId = `canvas-gradient-${value.id}`): string {
+function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offsetY = 0, scaleX = 1, scaleY = 1, override?: Partial<CanvasPrimitiveElement>, parentOpacity = 1, gradientId = `canvas-gradient-${value.id}`, liveEffects = false): string {
   const node = { ...value, ...override };
   if (node.hidden) return "";
   const x = offsetX + finite(node.x, 0) * scaleX;
@@ -140,7 +152,7 @@ function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offse
   const stroke = node.strokeWidth ? safeColor(node.strokeColor ?? "#17181c") : "none";
   const strokeWidth = finite(node.strokeWidth, 0) * Math.min(scaleX, scaleY);
   const dash = finite(node.strokeDash, 0) > 0 ? ` stroke-dasharray="${finite(node.strokeDash, 0)}"` : "";
-  const shadow = shadowStyle(node);
+  const appearance = appearanceStyle(node, Math.min(scaleX, scaleY), liveEffects);
   let content = "";
   if (node.type === "text") {
     const fontSize = finite(node.fontSize, 26) * Math.min(scaleX, scaleY);
@@ -149,19 +161,31 @@ function renderCanvasPrimitive(value: CanvasPrimitiveElement, offsetX = 0, offse
     const textX = node.textAlign === "center" ? x + width / 2 : node.textAlign === "right" ? x + width : x;
     const anchor = node.textAlign === "center" ? "middle" : node.textAlign === "right" ? "end" : "start";
     const spans = lines.map((line, index) => `<tspan x="${textX}" dy="${index ? lineHeight : 0}">${escapeHtml(line || "\u00a0")}</tspan>`).join("");
-    content = `<text x="${textX}" y="${y + fontSize}" fill="${color}" font-family="${escapeHtml(node.fontFamily ?? "Atkinson Hyperlegible Next")}" font-size="${fontSize}" font-weight="${finite(node.fontWeight, 620)}" font-style="${node.fontStyle ?? "normal"}" letter-spacing="${finite(node.letterSpacing, 0)}" text-anchor="${anchor}" opacity="${alpha}"${shadow}>${spans}</text>`;
-  } else if (node.type === "ellipse") content = `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} opacity="${alpha}"${shadow}/>`;
-  else if (node.type === "line") content = `<line x1="${node.lineFlip ? x + width : x}" y1="${y}" x2="${node.lineFlip ? x : x + width}" y2="${y + height}" stroke="${safeColor(node.strokeColor ?? node.color)}" stroke-width="${Math.max(1, strokeWidth || 2)}" stroke-linecap="round"${dash} opacity="${alpha}"${shadow}/>`;
+    content = `<text x="${textX}" y="${y + fontSize}" fill="${color}" font-family="${escapeHtml(node.fontFamily ?? "Atkinson Hyperlegible Next")}" font-size="${fontSize}" font-weight="${finite(node.fontWeight, 620)}" font-style="${node.fontStyle ?? "normal"}" letter-spacing="${finite(node.letterSpacing, 0)}" text-anchor="${anchor}" opacity="${alpha}"${appearance}>${spans}</text>`;
+  } else if (node.type === "ellipse") content = `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} opacity="${alpha}"${appearance}/>`;
+  else if (node.type === "line") content = `<line x1="${node.lineFlip ? x + width : x}" y1="${y}" x2="${node.lineFlip ? x : x + width}" y2="${y + height}" stroke="${safeColor(node.strokeColor ?? node.color)}" stroke-width="${Math.max(1, strokeWidth || 2)}" stroke-linecap="round"${dash} opacity="${alpha}"${appearance}/>`;
   else if (node.type === "path" || node.type === "arrow") {
     const pathNode = { ...node, x, y, width, height };
     const importedTransform = node.type === "path" && node.svgPathData ? canvasImportedPathTransform(pathNode) : undefined;
     const data = node.type === "path" && node.svgPathData ? node.svgPathData : canvasPathData(canvasPathAbsolutePoints(pathNode), finite(node.pathSmoothing, 0), Boolean(node.pathClosed));
     const startMarker = node.startCap === "arrow" ? ' marker-start="url(#canvas-arrowhead)"' : "";
     const endMarker = node.type === "arrow" || node.endCap === "arrow" ? ' marker-end="url(#canvas-arrowhead)"' : "";
-    content = `<path d="${escapeHtml(data)}"${importedTransform ? ` transform="${escapeHtml(importedTransform)}"` : ""} fill="${node.pathClosed ? color : "none"}" fill-rule="${node.fillRule ?? "nonzero"}" stroke="${node.strokeWidth ? safeColor(node.strokeColor ?? node.color) : "none"}" stroke-width="${strokeWidth}" stroke-linecap="${node.startCap === "round" || node.endCap === "round" ? "round" : "butt"}" stroke-linejoin="round"${startMarker}${endMarker}${dash} opacity="${alpha}"${shadow}/>`;
+    content = `<path d="${escapeHtml(data)}"${importedTransform ? ` transform="${escapeHtml(importedTransform)}"` : ""} fill="${node.pathClosed ? color : "none"}" fill-rule="${node.fillRule ?? "nonzero"}" stroke="${node.strokeWidth ? safeColor(node.strokeColor ?? node.color) : "none"}" stroke-width="${strokeWidth}" stroke-linecap="${node.startCap === "round" || node.endCap === "round" ? "round" : "butt"}" stroke-linejoin="round"${startMarker}${endMarker}${dash} opacity="${alpha}"${appearance}/>`;
   }
-  else if (node.type === "image") content = `<image href="${escapeHtml(node.src ?? "")}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="${alpha}"${shadow}/>`;
-  else content = `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${finite(node.radius, node.type === "frame" ? 4 : 8) * Math.min(scaleX, scaleY)}" fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} opacity="${alpha}"${shadow}/>`;
+  else if (node.type === "image") {
+    const hasRadius = Boolean(node.cornerRadii || node.radius);
+    const clipId = `canvas-radius-clip-${gradientId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const shape = roundedRectShape(node, x, y, width, height, Math.min(scaleX, scaleY));
+    const clip = hasRadius ? `<defs><clipPath id="${escapeHtml(clipId)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}/></clipPath></defs>` : "";
+    const image = `<image href="${escapeHtml(node.src ?? "")}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="${alpha}"/>`;
+    const backgroundAppearance = appearanceStyle({ backgroundBlur: node.backgroundBlur }, Math.min(scaleX, scaleY), liveEffects);
+    const clipped = hasRadius || backgroundAppearance ? `<g${hasRadius ? ` clip-path="url(#${escapeHtml(clipId)})"` : ""}${backgroundAppearance}>${image}</g>` : image;
+    const outerAppearance = appearanceStyle({ blendMode: node.blendMode, layerBlur: node.layerBlur, shadow: node.shadow }, Math.min(scaleX, scaleY));
+    content = `${clip}${outerAppearance ? `<g${outerAppearance}>${clipped}</g>` : clipped}`;
+  } else {
+    const shape = roundedRectShape(node, x, y, width, height, Math.min(scaleX, scaleY));
+    content = `<${shape.tag} ${shape.geometry} fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} opacity="${alpha}"${appearance}/>`;
+  }
   return rotationWrapper(content, finite(node.rotation, 0), x, y, width, height);
 }
 
@@ -204,7 +228,7 @@ function canvasRenderAncestorStates(elements: CanvasElement[]): Map<string, Canv
   return stateById;
 }
 
-function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explicitIds?: Set<string>): string {
+function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explicitIds?: Set<string>, liveEffects = false): string {
   if (node.parentId && index.nodesById.get(node.parentId)?.type === "boolean" && (!explicitIds?.has(node.id) || explicitIds.has(node.parentId))) return "";
   const ancestorState = node.parentId ? index.ancestorStateById.get(node.parentId) : undefined;
   if (ancestorState?.hidden) return "";
@@ -216,10 +240,10 @@ function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explici
     const renderedNode = node.type === "boolean" ? (() => {
       const children = index.booleanChildrenByParent.get(node.id) ?? [];
       const result = node.booleanOperation ? booleanCanvasNodes(children, node.booleanOperation) : null;
-      return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, opacity: node.opacity, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, shadow: node.shadow, parentId: node.parentId } : null;
+      return result ? { ...result, id: node.id, name: node.name, color: node.color, fillGradient: node.fillGradient, opacity: node.opacity, blendMode: node.blendMode, layerBlur: node.layerBlur, backgroundBlur: node.backgroundBlur, strokeColor: node.strokeColor, strokeWidth: node.strokeWidth, shadow: node.shadow, parentId: node.parentId } : null;
     })() : node;
     if (!renderedNode) return "";
-    const rendered = renderCanvasPrimitive(renderedNode);
+    const rendered = renderCanvasPrimitive(renderedNode, 0, 0, 1, 1, undefined, 1, `canvas-gradient-${renderedNode.id}`, liveEffects);
     return wrapAncestorClips(wrapMask(rendered));
   }
   const definition = index.componentsById.get(node.componentId);
@@ -244,7 +268,8 @@ function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explici
     const frameWidth = finite(effective.width, 1) * scaleX;
     const frameHeight = finite(effective.height, 1) * scaleY;
     const rotation = finite(effective.rotation, 0);
-    return `<clipPath id="${clipId(frame.id)}" clipPathUnits="userSpaceOnUse"><rect x="${x}" y="${y}" width="${frameWidth}" height="${frameHeight}" rx="${finite(effective.radius, 0) * Math.min(scaleX, scaleY)}"${rotation ? ` transform="rotate(${rotation} ${x + frameWidth / 2} ${y + frameHeight / 2})"` : ""}/></clipPath>`;
+    const shape = roundedRectShape({ ...effective, radius: effective.radius ?? 0 }, x, y, frameWidth, frameHeight, Math.min(scaleX, scaleY));
+    return `<clipPath id="${clipId(frame.id)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}${rotation ? ` transform="rotate(${rotation} ${x + frameWidth / 2} ${y + frameHeight / 2})"` : ""}/></clipPath>`;
   }).join("");
   const componentMasks = definition.nodes.filter((child) => internalMaskSourceIds.has(child.id)).map((source) => {
     const effective = { ...source, ...overrides[source.id], opacity: 1, shadow: undefined, strokeWidth: 0 };
@@ -256,12 +281,12 @@ function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explici
     if (ancestorState?.hidden) return "";
     const internalClipIds = ancestorState?.clipIds ?? [];
     const effective = { ...child, ...overrides[child.id] };
-    const renderedChild = renderCanvasPrimitive(child, finite(node.x, 0), finite(node.y, 0), scaleX, scaleY, overrides[child.id], opacity(node.opacity), `canvas-component-gradient-${node.id}-${child.id}`);
+    const renderedChild = renderCanvasPrimitive(child, finite(node.x, 0), finite(node.y, 0), scaleX, scaleY, overrides[child.id], 1, `canvas-component-gradient-${node.id}-${child.id}`, liveEffects);
     const maskedChild = effective.maskId ? `<g clip-path="url(#${maskId(effective.maskId)})">${renderedChild}</g>` : renderedChild;
     return internalClipIds.reduce((nested, frameId) => `<g clip-path="url(#${clipId(frameId)})">${nested}</g>`, maskedChild);
   }).join("");
   const componentDefinitions = `${componentClips}${componentMasks}`;
-  const rendered = `${componentDefinitions ? `<defs>${componentDefinitions}</defs>` : ""}${renderedChildren}`;
+  const rendered = `<g opacity="${opacity(node.opacity)}"${appearanceStyle(node, 1, liveEffects)}>${componentDefinitions ? `<defs>${componentDefinitions}</defs>` : ""}${renderedChildren}</g>`;
   const rotated = rotationWrapper(rendered, finite(node.rotation, 0), finite(node.x, 0), finite(node.y, 0), width, height);
   return wrapAncestorClips(rotated);
 }
@@ -270,6 +295,8 @@ export interface CanvasSvgExportOptions {
   bounds?: { x: number; y: number; width: number; height: number };
   transparent?: boolean;
   elementIds?: string[];
+  /** Enables live-only effects for interactive viewers. Never use for exported files. */
+  liveEffects?: boolean;
 }
 
 export function renderCanvasSvg(content: CanvasArtifactContent, title: string, options: CanvasSvgExportOptions = {}): string {
@@ -293,7 +320,10 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
     if (parent?.type !== "boolean") continue;
     renderIndex.booleanChildrenByParent.set(parent.id, [...(renderIndex.booleanChildrenByParent.get(parent.id) ?? []), element]);
   }
-  const clips = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type === "frame" && Boolean(element.clipContent)).map((frame) => `<clipPath id="canvas-clip-${escapeHtml(frame.id)}" clipPathUnits="userSpaceOnUse"><rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}" rx="${finite(frame.radius, 0)}"${frame.rotation ? ` transform="rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})"` : ""}/></clipPath>`).join("");
+  const clips = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type === "frame" && Boolean(element.clipContent)).map((frame) => {
+    const shape = roundedRectShape({ ...frame, radius: frame.radius ?? 0 }, frame.x, frame.y, frame.width, frame.height, 1);
+    return `<clipPath id="canvas-clip-${escapeHtml(frame.id)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}${frame.rotation ? ` transform="rotate(${frame.rotation} ${frame.x + frame.width / 2} ${frame.y + frame.height / 2})"` : ""}/></clipPath>`;
+  }).join("");
   const maskIds = new Set(resolvedElements.flatMap((element) => element.type !== "component" && element.maskId ? [element.maskId] : []));
   const masks = resolvedElements.filter((element): element is CanvasPrimitiveElement => element.type !== "component" && maskIds.has(element.id)).map((mask) => `<clipPath id="canvas-mask-${escapeHtml(mask.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive({ ...mask, opacity: 1, shadow: undefined, strokeWidth: 0 })}</clipPath>`).join("");
   const gradientDefinition = (node: CanvasPrimitiveElement, id: string): string => {
@@ -309,7 +339,7 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
     return definition.nodes.map((node) => gradientDefinition({ ...node, ...element.overrides?.[node.id] }, `canvas-component-gradient-${element.id}-${node.id}`));
   }).join("");
   const exportIds = options.elementIds ? new Set(options.elementIds) : undefined;
-  const elements = resolvedElements.filter((element) => !exportIds || exportIds.has(element.id)).map((element) => renderCanvasNode(element, renderIndex, exportIds)).join("");
+  const elements = resolvedElements.filter((element) => !exportIds || exportIds.has(element.id)).map((element) => renderCanvasNode(element, renderIndex, exportIds, options.liveEffects)).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${finite(bounds.x, 0)} ${finite(bounds.y, 0)} ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeHtml(title)}"><style>text{font-family:"Atkinson Hyperlegible Next Variable","Segoe UI",sans-serif}</style><defs><marker id="canvas-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker>${clips}${masks}${gradients}</defs>${options.transparent ? "" : `<rect x="${finite(bounds.x, 0)}" y="${finite(bounds.y, 0)}" width="${width}" height="${height}" fill="${background}"/>`}${elements}</svg>`;
 }
 

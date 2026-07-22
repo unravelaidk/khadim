@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canvasPathAbsolutePoints, canvasPathData, normalizeCanvasPath, resolveCanvasConnectors } from "../../../src/shared/canvas-geometry";
+import { canvasCornerRadii, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, normalizeCanvasPath, resolveCanvasConnectors } from "../../../src/shared/canvas-geometry";
 import type { CanvasElement } from "../../../src/shared/types";
 
 describe("canvas vector geometry", () => {
@@ -53,5 +53,12 @@ describe("canvas vector geometry", () => {
     const [resolved] = resolveCanvasConnectors([connector]);
     expect(resolved).toMatchObject({ x: 10, y: 20, width: 100, height: 80 });
     expect(resolved).toMatchObject({ startBindingId: undefined, endBindingId: undefined });
+  });
+
+  it("normalizes independent radii without letting adjacent corners overlap", () => {
+    const radii = canvasCornerRadii(100, 40, { topLeft: 80, topRight: 80, bottomRight: 20, bottomLeft: 20 });
+    expect(radii).toEqual({ topLeft: 32, topRight: 32, bottomRight: 8, bottomLeft: 8 });
+    expect(canvasRoundedRectPath(10, 20, 100, 40, { topLeft: 8, topRight: 16, bottomRight: 24, bottomLeft: 0 }))
+      .toBe("M 18 20 H 94 A 16 16 0 0 1 110 36 V 36 A 24 24 0 0 1 86 60 H 10 L 10 60 V 28 A 8 8 0 0 1 18 20 Z");
   });
 });

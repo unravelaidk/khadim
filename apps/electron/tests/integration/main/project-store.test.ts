@@ -444,7 +444,7 @@ describe("ProjectStore", () => {
     const systemArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
       elements: [
         { id: "frame", type: "frame", x: 0, y: 0, width: 400, height: 300, color: "#ffffff", layout: { direction: "row", align: "start", justify: "space-between", gap: 16, crossGap: 20, padding: 24, sizing: "fixed", wrap: true }, layoutGrids: [{ id: "grid", type: "columns", visible: true, color: "#2563eb", opacity: .12, count: 12, gutter: 16, margin: 24 }] },
-        { id: "surface", parentId: "frame", type: "rectangle", x: 24, y: 24, width: 120, height: 80, color: "#2563eb", tokenBindings: { fill: "brand-token" } },
+        { id: "surface", parentId: "frame", type: "rectangle", x: 24, y: 24, width: 120, height: 80, color: "#2563eb", blendMode: "multiply", layerBlur: { value: 4, visible: true }, backgroundBlur: { value: 12, visible: false }, cornerRadii: { topLeft: 4, topRight: 8, bottomRight: 12, bottomLeft: 0 }, tokenBindings: { fill: "brand-token" } },
         { id: "boolean", type: "boolean", booleanOperation: "union", x: 460, y: 20, width: 150, height: 100, color: "#2563eb" },
         { id: "boolean-a", parentId: "boolean", type: "rectangle", x: 460, y: 20, width: 100, height: 100, color: "#2563eb" },
         { id: "boolean-b", parentId: "boolean", type: "ellipse", x: 510, y: 20, width: 100, height: 100, color: "#2563eb" },
@@ -470,6 +470,12 @@ describe("ProjectStore", () => {
     await expect(store.saveArtifacts(project.id, [malformedViewport])).rejects.toThrow("artifact library is invalid");
     const malformedLayout: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [{ id: "frame", type: "frame", x: 0, y: 0, width: 200, height: 120, color: "#fff", layout: { direction: "row", align: "center", justify: "start", sizing: "fixed", gap: -4, padding: 12 } }] } };
     await expect(store.saveArtifacts(project.id, [malformedLayout])).rejects.toThrow("artifact library is invalid");
+    const malformedBlend = { ...artifact, content: { ...artifact.content, elements: [{ id: "shape", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#fff", blendMode: "pass-through" }] } } as unknown as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [malformedBlend])).rejects.toThrow("artifact library is invalid");
+    const malformedBlur = { ...artifact, content: { ...artifact.content, elements: [{ id: "shape", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#fff", layerBlur: { value: 101, visible: true } }] } } as unknown as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [malformedBlur])).rejects.toThrow("artifact library is invalid");
+    const malformedCorners = { ...artifact, content: { ...artifact.content, elements: [{ id: "shape", type: "ellipse", x: 0, y: 0, width: 100, height: 80, color: "#fff", cornerRadii: { topLeft: 4, topRight: 4, bottomRight: 4, bottomLeft: 4 } }] } } as unknown as ArtifactDraft;
+    await expect(store.saveArtifacts(project.id, [malformedCorners])).rejects.toThrow("artifact library is invalid");
     const cyclicHierarchy: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [
       { id: "a", parentId: "b", type: "frame", x: 0, y: 0, width: 200, height: 120, color: "#fff" },
       { id: "b", parentId: "a", type: "rectangle", x: 20, y: 20, width: 60, height: 40, color: "#fff" },

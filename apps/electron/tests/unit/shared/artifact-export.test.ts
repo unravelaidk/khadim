@@ -213,7 +213,8 @@ describe("renderArtifactForPdf", () => {
     expect(html).toContain('rx="10"');
     expect(html).toContain('font-size="15"');
     expect(html).toContain('font-weight="650"');
-    expect(html).toContain('opacity="0.1"');
+    expect(html).toContain('<g opacity="0.2">');
+    expect(html).toContain('opacity="0.5"');
     expect(html).toContain('viewBox="0 0 960 600"');
   });
 
@@ -407,6 +408,36 @@ describe("renderArtifactForPdf", () => {
     const html = renderArtifactForPdf(artifact);
     expect(html).not.toContain('d="M 0 0 L 10 10"');
     expect(html).toMatch(/d="M 120 [\d.]+ L 300 [\d.]+"/);
+  });
+
+  it("exports blend, layer blur, and independent corners while omitting background blur", () => {
+    const content = {
+      format: "khadim-canvas" as const,
+      sceneVersion: 1 as const,
+      frame: { width: 320, height: 200 },
+      elements: [
+        { id: "glass", type: "rectangle" as const, x: 20, y: 20, width: 160, height: 100, color: "#ffffff", blendMode: "multiply" as const, layerBlur: { value: 6, visible: true }, backgroundBlur: { value: 14, visible: true }, cornerRadii: { topLeft: 8, topRight: 16, bottomRight: 24, bottomLeft: 0 } },
+        { id: "photo", type: "image" as const, x: 200, y: 20, width: 80, height: 80, color: "#ffffff", src: "data:image/png;base64,AA==", radius: 12, blendMode: "overlay" as const, layerBlur: { value: 4, visible: true }, backgroundBlur: { value: 10, visible: true } },
+        { id: "instance", type: "component" as const, componentId: "card", componentRole: "instance" as const, x: 20, y: 140, width: 120, height: 40, color: "#ffffff", blendMode: "screen" as const, layerBlur: { value: 5, visible: true }, backgroundBlur: { value: 9, visible: true } },
+      ],
+      components: [{ id: "card", name: "Card", width: 120, height: 40, nodes: [{ id: "surface", type: "rectangle" as const, x: 0, y: 0, width: 120, height: 40, color: "#2563eb", cornerRadii: { topLeft: 4, topRight: 8, bottomRight: 12, bottomLeft: 0 } }] }],
+      appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
+      files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Appearance");
+    const liveSvg = renderCanvasSvg(content, "Appearance", { liveEffects: true });
+    expect(svg).toContain('style="filter:blur(6px);mix-blend-mode:multiply"');
+    expect(svg).toContain('<path d="M 28 20 H 164 A 16 16');
+    expect(svg).toContain('id="canvas-radius-clip-canvas-gradient-photo"');
+    expect(svg).toContain('<g style="filter:blur(4px);mix-blend-mode:overlay"><g clip-path="url(#canvas-radius-clip-canvas-gradient-photo)"><image');
+    expect(svg).toContain('<g opacity="1" style="filter:blur(5px);mix-blend-mode:screen">');
+    expect(svg).toContain('<path d="M 24 140 H 132 A 8 8');
+    expect(svg).not.toContain("backdrop-filter");
+    expect(svg).not.toContain("14px");
+    expect(svg).not.toContain("9px");
+    expect(liveSvg).toContain('<g style="filter:blur(4px);mix-blend-mode:overlay"><g clip-path="url(#canvas-radius-clip-canvas-gradient-photo)" style="backdrop-filter:blur(10px)"><image');
+    expect(liveSvg).toContain("backdrop-filter:blur(14px)");
   });
 
   it("exports the latest safe visual preview for a React artifact", () => {

@@ -310,6 +310,12 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(content.elements[0].color).toBe("#111827");
     await user.selectOptions(screen.getByRole("combobox", { name: "Core token mode" }), "Light");
     expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].color).toBe("#2563eb");
+
+    await user.click(screen.getByRole("button", { name: "Radius token" }));
+    content = onChange.mock.calls.at(-1)?.[0].content;
+    expect(content.elements[0].tokenBindings.radius).toBe(content.tokenCollections[0].tokens.at(-1).id);
+    await user.click(screen.getByRole("checkbox", { name: "Independent corner radii" }));
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].tokenBindings.radius).toBeUndefined();
   });
 
   it("configures square, column, and row layout grids on frames", async () => {
@@ -414,6 +420,24 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(exported).toBeDefined();
     const svg = await exported!.text();
     expect(svg).toContain('viewBox="-33 -33 206 186"');
+  });
+
+  it("pads selection exports for component child blur overrides", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-component-export-padding", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.components = [{ id: "card", name: "Card", width: 100, height: 80, nodes: [{ id: "surface", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#2563eb" }] }];
+    artifact.content.elements = [{ id: "instance", type: "component", componentId: "card", componentRole: "instance", name: "Blur card", x: 20, y: 20, width: 100, height: 80, color: "#2563eb", overrides: { surface: { layerBlur: { value: 30, visible: true } } } }];
+    let exported: Blob | undefined;
+    vi.spyOn(URL, "createObjectURL").mockImplementation((value) => { exported = value as Blob; return "blob:canvas-export"; });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Blur card" }));
+    await user.click(screen.getByRole("button", { name: "SVG selection" }));
+    const svg = await exported!.text();
+    expect(svg).toContain('viewBox="-40 -40 220 200"');
   });
 
   it("includes bezier extrema outside anchor bounds in selection exports", async () => {
@@ -571,6 +595,13 @@ describe("StudioWorkspace canvas design workflow", () => {
       expect.objectContaining({ componentId: "starter-button", componentRole: "instance", overrides: {} }),
     ]));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Rotation" }), { target: { value: "90" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Component opacity" }), { target: { value: "50" } });
+    expect(screen.getByRole("button", { name: "Detach" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("slider", { name: "Component opacity" }), { target: { value: "100" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Blend mode" }), { target: { value: "multiply" } });
+    expect(screen.getByRole("button", { name: "Detach" })).toBeDisabled();
+    expect(screen.getByText(/Reset instance opacity, blend, and blur effects before detaching/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Blend mode" }), { target: { value: "normal" } });
     await user.click(screen.getByRole("button", { name: "Detach" }));
     const detached = onChange.mock.calls.at(-1)?.[0].content.elements;
     expect(detached.some((node: { componentId?: string }) => node.componentId === "starter-button")).toBe(false);
@@ -745,6 +776,57 @@ describe("StudioWorkspace canvas design workflow", () => {
     const undone = onChange.mock.calls.at(-1)?.[0].content;
     expect(undone.effectStyles).toEqual([]);
     expect(undone.elements[1].effectStyleId).toBeUndefined();
+  });
+
+  it("authors advanced appearance controls with live rendering and undo", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-appearance", "2026-07-22T10:00:00.000Z");
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    fireEvent.keyDown(window, { key: "r" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Blend mode" }), { target: { value: "multiply" } });
+    await user.click(screen.getByRole("checkbox", { name: "Independent corner radii" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "TL corner radius" }), { target: { value: "4" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "TR corner radius" }), { target: { value: "8" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "BR corner radius" }), { target: { value: "12" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "BL corner radius" }), { target: { value: "0" } });
+    await user.click(screen.getByRole("checkbox", { name: "Layer blur" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Layer blur radius" }), { target: { value: "6" } });
+    await user.click(screen.getByRole("checkbox", { name: "Background blur" }));
+
+    const authored = onChange.mock.calls.at(-1)?.[0].content;
+    expect(authored.elements[0]).toMatchObject({
+      blendMode: "multiply",
+      layerBlur: { value: 6, visible: true },
+      backgroundBlur: { value: 12, visible: true },
+      cornerRadii: { topLeft: 4, topRight: 8, bottomRight: 12, bottomLeft: 0 },
+    });
+    expect(container.querySelector("path.canvas-node")).toHaveStyle({ filter: "blur(6px)", mixBlendMode: "multiply", backdropFilter: "blur(12px)" });
+    expect(screen.getByText(/Static SVG, PNG, and PDF exports omit background blur/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const undone = onChange.mock.calls.at(-1)?.[0].content;
+    expect(undone.elements[0].backgroundBlur).toBeUndefined();
+    expect(undone.elements[0].layerBlur).toEqual({ value: 6, visible: true });
+  });
+
+  it("clips a rounded image before applying its layer blur halo", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-image-appearance", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [{ id: "photo", type: "image", name: "Photo", x: 20, y: 20, width: 160, height: 100, color: "#ffffff", src: "data:image/png;base64,AA==", radius: 16, blendMode: "overlay", layerBlur: { value: 6, visible: true }, backgroundBlur: { value: 10, visible: true } }];
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Photo" }));
+    const image = container.querySelector("image.canvas-node");
+    const clippedLayer = image?.parentElement;
+    const appearanceLayer = clippedLayer?.parentElement;
+    expect(image).not.toHaveAttribute("style");
+    expect(clippedLayer).toHaveAttribute("clip-path", "url(#canvas-editor-radius-photo)");
+    expect(clippedLayer).toHaveStyle({ backdropFilter: "blur(10px)" });
+    expect(appearanceLayer).toHaveStyle({ filter: "blur(6px)", mixBlendMode: "overlay" });
+    expect(appearanceLayer).not.toHaveStyle({ backdropFilter: "blur(10px)" });
   });
 
   it("creates and releases non-destructive shape masks", async () => {
