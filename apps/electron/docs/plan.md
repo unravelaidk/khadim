@@ -253,6 +253,26 @@ prototype interactions, paths, transforms, constraints, and snap points as
 validated data; workspace gestures produce reversible document changes; and
 editable, viewer, and export renderers consume the same model independently.
 
+Reusable definitions can contain linked component instances, so you can build
+a card from a shared button without flattening either asset. Primitive override
+keys remain stable for existing generated IDs, while nested properties use a path such
+as `action/label`; `/` and `~` inside local IDs use JSON Pointer-style segment
+escaping so a direct ID cannot collide with a nested path. Existing definitions
+retain raw-key fallback whenever the full expanded path set proves it unambiguous.
+Edits and variant switches canonicalize those legacy keys, and persistence rejects a raw
+key that could silently retarget from a direct primitive to a nested path.
+Editing an outer main writes a local override on its nested
+instance; editing an outer copy writes the full path on that copy. Detaching
+expands only the selected level and preserves each nested instance, its link,
+and its scoped overrides. Editor rendering, prototype hotspots and timed
+actions, thumbnails, SVG, PNG, and PDF output all resolve the same recursive
+tree. Every consumer has a depth and ancestry guard, and persistence rejects
+missing references, nested mains, direct or indirect component cycles, graphs
+deeper than 32 definitions, graphs that expand beyond 20,000 rendered nodes per
+definition, and pages that expand beyond 100,000 nodes. This follows Penpot's
+shape-tree component model and its mutation-time nesting-loop guard while
+placing an additional strict boundary on saved Khadim artifacts.
+
 Layer appearance follows the same contract. Primitive and component layers
 store one of Penpot's 16 blend modes plus bounded, independently visible layer
 and background blur effects. Rectangles, frames, and images can switch between
@@ -743,6 +763,10 @@ sources were not applicable to these integration decisions.
 
 - [Penpot workspace basics](https://help.penpot.app/user-guide/designing/workspace-basics/)
 - [Penpot frontend architecture](https://help.penpot.app/technical-guide/developer/architecture/frontend/)
+- [Penpot component guide](https://help.penpot.app/user-guide/design-systems/components/)
+- [Penpot data model](https://help.penpot.app/technical-guide/developer/data-model/)
+- [Penpot component nesting-loop helper](https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/files/helpers.cljc#L430-L440)
+- [Penpot component move guard](https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/files/changes.cljc#L737-L748)
 - [Penpot snap geometry source](https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/geom/snap.cljc)
 - [Puck repository and MIT license](https://github.com/puckeditor/puck)
 - [Puck documentation](https://puckeditor.com/docs)
@@ -777,5 +801,5 @@ remaining work in this order:
    preserving the artifact path validation boundary.
 4. Add long-document pagination and PDF fixtures, plus selection-scoped
    document agent edits.
-5. Continue the native canvas hardening work: extract semantic commands, reject
-   nested component cycles, and add selection-aware prototype agent patches.
+5. Continue the native canvas hardening work: extract semantic commands and add
+   selection-aware prototype agent patches.

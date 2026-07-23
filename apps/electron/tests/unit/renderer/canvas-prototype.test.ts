@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canvasPrototypeLayerMatches, canvasPrototypePageLayers } from "../../../src/renderer/src/studio/canvas-prototype";
-import type { CanvasPage } from "../../../src/shared/types";
+import { canvasPrototypeInteractiveElements, canvasPrototypeLayerMatches, canvasPrototypePageLayers } from "../../../src/renderer/src/studio/canvas-prototype";
+import type { CanvasComponentDefinition, CanvasPage } from "../../../src/shared/types";
 
 const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
 
@@ -50,6 +50,21 @@ describe("canvas prototype matching", () => {
     expect(layers.fixedRootIds).toEqual(["header"]);
     expect([...layers.fixedElementIds]).toEqual(["header", "logo"]);
     expect(layers.scrollingElementIds).toEqual(["body", "card"]);
+  });
+
+  it("keeps expanded owner ids unique for delimiter-ambiguous root and path tuples", () => {
+    const components: CanvasComponentDefinition[] = [
+      { id: "leaf", name: "Leaf", width: 40, height: 40, nodes: [{ id: "c", type: "rectangle", x: 0, y: 0, width: 40, height: 40, color: "#2563eb", interactions: [{ id: "go", trigger: "click", action: "back" }] }] },
+      { id: "nested", name: "Nested", width: 40, height: 40, nodes: [{ id: "b", type: "component", componentId: "leaf", componentRole: "instance", x: 0, y: 0, width: 40, height: 40, color: "#ffffff" }] },
+    ];
+    const page: CanvasPage = { id: "owners", name: "Owners", frame: { width: 200, height: 100 }, appState, elements: [
+      { id: "a", type: "component", componentId: "nested", componentRole: "instance", x: 0, y: 0, width: 40, height: 40, color: "#ffffff" },
+      { id: "a/b", type: "component", componentId: "leaf", componentRole: "instance", x: 80, y: 0, width: 40, height: 40, color: "#ffffff" },
+    ] };
+
+    const ownerIds = canvasPrototypeInteractiveElements(page, components).filter((element) => element.interactions?.length).map((element) => element.id);
+    expect(ownerIds).toHaveLength(2);
+    expect(new Set(ownerIds).size).toBe(2);
   });
 
   it("treats a boolean group as atomic when one of its operands is fixed", () => {

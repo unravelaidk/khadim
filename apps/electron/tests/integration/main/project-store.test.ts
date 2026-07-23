@@ -417,6 +417,36 @@ describe("ProjectStore", () => {
     } };
     await store.saveArtifacts(project.id, [componentShadowArtifact]);
     await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([componentShadowArtifact]);
+    const nestedComponentArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
+      elements: [{ id: "card-instance", type: "component", componentId: "card", componentRole: "instance", x: 20, y: 20, width: 240, height: 160, color: "#ffffff", overrides: { "action~1label": { text: "Ship direct" }, "action/label": { text: "Ship nested" } } }],
+      components: [
+        { id: "button", name: "Button", width: 100, height: 40, nodes: [{ id: "label", type: "text", x: 10, y: 8, width: 80, height: 24, color: "#ffffff", text: "Continue" }] },
+        { id: "card", name: "Card", width: 240, height: 160, nodes: [{ id: "action/label", type: "text", x: 20, y: 20, width: 120, height: 24, color: "#111827", text: "Direct" }, { id: "action", type: "component", componentId: "button", componentRole: "instance", x: 70, y: 90, width: 100, height: 40, color: "#ffffff" }] },
+      ],
+    } };
+    await store.saveArtifacts(project.id, [nestedComponentArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([nestedComponentArtifact]);
+    const ambiguousLegacyOverride = structuredClone(nestedComponentArtifact);
+    if (ambiguousLegacyOverride.content.format !== "khadim-canvas" || ambiguousLegacyOverride.content.elements[0].type !== "component") throw new Error("Expected component artifact");
+    delete ambiguousLegacyOverride.content.elements[0].overrides?.["action~1label"];
+    await expect(store.saveArtifacts(project.id, [ambiguousLegacyOverride])).rejects.toThrow("artifact library is invalid");
+    const legacyComponentPathArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content,
+      elements: [{ id: "legacy-instance", type: "component", componentId: "legacy-label", componentRole: "instance", x: 20, y: 20, width: 120, height: 40, color: "#ffffff", overrides: { "a/b": { text: "Legacy override" } } }],
+      components: [
+        { id: "legacy-decoration", name: "Decoration", width: 10, height: 10, nodes: [{ id: "dot", type: "ellipse", x: 0, y: 0, width: 10, height: 10, color: "#2563eb" }] },
+        { id: "legacy-label", name: "Legacy label", width: 120, height: 40, nodes: [{ id: "a/b", type: "text", x: 0, y: 0, width: 120, height: 40, color: "#111827", text: "Original" }, { id: "decoration", type: "component", componentId: "legacy-decoration", componentRole: "instance", x: 100, y: 0, width: 10, height: 10, color: "#ffffff" }] },
+      ],
+    } };
+    await store.saveArtifacts(project.id, [legacyComponentPathArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([legacyComponentPathArtifact]);
+    const cyclicComponents = structuredClone(nestedComponentArtifact);
+    if (cyclicComponents.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    cyclicComponents.content.components[0].nodes = [{ id: "card-cycle", type: "component", componentId: "card", componentRole: "instance", x: 0, y: 0, width: 100, height: 40, color: "#ffffff" }];
+    await expect(store.saveArtifacts(project.id, [cyclicComponents])).rejects.toThrow("artifact library is invalid");
+    const nestedMain = structuredClone(nestedComponentArtifact);
+    if (nestedMain.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    Object.assign(nestedMain.content.components[1].nodes[1], { componentRole: "main" });
+    await expect(store.saveArtifacts(project.id, [nestedMain])).rejects.toThrow("artifact library is invalid");
     const staleOverrideStyle = { ...componentShadowArtifact, content: { ...artifact.content, elements: [{ ...componentInstance, overrides: { surface: { effectStyleId: "missing" } } }], components: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.components : [], effectStyles: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.effectStyles : [] } } as ArtifactDraft;
     await expect(store.saveArtifacts(project.id, [staleOverrideStyle])).rejects.toThrow("artifact library is invalid");
     const nullOverride = { ...componentShadowArtifact, content: { ...artifact.content, elements: [{ ...componentInstance, overrides: { surface: null } }], components: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.components : [], effectStyles: componentShadowArtifact.content.format === "khadim-canvas" ? componentShadowArtifact.content.effectStyles : [] } } as unknown as ArtifactDraft;
@@ -451,6 +481,19 @@ describe("ProjectStore", () => {
     const prototypeArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [prototypeButton], activePageId: "page-a", prototypeFlows: [{ id: "main", name: "Main journey", startPageId: "page-b" }, { id: "alternate", name: "Alternate journey", startPageId: "page-a" }], prototypeStartPageId: "page-b", pages: prototypePages } };
     await store.saveArtifacts(project.id, [prototypeArtifact]);
     await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([prototypeArtifact]);
+    const nestedPrototypeInstance = { id: "nested-prototype", type: "component" as const, componentId: "prototype-card", componentRole: "instance" as const, x: 40, y: 40, width: 200, height: 120, color: "#ffffff", overrides: { "action/nested-link": { color: "#ef4444" } } };
+    const nestedPrototypeComponents = [
+      { id: "prototype-button", name: "Prototype button", width: 100, height: 40, nodes: [{ id: "nested-link", type: "rectangle" as const, x: 0, y: 0, width: 100, height: 40, color: "#2563eb", interactions: [{ id: "nested-go", trigger: "click" as const, action: "navigate" as const, destinationPageId: "page-b" }] }] },
+      { id: "prototype-card", name: "Prototype card", width: 200, height: 120, nodes: [{ id: "action", type: "component" as const, componentId: "prototype-button", componentRole: "instance" as const, x: 50, y: 60, width: 100, height: 40, color: "#ffffff" }] },
+    ];
+    const nestedPrototypePages = prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [nestedPrototypeInstance] } : page);
+    const nestedPrototypeArtifact: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [nestedPrototypeInstance], components: nestedPrototypeComponents, activePageId: "page-a", pages: nestedPrototypePages } };
+    await store.saveArtifacts(project.id, [nestedPrototypeArtifact]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([nestedPrototypeArtifact]);
+    const staleNestedDestination = structuredClone(nestedPrototypeArtifact);
+    if (staleNestedDestination.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    Object.assign(staleNestedDestination.content.components[0].nodes[0].interactions![0], { destinationPageId: "missing" });
+    await expect(store.saveArtifacts(project.id, [staleNestedDestination])).rejects.toThrow("artifact library is invalid");
     const fixedPrototypeButton: CanvasPrimitiveElement = { ...prototypeButton, fixedInPrototype: true };
     const scrollingPrototypePages: CanvasPage[] = prototypePages.map((page) => page.id === "page-a" ? { ...page, elements: [fixedPrototypeButton], prototypeViewport: { width: page.frame.width, height: 400, direction: "vertical", preservePosition: true } } : page);
     const scrollingPrototype: ArtifactDraft = { ...artifact, content: { ...artifact.content, elements: [fixedPrototypeButton], activePageId: "page-a", pages: scrollingPrototypePages } };

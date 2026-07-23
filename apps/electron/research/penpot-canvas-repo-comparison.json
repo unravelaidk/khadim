@@ -24,13 +24,18 @@
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/stroke.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/color.cljc",
     "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/frontend/src/app/main/ui/shapes/filters.cljs",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/files/helpers.cljc#L430-L440",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/files/changes.cljc#L737-L748",
+    "https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/types/container.cljc#L439-L486",
     "https://help.penpot.app/user-guide/designing/workspace-basics/",
+    "https://help.penpot.app/user-guide/design-systems/components/",
+    "https://help.penpot.app/technical-guide/developer/data-model/",
+    "https://help.penpot.app/technical-guide/developer/data-model/penpot-file-format/",
     "https://help.penpot.app/user-guide/designing/layers/",
     "https://help.penpot.app/user-guide/designing/color-stroke/",
     "https://help.penpot.app/user-guide/design-systems/design-tokens/",
     "https://help.penpot.app/user-guide/prototyping-testing/prototyping/",
-    "https://help.penpot.app/technical-guide/developer/architecture/frontend/",
-    "https://help.penpot.app/technical-guide/developer/data-model/penpot-file-format/"
+    "https://help.penpot.app/technical-guide/developer/architecture/frontend/"
   ],
   "findings": [
     {
@@ -70,8 +75,8 @@
     },
     {
       "area": "component safety",
-      "evidence": "Penpot's change layer prevents structural edits that would create component nesting loops or mutate protected component-copy structure.",
-      "khadimDecision": "Add explicit component-cycle and parent-cycle validation to Khadim's semantic command layer before supporting nested component instances."
+      "evidence": "Penpot stores components as shape trees that can contain nested component copies. Its components-nesting-loop? helper intersects component identities in the moved subtree and destination ancestry, and its change layer and component-creation structure checks reject moves that would create a loop or mutate protected copy structure.",
+      "khadimDecision": "Permit linked component instances inside Khadim definitions with path-addressed primitive overrides. Expand only the selected level on detach. Reject missing references, nested main records, direct and indirect cycles, graphs deeper than 32 definitions, definitions that expand past 20,000 rendered nodes, and pages that expand past 100,000 nodes during persistence. Keep ancestry, depth, and expansion-budget guards in editor, export, and prototype consumers."
     },
     {
       "area": "prototype flows and animation",
@@ -99,11 +104,11 @@
     "Deterministic edge, center, page, frame, ruler-guide, pixel-grid, multi-layer equal-spacing sequence, and rotated frame-local layout-grid snapping with transient axis and vector feedback",
     "Sixteen layer blend modes, bounded layer and background blur, and normalized independent corner radii across primitives, component instances, clipping, undo, persistence, and static export",
     "Ordered multi-fill and multi-stroke paint stacks with per-paint visibility and opacity, linear and radial gradients, inside, center, and outside stroke alignment, patterned strokes, reusable radial paint styles, undoable stack editing, component and boolean preservation, strict persistence, alignment-aware bounds, and editor, prototype, and static export parity",
-    "Ordered drop and inner shadow stacks with stable IDs, visibility, color, opacity, offsets, blur, spread, reusable effect styles, legacy mirrors, undoable stack editing, component and boolean preservation, mask suppression, strict persistence, drop-aware bounds, and editor, prototype, and static export parity"
+    "Ordered drop and inner shadow stacks with stable IDs, visibility, color, opacity, offsets, blur, spread, reusable effect styles, legacy mirrors, undoable stack editing, component and boolean preservation, mask suppression, strict persistence, drop-aware bounds, and editor, prototype, and static export parity",
+    "Nested reusable component composition with stable path overrides, main and copy editing, level-preserving detach, recursive editor, prototype, thumbnail and export rendering, destination validation, cycle-safe traversal, and strict missing-link, role, cycle, and depth persistence guards"
   ],
   "nextHighValueGaps": [
     "Semantic canvas command and undo transaction modules",
-    "Nested component cycle validation",
     "Selection-aware agent patches for prototype interactions"
   ]
 }

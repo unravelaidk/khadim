@@ -3,7 +3,8 @@ import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { googleWorkspaceServiceIds } from "../shared/google-workspace";
 import { isHarnessMode } from "../shared/plugins";
-import type { Artifact, Conversation, Project } from "../shared/types";
+import { CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES, canvasComponentAmbiguousLegacyOverridePaths, canvasComponentExpandedNodeCounts, canvasComponentGraphIssue, canvasComponentLegacyOverridePaths, canvasComponentPrimitiveSources } from "../shared/canvas-components";
+import type { Artifact, CanvasComponentDefinition, Conversation, Project } from "../shared/types";
 import { safeModelBaseUrl } from "./model-endpoint-policy";
 import type { ProjectDataRepository, ProjectAvailability } from "./domain/repositories";
 
@@ -555,7 +556,21 @@ function canvasPrototypeFixedIds(elements: Record<string, unknown>[]): Set<strin
   return fixed;
 }
 
-function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinations = true): boolean {
+interface CanvasSceneValidationContext {
+  components: Record<string, unknown>[];
+  componentIds: Set<string>;
+  typedComponents: CanvasComponentDefinition[];
+  componentsById: Map<string, CanvasComponentDefinition>;
+  expandedComponentCounts: Map<string, number>;
+  componentSourceMaps: Map<string, Map<string, Record<string, unknown>>>;
+  ambiguousLegacyPaths: Map<string, Map<string, string>>;
+  styleIds?: Set<string>;
+  textStyleIds?: Set<string>;
+  effectStyleIds?: Set<string>;
+  tokenIds?: Set<string>;
+}
+
+function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinations = true, validationContext?: CanvasSceneValidationContext): boolean {
   if (!Array.isArray(data.elements) || data.elements.length > 10_000 || !data.elements.every((element) => isCanvasElement(element))) return false;
   const elements = data.elements as Record<string, unknown>[];
   const elementIds = new Set(elements.map((element) => element.id as string));
@@ -575,37 +590,71 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
     else if (reachedFixedLayer) return false;
   }
   if (elements.some((element) => element.type === "arrow" && [element.startBindingId, element.endBindingId].some((id) => id !== undefined && (!elementIds.has(id as string) || id === element.id)))) return false;
-  if (!Array.isArray(data.components) || data.components.length > 1_000 || !data.components.every((value) => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-    const component = value as Record<string, unknown>;
-    return isBoundedString(component.id, 240)
-      && isBoundedString(component.name, 1_000)
-      && (component.variantSetId === undefined || isBoundedString(component.variantSetId, 240))
-      && (component.variantSetName === undefined || isBoundedString(component.variantSetName, 1_000))
-      && (component.variantProperties === undefined || typeof component.variantProperties === "object" && component.variantProperties !== null && !Array.isArray(component.variantProperties)
-        && Object.entries(component.variantProperties as Record<string, unknown>).length <= 16
-        && Object.entries(component.variantProperties as Record<string, unknown>).every(([key, property]) => isBoundedString(key, 240) && isBoundedString(property, 1_000)))
-      && isFiniteCanvasNumber(component.width, 1)
-      && isFiniteCanvasNumber(component.height, 1)
-      && Array.isArray(component.nodes)
-      && component.nodes.length <= 2_000
-      && component.nodes.every((node) => isCanvasElement(node, false));
-  })) return false;
-  const components = data.components as Record<string, unknown>[];
-  const componentIds = new Set(components.map((component) => component.id as string));
-  if (componentIds.size !== components.length) return false;
-  for (const component of components) {
-    const componentNodes = component.nodes as Record<string, unknown>[];
-    const nodeIds = new Set(componentNodes.map((node) => node.id as string));
-    if (nodeIds.size !== componentNodes.length) return false;
-    if (componentNodes.some((node) => node.parentId !== undefined && (!nodeIds.has(node.parentId as string) || node.parentId === node.id))) return false;
-    if (componentNodes.some((node) => node.maskId !== undefined && (!nodeIds.has(node.maskId as string) || node.maskId === node.id))) return false;
-    if (componentNodes.some((node) => node.startBindingId !== undefined && (!nodeIds.has(node.startBindingId as string) || node.startBindingId === node.id))) return false;
-    if (componentNodes.some((node) => node.endBindingId !== undefined && (!nodeIds.has(node.endBindingId as string) || node.endBindingId === node.id))) return false;
-    if (hasCanvasParentCycle(componentNodes)) return false;
+  let components: Record<string, unknown>[];
+  let componentIds: Set<string>;
+  let typedComponents: CanvasComponentDefinition[];
+  if (validationContext) {
+    ({ components, componentIds, typedComponents } = validationContext);
+  } else {
+    if (!Array.isArray(data.components) || data.components.length > 1_000 || !data.components.every((value) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+      const component = value as Record<string, unknown>;
+      return isBoundedString(component.id, 240)
+        && isBoundedString(component.name, 1_000)
+        && (component.variantSetId === undefined || isBoundedString(component.variantSetId, 240))
+        && (component.variantSetName === undefined || isBoundedString(component.variantSetName, 1_000))
+        && (component.variantProperties === undefined || typeof component.variantProperties === "object" && component.variantProperties !== null && !Array.isArray(component.variantProperties)
+          && Object.entries(component.variantProperties as Record<string, unknown>).length <= 16
+          && Object.entries(component.variantProperties as Record<string, unknown>).every(([key, property]) => isBoundedString(key, 240) && isBoundedString(property, 1_000)))
+        && isFiniteCanvasNumber(component.width, 1)
+        && isFiniteCanvasNumber(component.height, 1)
+        && Array.isArray(component.nodes)
+        && component.nodes.length <= 2_000
+        && component.nodes.every((node) => isCanvasElement(node, true));
+    })) return false;
+    components = data.components as Record<string, unknown>[];
+    componentIds = new Set(components.map((component) => component.id as string));
+    if (componentIds.size !== components.length) return false;
+    for (const component of components) {
+      const componentNodes = component.nodes as Record<string, unknown>[];
+      const nodeIds = new Set(componentNodes.map((node) => node.id as string));
+      if (nodeIds.size !== componentNodes.length) return false;
+      if (componentNodes.some((node) => node.parentId !== undefined && (!nodeIds.has(node.parentId as string) || node.parentId === node.id))) return false;
+      if (componentNodes.some((node) => node.maskId !== undefined && (!nodeIds.has(node.maskId as string) || node.maskId === node.id))) return false;
+      if (componentNodes.some((node) => node.startBindingId !== undefined && (!nodeIds.has(node.startBindingId as string) || node.startBindingId === node.id))) return false;
+      if (componentNodes.some((node) => node.endBindingId !== undefined && (!nodeIds.has(node.endBindingId as string) || node.endBindingId === node.id))) return false;
+      if (componentNodes.some((node) => node.type === "component" && node.componentRole !== "instance")) return false;
+      if (hasCanvasParentCycle(componentNodes)) return false;
+    }
+    typedComponents = components as unknown as CanvasComponentDefinition[];
+  }
+  if (!validationContext && canvasComponentGraphIssue(typedComponents)) return false;
+  const expandedComponentCounts = validationContext?.expandedComponentCounts ?? canvasComponentExpandedNodeCounts(typedComponents);
+  const resolvedValidationContext: CanvasSceneValidationContext = validationContext ?? { components, componentIds, typedComponents, componentsById: new Map(typedComponents.map((component) => [component.id, component])), expandedComponentCounts, componentSourceMaps: new Map(), ambiguousLegacyPaths: new Map() };
+  let expandedSceneNodes = 0;
+  for (const element of elements) {
+    expandedSceneNodes += element.type === "component" ? expandedComponentCounts.get(element.componentId as string) ?? CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES + 1 : 1;
+    if (expandedSceneNodes > CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES) return false;
   }
   if (elements.some((element) => element.type === "component" && !componentIds.has(element.componentId as string))) return false;
-  if (data.styles !== undefined && (!Array.isArray(data.styles)
+  const overrideHolders = [...elements, ...(validationContext ? [] : components.flatMap((component) => component.nodes as Record<string, unknown>[]))];
+  const componentOverrides = overrideHolders.flatMap((element) => element.type === "component" && element.overrides && typeof element.overrides === "object"
+    ? Object.values(element.overrides as Record<string, unknown>).filter((override): override is Record<string, unknown> => typeof override === "object" && override !== null && !Array.isArray(override))
+    : []);
+  const hasInvalidPrimitiveReference = (predicate: (node: Record<string, unknown>) => boolean): boolean => {
+    for (const element of elements) if (element.type !== "component" && predicate(element)) return true;
+    // Validate each authored definition node once. Recursively expanding every possible root can
+    // multiply a shared component DAG into millions of transient entries without adding coverage.
+    if (!validationContext) {
+      for (const component of components) {
+        for (const node of component.nodes as Record<string, unknown>[]) {
+          if (node.type !== "component" && predicate(node)) return true;
+        }
+      }
+    }
+    return componentOverrides.some(predicate);
+  };
+  if (!validationContext && data.styles !== undefined && (!Array.isArray(data.styles)
     || data.styles.length > 2_000
     || data.styles.some((value) => {
       if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
@@ -616,9 +665,10 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
         || (style.gradient !== undefined && !isCanvasGradient(style.gradient));
     })
     || new Set(data.styles.map((style) => (style as Record<string, unknown>).id)).size !== data.styles.length)) return false;
-  const styleIds = new Set((data.styles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
-  if ([...elements.filter((element) => element.type !== "component"), ...components.flatMap((component) => component.nodes as Record<string, unknown>[])].some((element) => element.fillStyleId !== undefined && !styleIds.has(element.fillStyleId as string))) return false;
-  if (data.textStyles !== undefined && (!Array.isArray(data.textStyles) || data.textStyles.length > 2_000 || data.textStyles.some((value) => {
+  const styleIds = validationContext?.styleIds ?? new Set((data.styles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
+  resolvedValidationContext.styleIds = styleIds;
+  if (hasInvalidPrimitiveReference((element) => element.fillStyleId !== undefined && (typeof element.fillStyleId !== "string" || !styleIds.has(element.fillStyleId)))) return false;
+  if (!validationContext && data.textStyles !== undefined && (!Array.isArray(data.textStyles) || data.textStyles.length > 2_000 || data.textStyles.some((value) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
     const style = value as Record<string, unknown>;
     return !isBoundedString(style.id, 240) || !isBoundedString(style.name, 1_000) || !isBoundedString(style.fontFamily, 240)
@@ -626,7 +676,7 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
       || !["normal", "italic"].includes(String(style.fontStyle)) || !["left", "center", "right"].includes(String(style.textAlign))
       || !isFiniteCanvasNumber(style.lineHeight, .1, 100) || !isFiniteCanvasNumber(style.letterSpacing);
   }) || new Set(data.textStyles.map((style) => (style as Record<string, unknown>).id)).size !== data.textStyles.length)) return false;
-  if (data.effectStyles !== undefined && (!Array.isArray(data.effectStyles) || data.effectStyles.length > 2_000 || data.effectStyles.some((value) => {
+  if (!validationContext && data.effectStyles !== undefined && (!Array.isArray(data.effectStyles) || data.effectStyles.length > 2_000 || data.effectStyles.some((value) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
     const style = value as Record<string, unknown>;
     return !isBoundedString(style.id, 240) || !isBoundedString(style.name, 1_000)
@@ -634,18 +684,14 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
       || style.shadow !== undefined && !isCanvasShadow(style.shadow)
       || style.shadows !== undefined && (!isCanvasShadows(style.shadows) || (style.shadows as unknown[]).length === 0);
   }) || new Set(data.effectStyles.map((style) => (style as Record<string, unknown>).id)).size !== data.effectStyles.length)) return false;
-  const textStyleIds = new Set((data.textStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
-  const effectStyleIds = new Set((data.effectStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
-  const allPrimitiveNodes = [...elements.filter((element) => element.type !== "component"), ...components.flatMap((component) => component.nodes as Record<string, unknown>[])];
-  if (allPrimitiveNodes.some((element) => element.textStyleId !== undefined && !textStyleIds.has(element.textStyleId as string))) return false;
-  if (allPrimitiveNodes.some((element) => element.effectStyleId !== undefined && !effectStyleIds.has(element.effectStyleId as string))) return false;
-  if (elements.some((element) => element.type === "component" && element.overrides && Object.values(element.overrides as Record<string, unknown>).some((value) => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-    const override = value as Record<string, unknown>;
-    return override.effectStyleId !== undefined && !effectStyleIds.has(override.effectStyleId as string);
-  }))) return false;
+  const textStyleIds = validationContext?.textStyleIds ?? new Set((data.textStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
+  const effectStyleIds = validationContext?.effectStyleIds ?? new Set((data.effectStyles as Record<string, unknown>[] | undefined)?.map((style) => style.id as string) ?? []);
+  resolvedValidationContext.textStyleIds = textStyleIds;
+  resolvedValidationContext.effectStyleIds = effectStyleIds;
+  if (hasInvalidPrimitiveReference((element) => element.textStyleId !== undefined && !textStyleIds.has(element.textStyleId as string))) return false;
+  if (hasInvalidPrimitiveReference((element) => element.effectStyleId !== undefined && !effectStyleIds.has(element.effectStyleId as string))) return false;
   if (data.tokenCollections !== undefined) {
-    if (!Array.isArray(data.tokenCollections) || data.tokenCollections.length > 100 || data.tokenCollections.some((value) => {
+    if (!validationContext && (!Array.isArray(data.tokenCollections) || data.tokenCollections.length > 100 || data.tokenCollections.some((value) => {
       if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
       const collection = value as Record<string, unknown>;
       if (!isBoundedString(collection.id, 240) || !isBoundedString(collection.name, 1_000) || !Array.isArray(collection.modes) || !collection.modes.length || collection.modes.length > 32
@@ -659,20 +705,38 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
         const values = token.values as Record<string, unknown>;
         return modes.some((mode) => !(mode in values)) || Object.keys(values).some((mode) => !modes.includes(mode)) || Object.values(values).some((item) => token.type === "color" ? !isBoundedString(item, 80) : !isFiniteCanvasNumber(item));
       });
-    })) return false;
-    const tokenIds = new Set((data.tokenCollections as Array<Record<string, unknown>>).flatMap((collection) => (collection.tokens as Array<Record<string, unknown>>).map((token) => token.id as string)));
-    if (tokenIds.size !== (data.tokenCollections as Array<Record<string, unknown>>).reduce((count, collection) => count + (collection.tokens as unknown[]).length, 0)) return false;
-    if (allPrimitiveNodes.some((node) => node.tokenBindings && Object.values(node.tokenBindings as Record<string, unknown>).some((tokenId) => !tokenIds.has(tokenId as string)))) return false;
-  } else if (allPrimitiveNodes.some((node) => node.tokenBindings !== undefined)) return false;
-  for (const element of elements) {
+    }))) return false;
+    const tokenIds = validationContext?.tokenIds ?? new Set((data.tokenCollections as Array<Record<string, unknown>>).flatMap((collection) => (collection.tokens as Array<Record<string, unknown>>).map((token) => token.id as string)));
+    if (!validationContext && tokenIds.size !== (data.tokenCollections as Array<Record<string, unknown>>).reduce((count, collection) => count + (collection.tokens as unknown[]).length, 0)) return false;
+    resolvedValidationContext.tokenIds = tokenIds;
+    if (hasInvalidPrimitiveReference((node) => Boolean(node.tokenBindings) && Object.values(node.tokenBindings as Record<string, unknown>).some((tokenId) => !tokenIds.has(tokenId as string)))) return false;
+  } else if (hasInvalidPrimitiveReference((node) => node.tokenBindings !== undefined)) return false;
+  for (const element of overrideHolders) {
     if (element.type !== "component" || element.overrides === undefined) continue;
-    const definition = components.find((component) => component.id === element.componentId)!;
-    const sources = new Map((definition.nodes as Record<string, unknown>[]).map((node) => [node.id as string, node]));
-    for (const [nodeId, value] of Object.entries(element.overrides as Record<string, unknown>)) {
+    const definition = resolvedValidationContext.componentsById.get(element.componentId as string)!;
+    let sources = resolvedValidationContext.componentSourceMaps.get(definition.id);
+    if (!sources) {
+      sources = new Map(canvasComponentPrimitiveSources(definition, typedComponents).map(({ path, node }) => [path, node as unknown as Record<string, unknown>]));
+      for (const [canonical, legacy] of canvasComponentLegacyOverridePaths(definition, typedComponents)) {
+        const source = sources.get(canonical);
+        if (source && !sources.has(legacy)) sources.set(legacy, source);
+      }
+      resolvedValidationContext.componentSourceMaps.set(definition.id, sources);
+    }
+    const overrides = element.overrides as Record<string, unknown>;
+    let ambiguousLegacyPaths = resolvedValidationContext.ambiguousLegacyPaths.get(definition.id);
+    if (!ambiguousLegacyPaths) {
+      ambiguousLegacyPaths = canvasComponentAmbiguousLegacyOverridePaths(definition, typedComponents);
+      resolvedValidationContext.ambiguousLegacyPaths.set(definition.id, ambiguousLegacyPaths);
+    }
+    for (const [raw, canonical] of ambiguousLegacyPaths) {
+      if (raw in overrides && !(canonical in overrides)) return false;
+    }
+    for (const [nodeId, value] of Object.entries(overrides)) {
       const source = sources.get(nodeId);
       if (!source || typeof value !== "object" || value === null || Array.isArray(value)) return false;
       const override = value as Record<string, unknown>;
-      if (override.id !== undefined || override.type !== undefined || override.parentId !== undefined || !isCanvasElement({ ...source, ...override }, false)) return false;
+      if (override.id !== undefined || override.type !== undefined || override.parentId !== undefined || !isCanvasElement({ ...source, ...override }, true)) return false;
     }
   }
   const frame = data.frame;
@@ -721,7 +785,7 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
           || viewport.direction === "vertical" && viewport.width !== pageFrame.width
           || viewport.direction === "horizontal" && viewport.height !== pageFrame.height) return true;
       }
-      return !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeFlows: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false);
+      return !isCanvasScene({ ...data, pages: undefined, activePageId: undefined, prototypeFlows: undefined, prototypeStartPageId: undefined, frame: page.frame, elements: page.elements, appState: page.appState }, false, resolvedValidationContext);
     })) return false;
     if (new Set(pages.map((page) => page.id)).size !== pages.length) return false;
     if (validatePrototypeDestinations) {
@@ -734,12 +798,14 @@ function isCanvasScene(data: Record<string, unknown>, validatePrototypeDestinati
         if (new Set(flows.map((flow) => flow.id)).size !== flows.length) return false;
         if (data.prototypeStartPageId !== undefined && flows[0].startPageId !== data.prototypeStartPageId) return false;
       }
-      const destinations = pages.flatMap((page) => (page.elements as Array<Record<string, unknown>>).flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => ["navigate", "open-overlay", "toggle-overlay"].includes(String(interaction.action)) ? [interaction.destinationPageId as string] : []) ?? []));
+      const componentInteractionNodes = components.flatMap((component) => component.nodes as Array<Record<string, unknown>>);
+      const destinations = [...pages.flatMap((page) => page.elements as Array<Record<string, unknown>>), ...componentInteractionNodes, ...componentOverrides].flatMap((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.flatMap((interaction) => ["navigate", "open-overlay", "toggle-overlay"].includes(String(interaction.action)) ? [interaction.destinationPageId as string] : []) ?? []);
       if (destinations.some((destination) => !pageIds.has(destination))) return false;
     }
     const activePage = pages.find((page) => page.id === data.activePageId);
     if (!activePage || JSON.stringify(activePage.frame) !== JSON.stringify(data.frame) || JSON.stringify(activePage.elements) !== JSON.stringify(data.elements) || JSON.stringify(activePage.appState) !== JSON.stringify(data.appState)) return false;
-  } else if (data.activePageId !== undefined || data.prototypeFlows !== undefined || data.prototypeStartPageId !== undefined || validatePrototypeDestinations && elements.some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => interaction.action === "navigate"))) return false;
+  } else if (data.activePageId !== undefined || data.prototypeFlows !== undefined || data.prototypeStartPageId !== undefined || validatePrototypeDestinations && [...elements, ...components.flatMap((component) => component.nodes as Array<Record<string, unknown>>), ...componentOverrides].some((element) => (element.interactions as Array<Record<string, unknown>> | undefined)?.some((interaction) => ["navigate", "open-overlay", "toggle-overlay"].includes(String(interaction.action))))) return false;
+  if (validationContext) return true;
   try {
     return JSON.stringify(data).length <= 50 * 1024 * 1024;
   } catch {

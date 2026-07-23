@@ -22,6 +22,7 @@ import { canvasPathAbsolutePoints, canvasPathData } from "../../../shared/canvas
 import { canvasElementStrokeOutset } from "../../../shared/canvas-paint";
 import { canvasShadowOutset } from "../../../shared/canvas-effects";
 import { svgPathBounds } from "../../../shared/vector-boolean";
+import { canvasComponentLegacyOverridePaths, canvasComponentPath, canvasComponentPrimitiveSources } from "../../../shared/canvas-components";
 
 export type {
   CanvasArtifactContent,
@@ -224,7 +225,7 @@ export function isComponentDefinition(value: unknown): value is CanvasComponentD
     && typeof component.width === "number"
     && typeof component.height === "number"
     && Array.isArray(component.nodes)
-    && component.nodes.every(isCanvasPrimitiveNode);
+    && component.nodes.every(isCanvasNode);
 }
 
 export function canvasNodes(content: CanvasArtifactContent): CanvasNode[] {
@@ -303,11 +304,12 @@ export function canvasGeometryIndex(nodes: CanvasNode[], components: CanvasCompo
       ? svgPathBounds(canvasPathData(canvasPathAbsolutePoints(node), node.pathSmoothing ?? 0, Boolean(node.pathClosed)))
       : undefined;
     const scale = definition ? Math.max(width / Math.max(1, definition.width), height / Math.max(1, definition.height)) : 1;
+    const legacyPaths = definition ? canvasComponentLegacyOverridePaths(definition, components) : new Map<string, string>();
     const visualOutset = node.type === "component"
-      ? (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0) + Math.max(0, ...(definition?.nodes.map((child) => {
-        const effective = { ...child, ...node.overrides?.[child.id] };
+      ? (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0) + Math.max(0, ...(definition ? canvasComponentPrimitiveSources(definition, components).map(({ path, node: child }) => {
+        const effective = { ...child, ...(node.overrides?.[path] ?? node.overrides?.[legacyPaths.get(path) ?? ""]) };
         return (canvasElementStrokeOutset(effective) + canvasShadowOutset(effective) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 : 0)) * scale;
-      }) ?? []))
+      }) : []))
       : canvasElementStrokeOutset(node) + canvasShadowOutset(node) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0);
     const rotated = pathRect
       ? rotatedRectAround(pathRect, node.rotation ?? 0, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
@@ -903,7 +905,7 @@ export function snapCanvasMove(input: CanvasMoveSnapInput): CanvasMoveSnapResult
 }
 
 export function effectivePrimitive(node: CanvasPrimitiveNode, componentNode: CanvasComponentNode): CanvasPrimitiveNode {
-  const override = componentNode.overrides?.[node.id];
+  const override = componentNode.overrides?.[canvasComponentPath("", node.id)] ?? componentNode.overrides?.[node.id];
   return override ? { ...node, ...override } : node;
 }
 

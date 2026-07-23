@@ -13,6 +13,9 @@ const common = {
   updatedAt: "2026-07-17T10:00:00.000Z",
 };
 
+const componentSvgIdPart = (value: string): string => `${value.length}x${Array.from(value, (character) => character.codePointAt(0)!.toString(16)).join("-")}`;
+const componentSvgId = (kind: string, rootId: string, path: string): string => `canvas-component-${kind}-${componentSvgIdPart(rootId)}-${componentSvgIdPart(path)}`;
+
 describe("renderArtifactForPdf", () => {
   it("makes site exports inert while retaining their authored markup", () => {
     const artifact: Artifact = {
@@ -187,8 +190,9 @@ describe("renderArtifactForPdf", () => {
     };
 
     const svg = renderCanvasSvg(content, "Masked component");
-    expect(svg).toContain('id="canvas-component-mask-instance-mask"');
-    expect(svg).toContain('clip-path="url(#canvas-component-mask-instance-mask)"');
+    const maskId = componentSvgId("mask", "instance", "mask");
+    expect(svg).toContain(`id="${maskId}"`);
+    expect(svg).toContain(`clip-path="url(#${maskId})"`);
     expect(svg).toContain('fill="#ffffff" fill-opacity="1" stroke="none"');
     expect(svg).not.toContain('fill="#000000"');
   });
@@ -202,8 +206,8 @@ describe("renderArtifactForPdf", () => {
         format: "khadim-canvas",
         sceneVersion: 1,
         frame: { width: 960, height: 600 },
-        elements: [{ id: "instance-a", type: "component", componentId: "button", componentRole: "instance", x: 40, y: 50, width: 160, height: 48, color: "#2563eb", opacity: .2, overrides: { label: { text: "Ship now" } } }],
-        components: [{ id: "button", name: "Button", width: 160, height: 48, nodes: [{ id: "surface", type: "rectangle", x: 0, y: 0, width: 160, height: 48, color: "#2563eb", radius: 10 }, { id: "label", type: "text", x: 34, y: 8, width: 90, height: 30, color: "#ffffff", text: "Continue", fontSize: 15, fontWeight: 650, opacity: .5 }] }],
+        elements: [{ id: "instance-a", type: "component", componentId: "button", componentRole: "instance", x: 40, y: 50, width: 160, height: 48, color: "#2563eb", opacity: .2, overrides: { "label/text": { text: "Ship now" } } }],
+        components: [{ id: "button", name: "Button", width: 160, height: 48, nodes: [{ id: "surface", type: "rectangle", x: 0, y: 0, width: 160, height: 48, color: "#2563eb", radius: 10 }, { id: "label/text", type: "text", x: 34, y: 8, width: 90, height: 30, color: "#ffffff", text: "Continue", fontSize: 15, fontWeight: 650, opacity: .5 }] }],
         appState: { viewBackgroundColor: "#ffffff", snapToGrid: true },
         files: {},
       },
@@ -218,6 +222,35 @@ describe("renderArtifactForPdf", () => {
     expect(html).toContain('<g opacity="0.2">');
     expect(html).toContain('opacity="0.5"');
     expect(html).toContain('viewBox="0 0 960 600"');
+  });
+
+  it("renders nested component instances with path overrides and guarded recursion", () => {
+    const content = {
+      format: "khadim-canvas" as const, sceneVersion: 1 as const, frame: { width: 400, height: 240 },
+      elements: [{ id: "card-instance", type: "component" as const, componentId: "card", componentRole: "instance" as const, x: 40, y: 30, width: 300, height: 180, color: "#ffffff", overrides: { "action/label": { text: "Nested ship" } } }],
+      components: [
+        { id: "button", name: "Button", width: 100, height: 40, nodes: [{ id: "surface", type: "rectangle" as const, x: 0, y: 0, width: 100, height: 40, color: "#2563eb", fillGradient: { type: "linear" as const, angle: 0, stops: [{ offset: 0, color: "#2563eb" }, { offset: 1, color: "#6652d9" }] } }, { id: "label", type: "text" as const, x: 10, y: 8, width: 80, height: 24, color: "#ffffff", text: "Continue", fontSize: 14 }] },
+        { id: "card", name: "Card", width: 200, height: 120, nodes: [{ id: "action", type: "component" as const, componentId: "button", componentRole: "instance" as const, x: 50, y: 60, width: 100, height: 40, color: "#ffffff" }] },
+      ],
+      appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Nested component");
+    expect(svg).toContain(">Nested<");
+    expect(svg).toContain(">ship<");
+    expect(svg).not.toContain(">Continue<");
+    expect(svg).toContain('x="130"');
+    const nestedGradientId = componentSvgId("gradient", "card-instance", "action/surface");
+    expect(svg).toContain(`linearGradient id="${nestedGradientId}"`);
+    expect(svg).toContain(`fill="url(#${nestedGradientId})"`);
+
+    const hidden = structuredClone(content);
+    Object.assign(hidden.components[1].nodes[0], { hidden: true });
+    expect(renderCanvasSvg(hidden, "Hidden nested component")).not.toContain("Continue");
+
+    const cyclic = structuredClone(content);
+    cyclic.components[0].nodes = [{ id: "cycle", type: "component", componentId: "card", componentRole: "instance", x: 0, y: 0, width: 100, height: 40, color: "#ffffff" }] as typeof cyclic.components[0]["nodes"];
+    expect(() => renderCanvasSvg(cyclic, "Cyclic component")).not.toThrow();
   });
 
   it("exports the extended native shape and transform model", () => {
@@ -355,10 +388,34 @@ describe("renderArtifactForPdf", () => {
 
     const html = renderArtifactForPdf(artifact);
     expect(html).not.toContain("#ff0000");
-    expect(html).toContain('clipPath id="canvas-component-clip-instance-clip-frame"');
-    expect(html).toContain('clip-path="url(#canvas-component-clip-instance-clip-frame)"');
-    expect(html).toContain('clipPath id="canvas-component-clip-instance-inner-clip"');
-    expect(html).toContain('clip-path="url(#canvas-component-clip-instance-inner-clip)"');
+    const outerClipId = componentSvgId("clip", "instance", "clip-frame");
+    const innerClipId = componentSvgId("clip", "instance", "inner-clip");
+    expect(html).toContain(`clipPath id="${outerClipId}"`);
+    expect(html).toContain(`clip-path="url(#${outerClipId})"`);
+    expect(html).toContain(`clipPath id="${innerClipId}"`);
+    expect(html).toContain(`clip-path="url(#${innerClipId})"`);
+  });
+
+  it("keeps component SVG ids unique for delimiter-ambiguous root and path tuples", () => {
+    const content = {
+      format: "khadim-canvas" as const, sceneVersion: 1 as const, frame: { width: 300, height: 160 },
+      elements: [
+        { id: "a", type: "component" as const, componentId: "first", componentRole: "instance" as const, x: 0, y: 0, width: 100, height: 80, color: "#ffffff" },
+        { id: "ab", type: "component" as const, componentId: "second", componentRole: "instance" as const, x: 140, y: 0, width: 100, height: 80, color: "#ffffff" },
+      ],
+      components: [
+        { id: "first", name: "First", width: 100, height: 80, nodes: [{ id: "bc", type: "frame" as const, x: 0, y: 0, width: 100, height: 80, color: "#fff", clipContent: true }] },
+        { id: "second", name: "Second", width: 100, height: 80, nodes: [{ id: "c", type: "frame" as const, x: 0, y: 0, width: 100, height: 80, color: "#fff", clipContent: true }] },
+      ],
+      appState: { viewBackgroundColor: "#ffffff", snapToGrid: true }, files: {},
+    };
+
+    const svg = renderCanvasSvg(content, "Collision-safe ids");
+    const firstId = componentSvgId("clip", "a", "bc");
+    const secondId = componentSvgId("clip", "ab", "c");
+    expect(firstId).not.toBe(secondId);
+    expect(svg).toContain(`id="${firstId}"`);
+    expect(svg).toContain(`id="${secondId}"`);
   });
 
   it("exports instance-specific gradient overrides without sharing definitions", () => {
@@ -381,10 +438,12 @@ describe("renderArtifactForPdf", () => {
     };
 
     const html = renderArtifactForPdf(artifact);
-    expect(html).toContain('linearGradient id="canvas-component-gradient-warm-surface"');
-    expect(html).toContain('linearGradient id="canvas-component-gradient-cool-surface"');
-    expect(html).toContain('fill="url(#canvas-component-gradient-warm-surface)"');
-    expect(html).toContain('fill="url(#canvas-component-gradient-cool-surface)"');
+    const warmGradientId = componentSvgId("gradient", "warm", "surface");
+    const coolGradientId = componentSvgId("gradient", "cool", "surface");
+    expect(html).toContain(`linearGradient id="${warmGradientId}"`);
+    expect(html).toContain(`linearGradient id="${coolGradientId}"`);
+    expect(html).toContain(`fill="url(#${warmGradientId})"`);
+    expect(html).toContain(`fill="url(#${coolGradientId})"`);
   });
 
   it("resolves bound connector endpoints during export", () => {
@@ -468,7 +527,7 @@ describe("renderArtifactForPdf", () => {
     expect(svg).toContain('<feMergeNode in="canvas-shadow-stage-0"/><feMergeNode in="SourceGraphic"/><feMergeNode in="canvas-shadow-stage-1"/>');
     expect(svg).not.toContain("#ff0000");
     expect(svg).toContain(`filter:url(#${canvasShadowFilterId("canvas-gradient-shape")})`);
-    expect(svg).toContain(`filter:url(#${canvasShadowFilterId("canvas-component-gradient-instance-surface")})`);
+    expect(svg).toContain(`filter:url(#${canvasShadowFilterId(componentSvgId("gradient", "instance", "surface"))})`);
   });
 
   it("preserves legacy shadow softness and composition while new stacks follow Penpot order", () => {

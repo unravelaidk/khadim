@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import type { CanvasArtifactContent, CanvasElement, CanvasPage, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasPrototypeOverlay } from "../../../shared/types";
 import { nodeLabel } from "./canvas-model";
-import { canvasPrototypeLayerMatches, canvasPrototypePageLayers } from "./canvas-prototype";
+import { canvasPrototypeInteractiveElements, canvasPrototypeLayerMatches, canvasPrototypePageLayers } from "./canvas-prototype";
 
 interface CanvasPrototypePreviewProps {
   title: string;
@@ -78,10 +78,10 @@ function hotspotRect(node: CanvasElement, elements: CanvasElement[]): { x: numbe
   return rect;
 }
 
-function timedInteractions(page: CanvasPage): CanvasPrototypeInteraction[] {
-  return page.elements.flatMap((node) => {
-    if (node.hidden || !hotspotRect(node, page.elements)) return [];
-    return node.interactions?.filter((interaction) => interaction.trigger === "after-delay") ?? [];
+export function canvasPrototypeTimedInteractions(page: CanvasPage, elements: CanvasElement[]): Array<{ ownerId: string; interaction: CanvasPrototypeInteraction }> {
+  return elements.flatMap((node) => {
+    if (node.hidden || !hotspotRect(node, elements)) return [];
+    return node.interactions?.filter((interaction) => interaction.trigger === "after-delay").map((interaction) => ({ ownerId: node.id, interaction })) ?? [];
   });
 }
 
@@ -92,6 +92,9 @@ function pageSvg(content: CanvasArtifactContent, page: CanvasPage, title: string
 function svgSource(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+
+const timerIdPart = (value: string): string => `${value.length}x${Array.from(value, (character) => character.codePointAt(0)!.toString(16)).join("-")}`;
+const timerExecutionKey = (...values: string[]): string => values.map(timerIdPart).join("-");
 
 function prototypeViewport(page: CanvasPage): { width: number; height: number } {
   return page.prototypeViewport ?? page.frame;
@@ -247,8 +250,8 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
     const timedPage = overlayPage ?? page;
     if (!timedPage) return;
     const layerKey = topOverlay ? `overlay:${topOverlay.id}` : `flow:${activeFlowId}:page:${history.length}:${timedPage.id}`;
-    const timers = timedInteractions(timedPage).flatMap((interaction) => {
-      const key = `${layerKey}:${interaction.id}`;
+    const timers = canvasPrototypeTimedInteractions(timedPage, canvasPrototypeInteractiveElements(timedPage, content.components)).flatMap(({ ownerId, interaction }) => {
+      const key = timerExecutionKey(layerKey, ownerId, interaction.id);
       if (executedTimersRef.current.has(key)) return [];
       return [window.setTimeout(() => {
         executedTimersRef.current.add(key);
@@ -256,7 +259,7 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
       }, interaction.delay ?? 0)];
     });
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [activeFlowId, history.length, overlayPage, page, run, topOverlay]);
+  }, [activeFlowId, content.components, history.length, overlayPage, page, run, topOverlay]);
 
   const pageLayers = useMemo(() => page ? canvasPrototypePageLayers(page) : undefined, [page]);
   const overlayLayers = useMemo(() => overlayPage ? canvasPrototypePageLayers(overlayPage) : undefined, [overlayPage]);
@@ -306,12 +309,13 @@ export function CanvasPrototypePreview({ title, content, pages, flows, initialFl
   }
 
   function renderHotspots(targetPage: CanvasPage, keyPrefix: string, fixedIds?: Set<string>, fixed?: boolean): React.ReactNode {
-    return targetPage.elements.filter((node) => !node.hidden && node.interactions?.length && (fixed === undefined || fixedIds!.has(node.id) === fixed)).map((node) => {
+    const interactiveElements = canvasPrototypeInteractiveElements(targetPage, content.components);
+    return interactiveElements.filter((node) => !node.hidden && node.interactions?.length && (fixed === undefined || (fixedIds!.has(node.id) || Boolean(node.fixedInPrototype)) === fixed)).map((node) => {
       const click = interactionFor(node, "click");
       const hover = interactionFor(node, "hover");
       const interaction = click ?? hover;
       if (!interaction) return null;
-      const rect = hotspotRect(node, targetPage.elements);
+      const rect = hotspotRect(node, interactiveElements);
       if (!rect) return null;
       return <button
         className="canvas-prototype-hotspot"

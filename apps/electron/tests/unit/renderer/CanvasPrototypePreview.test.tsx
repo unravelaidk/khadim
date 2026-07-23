@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { CanvasPrototypePreview } from "../../../src/renderer/src/studio/CanvasPrototypePreview";
+import { CanvasPrototypePreview, canvasPrototypeTimedInteractions } from "../../../src/renderer/src/studio/CanvasPrototypePreview";
 import type { CanvasArtifactContent, CanvasPage } from "../../../src/shared/types";
 
 const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
@@ -87,5 +87,40 @@ describe("CanvasPrototypePreview scrolling", () => {
 
     expect(within(preview).getByAltText("Details prototype screen")).toBeInTheDocument();
     expect(within(preview).getByRole("button", { name: "Previous prototype screen" })).toBeEnabled();
+  });
+
+  it("runs interactions owned by primitives inside nested components", () => {
+    const { content, pages } = fixture(true);
+    content.components = [
+      { id: "button", name: "Button", width: 100, height: 40, nodes: [{ id: "label", type: "rectangle", name: "Nested details", x: 0, y: 0, width: 100, height: 40, color: "#2563eb", interactions: [{ id: "nested-go", trigger: "click", action: "navigate", destinationPageId: "details" }] }] },
+      { id: "card", name: "Card", width: 200, height: 120, nodes: [{ id: "action", type: "component", componentId: "button", componentRole: "instance", x: 50, y: 60, width: 100, height: 40, color: "#ffffff" }] },
+    ];
+    pages[0].elements = [{ id: "card-instance", type: "component", componentId: "card", componentRole: "instance", x: 20, y: 100, width: 360, height: 216, color: "#ffffff", overrides: { "action/label": { x: 10 } } }];
+    content.elements = pages[0].elements;
+    content.pages = pages;
+
+    render(<CanvasPrototypePreview title="Prototype" content={content} pages={pages} flows={content.prototypeFlows!} onClose={() => undefined} />);
+    const preview = screen.getByRole("dialog", { name: "Canvas prototype preview" });
+    const hotspot = within(preview).getByRole("button", { name: "Run Nested details click interaction" });
+    expect(Number.parseFloat(hotspot.style.left)).toBeCloseTo(32);
+    expect(Number.parseFloat(hotspot.style.top)).toBeCloseTo(17.3333);
+    expect(Number.parseFloat(hotspot.style.width)).toBeCloseTo(45);
+    expect(Number.parseFloat(hotspot.style.height)).toBeCloseTo(6);
+    fireEvent.click(hotspot);
+    expect(within(preview).getByAltText("Details prototype screen")).toBeInTheDocument();
+  });
+
+  it("keeps timed interaction identity scoped to each expanded owner", () => {
+    const page = fixture(true).pages[0];
+    const interaction = { id: "shared-delay", trigger: "after-delay" as const, delay: 100, action: "back" as const };
+    const elements = [
+      { id: "first/action", type: "rectangle" as const, x: 0, y: 0, width: 40, height: 40, color: "#fff", interactions: [interaction] },
+      { id: "second/action", type: "rectangle" as const, x: 50, y: 0, width: 40, height: 40, color: "#fff", interactions: [interaction] },
+    ];
+
+    expect(canvasPrototypeTimedInteractions(page, elements).map(({ ownerId, interaction: timed }) => `${ownerId}:${timed.id}`)).toEqual([
+      "first/action:shared-delay",
+      "second/action:shared-delay",
+    ]);
   });
 });

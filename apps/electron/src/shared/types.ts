@@ -713,7 +713,8 @@ export interface CanvasComponentDefinition {
   name: string;
   width: number;
   height: number;
-  nodes: CanvasPrimitiveElement[];
+  /** Component-local shape tree. Nested component entries are always linked instances. */
+  nodes: CanvasElement[];
   builtIn?: boolean;
   variantSetId?: string;
   variantSetName?: string;

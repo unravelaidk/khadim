@@ -48,6 +48,7 @@ import { renderCanvasSvg } from "../../../shared/artifact-export";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, normalizeCanvasPath, resolveCanvasConnectors, type CanvasAbsolutePoint } from "../../../shared/canvas-geometry";
 import { canvasElementFills, canvasElementIsClosed, canvasElementStrokes, canvasElementStrokeOutset, canvasGradientVector, canvasStrokeDashArray } from "../../../shared/canvas-paint";
 import { canvasElementShadows, canvasLegacyShadowMirror, canvasShadowFilterDefinition, canvasShadowFilterId, canvasShadowOutset } from "../../../shared/canvas-effects";
+import { CANVAS_COMPONENT_MAX_DEPTH, CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES, canvasComponentLegacyOverridePaths, canvasComponentOverrideAtPath, canvasComponentOverridesBelow, canvasComponentPath, canvasComponentPrimitiveSources, mergeCanvasComponentOverrides } from "../../../shared/canvas-components";
 import { booleanCanvasNodes, canBooleanNode, svgPathBounds, type CanvasBooleanOperation } from "../../../shared/vector-boolean";
 import { importSvgToCanvasNodes } from "./svg-import";
 import { CanvasPrototypePreview } from "./CanvasPrototypePreview";
@@ -145,6 +146,8 @@ const canvasBlendModes: Array<{ value: CanvasBlendMode; label: string }> = [
   { value: "hue", label: "Hue" }, { value: "saturation", label: "Saturation" }, { value: "color", label: "Color" }, { value: "luminosity", label: "Luminosity" },
 ];
 const cloneSnapshot = <T,>(value: T): T => structuredClone(value);
+const svgIdPart = (value: string): string => `${value.length}x${Array.from(value, (character) => character.codePointAt(0)!.toString(16)).join("-")}`;
+const svgTupleId = (...values: string[]): string => values.map(svgIdPart).join("-");
 const withoutTokenBindings = (bindings: CanvasPrimitiveNode["tokenBindings"], keys: Array<keyof NonNullable<CanvasPrimitiveNode["tokenBindings"]>>): CanvasPrimitiveNode["tokenBindings"] => {
   if (!bindings) return undefined;
   const next = Object.fromEntries(Object.entries(bindings).filter(([key]) => !keys.includes(key as keyof NonNullable<CanvasPrimitiveNode["tokenBindings"]>))) as NonNullable<CanvasPrimitiveNode["tokenBindings"]>;
@@ -537,10 +540,11 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       if (node.type === "component") {
         const definition = components.find((component) => component.id === node.componentId);
         const scale = definition ? Math.max(node.width / Math.max(1, definition.width), node.height / Math.max(1, definition.height)) : 1;
-        const childPadding = Math.max(...(definition?.nodes.map((child) => {
-          const effective = effectivePrimitive(child, node);
+        const legacyPaths = definition ? canvasComponentLegacyOverridePaths(definition, components) : new Map<string, string>();
+        const childPadding = Math.max(...(definition ? canvasComponentPrimitiveSources(definition, components).map(({ path, effective: source }) => {
+          const effective = { ...source, ...(node.overrides?.[path] ?? node.overrides?.[legacyPaths.get(path) ?? ""]) };
           return (canvasElementStrokeOutset(effective) + canvasShadowOutset(effective) + (effective.layerBlur?.visible ? effective.layerBlur.value * 2 : 0)) * scale;
-        }) ?? [0]));
+        }) : [0]));
         return Math.max(maximum, childPadding + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
       }
       return Math.max(maximum, canvasElementStrokeOutset(node) + canvasShadowOutset(node) + (node.layerBlur?.visible ? node.layerBlur.value * 2 : 0));
@@ -548,9 +552,11 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     return { x: visualBounds.x - padding, y: visualBounds.y - padding, width: visualBounds.width + padding * 2, height: visualBounds.height + padding * 2 };
   })() : null;
   const selectedComponent = selectedNode?.type === "component" ? components.find((component) => component.id === selectedNode.componentId) : undefined;
+  const selectedComponentSources = selectedComponent ? canvasComponentPrimitiveSources(selectedComponent, components) : [];
+  const selectedComponentLegacyPaths = selectedComponent ? canvasComponentLegacyOverridePaths(selectedComponent, components) : new Map<string, string>();
   const usedPrototypeTriggers = new Set(selectedNode?.interactions?.map((interaction) => interaction.trigger) ?? []);
   const selectedPathPoint = selectedNode && selectedNode.type !== "component" && (selectedNode.type === "path" || selectedNode.type === "arrow") && selectedPathPointIndex !== null ? selectedNode.points?.[selectedPathPointIndex] : undefined;
-  const canCreateComponent = selectedNodes.length > 0 && selectedNodes.every((node) => node.type !== "component" && node.type !== "boolean" && !nodes.some((candidate) => candidate.parentId === node.id && candidate.type === "boolean"));
+  const canCreateComponent = selectedNodes.length > 0 && selectedNodes.every((node) => node.type !== "boolean" && !nodes.some((candidate) => candidate.parentId === node.id && candidate.type === "boolean"));
   const maskCandidate = [...nodes].reverse().find((node) => selectedIds.includes(node.id) && node.type !== "component" && node.type !== "boolean" && node.type !== "text" && node.type !== "image" && node.type !== "line" && node.type !== "arrow" && (node.type !== "path" || node.pathClosed));
   const canCreateMask = selectedNodes.length > 1 && Boolean(maskCandidate) && selectedNodes.every((node) => node.type !== "component" && node.type !== "boolean");
   const canCreatePaintStyle = Boolean(selectedNode && selectedNode.type !== "component" && selectedNode.type !== "line" && selectedNode.type !== "arrow" && selectedNode.type !== "image" && (selectedNode.type !== "path" || selectedNode.pathClosed));
@@ -1227,18 +1233,47 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const nextStyles = paintStylesRef.current.map((style) => style.id === styleId ? { ...style, color: primaryFill?.color ?? selectedNode.color, gradient: primaryFill?.gradient ? cloneSnapshot(primaryFill.gradient) : undefined } : style);
     const updated = nextStyles.find((style) => style.id === styleId);
     if (!updated) return;
-    const nextNodes = nodes.map((node) => node.type !== "component" && node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node) as CanvasNode[];
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type !== "component" && node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node) }));
+    const updateReference = (node: CanvasNode): CanvasNode => {
+      if (node.type !== "component") return node.fillStyleId === styleId ? withPrimaryFill(node, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined) : node;
+      const definition = componentsRef.current.find((component) => component.id === node.componentId);
+      if (!definition) return node;
+      const sources = new Map(canvasComponentPrimitiveSources(definition, componentsRef.current).map((source) => [source.path, source.effective]));
+      for (const [canonical, legacy] of canvasComponentLegacyOverridePaths(definition, componentsRef.current)) {
+        const source = sources.get(canonical);
+        if (source && !sources.has(legacy)) sources.set(legacy, source);
+      }
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([path, override]) => {
+        const source = sources.get(path);
+        if (override.fillStyleId !== styleId || !source) return [path, override];
+        changed = true;
+        const painted = withPrimaryFill({ ...source, ...override }, updated.color, updated.gradient ? cloneSnapshot(updated.gradient) : undefined);
+        return [path, { ...override, color: painted.color, fillGradient: painted.fillGradient, fills: painted.fills }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
+    const nextNodes = nodes.map(updateReference);
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map(updateReference) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(updateReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, nextStyles);
   }
 
   function removePaintStyle(styleId: string): void {
     const before = currentSnapshot();
-    const nextNodes = nodes.map((node) => node.type !== "component" && node.fillStyleId === styleId ? { ...node, fillStyleId: undefined } : node) as CanvasNode[];
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.fillStyleId === styleId ? { ...node, fillStyleId: undefined } : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type !== "component" && node.fillStyleId === styleId ? { ...node, fillStyleId: undefined } : node) }));
+    const removeReference = (node: CanvasNode): CanvasNode => {
+      if (node.type !== "component") return node.fillStyleId === styleId ? { ...node, fillStyleId: undefined } : node;
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([path, override]) => {
+        if (override.fillStyleId !== styleId) return [path, override];
+        changed = true;
+        return [path, { ...override, fillStyleId: undefined }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
+    const nextNodes = nodes.map(removeReference);
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map(removeReference) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(removeReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current.filter((style) => style.id !== styleId));
   }
@@ -1270,18 +1305,38 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const before = currentSnapshot();
     const updated = textStyleFromNode(selectedNode, styleId, current.name);
     const nextStyles = textStylesRef.current.map((style) => style.id === styleId ? updated : style);
-    const nextNodes = nodes.map((node) => node.type === "text" && node.textStyleId === styleId ? applyTextStyleValues(node, updated) : node);
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.type === "text" && node.textStyleId === styleId ? applyTextStyleValues(node, updated) : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type === "text" && node.textStyleId === styleId ? applyTextStyleValues(node, updated) : node) }));
+    const updateReference = (node: CanvasNode): CanvasNode => {
+      if (node.type !== "component") return node.type === "text" && node.textStyleId === styleId ? applyTextStyleValues(node, updated) : node;
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([path, override]) => {
+        if (override.textStyleId !== styleId) return [path, override];
+        changed = true;
+        return [path, { ...override, fontFamily: updated.fontFamily, fontSize: updated.fontSize, fontWeight: updated.fontWeight, fontStyle: updated.fontStyle, textAlign: updated.textAlign, lineHeight: updated.lineHeight, letterSpacing: updated.letterSpacing }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
+    const nextNodes = nodes.map(updateReference);
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map(updateReference) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(updateReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current, nextStyles);
   }
 
   function removeTextStyle(styleId: string): void {
     const before = currentSnapshot();
-    const nextNodes = nodes.map((node) => node.type === "text" && node.textStyleId === styleId ? { ...node, textStyleId: undefined } : node) as CanvasNode[];
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.type === "text" && node.textStyleId === styleId ? { ...node, textStyleId: undefined } : node) }));
-    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map((node) => node.type === "text" && node.textStyleId === styleId ? { ...node, textStyleId: undefined } : node) }));
+    const removeReference = (node: CanvasNode): CanvasNode => {
+      if (node.type !== "component") return node.type === "text" && node.textStyleId === styleId ? { ...node, textStyleId: undefined } : node;
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([path, override]) => {
+        if (override.textStyleId !== styleId) return [path, override];
+        changed = true;
+        return [path, { ...override, textStyleId: undefined }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
+    const nextNodes = nodes.map(removeReference);
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map(removeReference) }));
+    pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(removeReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current, textStylesRef.current.filter((style) => style.id !== styleId));
   }
@@ -1323,7 +1378,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       return changed ? { ...node, overrides } : node;
     };
     const nextNodes = nodes.map(updateReference);
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.effectStyleId === styleId ? { ...node, shadow: legacy, shadows: cloneSnapshot(shadows) } : node) }));
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map(updateReference) }));
     pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(updateReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current, textStylesRef.current, nextStyles);
@@ -1342,7 +1397,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       return changed ? { ...node, overrides } : node;
     };
     const nextNodes = nodes.map(removeReference);
-    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map((node) => node.effectStyleId === styleId ? { ...node, effectStyleId: undefined } : node) }));
+    const nextComponents = componentsRef.current.map((component) => ({ ...component, nodes: component.nodes.map(removeReference) }));
     pagesRef.current = syncedPages(nodesRef.current).map((page) => ({ ...page, elements: page.elements.map(removeReference) }));
     pastRef.current = [...pastRef.current.slice(-49), before]; futureRef.current = [];
     commitCanvas(nextNodes, nextComponents, false, paintStylesRef.current, textStylesRef.current, effectStylesRef.current.filter((style) => style.id !== styleId));
@@ -1371,15 +1426,43 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   }
 
   function commitTokenCollections(nextCollections: CanvasTokenCollection[], activeNodes = nodesRef.current): void {
+    const applyComponentTokenOverrides = (node: CanvasComponentNode, definitions: CanvasComponentDefinition[]): CanvasComponentNode => {
+      const definition = definitions.find((component) => component.id === node.componentId);
+      if (!definition) return node;
+      const sources = new Map(canvasComponentPrimitiveSources(definition, definitions).map((source) => [source.path, source.effective]));
+      for (const [canonical, legacy] of canvasComponentLegacyOverridePaths(definition, definitions)) {
+        const source = sources.get(canonical);
+        if (source && !sources.has(legacy)) sources.set(legacy, source);
+      }
+      let changed = false;
+      const overrides = Object.fromEntries(Object.entries(node.overrides ?? {}).map(([path, override]) => {
+        const source = sources.get(path);
+        if (!source || !override.tokenBindings) return [path, override];
+        changed = true;
+        const applied = applyTokenValues({ ...source, ...override }, nextCollections);
+        return [path, {
+          ...override,
+          color: applied.color,
+          fillGradient: applied.fillGradient,
+          fills: applied.fills,
+          strokeColor: applied.strokeColor,
+          strokes: applied.strokes,
+          radius: applied.radius,
+          opacity: applied.opacity,
+          layout: applied.layout,
+        }];
+      }));
+      return changed ? { ...node, overrides } : node;
+    };
     const applyNodes = (values: CanvasNode[], definitions: CanvasComponentDefinition[]): CanvasNode[] => {
-      let result = values.map((node) => node.type === "component" ? node : applyTokenValues(node, nextCollections));
+      let result = values.map((node) => node.type === "component" ? applyComponentTokenOverrides(node, definitions) : applyTokenValues(node, nextCollections));
       for (const frame of result.filter((node): node is CanvasPrimitiveNode => node.type === "frame" && Boolean(node.layout))) result = applyFrameLayout(result, frame.id, definitions);
       return result;
     };
     const nextComponents = componentsRef.current.map((component) => {
-      let componentNodes: CanvasNode[] = component.nodes.map((node) => applyTokenValues(node, nextCollections));
+      let componentNodes: CanvasNode[] = component.nodes.map((node) => node.type === "component" ? applyComponentTokenOverrides(node, componentsRef.current) : applyTokenValues(node, nextCollections));
       for (const frame of componentNodes.filter((node): node is CanvasPrimitiveNode => node.type === "frame" && Boolean(node.layout))) componentNodes = applyFrameLayout(componentNodes, frame.id, componentsRef.current);
-      return { ...component, nodes: componentNodes.filter((node): node is CanvasPrimitiveNode => node.type !== "component") };
+      return { ...component, nodes: componentNodes };
     });
     const nextPages = syncedPages(activeNodes).map((page) => ({ ...page, elements: applyNodes(page.elements, nextComponents) }));
     const active = nextPages.find((page) => page.id === activePageIdRef.current) ?? nextPages[0];
@@ -1625,7 +1708,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   function createComponentFromSelection(): void {
     if (!canCreateComponent || !selectedBounds) return;
     const sourceIds = new Set([...selectedIds, ...descendantIds(nodes, selectedIds)]);
-    const sourceNodes = nodes.filter((node): node is CanvasPrimitiveNode => sourceIds.has(node.id) && node.type !== "component");
+    const sourceNodes = nodes.filter((node) => sourceIds.has(node.id));
     const sourceBounds = selectionRect(sourceNodes, components) ?? selectedBounds;
     const definitionId = crypto.randomUUID();
     const definition: CanvasComponentDefinition = {
@@ -1633,7 +1716,18 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       name: nextComponentName(components),
       width: sourceBounds.width,
       height: sourceBounds.height,
-      nodes: sourceNodes.map((node) => ({ ...cloneSnapshot(node), x: node.x - sourceBounds.x, y: node.y - sourceBounds.y, parentId: node.parentId && sourceIds.has(node.parentId) ? node.parentId : undefined, maskId: node.maskId && sourceIds.has(node.maskId) ? node.maskId : undefined, startBindingId: node.startBindingId && sourceIds.has(node.startBindingId) ? node.startBindingId : undefined, endBindingId: node.endBindingId && sourceIds.has(node.endBindingId) ? node.endBindingId : undefined })),
+      nodes: sourceNodes.map((node) => ({
+        ...cloneSnapshot(node),
+        ...(node.type === "component" ? { componentRole: "instance" as const } : {}),
+        x: node.x - sourceBounds.x,
+        y: node.y - sourceBounds.y,
+        parentId: node.parentId && sourceIds.has(node.parentId) ? node.parentId : undefined,
+        ...(node.type !== "component" ? {
+          maskId: node.maskId && sourceIds.has(node.maskId) ? node.maskId : undefined,
+          startBindingId: node.startBindingId && sourceIds.has(node.startBindingId) ? node.startBindingId : undefined,
+          endBindingId: node.endBindingId && sourceIds.has(node.endBindingId) ? node.endBindingId : undefined,
+        } : {}),
+      })),
     };
     const main: CanvasComponentNode = {
       id: crypto.randomUUID(),
@@ -1684,13 +1778,15 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const centerY = selectedNode.y + selectedNode.height / 2;
     const instanceRotation = selectedNode.rotation ?? 0;
     const idMap = new Map(selectedComponent.nodes.map((source) => [source.id, crypto.randomUUID()]));
-    const detached = selectedComponent.nodes.map((source) => {
-      const node = effectivePrimitive(source, selectedNode);
+    const legacyPaths = canvasComponentLegacyOverridePaths(selectedComponent, components);
+    const detached: CanvasNode[] = selectedComponent.nodes.map((source) => {
+      const sourcePath = canvasComponentPath("", source.id);
+      const node: CanvasNode = source.type === "component" ? source : { ...source, ...(selectedNode.overrides?.[sourcePath] ?? selectedNode.overrides?.[legacyPaths.get(sourcePath) ?? ""]) };
       const width = node.width * scaleX;
       const height = node.height * scaleY;
       const unrotatedCenter = { x: selectedNode.x + node.x * scaleX + width / 2, y: selectedNode.y + node.y * scaleY + height / 2 };
       const center = rotatePoint(unrotatedCenter, centerX, centerY, instanceRotation);
-      return {
+      const shared = {
         ...cloneSnapshot(node),
         id: idMap.get(source.id)!,
         x: center.x - width / 2,
@@ -1701,10 +1797,22 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         rotation: normalizedAngle((node.rotation ?? 0) + instanceRotation),
         parentId: node.parentId && idMap.has(node.parentId) ? idMap.get(node.parentId) : undefined,
         groupId: undefined,
-        startBindingId: node.startBindingId && idMap.has(node.startBindingId) ? idMap.get(node.startBindingId) : undefined,
-        endBindingId: node.endBindingId && idMap.has(node.endBindingId) ? idMap.get(node.endBindingId) : undefined,
-        maskId: node.maskId && idMap.has(node.maskId) ? idMap.get(node.maskId) : undefined,
-        name: node.name ?? (node.type === "text" ? "Text" : "Rectangle"),
+        name: node.name ?? nodeLabel(node),
+      };
+      if (source.type === "component") return {
+        ...shared,
+        type: "component" as const,
+        componentId: source.componentId,
+        componentRole: "instance" as const,
+        overrides: mergeCanvasComponentOverrides(source.overrides, canvasComponentOverridesBelow(selectedNode.overrides, sourcePath)),
+      } satisfies CanvasComponentNode;
+      const primitive = node as CanvasPrimitiveNode;
+      return {
+        ...shared,
+        type: primitive.type,
+        startBindingId: primitive.startBindingId && idMap.has(primitive.startBindingId) ? idMap.get(primitive.startBindingId) : undefined,
+        endBindingId: primitive.endBindingId && idMap.has(primitive.endBindingId) ? idMap.get(primitive.endBindingId) : undefined,
+        maskId: primitive.maskId && idMap.has(primitive.maskId) ? idMap.get(primitive.maskId) : undefined,
       } satisfies CanvasPrimitiveNode;
     });
     commitCanvas([...nodes.filter((node) => node.id !== selectedNode.id), ...detached]);
@@ -1721,17 +1829,31 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       const painted = withPrimaryFill(node, patch.color, primary?.gradient);
       return { ...patch, color: painted.color, fillGradient: painted.fillGradient, fills: painted.fills };
     };
+    const sourceEntry = selectedComponentSources.find((entry) => entry.path === sourceId);
+    if (!sourceEntry) return;
     if (selectedNode.componentRole === "main") {
       const nextComponents = components.map((component) => component.id === selectedComponent.id
-        ? { ...component, nodes: component.nodes.map((node) => node.id === sourceId ? { ...node, ...paintAwarePatch(node) } : node) }
+        ? { ...component, nodes: component.nodes.map((node) => {
+          if (canvasComponentPath("", node.id) === sourceId && node.type !== "component") return { ...node, ...paintAwarePatch(node) };
+          const [nestedPath, ...rest] = sourceId.split("/");
+          if (canvasComponentPath("", node.id) !== nestedPath || node.type !== "component" || !rest.length) return node;
+          const relative = rest.join("/");
+          const nestedDefinition = components.find((candidate) => candidate.id === node.componentId);
+          const legacyPath = nestedDefinition ? canvasComponentLegacyOverridePaths(nestedDefinition, components).get(relative) : undefined;
+          const existing = node.overrides?.[relative] ?? node.overrides?.[legacyPath ?? ""];
+          const overrides = { ...node.overrides, [relative]: { ...existing, ...paintAwarePatch({ ...sourceEntry.effective, ...existing }) } };
+          if (legacyPath) delete overrides[legacyPath];
+          return { ...node, overrides };
+        }) }
         : component);
       commitCanvas(nodes, nextComponents, shouldRecordInspectorHistory(`${selectedNode.id}:component:${sourceId}:${Object.keys(patch).sort().join(",")}`));
       return;
     }
-    const source = selectedComponent.nodes.find((node) => node.id === sourceId);
-    if (!source) return;
-    const effective = effectivePrimitive(source, selectedNode);
-    patchSelected({ overrides: { ...selectedNode.overrides, [sourceId]: { ...selectedNode.overrides?.[sourceId], ...paintAwarePatch(effective) } } } as Partial<CanvasComponentNode>);
+    const legacyPath = selectedComponentLegacyPaths.get(sourceId);
+    const effective = { ...sourceEntry.effective, ...(selectedNode.overrides?.[sourceId] ?? selectedNode.overrides?.[legacyPath ?? ""]) };
+    const overrides = { ...selectedNode.overrides, [sourceId]: { ...(selectedNode.overrides?.[sourceId] ?? selectedNode.overrides?.[legacyPath ?? ""]), ...paintAwarePatch(effective) } };
+    if (legacyPath) delete overrides[legacyPath];
+    patchSelected({ overrides } as Partial<CanvasComponentNode>);
   }
 
   function resetSelectedOverrides(): void {
@@ -1795,8 +1917,16 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     if (!selectedNode || selectedNode.type !== "component" || selectedNode.componentRole !== "instance" || !selectedComponent?.variantSetId) return;
     const target = components.find((component) => component.id === componentId && component.variantSetId === selectedComponent.variantSetId);
     if (!target) return;
-    const targetNodeIds = new Set(target.nodes.map((node) => node.id));
-    const overrides = Object.fromEntries(Object.entries(selectedNode.overrides ?? {}).filter(([nodeId]) => targetNodeIds.has(nodeId)));
+    const targetNodePaths = new Set(canvasComponentPrimitiveSources(target, components).map((source) => source.path));
+    for (const legacy of canvasComponentLegacyOverridePaths(target, components).values()) targetNodePaths.add(legacy);
+    const canonicalOverrides = { ...selectedNode.overrides };
+    for (const [canonical, legacy] of canvasComponentLegacyOverridePaths(selectedComponent, components)) {
+      if (canonicalOverrides[legacy] && !canonicalOverrides[canonical]) {
+        canonicalOverrides[canonical] = canonicalOverrides[legacy];
+        delete canonicalOverrides[legacy];
+      }
+    }
+    const overrides = Object.fromEntries(Object.entries(canonicalOverrides).filter(([path]) => targetNodePaths.has(path)));
     commitCanvas(nodes.map((node) => node.id === selectedNode.id ? { ...node, componentId: target.id, name: target.name, overrides } : node));
   }
 
@@ -2719,8 +2849,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     const height = effective.height * scaleY;
     const stroke = effective.strokeWidth ? effective.strokeColor ?? "#17181c" : "none";
     const strokeWidth = (effective.strokeWidth ?? 0) * Math.min(scaleX, scaleY);
-    const gradientId = `canvas-editor-gradient-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-    const radiusClipId = `canvas-editor-radius-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const gradientId = `canvas-editor-gradient-${svgIdPart(key)}`;
+    const radiusClipId = `canvas-editor-radius-${svgIdPart(key)}`;
     const gradientVector = effective.fillGradient ? canvasGradientVector(effective.fillGradient.angle) : undefined;
     const fill = effective.fillGradient ? `url(#${gradientId})` : effective.color;
     const primitiveScale = Math.min(scaleX, scaleY);
@@ -2734,7 +2864,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       const fills = canvasElementFills(effective).filter((paint) => paint.visible);
       const strokes = canvasElementStrokes(effective).filter((paint) => paint.visible && paint.width > 0);
       const closed = canvasElementIsClosed(effective);
-      const idBase = key.replace(/[^a-zA-Z0-9_-]/g, "-");
+      const idBase = svgIdPart(key);
       const insideClipId = `canvas-editor-paint-inside-${idBase}`;
       const outsideMaskId = `canvas-editor-paint-outside-${idBase}`;
       const imageClipId = `canvas-editor-paint-image-${idBase}`;
@@ -2837,6 +2967,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     return <g key={key} transform={rotation ? `rotate(${rotation} ${x + width / 2} ${y + height / 2})` : undefined}>{shadowDefinition}{effective.fillGradient && gradientVector && <defs><linearGradient id={gradientId} x1={gradientVector.x1} y1={gradientVector.y1} x2={gradientVector.x2} y2={gradientVector.y2}>{effective.fillGradient.stops.map((stop, index) => <stop key={`${gradientId}:${index}`} offset={`${Math.min(1, Math.max(0, stop.offset)) * 100}%`} stopColor={stop.color} stopOpacity={stop.opacity ?? 1} />)}</linearGradient></defs>}{primitive}</g>;
   }
 
+  const componentRenderBudget = { remaining: CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES };
+
   function renderCanvasNode(node: CanvasNode): React.ReactNode {
     const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
     const booleanParent = parent?.type === "boolean" ? parent : undefined;
@@ -2870,61 +3002,93 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     }
     const definition = components.find((component) => component.id === node.componentId);
     if (!definition) return null;
-    const scaleX = node.width / Math.max(1, definition.width);
-    const scaleY = node.height / Math.max(1, definition.height);
-    const internalClipId = (frameId: string): string => `canvas-component-clip-${node.id}-${frameId}`;
-    const internalMaskId = (maskId: string): string => `canvas-component-mask-${node.id}-${maskId}`;
-    const internalMaskSourceIds = new Set(definition.nodes.flatMap((child) => {
-      const maskId = effectivePrimitive(child, node).maskId;
-      return maskId ? [maskId] : [];
-    }));
-    const internalAncestorHidden = (child: CanvasPrimitiveNode): boolean => {
-      let parentId = child.parentId;
-      const visited = new Set<string>();
-      while (parentId && !visited.has(parentId)) {
-        visited.add(parentId);
-        const parentNode = definition.nodes.find((candidate) => candidate.id === parentId);
-        if (!parentNode) break;
-        if (effectivePrimitive(parentNode, node).hidden) return true;
-        parentId = parentNode.parentId;
-      }
-      return false;
+    type OverrideScope = { prefix: string; overrides?: CanvasComponentNode["overrides"] };
+    const renderDefinition = (
+      instance: CanvasComponentNode,
+      current: CanvasComponentDefinition,
+      prefix: string,
+      scopes: OverrideScope[],
+      ancestors: Set<string>,
+      depth: number,
+      budget: { remaining: number },
+    ): React.ReactNode => {
+      if (depth > CANVAS_COMPONENT_MAX_DEPTH || ancestors.has(current.id) || budget.remaining <= 0) return null;
+      const nextAncestors = new Set(ancestors).add(current.id);
+      const scaleX = instance.width / Math.max(1, current.width);
+      const scaleY = instance.height / Math.max(1, current.height);
+      const legacyPaths = canvasComponentLegacyOverridePaths(current, components);
+      const effectiveNode = (child: CanvasNode): CanvasNode => child.type === "component" ? child : { ...child, ...canvasComponentOverrideAtPath(canvasComponentPath(prefix, child.id), scopes, prefix, legacyPaths.get(canvasComponentPath("", child.id))) };
+      const internalClipId = (frameId: string): string => `canvas-component-clip-${svgTupleId(node.id, canvasComponentPath(prefix, frameId))}`;
+      const internalMaskId = (maskId: string): string => `canvas-component-mask-${svgTupleId(node.id, canvasComponentPath(prefix, maskId))}`;
+      const internalMaskSourceIds = new Set(current.nodes.flatMap((child) => {
+        const effective = effectiveNode(child);
+        return effective.type !== "component" && effective.maskId ? [effective.maskId] : [];
+      }));
+      const internalAncestorHidden = (child: CanvasNode): boolean => {
+        let parentId = child.parentId;
+        const visited = new Set<string>();
+        while (parentId && !visited.has(parentId)) {
+          visited.add(parentId);
+          const parentNode = current.nodes.find((candidate) => candidate.id === parentId);
+          if (!parentNode) break;
+          if (effectiveNode(parentNode).hidden) return true;
+          parentId = parentNode.parentId;
+        }
+        return false;
+      };
+      return <>
+        <defs>
+          {current.nodes.filter((child): child is CanvasPrimitiveNode => child.type === "frame" && Boolean(child.clipContent)).map((frame) => {
+            const effective = effectiveNode(frame) as CanvasPrimitiveNode;
+            const x = effective.x * scaleX;
+            const y = effective.y * scaleY;
+            const width = effective.width * scaleX;
+            const height = effective.height * scaleY;
+            return <clipPath id={internalClipId(frame.id)} key={`clip:${prefix}:${frame.id}`} clipPathUnits="userSpaceOnUse">{effective.cornerRadii ? <path d={canvasRoundedRectPath(x, y, width, height, effective.cornerRadii, Math.min(scaleX, scaleY))} transform={effective.rotation ? `rotate(${effective.rotation} ${x + width / 2} ${y + height / 2})` : undefined} /> : <rect x={x} y={y} width={width} height={height} rx={(effective.radius ?? 0) * Math.min(scaleX, scaleY)} transform={effective.rotation ? `rotate(${effective.rotation} ${x + width / 2} ${y + height / 2})` : undefined} />}</clipPath>;
+          })}
+          {current.nodes.filter((child): child is CanvasPrimitiveNode => child.type !== "component" && internalMaskSourceIds.has(child.id)).map((mask) => {
+            const effective = effectiveNode(mask) as CanvasPrimitiveNode;
+            return <clipPath id={internalMaskId(mask.id)} key={`mask:${prefix}:${mask.id}`} clipPathUnits="userSpaceOnUse">{renderPrimitive({ ...effective, opacity: 1, shadow: undefined, shadows: [], strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `component-mask-${svgTupleId(node.id, prefix, mask.id)}`, { ...instance, overrides: undefined }, scaleX, scaleY)}</clipPath>;
+          })}
+        </defs>
+        {current.nodes.map((child) => {
+          if (budget.remaining-- <= 0) return null;
+          if (internalAncestorHidden(child) || internalMaskSourceIds.has(child.id)) return null;
+          const path = canvasComponentPath(prefix, child.id);
+          const clipAncestors: CanvasPrimitiveNode[] = [];
+          let parentId = child.parentId;
+          const visited = new Set<string>();
+          while (parentId && !visited.has(parentId)) {
+            visited.add(parentId);
+            const parentFrame = current.nodes.find((candidate) => candidate.id === parentId);
+            if (!parentFrame) break;
+            if (parentFrame.type === "frame" && parentFrame.clipContent) clipAncestors.push(parentFrame);
+            parentId = parentFrame.parentId;
+          }
+          let rendered: React.ReactNode;
+          if (child.type === "component") {
+            const nested = components.find((component) => component.id === child.componentId);
+            if (!nested || child.hidden) return null;
+            const width = child.width * scaleX;
+            const height = child.height * scaleY;
+            const rotation = child.rotation ?? 0;
+            const nestedInstance = { ...child, x: 0, y: 0, width, height };
+            rendered = <g key={`${node.id}:${path}`} transform={`translate(${child.x * scaleX} ${child.y * scaleY})${rotation ? ` rotate(${rotation} ${width / 2} ${height / 2})` : ""}`} opacity={child.opacity ?? 1} style={canvasAppearanceStyle(child, Math.min(scaleX, scaleY))}>
+              {renderDefinition(nestedInstance, nested, path, [...scopes, { prefix: path, overrides: child.overrides }], nextAncestors, depth + 1, budget)}
+            </g>;
+          } else {
+            const effective = effectiveNode(child) as CanvasPrimitiveNode;
+            const primitive = renderPrimitive(effective, `component-${svgTupleId(node.id, path)}`, { ...instance, overrides: undefined }, scaleX, scaleY);
+            rendered = effective.maskId ? <g key={`${node.id}:mask-target:${path}`} clipPath={`url(#${internalMaskId(effective.maskId)})`}>{primitive}</g> : primitive;
+          }
+          return clipAncestors.reduce((nested, frame) => <g key={`${node.id}:clip:${path}:${frame.id}`} clipPath={`url(#${internalClipId(frame.id)})`}>{nested}</g>, rendered);
+        })}
+      </>;
     };
     return wrapExternalClips(
       <g className="canvas-component-node" key={node.id} transform={transform} opacity={node.opacity ?? 1} style={canvasAppearanceStyle(node)} onPointerDown={(event) => beginNodeMove(event, node)}>
         <g transform={`translate(${node.x} ${node.y})`}>
-          <defs>
-            {definition.nodes.filter((child) => child.type === "frame" && child.clipContent).map((frame) => {
-              const effective = effectivePrimitive(frame, node);
-              const x = effective.x * scaleX;
-              const y = effective.y * scaleY;
-              const width = effective.width * scaleX;
-              const height = effective.height * scaleY;
-              return <clipPath id={internalClipId(frame.id)} key={frame.id} clipPathUnits="userSpaceOnUse">{effective.cornerRadii ? <path d={canvasRoundedRectPath(x, y, width, height, effective.cornerRadii, Math.min(scaleX, scaleY))} transform={effective.rotation ? `rotate(${effective.rotation} ${x + width / 2} ${y + height / 2})` : undefined} /> : <rect x={x} y={y} width={width} height={height} rx={(effective.radius ?? 0) * Math.min(scaleX, scaleY)} transform={effective.rotation ? `rotate(${effective.rotation} ${x + width / 2} ${y + height / 2})` : undefined} />}</clipPath>;
-            })}
-            {definition.nodes.filter((child) => internalMaskSourceIds.has(child.id)).map((mask) => {
-              const effective = effectivePrimitive(mask, node);
-              return <clipPath id={internalMaskId(mask.id)} key={`mask:${mask.id}`} clipPathUnits="userSpaceOnUse">{renderPrimitive({ ...effective, opacity: 1, shadow: undefined, shadows: [], strokeWidth: 0, fills: [{ id: `mask-fill-${mask.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, `${node.id}:mask:${mask.id}`, undefined, scaleX, scaleY)}</clipPath>;
-            })}
-          </defs>
-          {definition.nodes.map((child) => {
-            if (internalAncestorHidden(child)) return null;
-            if (internalMaskSourceIds.has(child.id)) return null;
-            const effective = effectivePrimitive(child, node);
-            const rendered = renderPrimitive(child, `${node.id}:${child.id}`, node, scaleX, scaleY);
-            const clipAncestors: CanvasPrimitiveNode[] = [];
-            let parentId = child.parentId;
-            const visited = new Set<string>();
-            while (parentId && !visited.has(parentId)) {
-              visited.add(parentId);
-              const parentFrame = definition.nodes.find((candidate) => candidate.id === parentId);
-              if (!parentFrame) break;
-              if (parentFrame.type === "frame" && parentFrame.clipContent) clipAncestors.push(parentFrame);
-              parentId = parentFrame.parentId;
-            }
-            const masked = effective.maskId ? <g key={`${node.id}:mask-target:${child.id}`} clipPath={`url(#${internalMaskId(effective.maskId)})`}>{rendered}</g> : rendered;
-            return clipAncestors.reduce((nested, frame) => <g key={`${node.id}:clip:${child.id}:${frame.id}`} clipPath={`url(#${internalClipId(frame.id)})`}>{nested}</g>, masked);
-          })}
+          {renderDefinition(node, definition, "", [{ prefix: "", overrides: node.overrides }], new Set(), 1, componentRenderBudget)}
           {node.componentRole === "main" && <><rect className="canvas-component-main-outline" width={node.width} height={node.height} /><text className="canvas-component-label" x="0" y="-9">◆ {definition.name}</text></>}
         </g>
       </g>
@@ -3321,13 +3485,17 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Frame</h3><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.clipContent)} onChange={(event) => patchSelected({ clipContent: event.target.checked })} /><span>Clip contents</span></label><label className="canvas-toggle-row"><input type="checkbox" checked={Boolean(selectedNode.layout)} onChange={toggleAutoLayout} /><span>Enable auto layout</span></label>{selectedNode.layout && <><div className="canvas-segmented"><button className={selectedNode.layout.direction === "row" ? "active" : ""} onClick={() => patchFrameLayout({ direction: "row" })}>Row</button><button className={selectedNode.layout.direction === "column" ? "active" : ""} onClick={() => patchFrameLayout({ direction: "column" })}>Column</button></div><div className="canvas-typography-fields"><label><span>Gap</span><input aria-label="Layout gap" type="number" min="0" value={selectedNode.layout.gap} onChange={(event) => patchFrameLayout({ gap: Math.max(0, Number(event.target.value)) })} /></label><label><span>Padding</span><input aria-label="Layout padding" type="number" min="0" value={selectedNode.layout.padding} onChange={(event) => patchFrameLayout({ padding: Math.max(0, Number(event.target.value)) })} /></label><label><span>Align</span><select aria-label="Layout alignment" value={selectedNode.layout.align} onChange={(event) => patchFrameLayout({ align: event.target.value as "start" | "center" | "end" })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option></select></label><label><span>Distribute</span><select aria-label="Layout distribution" value={selectedNode.layout.justify} onChange={(event) => patchFrameLayout({ justify: event.target.value as "start" | "center" | "end" | "space-between" })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option></select></label><label><span>Sizing</span><select aria-label="Layout sizing" value={selectedNode.layout.sizing} onChange={(event) => patchFrameLayout({ sizing: event.target.value as "fixed" | "hug" })}><option value="fixed">Fixed</option><option value="hug">Hug contents</option></select></label>{selectedNode.layout.wrap && <label><span>Cross gap</span><input aria-label="Layout cross gap" type="number" min="0" value={selectedNode.layout.crossGap ?? selectedNode.layout.gap} onChange={(event) => patchFrameLayout({ crossGap: Math.max(0, Number(event.target.value)) })} /></label>}</div><label className="canvas-toggle-row"><input aria-label="Wrap auto-layout children" type="checkbox" checked={Boolean(selectedNode.layout.wrap)} disabled={selectedNode.layout.sizing === "hug"} onChange={(event) => patchFrameLayout({ wrap: event.target.checked, crossGap: event.target.checked ? selectedNode.layout!.crossGap ?? selectedNode.layout!.gap : selectedNode.layout!.crossGap })} /><span>Wrap children</span></label>{selectedNode.layout.sizing === "hug" && <small className="canvas-field-hint">Use fixed sizing to wrap children across rows or columns.</small>}</>}</section>}
           {selectedNode.type === "frame" && <section className="canvas-inspector-section"><h3>Layout grids</h3><div className="canvas-guide-actions"><button type="button" onClick={() => addFrameLayoutGrid("square")}><Plus size={12} /> Square</button><button type="button" onClick={() => addFrameLayoutGrid("columns")}><Plus size={12} /> Columns</button><button type="button" onClick={() => addFrameLayoutGrid("rows")}><Plus size={12} /> Rows</button></div>{selectedNode.layoutGrids?.map((grid) => <div className="canvas-guide-row" key={grid.id}><select aria-label={`Grid ${grid.id} type`} value={grid.type} onChange={(event) => patchFrameLayoutGrid(grid.id, { type: event.target.value as "square" | "columns" | "rows" })}><option value="square">Square</option><option value="columns">Columns</option><option value="rows">Rows</option></select><input aria-label={`Grid ${grid.type} size`} type="number" min="1" max={grid.type === "square" ? 10_000 : 100} value={grid.type === "square" ? grid.size ?? 8 : grid.count ?? 12} onChange={(event) => patchFrameLayoutGrid(grid.id, grid.type === "square" ? { size: Number(event.target.value) } : { count: Number(event.target.value) })} /><input aria-label={`Grid ${grid.type} color`} type="color" value={grid.color} onChange={(event) => patchFrameLayoutGrid(grid.id, { color: event.target.value })} /><button type="button" aria-label={`Delete ${grid.type} grid`} onClick={() => removeFrameLayoutGrid(grid.id)}><Trash size={11} /></button></div>)}</section>}
           {selectedNode.type === "component" && <section className="canvas-inspector-section"><h3>Appearance</h3><label><span>Blend mode</span><select aria-label="Blend mode" value={selectedNode.blendMode ?? "normal"} onChange={(event) => patchSelected({ blendMode: event.target.value as CanvasBlendMode })}>{canvasBlendModes.map((mode) => <option value={mode.value} key={mode.value}>{mode.label}</option>)}</select></label><label><span>Opacity</span><div className="canvas-range-field"><input aria-label="Component opacity" type="range" min="0" max="100" value={Math.round((selectedNode.opacity ?? 1) * 100)} onChange={(event) => patchSelected({ opacity: Number(event.target.value) / 100 })} /><output>{Math.round((selectedNode.opacity ?? 1) * 100)}%</output></div></label><label className="canvas-toggle-row"><input aria-label="Layer blur" type="checkbox" checked={Boolean(selectedNode.layerBlur?.visible)} onChange={(event) => patchSelected({ layerBlur: { value: selectedNode.layerBlur?.value ?? 8, visible: event.target.checked } })} /><span>Layer blur</span></label>{selectedNode.layerBlur?.visible && <label><span>Layer blur radius</span><input type="number" min="0" max="100" value={selectedNode.layerBlur.value} onChange={(event) => patchSelected({ layerBlur: { ...selectedNode.layerBlur!, value: Math.min(100, Math.max(0, Number(event.target.value))) } })} /></label>}<label className="canvas-toggle-row"><input aria-label="Background blur" type="checkbox" checked={Boolean(selectedNode.backgroundBlur?.visible)} onChange={(event) => patchSelected({ backgroundBlur: { value: selectedNode.backgroundBlur?.value ?? 12, visible: event.target.checked } })} /><span>Background blur</span></label>{selectedNode.backgroundBlur?.visible && <><label><span>Background blur radius</span><input type="number" min="0" max="100" value={selectedNode.backgroundBlur.value} onChange={(event) => patchSelected({ backgroundBlur: { ...selectedNode.backgroundBlur!, value: Math.min(100, Math.max(0, Number(event.target.value))) } })} /></label><small className="canvas-field-hint">Live canvas only. Static SVG, PNG, and PDF exports omit background blur.</small></>}</section>}
-          {selectedNode.type === "component" && selectedComponent && <section className="canvas-inspector-section"><h3>Component properties</h3>{selectedComponent.nodes.map((source) => {
-            const effective = effectivePrimitive(source, selectedNode);
-            return <div className="canvas-component-property" key={source.id}>
+          {selectedNode.type === "component" && selectedComponent && <section className="canvas-inspector-section"><h3>Component properties</h3>{selectedComponentSources.map(({ path, node: source, effective: authored }) => {
+            const legacyPath = selectedComponentLegacyPaths.get(path);
+            const effective = { ...authored, ...(selectedNode.overrides?.[path] ?? selectedNode.overrides?.[legacyPath ?? ""]) };
+            const propertyLabel = source.name ?? nodeLabel(source);
+            const propertyAriaLabel = path.includes("/") ? `${propertyLabel} ${path}` : propertyLabel;
+            return <div className="canvas-component-property" key={path}>
               <strong>{source.name ?? nodeLabel(source)}</strong>
-              {source.type === "text" && <label><span>Text</span><input value={effective.text ?? ""} onChange={(event) => patchComponentPrimitive(source.id, { text: event.target.value })} /></label>}
-              {source.type !== "image" && <label className="canvas-color-field"><span>{source.type === "text" ? "Text color" : "Fill"}</span><span><input aria-label={`${source.name ?? nodeLabel(source)} color`} type="color" value={effective.color} onChange={(event) => patchComponentPrimitive(source.id, { color: event.target.value })} /><code>{effective.color.toUpperCase()}</code></span></label>}
-              <label><span>Opacity</span><div className="canvas-range-field"><input aria-label={`${source.name ?? nodeLabel(source)} opacity`} type="range" min="0" max="100" value={Math.round((effective.opacity ?? 1) * 100)} onChange={(event) => patchComponentPrimitive(source.id, { opacity: Number(event.target.value) / 100 })} /><output>{Math.round((effective.opacity ?? 1) * 100)}%</output></div></label>
+              {path.includes("/") && <small>{path}</small>}
+              {source.type === "text" && <label><span>Text</span><input aria-label={`${propertyAriaLabel} text`} value={effective.text ?? ""} onChange={(event) => patchComponentPrimitive(path, { text: event.target.value })} /></label>}
+              {source.type !== "image" && <label className="canvas-color-field"><span>{source.type === "text" ? "Text color" : "Fill"}</span><span><input aria-label={`${propertyAriaLabel} color`} type="color" value={effective.color} onChange={(event) => patchComponentPrimitive(path, { color: event.target.value })} /><code>{effective.color.toUpperCase()}</code></span></label>}
+              <label><span>Opacity</span><div className="canvas-range-field"><input aria-label={`${propertyAriaLabel} opacity`} type="range" min="0" max="100" value={Math.round((effective.opacity ?? 1) * 100)} onChange={(event) => patchComponentPrimitive(path, { opacity: Number(event.target.value) / 100 })} /><output>{Math.round((effective.opacity ?? 1) * 100)}%</output></div></label>
             </div>;
           })}{selectedNode.componentRole === "instance" && Object.keys(selectedNode.overrides ?? {}).length > 0 && <button className="canvas-reset-overrides" type="button" onClick={resetSelectedOverrides}>Reset overrides</button>}</section>}
           <section className="canvas-inspector-section canvas-prototype-section">

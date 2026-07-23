@@ -1,4 +1,5 @@
-import type { CanvasElement, CanvasPage } from "../../../shared/types";
+import type { CanvasComponentDefinition, CanvasComponentElement, CanvasElement, CanvasPage } from "../../../shared/types";
+import { CANVAS_COMPONENT_MAX_DEPTH, CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES, canvasComponentLegacyOverridePaths, canvasComponentOverrideAtPath, canvasComponentPath } from "../../../shared/canvas-components";
 
 export interface CanvasPrototypeLayerMatch {
   key: string;
@@ -9,6 +10,88 @@ export interface CanvasPrototypeLayerMatch {
 }
 
 const maxSmartLayerMatches = 32;
+const prototypeIdPart = (value: string): string => `${value.length}x${Array.from(value, (character) => character.codePointAt(0)!.toString(16)).join("-")}`;
+const expandedComponentId = (rootId: string, path: string): string => `canvas-component-expanded-${prototypeIdPart(rootId)}-${prototypeIdPart(path)}`;
+
+type Affine = [number, number, number, number, number, number];
+const multiplyAffine = (outer: Affine, inner: Affine): Affine => [
+  outer[0] * inner[0] + outer[2] * inner[1], outer[1] * inner[0] + outer[3] * inner[1],
+  outer[0] * inner[2] + outer[2] * inner[3], outer[1] * inner[2] + outer[3] * inner[3],
+  outer[0] * inner[4] + outer[2] * inner[5] + outer[4], outer[1] * inner[4] + outer[3] * inner[5] + outer[5],
+];
+const translateAffine = (x: number, y: number): Affine => [1, 0, 0, 1, x, y];
+const scaleAffine = (x: number, y: number): Affine => [x, 0, 0, y, 0, 0];
+const rotateAffine = (degrees: number): Affine => {
+  const radians = degrees * Math.PI / 180;
+  return [Math.cos(radians), Math.sin(radians), -Math.sin(radians), Math.cos(radians), 0, 0];
+};
+const aroundRectAffine = (x: number, y: number, width: number, height: number, rotation = 0): Affine => multiplyAffine(
+  multiplyAffine(translateAffine(x + width / 2, y + height / 2), rotateAffine(rotation)),
+  translateAffine(-width / 2, -height / 2),
+);
+const transformPoint = (matrix: Affine, x: number, y: number): { x: number; y: number } => ({ x: matrix[0] * x + matrix[2] * y + matrix[4], y: matrix[1] * x + matrix[3] * y + matrix[5] });
+const transformedBounds = (matrix: Affine, node: CanvasElement): { x: number; y: number; width: number; height: number } => {
+  const rotation = node.rotation ?? 0;
+  const local = multiplyAffine(matrix, aroundRectAffine(node.x, node.y, node.width, node.height, rotation));
+  const corners = [transformPoint(local, 0, 0), transformPoint(local, node.width, 0), transformPoint(local, 0, node.height), transformPoint(local, node.width, node.height)];
+  const x = Math.min(...corners.map((point) => point.x));
+  const y = Math.min(...corners.map((point) => point.y));
+  return { x, y, width: Math.max(...corners.map((point) => point.x)) - x, height: Math.max(...corners.map((point) => point.y)) - y };
+};
+
+/** Expands nested component interactions into absolute page-space hotspot layers. */
+export function canvasPrototypeInteractiveElements(page: CanvasPage, components: CanvasComponentDefinition[]): CanvasElement[] {
+  const byId = new Map(components.map((component) => [component.id, component]));
+  const pageById = new Map(page.elements.map((element) => [element.id, element]));
+  const result = [...page.elements];
+  const budget = { remaining: CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES };
+  const visit = (definition: CanvasComponentDefinition, matrix: Affine, rootId: string, prefix: string, fixed: boolean, ancestors: Set<string>, depth: number, scopes: Array<{ prefix: string; overrides?: CanvasComponentElement["overrides"] }>, budget: { remaining: number }): void => {
+    if (depth > CANVAS_COMPONENT_MAX_DEPTH || ancestors.has(definition.id) || budget.remaining <= 0) return;
+    const nextAncestors = new Set(ancestors).add(definition.id);
+    const legacyPaths = canvasComponentLegacyOverridePaths(definition, components);
+    for (const source of definition.nodes) {
+      if (budget.remaining-- <= 0) return;
+      const path = canvasComponentPath(prefix, source.id);
+      const child: CanvasElement = source.type === "component" ? source : { ...source, ...canvasComponentOverrideAtPath(path, scopes, prefix, legacyPaths.get(canvasComponentPath("", source.id))) };
+      const bounds = transformedBounds(matrix, child);
+      const parentPath = child.parentId ? canvasComponentPath(prefix, child.parentId) : prefix;
+      result.push({
+        ...child,
+        id: expandedComponentId(rootId, path),
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        rotation: 0,
+        parentId: parentPath ? expandedComponentId(rootId, parentPath) : rootId,
+        ...(child.type !== "component" && child.maskId ? { maskId: expandedComponentId(rootId, canvasComponentPath(prefix, child.maskId)) } : {}),
+        fixedInPrototype: fixed || undefined,
+      });
+      if (child.type !== "component" || child.hidden) continue;
+      const nested = byId.get(child.componentId);
+      if (!nested) continue;
+      const childMatrix = multiplyAffine(matrix, multiplyAffine(aroundRectAffine(child.x, child.y, child.width, child.height, child.rotation), scaleAffine(child.width / Math.max(1, nested.width), child.height / Math.max(1, nested.height))));
+      visit(nested, childMatrix, rootId, path, fixed, nextAncestors, depth + 1, [...scopes, { prefix: path, overrides: child.overrides }], budget);
+    }
+  };
+  for (const node of page.elements) {
+    if (node.type !== "component" || node.hidden) continue;
+    const definition = byId.get(node.componentId);
+    if (!definition) continue;
+    let fixed = Boolean(node.fixedInPrototype);
+    let parentId = node.parentId;
+    const visited = new Set<string>();
+    while (!fixed && parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = pageById.get(parentId);
+      fixed = Boolean(parent?.fixedInPrototype);
+      parentId = parent?.parentId;
+    }
+    const matrix = multiplyAffine(aroundRectAffine(node.x, node.y, node.width, node.height, node.rotation), scaleAffine(node.width / Math.max(1, definition.width), node.height / Math.max(1, definition.height)));
+    visit(definition, matrix, node.id, "", fixed, new Set(), 1, [{ prefix: "", overrides: node.overrides }], budget);
+  }
+  return result;
+}
 
 export interface CanvasPrototypePageLayers {
   fixedRootIds: string[];

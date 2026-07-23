@@ -345,6 +345,27 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(instance).toMatchObject({ componentId: content.components[1].id, overrides: { label: expect.objectContaining({ text: "Ship now" }) } });
   });
 
+  it("preserves unambiguous legacy override keys while switching variants", async () => {
+    const artifact = createArtifact("canvas", "project-a", "legacy-component-variants", "2026-07-23T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.components = [
+      { id: "nested-label", name: "Nested label", width: 120, height: 40, nodes: [{ id: "b", type: "text", x: 0, y: 0, width: 120, height: 40, color: "#111827", text: "Nested" }] },
+      { id: "legacy-default", name: "Legacy / Default", width: 120, height: 40, variantSetId: "legacy-set", variantSetName: "Legacy", variantProperties: { State: "Default" }, nodes: [{ id: "a/b", type: "text", x: 0, y: 0, width: 120, height: 40, color: "#111827", text: "Default" }] },
+      { id: "legacy-alt", name: "Legacy / Alternate", width: 120, height: 40, variantSetId: "legacy-set", variantSetName: "Legacy", variantProperties: { State: "Alternate" }, nodes: [{ id: "a/b", type: "text", x: 0, y: 0, width: 120, height: 40, color: "#111827", text: "Alternate" }, { id: "a", type: "component", componentId: "nested-label", componentRole: "instance", x: 0, y: 0, width: 120, height: 40, color: "#ffffff" }] },
+    ];
+    artifact.content.elements = [{ id: "legacy-instance", name: "Legacy instance", type: "component", componentId: "legacy-default", componentRole: "instance", x: 20, y: 20, width: 120, height: 40, color: "#ffffff", overrides: { "a/b": { text: "Preserved" } } }];
+    const onChange = vi.fn();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Legacy instance" }));
+    fireEvent.change(screen.getByDisplayValue("Preserved"), { target: { value: "Edited legacy" } });
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({ overrides: { "a~1b": { text: "Edited legacy" } } });
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0].overrides).not.toHaveProperty("a/b");
+    fireEvent.change(screen.getByRole("combobox", { name: "Component variant" }), { target: { value: "legacy-alt" } });
+
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({ componentId: "legacy-alt", overrides: { "a~1b": { text: "Edited legacy" } } });
+  });
+
   it("binds semantic design tokens and switches collection modes", async () => {
     const artifact = createArtifact("canvas", "project-a", "canvas-tokens", "2026-07-22T10:00:00.000Z");
     if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
@@ -612,6 +633,32 @@ describe("StudioWorkspace canvas design workflow", () => {
 
     expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({ overrides: { surface: { color: "#00ff00", fills: [{ id: "base", color: "#ef4444" }, { id: "top", color: "#00ff00", opacity: .8 }] } } });
     expect(container.querySelector('.canvas-component-node [fill="#00ff00"]')).not.toBeNull();
+  });
+
+  it("edits nested component properties and detaches only the outer instance", async () => {
+    const artifact = createArtifact("canvas", "project-a", "nested-components", "2026-07-23T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    artifact.content.components = [
+      { id: "button", name: "Button", width: 100, height: 40, nodes: [{ id: "surface", type: "rectangle", x: 0, y: 0, width: 100, height: 40, color: "#2563eb" }, { id: "label", name: "Label", type: "text", x: 10, y: 8, width: 80, height: 24, color: "#ffffff", text: "Continue" }] },
+      { id: "card", name: "Card / Default", width: 200, height: 120, variantSetId: "card-set", variantSetName: "Card", variantProperties: { State: "Default" }, nodes: [{ id: "action", name: "Action", type: "component", componentId: "button", componentRole: "instance", x: 50, y: 60, width: 100, height: 40, color: "#ffffff", overrides: { label: { color: "#ef4444" } } }] },
+      { id: "card-alt", name: "Card / Alternate", width: 200, height: 120, variantSetId: "card-set", variantSetName: "Card", variantProperties: { State: "Alternate" }, nodes: [{ id: "action", name: "Action", type: "component", componentId: "button", componentRole: "instance", x: 50, y: 60, width: 100, height: 40, color: "#ffffff", overrides: { label: { color: "#ef4444" } } }] },
+    ];
+    artifact.content.elements = [{ id: "card-instance", name: "Card instance", type: "component", componentId: "card", componentRole: "instance", x: 40, y: 40, width: 200, height: 120, color: "#ffffff" }];
+    const onChange = vi.fn();
+    const { container } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Card instance" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Label action/label text" }), { target: { value: "Ship nested" } });
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({ overrides: { "action/label": { text: "Ship nested" } } });
+    expect(container.querySelector(".canvas-component-node")?.textContent).toContain("Ship");
+    expect(container.querySelector(".canvas-component-node")?.textContent).toContain("nested");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Component variant" }), { target: { value: "card-alt" } });
+    expect(onChange.mock.calls.at(-1)?.[0].content.elements[0]).toMatchObject({ componentId: "card-alt", overrides: { "action/label": { text: "Ship nested" } } });
+
+    await userEvent.click(screen.getByRole("button", { name: "Detach" }));
+    const detached = onChange.mock.calls.at(-1)?.[0].content.elements;
+    expect(detached).toEqual([expect.objectContaining({ type: "component", componentId: "button", componentRole: "instance", overrides: { label: expect.objectContaining({ text: "Ship nested", color: "#ef4444" }) } })]);
   });
 
   it("supports history, multi-selection alignment, and reusable component instances", async () => {
@@ -976,7 +1023,7 @@ describe("StudioWorkspace canvas design workflow", () => {
     const clippedLayer = image?.parentElement;
     const appearanceLayer = clippedLayer?.parentElement;
     expect(image).not.toHaveAttribute("style");
-    expect(clippedLayer).toHaveAttribute("clip-path", "url(#canvas-editor-radius-photo)");
+    expect(clippedLayer).toHaveAttribute("clip-path", "url(#canvas-editor-radius-5x70-68-6f-74-6f)");
     expect(clippedLayer).toHaveStyle({ backdropFilter: "blur(10px)" });
     expect(appearanceLayer).toHaveStyle({ filter: "blur(6px)", mixBlendMode: "overlay" });
     expect(appearanceLayer).not.toHaveStyle({ backdropFilter: "blur(10px)" });

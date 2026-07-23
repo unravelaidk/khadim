@@ -1,8 +1,9 @@
-import type { Artifact, CanvasArtifactContent, CanvasComponentDefinition, CanvasElement, CanvasPrimitiveElement, HtmlDocumentArtifactContent } from "./types";
+import type { Artifact, CanvasArtifactContent, CanvasComponentDefinition, CanvasComponentElement, CanvasElement, CanvasPrimitiveElement, HtmlDocumentArtifactContent } from "./types";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, resolveCanvasConnectors } from "./canvas-geometry";
 import { booleanCanvasNodes, canBooleanNode } from "./vector-boolean";
 import { canvasElementFills, canvasElementIsClosed, canvasElementStrokes, canvasElementStrokeOutset, canvasGradientVector, canvasStrokeDashArray } from "./canvas-paint";
 import { canvasElementShadows, canvasShadowFilterDefinition, canvasShadowFilterId } from "./canvas-effects";
+import { CANVAS_COMPONENT_MAX_DEPTH, CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES, canvasComponentLegacyOverridePaths, canvasComponentOverrideAtPath, canvasComponentPath, canvasComponentPrimitiveSources } from "./canvas-components";
 
 const inertPolicy = "default-src 'none'; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
 
@@ -95,6 +96,9 @@ function safeColor(value: unknown): string {
 function opacity(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
 }
+
+const svgIdPart = (value: string): string => `${value.length}x${Array.from(value, (character) => character.codePointAt(0)!.toString(16)).join("-")}`;
+const componentSvgId = (kind: string, rootId: string, path: string): string => `canvas-component-${kind}-${svgIdPart(rootId)}-${svgIdPart(path)}`;
 
 function wrapCanvasText(text: string, width: number, fontSize: number): string[] {
   const maximum = Math.max(1, Math.floor(width / Math.max(1, fontSize * .56)));
@@ -266,6 +270,8 @@ interface CanvasRenderIndex {
   maskSourceIds: Set<string>;
   booleanChildrenByParent: Map<string, CanvasPrimitiveElement[]>;
   componentsById: Map<string, CanvasComponentDefinition>;
+  componentDefinitions: CanvasComponentDefinition[];
+  componentBudget: { remaining: number };
 }
 
 interface CanvasRenderAncestorState {
@@ -299,6 +305,73 @@ function canvasRenderAncestorStates(elements: CanvasElement[]): Map<string, Canv
   return stateById;
 }
 
+function renderCanvasComponentContents(
+  instance: CanvasComponentElement,
+  rootInstanceId: string,
+  definition: CanvasComponentDefinition,
+  index: CanvasRenderIndex,
+  offsetX: number,
+  offsetY: number,
+  prefix: string,
+  scopes: Array<{ prefix: string; overrides?: CanvasComponentElement["overrides"] }>,
+  ancestors: Set<string>,
+  depth: number,
+  liveEffects: boolean,
+  budget: { remaining: number },
+): string {
+  if (depth > CANVAS_COMPONENT_MAX_DEPTH || ancestors.has(definition.id) || budget.remaining <= 0) return "";
+  const nextAncestors = new Set(ancestors).add(definition.id);
+  const scaleX = finite(instance.width, definition.width) / Math.max(1, finite(definition.width, 1));
+  const scaleY = finite(instance.height, definition.height) / Math.max(1, finite(definition.height, 1));
+  const legacyPaths = canvasComponentLegacyOverridePaths(definition, index.componentDefinitions);
+  const effectiveNode = (child: CanvasElement): CanvasElement => child.type === "component" ? child : { ...child, ...canvasComponentOverrideAtPath(canvasComponentPath(prefix, child.id), scopes, prefix, legacyPaths.get(canvasComponentPath("", child.id))) };
+  const ancestorStates = canvasRenderAncestorStates(definition.nodes.map(effectiveNode));
+  const clipId = (frameId: string): string => componentSvgId("clip", rootInstanceId, canvasComponentPath(prefix, frameId));
+  const maskId = (sourceId: string): string => componentSvgId("mask", rootInstanceId, canvasComponentPath(prefix, sourceId));
+  const internalMaskSourceIds = new Set(definition.nodes.flatMap((child) => {
+    const effective = effectiveNode(child);
+    return effective.type !== "component" && effective.maskId ? [effective.maskId] : [];
+  }));
+  const clips = definition.nodes.filter((child): child is CanvasPrimitiveElement => child.type === "frame" && Boolean(child.clipContent)).map((frame) => {
+    const effective = effectiveNode(frame) as CanvasPrimitiveElement;
+    const x = offsetX + effective.x * scaleX;
+    const y = offsetY + effective.y * scaleY;
+    const width = effective.width * scaleX;
+    const height = effective.height * scaleY;
+    const shape = roundedRectShape({ ...effective, radius: effective.radius ?? 0 }, x, y, width, height, Math.min(scaleX, scaleY));
+    return `<clipPath id="${clipId(frame.id)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}${effective.rotation ? ` transform="rotate(${effective.rotation} ${x + width / 2} ${y + height / 2})"` : ""}/></clipPath>`;
+  }).join("");
+  const masks = definition.nodes.filter((child): child is CanvasPrimitiveElement => child.type !== "component" && internalMaskSourceIds.has(child.id)).map((source) => {
+    const effective = effectiveNode(source) as CanvasPrimitiveElement;
+    return `<clipPath id="${maskId(source.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive({ ...effective, opacity: 1, shadow: undefined, shadows: [], strokeWidth: 0, fills: [{ id: `mask-fill-${source.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] }, offsetX, offsetY, scaleX, scaleY, undefined, 1, componentSvgId("mask-gradient", rootInstanceId, canvasComponentPath(prefix, source.id)), liveEffects)}</clipPath>`;
+  }).join("");
+  const children = definition.nodes.map((child) => {
+    if (budget.remaining-- <= 0) return "";
+    if (internalMaskSourceIds.has(child.id)) return "";
+    const state = child.parentId ? ancestorStates.get(child.parentId) : undefined;
+    if (state?.hidden) return "";
+    const path = canvasComponentPath(prefix, child.id);
+    let rendered: string;
+    if (child.type === "component") {
+      const nested = index.componentsById.get(child.componentId);
+      if (!nested || child.hidden) return "";
+      const x = offsetX + child.x * scaleX;
+      const y = offsetY + child.y * scaleY;
+      const width = child.width * scaleX;
+      const height = child.height * scaleY;
+      const nestedInstance = { ...child, x, y, width, height };
+      const contents = renderCanvasComponentContents(nestedInstance, rootInstanceId, nested, index, x, y, path, [...scopes, { prefix: path, overrides: child.overrides }], nextAncestors, depth + 1, liveEffects, budget);
+      rendered = rotationWrapper(`<g opacity="${opacity(child.opacity)}"${appearanceStyle(child, Math.min(scaleX, scaleY), liveEffects)}>${contents}</g>`, finite(child.rotation, 0), x, y, width, height);
+    } else {
+      const effective = effectiveNode(child) as CanvasPrimitiveElement;
+      rendered = renderCanvasPrimitive(effective, offsetX, offsetY, scaleX, scaleY, undefined, 1, componentSvgId("gradient", rootInstanceId, path), liveEffects);
+      if (effective.maskId) rendered = `<g clip-path="url(#${maskId(effective.maskId)})">${rendered}</g>`;
+    }
+    return (state?.clipIds ?? []).reduce((nested, frameId) => `<g clip-path="url(#${clipId(frameId)})">${nested}</g>`, rendered);
+  }).join("");
+  return `${clips || masks ? `<defs>${clips}${masks}</defs>` : ""}${children}`;
+}
+
 function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explicitIds?: Set<string>, liveEffects = false): string {
   if (node.parentId && index.nodesById.get(node.parentId)?.type === "boolean" && (!explicitIds?.has(node.id) || explicitIds.has(node.parentId))) return "";
   const ancestorState = node.parentId ? index.ancestorStateById.get(node.parentId) : undefined;
@@ -321,43 +394,8 @@ function renderCanvasNode(node: CanvasElement, index: CanvasRenderIndex, explici
   if (!definition || !Array.isArray(definition.nodes)) return "";
   const width = finite(node.width, finite(definition.width, 1));
   const height = finite(node.height, finite(definition.height, 1));
-  const scaleX = width / Math.max(1, finite(definition.width, width));
-  const scaleY = height / Math.max(1, finite(definition.height, height));
-  const overrides = node.overrides ?? {};
-  const effectiveDefinitionNodes = definition.nodes.map((child) => ({ ...child, ...overrides[child.id] }));
-  const componentAncestorState = canvasRenderAncestorStates(effectiveDefinitionNodes);
-  const clipId = (frameId: string): string => `canvas-component-clip-${escapeHtml(node.id)}-${escapeHtml(frameId)}`;
-  const maskId = (sourceId: string): string => `canvas-component-mask-${escapeHtml(node.id)}-${escapeHtml(sourceId)}`;
-  const internalMaskSourceIds = new Set(definition.nodes.flatMap((child) => {
-    const effective = { ...child, ...overrides[child.id] };
-    return effective.maskId ? [effective.maskId] : [];
-  }));
-  const componentClips = definition.nodes.filter((child) => child.type === "frame" && child.clipContent).map((frame) => {
-    const effective = { ...frame, ...overrides[frame.id] };
-    const x = finite(node.x, 0) + finite(effective.x, 0) * scaleX;
-    const y = finite(node.y, 0) + finite(effective.y, 0) * scaleY;
-    const frameWidth = finite(effective.width, 1) * scaleX;
-    const frameHeight = finite(effective.height, 1) * scaleY;
-    const rotation = finite(effective.rotation, 0);
-    const shape = roundedRectShape({ ...effective, radius: effective.radius ?? 0 }, x, y, frameWidth, frameHeight, Math.min(scaleX, scaleY));
-    return `<clipPath id="${clipId(frame.id)}" clipPathUnits="userSpaceOnUse"><${shape.tag} ${shape.geometry}${rotation ? ` transform="rotate(${rotation} ${x + frameWidth / 2} ${y + frameHeight / 2})"` : ""}/></clipPath>`;
-  }).join("");
-  const componentMasks = definition.nodes.filter((child) => internalMaskSourceIds.has(child.id)).map((source) => {
-    const effective = { ...source, ...overrides[source.id], opacity: 1, shadow: undefined, shadows: [], strokeWidth: 0, fills: [{ id: `mask-fill-${source.id}`, visible: true, opacity: 1, color: "#ffffff" }], strokes: [] };
-    return `<clipPath id="${maskId(source.id)}" clipPathUnits="userSpaceOnUse">${renderCanvasPrimitive(effective, finite(node.x, 0), finite(node.y, 0), scaleX, scaleY)}</clipPath>`;
-  }).join("");
-  const renderedChildren = definition.nodes.map((child) => {
-    if (internalMaskSourceIds.has(child.id)) return "";
-    const ancestorState = child.parentId ? componentAncestorState.get(child.parentId) : undefined;
-    if (ancestorState?.hidden) return "";
-    const internalClipIds = ancestorState?.clipIds ?? [];
-    const effective = { ...child, ...overrides[child.id] };
-    const renderedChild = renderCanvasPrimitive(child, finite(node.x, 0), finite(node.y, 0), scaleX, scaleY, overrides[child.id], 1, `canvas-component-gradient-${node.id}-${child.id}`, liveEffects);
-    const maskedChild = effective.maskId ? `<g clip-path="url(#${maskId(effective.maskId)})">${renderedChild}</g>` : renderedChild;
-    return internalClipIds.reduce((nested, frameId) => `<g clip-path="url(#${clipId(frameId)})">${nested}</g>`, maskedChild);
-  }).join("");
-  const componentDefinitions = `${componentClips}${componentMasks}`;
-  const rendered = `<g opacity="${opacity(node.opacity)}"${appearanceStyle(node, 1, liveEffects)}>${componentDefinitions ? `<defs>${componentDefinitions}</defs>` : ""}${renderedChildren}</g>`;
+  const renderedChildren = renderCanvasComponentContents(node, node.id, definition, index, finite(node.x, 0), finite(node.y, 0), "", [{ prefix: "", overrides: node.overrides }], new Set(), 1, liveEffects, index.componentBudget);
+  const rendered = `<g opacity="${opacity(node.opacity)}"${appearanceStyle(node, 1, liveEffects)}>${renderedChildren}</g>`;
   const rotated = rotationWrapper(rendered, finite(node.rotation, 0), finite(node.x, 0), finite(node.y, 0), width, height);
   return wrapAncestorClips(rotated);
 }
@@ -384,6 +422,8 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
     maskSourceIds: new Set(resolvedElements.flatMap((element) => element.type !== "component" && element.maskId ? [element.maskId] : [])),
     booleanChildrenByParent: new Map(),
     componentsById: new Map(content.components.map((component) => [component.id, component])),
+    componentDefinitions: content.components,
+    componentBudget: { remaining: CANVAS_COMPONENT_MAX_SCENE_EXPANDED_NODES },
   };
   for (const element of resolvedElements) {
     if (!element.parentId || element.type === "component" || element.type === "boolean" || !canBooleanNode(element)) continue;
@@ -407,7 +447,8 @@ export function renderCanvasSvg(content: CanvasArtifactContent, title: string, o
     if (element.type !== "component") return [gradientDefinition(element, `canvas-gradient-${element.id}`)];
     const definition = content.components.find((component) => component.id === element.componentId);
     if (!definition) return [];
-    return definition.nodes.map((node) => gradientDefinition({ ...node, ...element.overrides?.[node.id] }, `canvas-component-gradient-${element.id}-${node.id}`));
+    const legacyPaths = canvasComponentLegacyOverridePaths(definition, content.components);
+    return canvasComponentPrimitiveSources(definition, content.components).map(({ path, effective }) => gradientDefinition({ ...effective, ...(element.overrides?.[path] ?? element.overrides?.[legacyPaths.get(path) ?? ""]) }, componentSvgId("gradient", element.id, path)));
   }).join("");
   const exportIds = options.elementIds ? new Set(options.elementIds) : undefined;
   const elements = resolvedElements.filter((element) => !exportIds || exportIds.has(element.id)).map((element) => renderCanvasNode(element, renderIndex, exportIds, options.liveEffects)).join("");
