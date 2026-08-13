@@ -166,10 +166,10 @@ describe("project chat workflow", () => {
     await user.click(screen.getByRole("button", { name: "New chat" }));
     expect(screen.getByRole("textbox", { name: "Message Khadim" })).toHaveValue("Keep this draft");
 
-    await user.click(screen.getByRole("button", { name: "Studio" }));
+    await user.click(screen.getByRole("button", { name: "Studio Beta" }));
     expect(await screen.findByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
     expect(desktop.artifacts.get(projectA.id)).toEqual([]);
-    expect(screen.getByRole("button", { name: "Studio" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Studio Beta" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -211,6 +211,7 @@ describe("project chat workflow", () => {
     }));
 
     expect(await screen.findByText("When should this ship?")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Message Khadim" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Custom answer" }), "Tomorrow");
     await user.click(screen.getByRole("button", { name: "Send answers" }));
 
@@ -220,6 +221,7 @@ describe("project chat workflow", () => {
       { delivery: ["Tomorrow"] },
     ));
     expect(screen.queryByText("When should this ship?")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Message Khadim" })).toHaveFocus());
   });
 
   it("surfaces a harness approval and sends the selected decision", async () => {
@@ -242,7 +244,9 @@ describe("project chat workflow", () => {
 
     expect(await screen.findByText("Run this command?")).toBeInTheDocument();
     expect(screen.getByText("bun test")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Always allow" }));
+    expect(screen.queryByRole("textbox", { name: "Message Khadim" })).not.toBeInTheDocument();
+    await user.click(screen.getByText("More permission options"));
+    await user.click(screen.getByRole("button", { name: "Allow session" }));
 
     await waitFor(() => expect(desktop.api.agent.answerApproval).toHaveBeenCalledWith(
       run.runId,
@@ -250,6 +254,7 @@ describe("project chat workflow", () => {
       "acceptForSession",
     ));
     expect(screen.queryByText("Run this command?")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Message Khadim" })).toHaveFocus());
   });
 
   it("creates document, website, and canvas artifacts in one persistent Studio workspace", async () => {
@@ -258,7 +263,7 @@ describe("project chat workflow", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "Studio" }));
+    await user.click(await screen.findByRole("button", { name: "Studio Beta" }));
     await user.click(await screen.findByRole("button", { name: "Document" }));
 
     expect(screen.getByRole("textbox", { name: "Artifact title" })).toHaveValue("Untitled document");
@@ -329,6 +334,125 @@ describe("project chat workflow", () => {
     expect(desktop.artifacts.get(projectA.id)?.[0]).toMatchObject({ kind: "canvas", content: { format: "khadim-canvas", sceneVersion: 1 } });
   });
 
+  it("opens a Canvas with chat hidden, toggles it on and off, and remembers per canvas while other canvases default hidden", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Studio Beta" }));
+    await user.click(await screen.findByRole("button", { name: "Create artifact" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Canvas/ }));
+
+    // A newly created Canvas opens with the main chat hidden by default. The
+    // pane stays mounted (to preserve component-local state) but is hidden,
+    // inert, and absent from the accessibility tree, so a normal role query
+    // cannot find it.
+    expect(screen.queryByRole("region", { name: /Main chat beside/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("separator", { name: "Resize Studio conversation pane" })).not.toBeInTheDocument();
+    const showChat = screen.getByRole("button", { name: "Show chat" });
+    expect(showChat).toHaveAttribute("aria-pressed", "false");
+    // The hidden pane is still in the DOM but carries hidden/inert so it is
+    // excluded from the accessibility tree and cannot steal focus.
+    const hiddenPane = document.querySelector(".studio-main-chat-pane");
+    expect(hiddenPane).not.toBeNull();
+    expect(hiddenPane).toHaveAttribute("hidden");
+    expect(hiddenPane).toHaveAttribute("inert");
+    expect(hiddenPane).toHaveAttribute("aria-hidden", "true");
+
+    // Revealing the chat shows the chat region and the resize separator immediately,
+    // and removes the hidden/inert accessibility attributes from the pane.
+    await user.click(showChat);
+    const shownPane = await screen.findByRole("region", { name: /Main chat beside/ });
+    expect(shownPane).toBeInTheDocument();
+    expect(shownPane).not.toHaveAttribute("hidden");
+    expect(shownPane).not.toHaveAttribute("inert");
+    expect(shownPane).not.toHaveAttribute("aria-hidden");
+    expect(screen.getByRole("separator", { name: "Resize Studio conversation pane" })).toBeInTheDocument();
+    const hideChat = screen.getByRole("button", { name: "Hide chat" });
+    expect(hideChat).toHaveAttribute("aria-pressed", "true");
+
+    // Hiding the chat removes both the region (from the a11y tree) and the separator.
+    await user.click(hideChat);
+    expect(screen.queryByRole("region", { name: /Main chat beside/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("separator", { name: "Resize Studio conversation pane" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-pressed", "false");
+    const collapsedPane = document.querySelector(".studio-main-chat-pane");
+    expect(collapsedPane).toHaveAttribute("hidden");
+    expect(collapsedPane).toHaveAttribute("inert");
+    // The toggle button keeps focus after hiding so it remains the way back.
+    expect(hideChat).toHaveFocus();
+
+    // Reopen the same Canvas and confirm the previously chosen (hidden) state is remembered.
+    await user.click(screen.getByRole("button", { name: "Back to artifacts" }));
+    await user.click(await screen.findByRole("button", { name: "Continue editing Untitled canvas" }));
+    expect(screen.queryByRole("region", { name: /Main chat beside/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-pressed", "false");
+
+    // A different Canvas defaults to hidden chat and exposes its own toggle.
+    await user.click(screen.getByRole("button", { name: "Back to artifacts" }));
+    await user.click(await screen.findByRole("button", { name: "Create artifact" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Canvas/ }));
+    expect(screen.queryByRole("region", { name: /Main chat beside/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("preserves Composer attachment state across Canvas chat Hide/Show without remounting the chat pane", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Studio Beta" }));
+    await user.click(await screen.findByRole("button", { name: "Create artifact" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Canvas/ }));
+
+    // Reveal the chat and add a Composer attachment (real component-local state).
+    await user.click(screen.getByRole("button", { name: "Show chat" }));
+    expect(await screen.findByRole("region", { name: /Main chat beside/ })).toBeInTheDocument();
+    const fileInput = document.querySelector<HTMLInputElement>(".composer-file-input")!;
+    expect(fileInput).not.toBeNull();
+    await user.upload(fileInput, new File(["plan content"], "plan.md", { type: "text/markdown" }));
+    expect(await screen.findByText("plan.md")).toBeInTheDocument();
+
+    // Hide the chat: the pane becomes hidden/inert but stays mounted.
+    await user.click(screen.getByRole("button", { name: "Hide chat" }));
+    expect(screen.queryByRole("region", { name: /Main chat beside/ })).not.toBeInTheDocument();
+    const collapsedPane = document.querySelector(".studio-main-chat-pane");
+    expect(collapsedPane).toHaveAttribute("hidden");
+    expect(collapsedPane).toHaveAttribute("inert");
+    // The attachment badge is still rendered in the mounted (but hidden) subtree.
+    expect(collapsedPane?.textContent).toContain("plan.md");
+
+    // Show the chat again: the Composer-local attachment survives the toggle.
+    await user.click(screen.getByRole("button", { name: "Show chat" }));
+    expect(await screen.findByRole("region", { name: /Main chat beside/ })).toBeInTheDocument();
+    expect(screen.getByText("plan.md")).toBeInTheDocument();
+  });
+
+  it("keeps the chat always visible and toggle-free for website and document Studio artifacts", async () => {
+    const desktop = createDesktopApi();
+    vi.mocked(desktop.api.artifacts.preview!).mockResolvedValue({ url: "about:blank?revision=1" });
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Studio Beta" }));
+    await user.click(await screen.findByRole("button", { name: "Document" }));
+    expect(screen.getByRole("region", { name: /Main chat beside/ })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Resize Studio conversation pane" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hide chat" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to artifacts" }));
+    await user.click(await screen.findByRole("button", { name: "Create artifact" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Website/ }));
+    expect(screen.getByRole("region", { name: "Main chat beside Untitled website" })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Resize Studio conversation pane" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hide chat" })).not.toBeInTheDocument();
+  });
+
   it("keeps Studio beside chat and applies an agent edit through the normal run snapshot", async () => {
     const desktop = createDesktopApi();
     vi.mocked(desktop.api.artifacts.preview!).mockResolvedValueOnce({ url: "about:blank?revision=1" }).mockResolvedValue({ url: "about:blank?revision=2" });
@@ -336,7 +460,7 @@ describe("project chat workflow", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "Studio" }));
+    await user.click(await screen.findByRole("button", { name: "Studio Beta" }));
     await user.click(await screen.findByRole("button", { name: "Website" }));
 
     expect(screen.getByRole("region", { name: "Main chat beside Untitled website" })).toBeInTheDocument();
@@ -427,7 +551,7 @@ describe("project chat workflow", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "Studio" }));
+    await user.click(await screen.findByRole("button", { name: "Studio Beta" }));
     await user.click(await screen.findByRole("button", { name: "Document" }));
     expect(screen.getByTitle("Untitled document editable page")).toHaveAttribute("srcdoc", expect.stringContaining("A clear title for the work"));
 
@@ -520,7 +644,7 @@ describe("project chat workflow", () => {
     expect(desktop.start).not.toHaveBeenCalled();
 
     await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "/new{Enter}");
-    expect(await screen.findByText("Where should we begin?")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Plan my week" })).toBeInTheDocument();
     expect(desktop.start).not.toHaveBeenCalled();
   });
 
@@ -532,14 +656,14 @@ describe("project chat workflow", () => {
 
     await user.click(await screen.findByRole("button", { name: /Agents/ }));
     await user.click(screen.getByRole("button", { name: "New agent" }));
-    await user.click(screen.getByRole("button", { name: /Blank agent/ }));
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Customer follow-up");
     await user.type(screen.getByRole("textbox", { name: "Instructions" }), "Write concise customer replies and ask before sending.");
+    await user.click(screen.getByText("Advanced setup"));
     await user.click(screen.getByRole("button", { name: /Project files/ }));
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
-    expect(screen.getByRole("heading", { name: "Customer follow-up" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Start chat" }));
+    expect(screen.getByRole("button", { name: /Customer follow-up.*Owns customer follow-up work/ })).toHaveAttribute("aria-expanded", "true");
+    await user.click(screen.getByRole("button", { name: "Start chat with Customer follow-up" }));
     await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Reply to Alex{Enter}");
 
     await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
@@ -552,6 +676,30 @@ describe("project chat workflow", () => {
     expect(JSON.parse(localStorage.getItem("khadim.agents.v1") ?? "[]")).toEqual([
       expect.objectContaining({ name: "Customer follow-up", type: "agent", connectors: ["web"] }),
     ]);
+  });
+
+  it("generates an agent draft with the active model without adding a chat", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Agents/ }));
+    await user.click(screen.getByRole("button", { name: "New agent" }));
+    await user.type(screen.getByRole("textbox", { name: "Describe your agent" }), "Follow up with customers after meetings and ask before sending.");
+    await user.click(screen.getByRole("button", { name: "Generate with AI" }));
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const generationRun = desktop.start.mock.calls[0][0];
+    expect(generationRun).toMatchObject({ enabledTools: [], enabledApps: [] });
+    expect(generationRun.systemPrompt).toContain("Return only valid JSON");
+
+    act(() => desktop.emit({ runId: generationRun.runId, sequence: 1, event: { event_type: "text_delta", content: JSON.stringify({ name: "Customer care", description: "Keeps customer conversations moving.", prompt: "Draft warm follow-ups and always ask before sending.", connectors: ["web", "apps"], appAccess: ["gmail"], color: "coral" }) } }));
+    act(() => desktop.emit({ runId: generationRun.runId, sequence: 2, event: { event_type: "done" } }));
+
+    expect(await screen.findByRole("textbox", { name: "Name" })).toHaveValue("Customer care");
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue("Draft warm follow-ups and always ask before sending.");
+    expect(screen.getByText("Draft ready. Review it below or create it now.")).toBeInTheDocument();
+    await waitFor(() => expect(desktop.chats.get(projectA.id)).toEqual([]));
   });
 
   it("configures a template agent with a scoped Google app allowlist and supports edit and delete", async () => {
@@ -574,29 +722,31 @@ describe("project chat workflow", () => {
 
     await user.click(await screen.findByRole("button", { name: /Agents/ }));
     const newAgentButton = screen.getByRole("button", { name: "New agent" });
-    await user.click(newAgentButton);
+    const templateButton = screen.getByRole("button", { name: "Use a template" });
+    await user.click(templateButton);
     expect(screen.getByRole("dialog", { name: "Agent templates" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: /Customer follow-up/ })).toHaveFocus());
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Agent templates" })).not.toBeInTheDocument();
     expect(newAgentButton).toHaveFocus();
-    await user.click(newAgentButton);
+    await user.click(templateButton);
     await user.click(screen.getByRole("button", { name: /Meeting brief/ }));
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Meeting brief");
+    await user.click(screen.getByText("Advanced setup"));
     await user.selectOptions(screen.getByRole("combobox", { name: "Environment" }), "rpa");
     expect(screen.getByRole("button", { name: /Google Calendar/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /Google Drive/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /^Gmail\b/ })).toHaveAttribute("aria-pressed", "false");
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
-    await user.click(screen.getByRole("button", { name: "Edit" }));
-    const description = screen.getByRole("textbox", { name: "Short description" });
+    await user.click(screen.getByRole("button", { name: "Edit agent" }));
+    const description = screen.getByRole("textbox", { name: "Short responsibility" });
     await user.clear(description);
     await user.type(description, "Prepares the agenda and decision brief.");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(screen.getByText("Prepares the agenda and decision brief.", { selector: ".agent-profile-identity p" })).toBeInTheDocument();
+    expect(screen.getByText("Prepares the agenda and decision brief.", { selector: ".agent-library-copy > small" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Start chat" }));
+    await user.click(screen.getByRole("button", { name: "Start chat with Meeting brief" }));
     await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Brief tomorrow's meeting{Enter}");
     await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
     expect(desktop.start.mock.calls[0][0]).toMatchObject({
@@ -607,12 +757,13 @@ describe("project chat workflow", () => {
     expect(desktop.chats.get(projectA.id)?.[0]?.runs?.[0]).toMatchObject({ harness: "rpa", enabledApps: ["calendar", "drive"] });
 
     await user.click(screen.getByRole("button", { name: /Agents/ }));
-    expect(screen.getByText(/^1 run\b/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recent work" })).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Delete agent" }));
     expect(screen.getByText("Existing chats keep their saved run snapshots.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Delete agent" }));
     await waitFor(() => expect(JSON.parse(localStorage.getItem("khadim.agents.v1") ?? "[]")).toEqual([]));
-    expect(screen.getByRole("heading", { name: "Everyday" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Everyday.*practical generalist/ })).toBeInTheDocument();
   });
 
   it("keeps a running chat and its generated artifact bound to the originating project", async () => {
@@ -682,6 +833,26 @@ describe("project chat workflow", () => {
     expect(screen.queryByRole("button", { name: /From “Build quarterly brief”/ })).not.toBeInTheDocument();
   });
 
+  it("unlocks a chat when project recovery no longer reports its active run", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Recoverless task{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const run = desktop.start.mock.calls[0][0];
+
+    await user.click(await screen.findByRole("button", { name: /Customer support Local project/ }));
+    await screen.findByRole("heading", { name: "Customer support" });
+    await user.click(screen.getByRole("button", { name: /Quarterly planning Local project/ }));
+    await user.click((await screen.findAllByRole("button", { name: "Recoverless task" }))[0]);
+
+    expect(await screen.findByRole("textbox", { name: "Message Khadim" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.[0]?.runs?.find((item) => item.id === run.runId)?.status).toBe("error"));
+  });
+
   it("switches the visible project when Settings saves a different project folder", async () => {
     const desktop = createDesktopApi();
     Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
@@ -689,7 +860,7 @@ describe("project chat workflow", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByText("Where should we begin?");
+    await screen.findByRole("button", { name: "Plan my week" });
     await user.click((await screen.findAllByRole("button", { name: "Settings" }))[0]);
     await user.click(await screen.findByRole("button", { name: "Project" }));
     await user.click(screen.getByRole("button", { name: "Choose project folder" }));
@@ -1182,5 +1353,530 @@ describe("project chat workflow", () => {
     await waitFor(() => expect(desktop.api.conversations.remove).toHaveBeenCalledWith(projectA.id, run.conversationId));
     expect(desktop.api.agent.acknowledge).toHaveBeenCalledWith(run.runId);
     expect(desktop.chats.get(projectA.id)).toEqual([]);
+  });
+
+  it("runs two chats concurrently without a global send lock and stops only the selected chat's run", async () => {
+    const desktop = createDesktopApi();
+    // Defer the terminal recovery snapshot for the first run so it stays running
+    // while the second chat starts and stops. The second run resolves normally.
+    let resolveFirstRecover!: (snapshots: Awaited<ReturnType<KhadimDesktopApi["agent"]["recover"]>>) => void;
+    const firstRecover = new Promise<Awaited<ReturnType<KhadimDesktopApi["agent"]["recover"]>>>((resolve) => {
+      resolveFirstRecover = resolve;
+    });
+    let recoverCallIndex = 0;
+    vi.mocked(desktop.api.agent.recover).mockImplementation(async () => {
+      recoverCallIndex += 1;
+      // Initial load recovery + the first stopRun call both happen before the
+      // second stop; return the deferred promise for stop calls on the first run.
+      return recoverCallIndex <= 2 ? firstRecover : [];
+    });
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Plan my week" });
+
+    // Start chat A.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Work on chat A{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const runA = desktop.start.mock.calls[0][0];
+    const chatAId = runA.conversationId;
+    act(() => desktop.emit({ runId: runA.runId, sequence: 1, event: { event_type: "text_delta", content: "A is working" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.[0]?.messages.at(-1)?.content).toBe("A is working"));
+
+    // While chat A is still running, open a new chat. The welcome composer must
+    // be enabled (not locked by chat A's run) so the second run can start.
+    await user.click(screen.getByRole("button", { name: /New chat/ }));
+    expect(await screen.findByRole("button", { name: "Plan my week" })).toBeInTheDocument();
+    const welcomeComposer = screen.getByRole("textbox", { name: "Message Khadim" });
+    expect(welcomeComposer).not.toBeDisabled();
+    await user.type(welcomeComposer, "Work on chat B{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(2));
+    const runB = desktop.start.mock.calls[1][0];
+    const chatBId = runB.conversationId;
+    expect(chatBId).not.toBe(chatAId);
+    act(() => desktop.emit({ runId: runB.runId, sequence: 1, event: { event_type: "text_delta", content: "B is working" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.[0]?.messages.at(-1)?.content).toBe("B is working"));
+
+    // Both runs are active simultaneously and isolated per conversation.
+    expect(desktop.chats.get(projectA.id)).toHaveLength(2);
+    const chatA = desktop.chats.get(projectA.id)?.find((c) => c.id === chatAId);
+    const chatB = desktop.chats.get(projectA.id)?.find((c) => c.id === chatBId);
+    expect(chatA?.runs?.[0]?.status).toBe("running");
+    expect(chatB?.runs?.[0]?.status).toBe("running");
+
+    // Switch back to chat A and stop its run. Chat B must keep running.
+    await user.click(screen.getByRole("button", { name: "Work on chat A" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Message Khadim" })).toHaveValue(""));
+    expect(screen.getByRole("button", { name: "Stop response" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Stop response" }));
+    await waitFor(() => expect(desktop.api.agent.abort).toHaveBeenCalledWith(runA.runId));
+    expect(desktop.api.agent.abort).not.toHaveBeenCalledWith(runB.runId);
+
+    // Release the first run's terminal recovery so it finalizes as stopped.
+    act(() => resolveFirstRecover([{
+      runId: runA.runId,
+      projectId: projectA.id,
+      conversationId: chatAId,
+      assistantMessageId: runA.assistantMessageId,
+      engineSessionKey: runA.engineSessionKey,
+      events: [{ sequence: 2, event: { event_type: "error", content: "Run stopped.", metadata: { reason: "aborted" } } }],
+      terminal: true,
+      droppedEventCount: 0,
+      nextSequence: 3,
+    }]));
+
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatAId)?.runs?.[0]?.status).toBe("stopped"));
+    // Chat B is still running and was never aborted.
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatBId)?.runs?.[0]?.status).toBe("running");
+    expect(desktop.api.agent.abort).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Work on chat B" }));
+    expect(await screen.findByRole("button", { name: "Stop response" })).toBeInTheDocument();
+
+    // Chat A's composer is unlocked after its run stops, while chat B remains locked.
+    await user.click(screen.getByRole("button", { name: "Work on chat A" }));
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Follow up in A{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(3));
+    expect(desktop.start.mock.calls[2][0].conversationId).toBe(chatAId);
+  });
+
+  it("keeps a question and an approval from two concurrent chats coexisting per run", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Plan my week" });
+
+    // Chat A: pending question.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Ask me something{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const runA = desktop.start.mock.calls[0][0];
+    act(() => desktop.emit({
+      runId: runA.runId,
+      sequence: 1,
+      event: {
+        event_type: "question",
+        metadata: {
+          requestId: "question-a",
+          questions: [{ id: "q1", header: "Clarify", question: "Which scope?", options: [] }],
+        },
+      },
+    }));
+    expect(await screen.findByText("Which scope?")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Message Khadim" })).not.toBeInTheDocument();
+
+    // Start chat B without answering chat A. A new chat is not locked by A's run.
+    await user.click(screen.getByRole("button", { name: /New chat/ }));
+    await user.type(await screen.findByRole("textbox", { name: "Message Khadim" }), "Approve my command{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(2));
+    const runB = desktop.start.mock.calls[1][0];
+    act(() => desktop.emit({
+      runId: runB.runId,
+      sequence: 1,
+      event: {
+        event_type: "approval",
+        metadata: { requestId: "approval-b", kind: "command", title: "Run rm -rf?", detail: "rm -rf /tmp/cache" },
+      },
+    }));
+    expect(await screen.findByText("Run rm -rf?")).toBeInTheDocument();
+    expect(screen.getByText("rm -rf /tmp/cache")).toBeInTheDocument();
+
+    // Both pending decisions coexist, each scoped to its own run. Switching back
+    // to chat A surfaces only its question; chat B's approval stays pending.
+    await user.click(screen.getByRole("button", { name: "Ask me something" }));
+    await waitFor(() => expect(screen.getByText("Which scope?")).toBeInTheDocument());
+    expect(screen.queryByText("Run rm -rf?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Message Khadim" })).not.toBeInTheDocument();
+
+    // Answer chat A's question; its decision clears without affecting chat B.
+    await user.type(screen.getByRole("textbox", { name: "Custom answer" }), "Production");
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+    await waitFor(() => expect(desktop.api.agent.answerQuestion).toHaveBeenCalledWith(
+      runA.runId,
+      "question-a",
+      { q1: ["Production"] },
+    ));
+    expect(screen.queryByText("Which scope?")).not.toBeInTheDocument();
+
+    // Switch to chat B and its approval is still pending (not overwritten by A).
+    await user.click(screen.getByRole("button", { name: "Approve my command" }));
+    await waitFor(() => expect(screen.getByText("Run rm -rf?")).toBeInTheDocument());
+    expect(screen.getByText("rm -rf /tmp/cache")).toBeInTheDocument();
+    await user.click(screen.getByText("More permission options"));
+    await user.click(screen.getByRole("button", { name: /Approve once/ }));
+    await waitFor(() => expect(desktop.api.agent.answerApproval).toHaveBeenCalledWith(
+      runB.runId,
+      "approval-b",
+      "accept",
+    ));
+    expect(screen.queryByText("Run rm -rf?")).not.toBeInTheDocument();
+  });
+
+  it("registers every nonterminal recovered run and keeps their pending decisions isolated", async () => {
+    const desktop = createDesktopApi();
+    const savedAt = "2026-07-13T10:00:00.000Z";
+    desktop.chats.set(projectA.id, [
+      {
+        id: "chat-recover-a",
+        projectId: projectA.id,
+        engineSessionKey: "electron.v1.recover-a",
+        title: "Recover A",
+        createdAt: savedAt,
+        updatedAt: savedAt,
+        messages: [
+          { id: "user-recover-a", role: "user", content: "Continue A", createdAt: savedAt, status: "complete" },
+          { id: "assistant-recover-a", role: "assistant", content: "", createdAt: savedAt, status: "streaming", runId: "run-recover-a" },
+        ],
+        runs: [{
+          id: "run-recover-a",
+          projectId: projectA.id,
+          conversationId: "chat-recover-a",
+          userMessageId: "user-recover-a",
+          assistantMessageId: "assistant-recover-a",
+          status: "running",
+          createdAt: savedAt,
+          agent: { id: "everyday", name: "Everyday", systemPrompt: "Help." },
+          model: { id: "model-1", name: "Claude Sonnet", provider: "anthropic", model: "claude-sonnet-4-5" },
+          harness: "assistant",
+          enabledTools: ["web", "files"],
+        }],
+      },
+      {
+        id: "chat-recover-b",
+        projectId: projectA.id,
+        engineSessionKey: "electron.v1.recover-b",
+        title: "Recover B",
+        createdAt: savedAt,
+        updatedAt: savedAt,
+        messages: [
+          { id: "user-recover-b", role: "user", content: "Continue B", createdAt: savedAt, status: "complete" },
+          { id: "assistant-recover-b", role: "assistant", content: "", createdAt: savedAt, status: "streaming", runId: "run-recover-b" },
+        ],
+        runs: [{
+          id: "run-recover-b",
+          projectId: projectA.id,
+          conversationId: "chat-recover-b",
+          userMessageId: "user-recover-b",
+          assistantMessageId: "assistant-recover-b",
+          status: "running",
+          createdAt: savedAt,
+          agent: { id: "everyday", name: "Everyday", systemPrompt: "Help." },
+          model: { id: "model-1", name: "Claude Sonnet", provider: "anthropic", model: "claude-sonnet-4-5" },
+          harness: "assistant",
+          enabledTools: ["web", "files"],
+        }],
+      },
+      {
+        id: "chat-recover-orphan",
+        projectId: projectA.id,
+        engineSessionKey: "electron.v1.recover-orphan",
+        title: "Recover orphan",
+        createdAt: savedAt,
+        updatedAt: savedAt,
+        messages: [],
+        runs: [],
+      },
+    ]);
+    vi.mocked(desktop.api.agent.recover).mockResolvedValue([
+      {
+        runId: "run-recover-a",
+        projectId: projectA.id,
+        conversationId: "chat-recover-a",
+        assistantMessageId: "assistant-recover-a",
+        engineSessionKey: "electron.v1.recover-a",
+        events: [
+          { sequence: 1, event: { event_type: "text_delta", content: "A streaming" } },
+          { sequence: 2, event: { event_type: "question", metadata: { requestId: "question-recover-a", questions: [{ id: "q", header: "Scope", question: "Which scope for A?", options: [] }] } } },
+        ],
+        terminal: false,
+        droppedEventCount: 0,
+        nextSequence: 3,
+      },
+      {
+        runId: "run-recover-b",
+        projectId: projectA.id,
+        conversationId: "chat-recover-b",
+        assistantMessageId: "assistant-recover-b",
+        engineSessionKey: "electron.v1.recover-b",
+        events: [
+          { sequence: 1, event: { event_type: "text_delta", content: "B streaming" } },
+        ],
+        terminal: false,
+        droppedEventCount: 0,
+        nextSequence: 2,
+      },
+      {
+        runId: "run-recover-orphan",
+        projectId: projectA.id,
+        conversationId: "chat-recover-orphan",
+        assistantMessageId: "assistant-recover-orphan",
+        engineSessionKey: "electron.v1.recover-orphan",
+        events: [],
+        terminal: false,
+        droppedEventCount: 0,
+        nextSequence: 1,
+      },
+    ]);
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Both recovered chats are registered as active (not just the first).
+    await user.click(await screen.findByRole("button", { name: "Recover A" }));
+    expect(await screen.findByText("A streaming")).toBeInTheDocument();
+    // Chat A recovered a pending question, so the composer shows the question
+    // panel (the stop control is hidden from the a11y tree while a decision is pending).
+    expect(screen.getByText("Which scope for A?")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Recover B" }));
+    await waitFor(() => expect(screen.getByText("B streaming")).toBeInTheDocument());
+    // Chat B has no pending decision, so its active run exposes the stop control.
+    expect(await screen.findByRole("button", { name: "Stop response" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message Khadim" })).toBeInTheDocument();
+    expect(screen.queryByText("Which scope for A?")).not.toBeInTheDocument();
+
+    // Stopping chat B leaves chat A's run and its pending question intact.
+    await user.click(screen.getByRole("button", { name: "Stop response" }));
+    await waitFor(() => expect(desktop.api.agent.abort).toHaveBeenCalledWith("run-recover-b"));
+    expect(desktop.api.agent.abort).not.toHaveBeenCalledWith("run-recover-a");
+    await user.click(screen.getByRole("button", { name: "Recover A" }));
+    await waitFor(() => expect(screen.getByText("Which scope for A?")).toBeInTheDocument());
+    // Chat A is still active; answering its question clears the decision panel
+    // and reveals the stop control again.
+    await user.type(screen.getByRole("textbox", { name: "Custom answer" }), "Production");
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+    await waitFor(() => expect(screen.queryByText("Which scope for A?")).not.toBeInTheDocument());
+    expect(await screen.findByRole("button", { name: "Stop response" })).toBeInTheDocument();
+
+    // A recovery snapshot that cannot be matched to a saved run must not lock
+    // its conversation as active.
+    await user.click(screen.getByRole("button", { name: "Recover orphan" }));
+    expect(await screen.findByRole("textbox", { name: "Message Khadim" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
+  });
+
+  it("isolates per-chat harness selection so two chats keep different capabilities and a follow-up run uses each chat's harness", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Plan my week" });
+
+    // Start chat A (defaults to global "assistant").
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Work on chat A{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const runA = desktop.start.mock.calls[0][0];
+    const chatAId = runA.conversationId;
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatAId)).toMatchObject({ harness: "assistant", runs: [{ harness: "assistant" }] });
+    act(() => desktop.emit({ runId: runA.runId, sequence: 1, event: { event_type: "done" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatAId)?.runs?.[0]?.status).toBe("complete"));
+
+    // Switch chat A to RPA via the composer. This must persist on chat A only.
+    await user.click(screen.getByRole("button", { name: "Enable tools" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Computer control/ }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatAId)?.harness).toBe("rpa"));
+    // Global settings default is untouched.
+    expect(desktop.api.settings.save).not.toHaveBeenCalled();
+
+    // Open a new chat. Its composer reflects the global default ("assistant").
+    await user.click(screen.getByRole("button", { name: /New chat/ }));
+    expect(await screen.findByRole("button", { name: "Plan my week" })).toBeInTheDocument();
+    const welcomeComposer = screen.getByRole("textbox", { name: "Message Khadim" });
+    await user.type(welcomeComposer, "Work on chat B{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(2));
+    const runB = desktop.start.mock.calls[1][0];
+    const chatBId = runB.conversationId;
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatBId)).toMatchObject({ harness: "assistant", runs: [{ harness: "assistant" }] });
+    act(() => desktop.emit({ runId: runB.runId, sequence: 1, event: { event_type: "done" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatBId)?.runs?.[0]?.status).toBe("complete"));
+
+    // Switching back to chat A restores its RPA harness in the composer.
+    await user.click(screen.getByRole("button", { name: "Work on chat A" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Enable tools" })).toHaveAttribute("aria-expanded", "false"));
+    await user.click(screen.getByRole("button", { name: "Enable tools" }));
+    expect(screen.getByRole("menuitemradio", { name: /Computer control/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: /^Assistant/ })).toHaveAttribute("aria-checked", "false");
+
+    // A follow-up run in chat A uses chat A's persisted RPA harness.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Continue in A{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(3));
+    const runAFollowUp = desktop.start.mock.calls[2][0];
+    expect(runAFollowUp).toMatchObject({ conversationId: chatAId });
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatAId)?.runs?.at(-1)).toMatchObject({ harness: "rpa" });
+    act(() => desktop.emit({ runId: runAFollowUp.runId, sequence: 1, event: { event_type: "done" } }));
+
+    // Switching to chat B restores its assistant harness, and a follow-up run there uses assistant.
+    await user.click(screen.getByRole("button", { name: "Work on chat B" }));
+    await user.click(screen.getByRole("button", { name: "Enable tools" }));
+    expect(screen.getByRole("menuitemradio", { name: /^Assistant/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: /Computer control/ })).toHaveAttribute("aria-checked", "false");
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Continue in B{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(4));
+    const runBFollowUp = desktop.start.mock.calls[3][0];
+    expect(runBFollowUp).toMatchObject({ conversationId: chatBId });
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatBId)?.runs?.at(-1)).toMatchObject({ harness: "assistant" });
+    act(() => desktop.emit({ runId: runBFollowUp.runId, sequence: 1, event: { event_type: "done" } }));
+
+    // Global settings were never written by per-chat harness selection.
+    expect(desktop.api.settings.save).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the last run harness for a legacy chat without a durable harness field and preserves it across reload", async () => {
+    const desktop = createDesktopApi();
+    const savedAt = "2026-07-13T10:00:00.000Z";
+    // A legacy chat saved before per-chat harness existed: no `harness` field,
+    // but its last run snapshot records RPA.
+    desktop.chats.set(projectA.id, [{
+      id: "chat-legacy",
+      projectId: projectA.id,
+      engineSessionKey: "electron.v1.legacy",
+      title: "Legacy RPA chat",
+      createdAt: savedAt,
+      updatedAt: savedAt,
+      messages: [
+        { id: "user-legacy", role: "user", content: "Drive the UI", createdAt: savedAt, status: "complete" },
+        { id: "assistant-legacy", role: "assistant", content: "Done", createdAt: savedAt, status: "complete", runId: "run-legacy" },
+      ],
+      runs: [{
+        id: "run-legacy",
+        projectId: projectA.id,
+        conversationId: "chat-legacy",
+        userMessageId: "user-legacy",
+        assistantMessageId: "assistant-legacy",
+        status: "complete",
+        createdAt: savedAt,
+        completedAt: savedAt,
+        agent: { id: "everyday", name: "Everyday", systemPrompt: "Help." },
+        model: { id: "model-1", name: "Claude Sonnet", provider: "anthropic", model: "claude-sonnet-4-5" },
+        harness: "rpa",
+        enabledTools: ["web", "files"],
+      }],
+    }]);
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    const firstRender = render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Legacy RPA chat" }));
+    // The composer derives RPA from the last run snapshot for the legacy chat.
+    await user.click(screen.getByRole("button", { name: "Enable tools" }));
+    expect(screen.getByRole("menuitemradio", { name: /Computer control/ })).toHaveAttribute("aria-checked", "true");
+
+    // A follow-up run in the legacy chat uses the last-run harness.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Keep driving{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    expect(desktop.start.mock.calls[0][0]).toMatchObject({ conversationId: "chat-legacy" });
+    expect(desktop.chats.get(projectA.id)?.[0]?.runs?.at(-1)).toMatchObject({ harness: "rpa" });
+    act(() => desktop.emit({ runId: desktop.start.mock.calls[0][0].runId, sequence: 1, event: { event_type: "done" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.[0]?.runs?.at(-1)?.status).toBe("complete"));
+
+    // Reloading restores the legacy chat and its last-run-derived harness.
+    firstRender.unmount();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Legacy RPA chat" }));
+    await user.click(screen.getByRole("button", { name: "Enable tools" }));
+    expect(screen.getByRole("menuitemradio", { name: /Computer control/ })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("updates the global default when selecting a harness from the welcome composer with no chat selected", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Plan my week" });
+
+    // No chat is selected; choosing a harness updates global settings as the default.
+    await user.click(screen.getByRole("button", { name: "Enable tools" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Computer control/ }));
+    await waitFor(() => expect(desktop.api.settings.save).toHaveBeenCalled());
+    expect(desktop.api.settings.save).toHaveBeenCalledWith(expect.objectContaining({ harness: "rpa" }));
+  });
+
+  it("persists /harness rpa in an existing assistant chat and the command response does not revert it, and welcome /harness rpa creates its command chat with rpa", async () => {
+    const desktop = createDesktopApi();
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Plan my week" });
+
+    // Start an assistant chat so there is an existing conversation selected.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Plan the week{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const chatId = desktop.start.mock.calls[0][0].conversationId;
+    act(() => desktop.emit({ runId: desktop.start.mock.calls[0][0].runId, sequence: 1, event: { event_type: "done" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatId)?.runs?.[0]?.status).toBe("complete"));
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatId)).toMatchObject({ harness: "assistant" });
+
+    // `/harness rpa` in the existing chat persists rpa on that conversation only.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "/harness rpa{Enter}");
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatId)?.harness).toBe("rpa"));
+    // The command response is appended to the same chat and does not revert it.
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatId)?.harness).toBe("rpa");
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatId)?.messages.at(-1)?.content).toContain("Computer control");
+    // Per-chat selection must not update global settings.
+    expect(desktop.api.settings.save).not.toHaveBeenCalled();
+
+    // Go home (no chat selected) and run `/harness rpa` from the welcome composer.
+    await user.click(screen.getByRole("button", { name: /New chat/ }));
+    expect(await screen.findByRole("button", { name: "Plan my week" })).toBeInTheDocument();
+    const welcomeComposer = screen.getByRole("textbox", { name: "Message Khadim" });
+    await user.type(welcomeComposer, "/harness rpa{Enter}");
+
+    // With no chat selected, `/harness rpa` updates the global default and the
+    // command response creates a brand-new chat persisted with harness rpa.
+    await waitFor(() => expect(desktop.api.settings.save).toHaveBeenCalledWith(expect.objectContaining({ harness: "rpa" })));
+    const commandChats = desktop.chats.get(projectA.id)?.filter((c) => c.title === "/harness rpa") ?? [];
+    expect(commandChats).toHaveLength(1);
+    expect(commandChats[0]).toMatchObject({ harness: "rpa" });
+    expect(commandChats[0].messages.at(-1)?.content).toContain("Computer control");
+    // The original assistant-turned-rpa chat is untouched by the welcome command.
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === chatId)?.harness).toBe("rpa");
+  });
+
+  it("does not mutate a previously selected assistant chat when starting an RPA-configured agent, and the new chat/run uses rpa", async () => {
+    const desktop = createDesktopApi();
+    vi.mocked(desktop.api.google.get).mockResolvedValue({
+      configured: true,
+      connected: true,
+      credentialStatus: "ready",
+      email: "owner@example.com",
+      scopes: [
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+      ],
+    });
+    Object.defineProperty(window, "khadim", { configurable: true, value: desktop.api });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Plan my week" });
+
+    // Start an assistant chat and leave it selected.
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Draft the note{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(1));
+    const assistantChatId = desktop.start.mock.calls[0][0].conversationId;
+    act(() => desktop.emit({ runId: desktop.start.mock.calls[0][0].runId, sequence: 1, event: { event_type: "done" } }));
+    await waitFor(() => expect(desktop.chats.get(projectA.id)?.find((c) => c.id === assistantChatId)?.runs?.[0]?.status).toBe("complete"));
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === assistantChatId)).toMatchObject({ harness: "assistant" });
+
+    // Switch to Agents and create an RPA-configured agent, then start its chat.
+    await user.click(screen.getByRole("button", { name: /Agents/ }));
+    await user.click(screen.getByRole("button", { name: "Use a template" }));
+    await user.click(screen.getByRole("button", { name: /Meeting brief/ }));
+    await user.click(screen.getByText("Advanced setup"));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Environment" }), "rpa");
+    await user.click(screen.getByRole("button", { name: "Create agent" }));
+    await user.click(screen.getByRole("button", { name: "Start chat with Meeting brief" }));
+
+    // The previously selected assistant chat is not mutated by the agent launch.
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === assistantChatId)).toMatchObject({ harness: "assistant" });
+
+    // The newly launched chat uses the RPA global default configured by the agent.
+    expect(await screen.findByRole("button", { name: "Plan my week" })).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Message Khadim" }), "Brief tomorrow's meeting{Enter}");
+    await waitFor(() => expect(desktop.start).toHaveBeenCalledTimes(2));
+    const agentRun = desktop.start.mock.calls[1][0];
+    expect(agentRun.conversationId).not.toBe(assistantChatId);
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === agentRun.conversationId)).toMatchObject({ harness: "rpa" });
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === agentRun.conversationId)?.runs?.[0]).toMatchObject({ harness: "rpa" });
+    // The old assistant chat is still assistant and unchanged.
+    expect(desktop.chats.get(projectA.id)?.find((c) => c.id === assistantChatId)).toMatchObject({ harness: "assistant" });
   });
 });

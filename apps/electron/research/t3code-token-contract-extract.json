@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_aa800a5dae8625144aa04873d680f083",
+  "session_id": "session_aa800a5dae8625144aa04873d680f083",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/pingdotgg/t3code/blob/main/packages/contracts/src/providerRuntime.ts",
+      "title": "t3code/packages/contracts/src/providerRuntime.ts at main \u00b7 pingdotgg/t3code \u00b7 GitHub",
+      "publish_date": "2026-02-08",
+      "excerpts": [
+        "# pingdotgg/t3code \u2014 packages/contracts/src/providerRuntime.ts\n```ts\n  \"session.started\",\n  \"session.configured\",\n  \"session.state.changed\",\n  \"session.exited\",\n  \"thread.started\",\n  \"thread.state.changed\",\n  \"thread.metadata.updated\",\n  \"thread.token-usage.updated\",\n  \"thread.realtime.started\",\n  \"thread.realtime.item-added\",\n```\n\n...\n\n```ts\nconst ThreadMetadataUpdatedType = Schema.Literal(\"thread.metadata.updated\");\nconst ThreadTokenUsageUpdatedType = Schema.Literal(\"thread.token-usage.updated\");\nconst ThreadRealtimeStartedType = Schema.Literal(\"thread.realtime.started\");\n```\n\n...\n\n```ts\nexport type ThreadMetadataUpdatedPayload = typeof ThreadMetadataUpdatedPayload.Type;\n\nexport const ThreadTokenUsageSnapshot = Schema.Struct({\n  usedTokens: NonNegativeInt,\n  totalProcessedTokens: Schema.optional(NonNegativeInt),\n  maxTokens: Schema.optional(PositiveInt),\n  inputTokens: Schema.optional(NonNegativeInt),\n  cachedInputTokens: Schema.optional(NonNegativeInt),\n  outputTokens: Schema.optional(NonNegativeInt),\n  reasoningOutputTokens: Schema.optional(NonNegativeInt),\n  lastUsedTokens: Schema.optional(NonNegativeInt),\n  lastInputTokens: Schema.optional(NonNegativeInt),\n  lastCachedInputTokens: Schema.optional(NonNegativeInt),\n  lastOutputTokens: Schema.optional(NonNegativeInt),\n```\n\n...\n\n```ts\nexport type ThreadTokenUsageSnapshot = typeof ThreadTokenUsageSnapshot.Type;\n\nconst ThreadTokenUsageUpdatedPayload = Schema.Struct({\n  usage: ThreadTokenUsageSnapshot,\n});\nexport type ThreadTokenUsageUpdatedPayload = typeof ThreadTokenUsageUpdatedPayload.Type;\n\n```\n\n...\n\n```ts\nexport const RuntimeTaskUsage = Schema.Struct({\n  totalTokens: NonNegativeInt,\n  inputTokens: Schema.optional(NonNegativeInt),\n  cachedInputTokens: Schema.optional(NonNegativeInt),\n  outputTokens: Schema.optional(NonNegativeInt),\n  reasoningOutputTokens: Schema.optional(NonNegativeInt),\n  toolUses: Schema.optional(NonNegativeInt),\n  durationMs: Schema.optional(NonNegativeInt),\n});\nexport type RuntimeTaskUsage = typeof RuntimeTaskUsage.Type;\n\nexport const TaskWorkflowPhase = Schema.Struct({\n```\n\n...\n\n```ts\n  payload: ThreadMetadataUpdatedPayload,\n});\nexport type ProviderRuntimeThreadMetadataUpdatedEvent =\n  typeof ProviderRuntimeThreadMetadataUpdatedEvent.Type;\n\nconst ProviderRuntimeThreadTokenUsageUpdatedEvent = Schema.Struct({\n  ...ProviderRuntimeEventBase.fields,\n```\n\n...\n\n```ts\n  ...ProviderRuntimeEventBase.fields,\n  type: ThreadRealtimeStartedType,\n  payload: ThreadRealtimeStartedPayload,\n});\nexport type ProviderRuntimeThreadRealtimeStartedEvent =\n  typeof ProviderRuntimeThreadRealtimeStartedEvent.Type;\n\n```"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

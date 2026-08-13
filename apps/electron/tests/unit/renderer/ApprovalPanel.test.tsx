@@ -9,7 +9,7 @@ afterEach(cleanup);
 describe("ApprovalPanel", () => {
   it.each([
     ["Approve once", "accept"],
-    ["Always allow", "acceptForSession"],
+    ["Allow session", "acceptForSession"],
     ["Decline", "decline"],
     ["Cancel turn", "cancel"],
   ] as const)("maps %s to %s", async (label, decision) => {
@@ -20,6 +20,8 @@ describe("ApprovalPanel", () => {
       onDecision={onDecision}
     />);
 
+    expect(screen.getByText("Run this command?")).toHaveFocus();
+    if (label === "Allow session") fireEvent.click(screen.getByText("More permission options"));
     fireEvent.click(screen.getByRole("button", { name: label }));
 
     await waitFor(() => expect(onDecision).toHaveBeenCalledWith(decision));

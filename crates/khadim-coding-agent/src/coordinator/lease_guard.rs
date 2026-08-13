@@ -127,7 +127,6 @@ mod tests {
     use super::*;
     use crate::coordinator::lease::LeaseManager;
     use khadim_code_graph::{NodePath, NodeSpan};
-    use std::path::PathBuf;
 
     fn make_guard(worker_id: &str) -> (LeaseGuard, Arc<std::sync::Mutex<LeaseManager>>) {
         let mgr = Arc::new(std::sync::Mutex::new(LeaseManager::new()));

@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_c254dccc08ba7fa8d22615511ef26281",
+  "session_id": "session_c254dccc08ba7fa8d22615511ef26281",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/CodexAdapter.ts",
+      "title": "t3code/apps/server/src/provider/Layers/CodexAdapter.ts at main \u00b7 pingdotgg/t3code \u00b7 GitHub",
+      "publish_date": "2026-02-08",
+      "excerpts": [
+        "# pingdotgg/t3code \u2014 apps/server/src/provider/Layers/CodexAdapter.ts\n```ts\n  return FATAL_CODEX_STDERR_SNIPPETS.some((snippet) => normalized.includes(snippet));\n}\n\nfunction normalizeCodexTokenUsage(\n  usage: EffectCodexSchema.V2ThreadTokenUsageUpdatedNotification[\"tokenUsage\"],\n): ThreadTokenUsageSnapshot | undefined {\n  const totalProcessedTokens = usage.total.totalTokens;\n  const usedTokens = usage.last.totalTokens;\n  if (usedTokens === undefined || usedTokens <= 0) {\n    return undefined;\n  }\n\n  const maxTokens = usage.modelContextWindow ?? undefined;\n  const inputTokens = usage.last.inputTokens;\n  const cachedInputTokens = usage.last.cachedInputTokens;\n  const outputTokens = usage.last.outputTokens;\n  const reasoningOutputTokens = usage.last.reasoningOutputTokens;\n\n  return {\n    usedTokens,\n    ...(totalProcessedTokens !== undefined && totalProcessedTokens > usedTokens\n      ? { totalProcessedTokens }\n      : {}),\n    ...(maxTokens !== undefined ? { maxTokens } : {}),\n    ...(inputTokens !== undefined ? { inputTokens } : {}),\n```\n\n...\n\n```ts\n            payload: { taskId, status: \"idle\", ...statusLinkage },\n          },\n        ];\n      }\n      return [];\n    }\n    case \"collabAgent/tokenUsage\": {\n      // Cumulative per child thread: always the `total` breakdown, never\n      // `last` (which shrinks on follow-ups). Client folds max-merge.\n      const tokenUsage =\n        typeof payload.tokenUsage === \"object\" && payload.tokenUsage !== null\n          ? (payload.tokenUsage as Record<string, unknown>)\n          : undefined;\n      const total =\n        typeof tokenUsage?.total === \"object\" && tokenUsage.total !== null\n          ? (tokenUsage.total as Record<string, unknown>)\n          : undefined;\n      const count = (value: unknown): number | undefined =>\n```\n\n...\n\n```ts\n      const totalTokens = count(total?.totalTokens);\n      if (totalTokens === undefined) {\n        return [];\n      }\n      const typedUsage: RuntimeTaskUsage = {\n        totalTokens,\n        ...(count(total?.inputTokens) !== undefined\n          ? { inputTokens: count(total?.inputTokens) }\n          : {}),\n        ...(count(total?.cachedInputTokens) !== undefined\n          ? { cachedInputTokens: count(total?.cachedInputTokens) }\n          : {}),\n        ...(count(total?.outputTokens) !== undefined\n          ? { outputTokens: count(total?.outputTokens) }\n          : {}),\n        ...(count(total?.reasoningOutputTokens) !== undefined\n          ? { reasoningOutputTokens: count(total?.reasoningOutputTokens) }\n```\n\n...\n\n```ts\n    const normalizedUsage = payload ? normalizeCodexTokenUsage(payload.tokenUsage) : undefined;\n    if (!normalizedUsage) {\n      return [];\n    }\n    return [\n      {\n        type: \"thread.token-usage.updated\",\n        ...runtimeEventBase(event, canonicalThreadId),\n        payload: {\n          usage: normalizedUsage,\n        },\n      },\n    ];\n  }\n\n  if (event.method === \"turn/started\") {\n    const turnId = event.turnId;\n    if (!turnId) {\n      return [];\n    }\n```"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

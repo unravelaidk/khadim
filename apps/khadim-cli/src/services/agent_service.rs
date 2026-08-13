@@ -8,10 +8,9 @@ use tokio::io::AsyncWriteExt;
 
 /// Run the agent once in non-interactive (batch) mode.
 ///
-/// When `multi_agent` is true, the prompt is run through the multi-agent
-/// coordinator ([`run_multi_agent`]) instead of the single-agent loop
-/// ([`run_prompt_with_runtime`]). The single-agent path is the default and
-/// is unchanged when `multi_agent` is false.
+/// When `multi_agent` is true, the normal primary loop may use bounded,
+/// read-only helpers via [`run_multi_agent`]. The single-agent path remains
+/// unchanged when `multi_agent` is false.
 pub async fn run_once(
     session: &mut KhadimSession,
     prompt: &str,
@@ -33,7 +32,10 @@ pub async fn run_once(
             selection,
             &tx,
             runtime,
-            MultiAgentConfig::default(),
+            MultiAgentConfig {
+                run_config,
+                ..MultiAgentConfig::default()
+            },
         )
         .await
     } else {
@@ -74,7 +76,10 @@ pub async fn run_once_json(
             selection,
             &tx,
             runtime,
-            MultiAgentConfig::default(),
+            MultiAgentConfig {
+                run_config,
+                ..MultiAgentConfig::default()
+            },
         )
         .await
     } else {
@@ -124,34 +129,7 @@ fn print_human(event: &AgentStreamEvent) {
                 println!("\n[error] {content}");
             }
         }
-        // ── Multi-agent coordinator events ───────────────────────────────
-        // These render as indented worker-prefixed lines in the transcript.
-        "goal_heuristic" => {
-            if let Some(ref metadata) = event.metadata {
-                let total = metadata
-                    .get("total_goals")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0);
-                println!("\n[multi-agent] Decomposed {total} goal(s)");
-            }
-        }
-        "workers_assigned" => {
-            if let Some(ref metadata) = event.metadata {
-                if let Some(assignments) = metadata.get("assignments").and_then(|v| v.as_array()) {
-                    println!("[multi-agent] Assigned {} worker(s):", assignments.len());
-                    for a in assignments {
-                        let wi = a.get("worker_index").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let mode = a.get("mode").and_then(|v| v.as_str()).unwrap_or("?");
-                        let goals = a
-                            .get("goals")
-                            .and_then(|v| v.as_array())
-                            .map(|g| g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>())
-                            .unwrap_or_default();
-                        println!("  [worker-{wi}] mode={mode} goals={goals:?}");
-                    }
-                }
-            }
-        }
+        "team_started" => println!("\n[team] Primary agent may delegate focused read-only work"),
         "worker_spawned" => {
             if let Some(ref metadata) = event.metadata {
                 let wid = metadata
@@ -159,21 +137,7 @@ fn print_human(event: &AgentStreamEvent) {
                     .and_then(|v| v.as_str())
                     .unwrap_or("?");
                 let scope = metadata.get("scope").and_then(|v| v.as_str()).unwrap_or("");
-                println!("  [{wid}] spawned (scope: {scope})");
-            }
-        }
-        "worker_assigned" => {
-            if let Some(ref metadata) = event.metadata {
-                let wid = metadata
-                    .get("worker_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?");
-                let goals = metadata
-                    .get("goals")
-                    .and_then(|v| v.as_array())
-                    .map(|g| g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>())
-                    .unwrap_or_default();
-                println!("  [{wid}] assigned goals {goals:?}");
+                println!("  [{wid}] helper started ({scope})");
             }
         }
         "worker_event" => {
@@ -192,9 +156,6 @@ fn print_human(event: &AgentStreamEvent) {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 match inner {
-                    "text_delta" => {
-                        print!("{inner_content}");
-                    }
                     "step_start" | "step_complete" => {
                         println!("  [{wid}] {inner}: {inner_content}");
                     }
@@ -243,7 +204,8 @@ fn print_human(event: &AgentStreamEvent) {
         "goal_satisfied" => {
             if let Some(ref metadata) = event.metadata {
                 let gid = metadata
-                    .get("goal_id")
+                    .get("goal_index")
+                    .or_else(|| metadata.get("goal_id"))
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
                 let desc = metadata
@@ -251,55 +213,6 @@ fn print_human(event: &AgentStreamEvent) {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 println!("  ✓ goal {gid} satisfied: {desc}");
-            }
-        }
-        "goal_reassigned" => {
-            if let Some(ref metadata) = event.metadata {
-                let gid = metadata
-                    .get("goal_id")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let n = metadata
-                    .get("reassignment")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                println!("  ↻ goal {gid} reassigned (attempt {n})");
-            }
-        }
-        "goal_blocked" => {
-            if let Some(ref metadata) = event.metadata {
-                let gid = metadata
-                    .get("goal_id")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let reason = metadata
-                    .get("reason")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                println!("  ✗ goal {gid} blocked: {reason}");
-            }
-        }
-        "lease_conflict" => {
-            if let Some(ref metadata) = event.metadata {
-                let wid = metadata
-                    .get("worker_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?");
-                let other = metadata
-                    .get("other_worker_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?");
-                let file = metadata.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                println!("  [lease] {wid} conflicts with {other} on {file}");
-            }
-        }
-        "cbs_resolution" => {
-            if let Some(ref metadata) = event.metadata {
-                let reason = metadata
-                    .get("reason")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("cbs");
-                println!("  [cbs] resolution: {reason}");
             }
         }
         "search_engaged" => {
@@ -313,11 +226,6 @@ fn print_human(event: &AgentStreamEvent) {
                     .map(|a| a.len())
                     .unwrap_or(0);
                 println!("  [search] {count} candidate(s)");
-            }
-        }
-        "multi_agent_done" => {
-            if let Some(ref content) = event.content {
-                println!("\n{content}");
             }
         }
         "done" => {

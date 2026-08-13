@@ -1,3 +1,4 @@
+import { applyStudioArtifactEdit, parseStudioArtifactEditPayload } from "../../../src/shared/studio-artifact-edit";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -976,6 +977,95 @@ describe("ProjectStore", () => {
     await expect(store.listConversations(project.id)).resolves.toEqual([conversation]);
   });
 
+  it("round-trips a per-chat harness preference for built-in and valid plugin modes", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "chat-harness-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory);
+    const project = await store.addProject(projectDirectory);
+
+    const assistantHarness: Conversation = {
+      id: "chat-harness-assistant",
+      projectId: project.id,
+      engineSessionKey: "electron.v1.chat-harness-assistant",
+      title: "Assistant chat",
+      createdAt: "2026-07-25T10:00:00.000Z",
+      updatedAt: "2026-07-25T10:00:00.000Z",
+      messages: [],
+      harness: "assistant",
+    };
+    const rpaHarness: Conversation = {
+      id: "chat-harness-rpa",
+      projectId: project.id,
+      engineSessionKey: "electron.v1.chat-harness-rpa",
+      title: "RPA chat",
+      createdAt: "2026-07-25T10:00:01.000Z",
+      updatedAt: "2026-07-25T10:00:01.000Z",
+      messages: [],
+      harness: "rpa",
+    };
+    const pluginHarness: Conversation = {
+      id: "chat-harness-plugin",
+      projectId: project.id,
+      engineSessionKey: "electron.v1.chat-harness-plugin",
+      title: "Plugin chat",
+      createdAt: "2026-07-25T10:00:02.000Z",
+      updatedAt: "2026-07-25T10:00:02.000Z",
+      messages: [],
+      harness: "plugin:khadim.opencode/opencode",
+    };
+
+    await store.saveConversation(assistantHarness);
+    await store.saveConversation(rpaHarness);
+    await store.saveConversation(pluginHarness);
+
+    const reopened = new ProjectStore(dataDirectory);
+    await expect(reopened.listConversations(project.id)).resolves.toEqual([pluginHarness, rpaHarness, assistantHarness]);
+  });
+
+  it("keeps legacy chats without a per-chat harness preference valid", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "chat-harness-legacy-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory);
+    const project = await store.addProject(projectDirectory);
+
+    const legacyConversation: Conversation = {
+      id: "chat-harness-legacy",
+      projectId: project.id,
+      engineSessionKey: "electron.v1.chat-harness-legacy",
+      title: "Legacy chat",
+      createdAt: "2026-07-25T10:00:00.000Z",
+      updatedAt: "2026-07-25T10:00:00.000Z",
+      messages: [],
+    };
+
+    await store.saveConversation(legacyConversation);
+    await expect(new ProjectStore(dataDirectory).listConversations(project.id)).resolves.toEqual([legacyConversation]);
+  });
+
+  it("rejects a malformed per-chat harness preference", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "chat-harness-malformed-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory);
+    const project = await store.addProject(projectDirectory);
+
+    const malformed = {
+      id: "chat-harness-malformed",
+      projectId: project.id,
+      engineSessionKey: "electron.v1.chat-harness-malformed",
+      title: "Malformed harness chat",
+      createdAt: "2026-07-25T10:00:00.000Z",
+      updatedAt: "2026-07-25T10:00:00.000Z",
+      messages: [],
+      harness: "not-a-harness",
+    } as unknown as Conversation;
+
+    await expect(store.saveConversation(malformed)).rejects.toThrow("chat is invalid");
+    await expect(store.listConversations(project.id)).resolves.toEqual([]);
+  });
+
   it("rejects duplicate project identities in a corrupted index", async () => {
     const dataDirectory = await temporaryDirectory();
     const projectDirectory = join(dataDirectory, "duplicate-project");
@@ -985,5 +1075,193 @@ describe("ProjectStore", () => {
     await writeFile(join(dataDirectory, "projects.json"), JSON.stringify({ version: 1, projects: [project, project] }), "utf8");
 
     await expect(new ProjectStore(dataDirectory).listProjects()).rejects.toThrow("duplicate project identities");
+  });
+
+  it("persists canvas artifacts produced by accepted canvas interaction command groups across restarts", async () => {
+    // Regression: a representative set of accepted Canvas interaction commands
+    // (navigate / open-overlay / open-url / after-delay combinations) applied
+    // through the real edit pipeline must round-trip through ProjectStore.
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "canvas-interaction-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory, { now: () => "2026-07-24T10:00:00.000Z" });
+    const project = await store.addProject(projectDirectory);
+
+    const baseElements: CanvasPrimitiveElement[] = [
+      { id: "cta", type: "rectangle", x: 40, y: 40, width: 160, height: 48, color: "#2563eb" },
+      { id: "help", type: "rectangle", x: 40, y: 120, width: 160, height: 48, color: "#111827" },
+    ];
+    const basePages: CanvasPage[] = [
+      { id: "page-a", name: "Flow", frame: { width: 960, height: 600 }, elements: baseElements, appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } },
+      { id: "page-b", name: "Archive", frame: { width: 960, height: 600 }, elements: [], appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } },
+    ];
+    const baseArtifact: ArtifactDraft = {
+      id: "canvas-interactions",
+      projectId: project.id,
+      title: "Interaction canvas",
+      schemaVersion: 2,
+      kind: "canvas",
+      lifecycle: "draft",
+      provenance: { origin: "user" },
+      createdAt: "2026-07-24T10:00:00.000Z",
+      updatedAt: "2026-07-24T10:00:00.000Z",
+      content: {
+        format: "khadim-canvas",
+        sceneVersion: 1,
+        frame: { width: 960, height: 600 },
+        elements: baseElements,
+        components: [],
+        appState: { viewBackgroundColor: "#ffffff", snapToGrid: false },
+        files: {},
+        activePageId: "page-a",
+        pages: basePages,
+      },
+    };
+    await store.saveArtifacts(project.id, [baseArtifact]);
+
+    // Apply a representative command group containing valid navigate,
+    // open-overlay, open-url, and after-delay interaction combinations via the
+    // real edit payload parser + applier, then persist the result.
+    const payload = parseStudioArtifactEditPayload({
+      canvasCommands: {
+        pageId: "page-a",
+        selectionIds: ["cta", "help"],
+        commands: [
+          { type: "add-interaction", elementId: "cta", interaction: { id: "nav", trigger: "click", action: "navigate", destinationPageId: "page-b", transition: { type: "smart", duration: 180, easing: "ease-out" } } },
+          { type: "add-interaction", elementId: "cta", interaction: { id: "overlay", trigger: "hover", action: "open-overlay", destinationPageId: "page-b", overlay: { position: "center", background: "dim", closeOnOutsideClick: true }, transition: { type: "dissolve", duration: 120, easing: "ease-out" } } },
+          { type: "add-interaction", elementId: "help", interaction: { id: "docs", trigger: "click", action: "open-url", url: "https://example.com/docs" } },
+          { type: "add-interaction", elementId: "help", interaction: { id: "reminder", trigger: "after-delay", delay: 400, action: "open-overlay", destinationPageId: "page-b", overlay: { position: "bottom-center", background: "dim", closeOnOutsideClick: true } } },
+        ],
+      },
+    });
+    expect(payload).not.toBeNull();
+    const updated = applyStudioArtifactEdit(baseArtifact, payload!, "2026-07-24T11:00:00.000Z");
+    await store.saveArtifacts(project.id, [updated]);
+
+    // Reload through a fresh ProjectStore and assert the interaction-rich
+    // artifact round-trips exactly.
+    const reopened = new ProjectStore(dataDirectory);
+    await expect(reopened.listArtifacts(project.id)).resolves.toEqual([updated]);
+    if (updated.content.format !== "khadim-canvas") throw new Error("Expected canvas artifact");
+    const cta = updated.content.elements.find((e) => e.id === "cta");
+    if (!cta || !cta.interactions) throw new Error("Expected cta interactions");
+    expect(cta.interactions.map((i) => i.action)).toEqual(["navigate", "open-overlay"]);
+    const help = updated.content.elements.find((e) => e.id === "help");
+    if (!help || !help.interactions) throw new Error("Expected help interactions");
+    expect(help.interactions.map((i) => i.action)).toEqual(["open-url", "open-overlay"]);
+  });
+
+  it("persists canvas elements with boundary-valid generic patch values applied via canvasCommands", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "canvas-bounds-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory, { now: () => "2026-07-24T12:00:00.000Z" });
+    const project = await store.addProject(projectDirectory);
+
+    const baseElements: CanvasPrimitiveElement[] = [
+      { id: "rect", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+      { id: "frame", type: "frame", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+      { id: "text", type: "text", x: 0, y: 0, width: 100, height: 40, color: "#111827", text: "Hi" },
+    ];
+    const basePages: CanvasPage[] = [
+      { id: "page-a", name: "Flow", frame: { width: 960, height: 600 }, elements: baseElements, appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } },
+    ];
+    const baseArtifact: ArtifactDraft = {
+      id: "canvas-bounds",
+      projectId: project.id,
+      title: "Bounds canvas",
+      schemaVersion: 2,
+      kind: "canvas",
+      lifecycle: "draft",
+      provenance: { origin: "user" },
+      createdAt: "2026-07-24T12:00:00.000Z",
+      updatedAt: "2026-07-24T12:00:00.000Z",
+      content: {
+        format: "khadim-canvas",
+        sceneVersion: 1,
+        frame: { width: 960, height: 600 },
+        elements: baseElements,
+        components: [],
+        appState: { viewBackgroundColor: "#ffffff", snapToGrid: false },
+        files: {},
+        activePageId: "page-a",
+        pages: basePages,
+      },
+    };
+    await store.saveArtifacts(project.id, [baseArtifact]);
+
+    // Apply boundary-valid generic patch values that align with project-store's
+    // isCanvasElement constraints, then persist and reload exactly.
+    const payload = parseStudioArtifactEditPayload({
+      canvasCommands: {
+        pageId: "page-a",
+        selectionIds: ["rect", "frame", "text"],
+        commands: [
+          // blur.value at the persisted ceiling (100), radius/fontSize/lineHeight/strokeWidth/strokeDash at 0..100000.
+          { type: "patch-elements", elementIds: ["rect"], patch: { layerBlur: { value: 100, visible: true }, radius: 100000, strokeWidth: 100000, strokeDash: 100000, cornerRadii: { topLeft: 100000, topRight: 0, bottomRight: 0, bottomLeft: 0 }, name: "x".repeat(1000), color: "#".repeat(80), strokeColor: "#".repeat(80), opacity: 0.5 } },
+          // cornerRadii is valid on a frame, and text gets the persisted text ceiling.
+          { type: "patch-elements", elementIds: ["frame"], patch: { cornerRadii: { topLeft: 1, topRight: 1, bottomRight: 1, bottomLeft: 1 } } },
+          { type: "patch-elements", elementIds: ["text"], patch: { fontSize: 100000, lineHeight: 100000, fontFamily: "f".repeat(1000), text: "t".repeat(250000) } },
+        ],
+      },
+    });
+    expect(payload).not.toBeNull();
+    const updated = applyStudioArtifactEdit(baseArtifact, payload!, "2026-07-24T12:01:00.000Z");
+    // The applied result must survive persistence validation and reload exactly.
+    await store.saveArtifacts(project.id, [updated]);
+    await expect(new ProjectStore(dataDirectory).listArtifacts(project.id)).resolves.toEqual([updated]);
+  });
+
+  it("rejects canvas elements whose generic patch values exceed persisted bounds before they reach storage", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const projectDirectory = join(dataDirectory, "canvas-bounds-reject-project");
+    await mkdir(projectDirectory);
+    const store = new ProjectStore(dataDirectory, { now: () => "2026-07-24T12:00:00.000Z" });
+    const project = await store.addProject(projectDirectory);
+
+    const baseElements: CanvasPrimitiveElement[] = [
+      { id: "rect", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+      { id: "ellipse", type: "ellipse", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+    ];
+    const basePages: CanvasPage[] = [
+      { id: "page-a", name: "Flow", frame: { width: 960, height: 600 }, elements: baseElements, appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } },
+    ];
+    const baseArtifact: ArtifactDraft = {
+      id: "canvas-bounds-reject",
+      projectId: project.id,
+      title: "Bounds reject canvas",
+      schemaVersion: 2,
+      kind: "canvas",
+      lifecycle: "draft",
+      provenance: { origin: "user" },
+      createdAt: "2026-07-24T12:00:00.000Z",
+      updatedAt: "2026-07-24T12:00:00.000Z",
+      content: {
+        format: "khadim-canvas",
+        sceneVersion: 1,
+        frame: { width: 960, height: 600 },
+        elements: baseElements,
+        components: [],
+        appState: { viewBackgroundColor: "#ffffff", snapToGrid: false },
+        files: {},
+        activePageId: "page-a",
+        pages: basePages,
+      },
+    };
+    await store.saveArtifacts(project.id, [baseArtifact]);
+
+    // blur.value 101 is rejected by the strict command parser before application.
+    const blurReject = parseStudioArtifactEditPayload({
+      canvasCommands: { pageId: "page-a", selectionIds: ["rect"], commands: [{ type: "patch-elements", elementIds: ["rect"], patch: { layerBlur: { value: 101, visible: true } } }] },
+    });
+    expect(blurReject).toBeNull();
+
+    // cornerRadii on an ellipse is accepted by the parser (the value is generically
+    // valid) but rejected by the applier's type-specific check before application.
+    const radiiReject = parseStudioArtifactEditPayload({
+      canvasCommands: { pageId: "page-a", selectionIds: ["ellipse"], commands: [{ type: "patch-elements", elementIds: ["ellipse"], patch: { cornerRadii: { topLeft: 1, topRight: 1, bottomRight: 1, bottomLeft: 1 } } }] },
+    });
+    expect(radiiReject).not.toBeNull();
+    expect(() => applyStudioArtifactEdit(baseArtifact, radiiReject!, "2026-07-24T12:01:00.000Z")).toThrow();
   });
 });

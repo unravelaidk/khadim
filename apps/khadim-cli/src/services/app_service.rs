@@ -94,7 +94,7 @@ pub enum CommandResult {
     ClearHistory,
     /// Refresh dynamic model lists.
     RefreshModels,
-    /// Toggle multi-agent coordinator mode.
+    /// Toggle Team mode (one primary agent with bounded helpers).
     ToggleMultiAgent,
     /// Not a recognized command.
     None,
@@ -275,10 +275,6 @@ impl AppService {
 
     pub fn spawn_agent_run(&mut self, prompt: String, explicit_mode: Option<String>) {
         let multi_agent = explicit_mode.as_deref() == Some("multi");
-        if let Err(error) = validate_multi_agent_run_policy(&self.config, multi_agent) {
-            let _ = self.worker_tx.send(WorkerEvent::Finished(Err(error)));
-            return;
-        }
         let selection = self.model_selection();
         let system_prompt = self.effective_settings().system_prompt;
         let runtime_config = self.config.clone();
@@ -338,7 +334,10 @@ impl AppService {
                     selection,
                     &tx,
                     runtime,
-                    khadim_coding_agent::MultiAgentConfig::default(),
+                    khadim_coding_agent::MultiAgentConfig {
+                        run_config,
+                        ..khadim_coding_agent::MultiAgentConfig::default()
+                    },
                 )
                 .await
             } else {
@@ -432,7 +431,6 @@ impl AppService {
 
     /// Run the agent in batch mode (non-interactive).
     pub async fn run_batch(&mut self, prompt: &str, json: bool) -> Result<(), AppError> {
-        validate_multi_agent_run_policy(&self.config, self.config.multi_agent)?;
         let system_prompt = self.effective_settings().system_prompt;
         let selection = self.model_selection();
         let runtime = runtime_for_config(&self.config, collect_plugin_tools(&self.config.cwd)?);
@@ -1192,20 +1190,6 @@ fn path_outside_project_error(raw_path: &str) -> AppError {
     ))
 }
 
-fn validate_multi_agent_run_policy(config: &CliConfig, multi_agent: bool) -> Result<(), AppError> {
-    if multi_agent && config.tool_groups.is_some() {
-        return Err(AppError::invalid_input(
-            "--multi-agent cannot be combined with explicit --tool-groups because worker runtimes do not yet inherit the tool allowlist",
-        ));
-    }
-    if multi_agent && config.temperature.is_some() {
-        return Err(AppError::invalid_input(
-            "--multi-agent cannot be combined with --temperature because worker runs do not yet inherit the per-run override",
-        ));
-    }
-    Ok(())
-}
-
 fn run_config_for(config: &CliConfig) -> RunConfig {
     RunConfig {
         temperature: config.temperature,
@@ -1251,7 +1235,8 @@ fn runtime_for_config(config: &CliConfig, legacy_extra_tools: Vec<Arc<dyn Tool>>
         .into_iter()
         .filter(|tool| {
             let name = tool.definition().name;
-            let selected = (web_enabled && WEB_TOOL_NAMES.contains(&name.as_str()))
+            let selected = (config.multi_agent && name == "delegate_to_agent")
+                || (web_enabled && WEB_TOOL_NAMES.contains(&name.as_str()))
                 || (files_enabled && FILE_TOOL_NAMES.contains(&name.as_str()))
                 || (apps_enabled && !is_builtin_tool_name(&name));
             selected && seen.insert(name)
@@ -2175,68 +2160,29 @@ mod tests {
     }
 
     #[test]
-    fn explicit_tool_groups_reject_multi_agent_execution() {
-        let temp = tempfile::tempdir().expect("temp dir");
-        let mut config = config(temp.path().to_path_buf(), None);
-        config.tool_groups = Some(vec![ToolGroup::Web]);
-
-        let error = validate_multi_agent_run_policy(&config, true)
-            .err()
-            .expect("explicit allowlists cannot be bypassed by worker runtimes");
-
-        assert!(error.to_string().contains("cannot be combined"));
-    }
-
-    #[test]
-    fn temperature_override_rejects_multi_agent_execution_until_workers_inherit_it() {
-        let temp = tempfile::tempdir().expect("temp dir");
-        let mut config = config(temp.path().to_path_buf(), None);
-        config.temperature = Some(0.8);
-
-        let error = validate_multi_agent_run_policy(&config, true)
-            .err()
-            .expect("multi-agent must not silently drop the temperature override");
-
-        assert!(error.to_string().contains("--temperature"));
-    }
-
-    #[tokio::test]
-    async fn batch_multi_agent_is_rejected_before_running_with_explicit_tools() {
+    fn team_mode_preserves_explicit_tool_groups_and_adds_delegation() {
         let temp = tempfile::tempdir().expect("temp dir");
         let mut config = config(temp.path().to_path_buf(), None);
         config.multi_agent = true;
-        config.tool_groups = Some(vec![ToolGroup::Files]);
-        let (worker_tx, _worker_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut service = AppService::new(config, StoredSettings::default(), worker_tx);
+        config.tool_groups = Some(vec![ToolGroup::Web]);
+        let runtime = runtime_for_config(&config, Vec::new());
+        let names = runtime
+            .definitions()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
 
-        let error = service
-            .run_batch("must not reach a model", false)
-            .await
-            .err()
-            .expect("batch multi-agent must fail closed");
-
-        assert!(error.to_string().contains("cannot be combined"));
+        assert_eq!(names, vec!["delegate_to_agent", "web_fetch", "web_search"]);
     }
 
     #[test]
-    fn interactive_multi_agent_is_rejected_before_spawning_with_explicit_tools() {
+    fn team_mode_preserves_the_primary_temperature_override() {
         let temp = tempfile::tempdir().expect("temp dir");
         let mut config = config(temp.path().to_path_buf(), None);
-        config.tool_groups = Some(vec![ToolGroup::Files]);
-        let (worker_tx, mut worker_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut service = AppService::new(config, StoredSettings::default(), worker_tx);
+        config.multi_agent = true;
+        config.temperature = Some(0.8);
 
-        service.spawn_agent_run(
-            "must not reach a model".to_string(),
-            Some("multi".to_string()),
-        );
-
-        let WorkerEvent::Finished(Err(error)) = worker_rx.try_recv().expect("policy error event")
-        else {
-            panic!("expected a failed finished event");
-        };
-        assert!(error.to_string().contains("cannot be combined"));
-        assert!(service.current_run.is_none());
+        assert_eq!(run_config_for(&config).temperature, Some(0.8));
     }
 
     #[test]

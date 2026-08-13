@@ -231,6 +231,23 @@ impl AgentRuntime {
         self
     }
 
+    /// Wire streamed helper events and bind helpers to the primary run's model.
+    pub fn with_delegate_context(
+        mut self,
+        tx: UnboundedSender<AgentStreamEvent>,
+        selection: Option<khadim_ai_core::types::ModelSelection>,
+    ) -> Self {
+        if self.tools.contains_key("delegate_to_agent") {
+            let allowed_tools = self.tools.keys().cloned().collect();
+            let delegate =
+                DelegateTool::with_context(self.root.clone(), tx, selection, allowed_tools);
+            self.tools
+                .insert("delegate_to_agent".to_string(), Arc::new(delegate));
+            self.event_sink_set = true;
+        }
+        self
+    }
+
     /// Whether `with_event_sink` has been called (i.e. `delegate_to_agent`
     /// already streams its subagent events somewhere). The orchestrator uses
     /// this to decide whether to attach the run's `tx` as a default sink.

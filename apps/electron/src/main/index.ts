@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import type { AgentApprovalDecision, AgentQuestionAnswers, AgentRunRequest, AgentStreamEvent, AppSettings, ArtifactPreviewRequest, CodexAuthSession, CodexAuthStatus, DiscordSettings, DiscordSettingsUpdate, GoogleConnectRequest, ModelCatalogProvider, Project, SettingsUpdate, SkillEntry } from "../shared/types";
-import { credentialPolicyArgs, executionPolicyArgs, processSupervisionArgs, skillRuntimeArgs } from "./agent-run-policy";
+import { credentialPolicyArgs, executionPolicyArgs, pluginTeamInstructions, processSupervisionArgs, skillRuntimeArgs } from "./agent-run-policy";
 import { decodeModelCredential, hasSameCredentialScope } from "./domain/credential-policy";
 import { createProjectActivationOperations } from "./application/project-activation";
 import { terminateProcessTree, waitForSettlement } from "./process-lifecycle";
@@ -49,6 +49,11 @@ import { ClaudeCodeServerManager } from "./plugins/claude-code-server-manager";
 import { CliHarnessServerManager } from "./plugins/cli-harness-server-manager";
 import { PluginHarnessModelCatalog } from "./plugins/harness-model-catalog";
 import { NativeToolMcpHostManager } from "./native-tool-mcp-host";
+import {
+  buildHandoffPrompt,
+  HarnessContextHandoffTracker,
+  resolveSeenTarget,
+} from "./harness-context-handoff";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const activeRuns = new Map<string, ChildProcess>();
@@ -66,6 +71,13 @@ const startingRuns = new Map<string, {
   resolveSettled: () => void;
 }>();
 const runEventBuffer = new RunEventBuffer();
+// In-memory cross-harness visible-transcript handoff tracker. Keyed by
+// engineSessionKey + target harness. The first use of a target in this
+// process receives the full prior visible transcript (restart recovery);
+// later uses import only the delta since that harness's most recent settled
+// run. Forgotten when a conversation is deleted or project mutation stops the
+// native bridges so the next use rebuilds full visible context.
+const handoffTracker = new HarnessContextHandoffTracker();
 const artifactPreviewRuntime = new ArtifactPreviewRuntime();
 const pluginNativeToolMcpHosts = new NativeToolMcpHostManager();
 const criticalOperations = new Set<Promise<unknown>>();
@@ -129,6 +141,7 @@ function storedSettings(): SettingsRepository {
     workspace: app.getPath("documents"),
     harness: "assistant",
     theme: "aura",
+    soundMood: "subtle",
   });
   return settingsStore;
 }
@@ -723,6 +736,17 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
       const artifact = (await projects().listArtifacts(project.id)).find((candidate) => candidate.id === artifactId && !candidate.deletedAt);
       if (!artifact) throw new Error("The selected artifact is no longer available.");
     }
+    // The trusted canvas selection on the request must exactly match the
+    // selection recorded in the immutable run snapshot. This prevents a
+    // replayed or tampered request from widening the agent's edit scope.
+    const requestSelection = request.canvasSelection;
+    const runSelection = run.canvasSelection;
+    if ((requestSelection === undefined) !== (runSelection === undefined)
+      || (requestSelection && runSelection && (requestSelection.pageId !== runSelection.pageId
+        || requestSelection.elementIds.length !== runSelection.elementIds.length
+        || !requestSelection.elementIds.every((id, index) => id === runSelection.elementIds[index])))) {
+      throw new Error("The Canvas selection binding could not be verified.");
+    }
     if (!existsSync(project.rootPath)) throw new Error("The project's local folder is no longer available.");
 
     const finishCancelledStart = (): boolean => {
@@ -752,7 +776,7 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
         if (nativeTools.length === 0) throw new Error("Update Google Workspace access in Apps before using this agent's connected applications.");
       }
     }
-    if (artifactId) nativeTools.push(...await createArtifactAgentTools(projects(), { projectId: project.id, artifactId }));
+    if (artifactId) nativeTools.push(...await createArtifactAgentTools(projects(), { projectId: project.id, artifactId, ...(run.canvasSelection ? { canvasSelection: run.canvasSelection } : {}) }));
     if (finishCancelledStart()) return { runId };
 
     if (isPluginHarnessId(run.harness)) {
@@ -763,10 +787,11 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
         await pluginNativeToolMcpHosts.clear(request.engineSessionKey);
         return { runId };
       }
-      const systemPrompt = capabilityPrompt(
+      const capabilityInstructions = capabilityPrompt(
         { ...request, systemPrompt: run.agent.systemPrompt, enabledTools: run.enabledTools, enabledApps: run.enabledApps },
         enabledSkills,
       );
+      const systemPrompt = [capabilityInstructions, pluginTeamInstructions(run.multiAgent)].filter(Boolean).join("\n\n");
       runEventBuffer.register({
         runId,
         projectId: project.id,
@@ -774,17 +799,31 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
         assistantMessageId: assistantMessage.id,
         engineSessionKey: request.engineSessionKey,
       });
+      // The trusted main process derives prior visible context from the
+      // persisted Conversation and the immutable current AgentRun. The renderer
+      // never supplies history. First use of this target in the process imports
+      // the full prior visible transcript; later use imports only the delta
+      // since this harness's most recent settled run.
+      const handoff = buildHandoffPrompt(
+        conversation,
+        run,
+        request.prompt.trim(),
+        resolveSeenTarget(handoffTracker, request.engineSessionKey, run.harness),
+      );
       const handle = pluginHarnesses().start({
         harnessId: run.harness as PluginHarnessId,
         projectPath: project.rootPath,
         engineSessionKey: request.engineSessionKey,
-        prompt: request.prompt.trim(),
+        prompt: handoff.prompt,
         systemPrompt: systemPrompt || undefined,
         model: { provider: run.model.provider, model: run.model.model },
         runtimeMode: run.runtimeMode ?? "approval-required",
         interactionMode: run.interactionMode,
         nativeToolMcp,
       }, (event) => emitTo(runId, event));
+      // Mark the target branch seen only after dispatch is established so a
+      // failed start never suppresses a later full rebuild.
+      handoffTracker.markSeen(request.engineSessionKey, run.harness);
       const closed = handle.closed.finally(() => pluginNativeToolMcpHosts.clear(request.engineSessionKey));
       const managedHandle: ActivePluginHarnessRun = {
         ...handle,
@@ -849,7 +888,6 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
     if (search) Object.assign(env, search.env);
     let nativeToolHost: NativeToolHost | null = nativeTools.length > 0 ? await createNativeToolHost(nativeTools) : null;
     if (nativeToolHost) Object.assign(env, nativeToolHost.env);
-
     runEventBuffer.register({
       runId,
       projectId: project.id,
@@ -857,6 +895,17 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
       assistantMessageId: assistantMessage.id,
       engineSessionKey: request.engineSessionKey,
     });
+    // The trusted main process derives prior visible context from the
+    // persisted Conversation and the immutable current AgentRun. The renderer
+    // never supplies history. First use of this target in the process imports
+    // the full prior visible transcript; later use imports only the delta
+    // since this harness's most recent settled run.
+    const handoff = buildHandoffPrompt(
+      conversation,
+      run,
+      request.prompt.trim(),
+      resolveSeenTarget(handoffTracker, request.engineSessionKey, run.harness),
+    );
     if (search?.warning) {
       emitTo(runId, {
         event_type: "step_complete",
@@ -902,10 +951,13 @@ async function startAgent(request: AgentRunRequest): Promise<{ runId: string }> 
       // Parser/startup failures are reported through stderr and the close event.
     });
     child.stdin.end(JSON.stringify({
-      prompt: request.prompt.trim(),
+      prompt: handoff.prompt,
       ...(systemPrompt ? { systemPrompt } : {}),
     }));
     activeRuns.set(runId, child);
+    // Mark the target branch seen only after dispatch is established so a
+    // failed start never suppresses a later full rebuild.
+    handoffTracker.markSeen(request.engineSessionKey, run.harness);
     let resolveRunClosed!: () => void;
     runClosePromises.set(runId, new Promise<void>((resolve) => { resolveRunClosed = resolve; }));
     activeEngineSessions.set(request.engineSessionKey, runId);
@@ -1229,6 +1281,9 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
       claudeCodeServerManager?.stop(engineSessionKey),
       cliHarnessServerManager?.stop(engineSessionKey),
       pluginNativeToolMcpHosts.stop(engineSessionKey),
+      // Stopping native bridges invalidates per-harness delta windows; the next
+      // use rebuilds the full visible context.
+      handoffTracker.forgetEngineSession(engineSessionKey),
     ]));
     return result;
   });
@@ -1240,6 +1295,7 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
       claudeCodeServerManager?.stop(engineSessionKey),
       cliHarnessServerManager?.stop(engineSessionKey),
       pluginNativeToolMcpHosts.stop(engineSessionKey),
+      handoffTracker.forgetEngineSession(engineSessionKey),
     ]));
     return result;
   });
@@ -1274,6 +1330,10 @@ if (hasSingleInstanceLock) void app.whenReady().then(async () => {
       await claudeCodeServerManager?.stop(engineSessionKey);
       await cliHarnessServerManager?.stop(engineSessionKey);
       await pluginNativeToolMcpHosts.stop(engineSessionKey);
+      // Forgetting the engine session's handoff tracker ensures a recreated
+      // chat rebuilds the full visible context rather than producing a stale
+      // delta against a deleted harness history.
+      handoffTracker.forgetEngineSession(engineSessionKey);
       await projects().removeConversation(projectId, id);
       for (const run of bufferedRuns) runEventBuffer.acknowledge(run.runId);
     } finally {

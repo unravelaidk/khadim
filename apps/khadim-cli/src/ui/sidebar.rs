@@ -1,7 +1,7 @@
-//! Multi-agent instrument rail (right sidebar).
+//! Compact Team activity rail (right sidebar).
 //!
-//! Dense industrial panel: goals, workers, leases. Hidden below ~100 columns
-//! and when multi-agent is inactive.
+//! Shows the primary plan and any focused helpers. Hidden below ~100 columns
+//! and when Team mode is inactive.
 
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -14,14 +14,13 @@ use super::theme::{
     tool_label, tool_text,
 };
 
-/// Snapshot of multi-agent run instrumentation for the sidebar.
+/// Snapshot of Team activity for the sidebar.
 #[derive(Debug, Clone, Default)]
 pub struct MultiAgentOps {
     pub active: bool,
     pub total_goals: u64,
     pub goals: Vec<GoalRow>,
     pub workers: Vec<WorkerRow>,
-    pub leases: Vec<String>,
     pub last_status: String,
 }
 
@@ -35,9 +34,7 @@ pub struct GoalRow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GoalRowStatus {
     Pending,
-    Claimed,
     Satisfied,
-    Blocked,
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +58,6 @@ impl MultiAgentOps {
         self.total_goals = 0;
         self.goals.clear();
         self.workers.clear();
-        self.leases.clear();
         self.last_status = "running".into();
     }
 
@@ -72,8 +68,14 @@ impl MultiAgentOps {
         metadata: Option<&serde_json::Value>,
     ) {
         match event_type {
-            "goal_heuristic" => {
+            "team_started" => {
                 self.active = true;
+                self.last_status = "planning".into();
+            }
+            "goal_heuristic" => {
+                if !self.active {
+                    return;
+                }
                 if let Some(m) = metadata {
                     self.total_goals = m.get("total_goals").and_then(|v| v.as_u64()).unwrap_or(0);
                     if let Some(arr) = m.get("goals").and_then(|v| v.as_array()) {
@@ -94,11 +96,7 @@ impl MultiAgentOps {
                 }
                 self.last_status = format!("{} goals", self.total_goals);
             }
-            "workers_assigned" => {
-                self.active = true;
-                self.last_status = "assigned".into();
-            }
-            "worker_spawned" | "worker_assigned" => {
+            "worker_spawned" => {
                 self.active = true;
                 if let Some(m) = metadata {
                     let wid = m
@@ -106,40 +104,20 @@ impl MultiAgentOps {
                         .and_then(|v| v.as_str())
                         .unwrap_or("?")
                         .to_string();
-                    let goals = m
-                        .get("goals")
-                        .and_then(|v| v.as_array())
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|n| n.as_u64())
-                                .map(|n| n.to_string())
-                                .collect::<Vec<_>>()
-                                .join(",")
-                        })
-                        .unwrap_or_default();
+                    let task = m
+                        .get("task")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("working")
+                        .to_string();
                     if let Some(w) = self.workers.iter_mut().find(|w| w.id == wid) {
                         w.status = WorkerRowStatus::Running;
-                        if !goals.is_empty() {
-                            w.detail = format!("g:{goals}");
-                        }
+                        w.detail = task;
                     } else {
                         self.workers.push(WorkerRow {
                             id: wid,
                             status: WorkerRowStatus::Running,
-                            detail: if goals.is_empty() {
-                                String::new()
-                            } else {
-                                format!("g:{goals}")
-                            },
+                            detail: task,
                         });
-                    }
-                    // Mark claimed goals
-                    if let Some(arr) = m.get("goals").and_then(|v| v.as_array()) {
-                        for n in arr.iter().filter_map(|v| v.as_u64()) {
-                            if let Some(g) = self.goals.iter_mut().find(|g| g.id == n) {
-                                g.status = GoalRowStatus::Claimed;
-                            }
-                        }
                     }
                 }
             }
@@ -191,31 +169,10 @@ impl MultiAgentOps {
                 }
                 self.last_status = "goal ok".into();
             }
-            "goal_blocked" => {
-                if let Some(m) = metadata {
-                    let gid = m.get("goal_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                    if let Some(g) = self.goals.iter_mut().find(|g| g.id == gid) {
-                        g.status = GoalRowStatus::Blocked;
-                    }
+            "done" => {
+                if self.active {
+                    self.last_status = content.unwrap_or("done").chars().take(40).collect();
                 }
-            }
-            "lease_conflict" => {
-                if let Some(m) = metadata {
-                    let file = m.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-                    let a = m.get("worker_id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let b = m
-                        .get("other_worker_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("?");
-                    let line = format!("{a}↔{b} {file}");
-                    if self.leases.len() >= 6 {
-                        self.leases.remove(0);
-                    }
-                    self.leases.push(line);
-                }
-            }
-            "multi_agent_done" => {
-                self.last_status = content.unwrap_or("done").chars().take(40).collect();
             }
             _ => {}
         }
@@ -257,7 +214,7 @@ pub fn render_sidebar(
         return;
     }
 
-    let title = if ops.active { " ops " } else { " rail " };
+    let title = if ops.active { " team " } else { " rail " };
     let block = Block::default()
         .borders(Borders::LEFT)
         .border_style(Style::default().fg(border_idle()))
@@ -319,16 +276,14 @@ pub fn render_sidebar(
 
         // Goals — denser: max 8 when sessions also shown
         let goal_cap = if sessions.is_empty() { 12 } else { 8 };
-        lines.push(Line::from(Span::styled("GOALS", label)));
+        lines.push(Line::from(Span::styled("PLAN", label)));
         if ops.goals.is_empty() {
             lines.push(Line::from(Span::styled("  —", dim)));
         } else {
             for g in ops.goals.iter().take(goal_cap) {
                 let (mark, col) = match g.status {
                     GoalRowStatus::Pending => ("○", text_muted()),
-                    GoalRowStatus::Claimed => ("◌", system_text()),
                     GoalRowStatus::Satisfied => ("●", tool_label()),
-                    GoalRowStatus::Blocked => ("✗", error()),
                 };
                 let desc = truncate_display(&g.description, w.saturating_sub(5));
                 lines.push(Line::from(vec![
@@ -345,11 +300,11 @@ pub fn render_sidebar(
         }
 
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("WORKERS", label)));
+        lines.push(Line::from(Span::styled("HELPERS", label)));
         if ops.workers.is_empty() {
             lines.push(Line::from(Span::styled("  —", dim)));
         } else {
-            for wk in ops.workers.iter().take(8) {
+            for (index, wk) in ops.workers.iter().take(8).enumerate() {
                 let selected = worker_filter == Some(wk.id.as_str());
                 let (mark, col) = match wk.status {
                     WorkerRowStatus::Running => ("▸", accent()),
@@ -357,7 +312,7 @@ pub fn render_sidebar(
                     WorkerRowStatus::Failed => ("✗", error()),
                     WorkerRowStatus::Blocked => ("◌", text_muted()),
                 };
-                let id = truncate_display(&wk.id, 12);
+                let id = helper_label(&wk.id, index);
                 let detail = if wk.detail.is_empty() {
                     String::new()
                 } else {
@@ -378,17 +333,6 @@ pub fn render_sidebar(
                     Span::styled(id, id_style),
                     Span::styled(detail, Style::default().fg(tool_text())),
                 ]));
-            }
-        }
-
-        if !ops.leases.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled("LEASES", label)));
-            for l in ops.leases.iter().rev().take(3) {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", truncate_display(l, w.saturating_sub(3))),
-                    Style::default().fg(error()).add_modifier(Modifier::DIM),
-                )));
             }
         }
     }
@@ -447,4 +391,14 @@ fn truncate_display(s: &str, max: usize) -> String {
         w += cw;
     }
     out
+}
+
+fn helper_label(id: &str, index: usize) -> String {
+    if id.starts_with("delegate-explore-") {
+        format!("Explorer {}", index + 1)
+    } else if id.starts_with("delegate-review-") {
+        format!("Reviewer {}", index + 1)
+    } else {
+        format!("Helper {}", index + 1)
+    }
 }

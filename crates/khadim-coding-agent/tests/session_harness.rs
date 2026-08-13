@@ -11,7 +11,9 @@ use khadim_coding_agent::{
 };
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
@@ -68,6 +70,39 @@ impl QueuedFakeModel {
 
 struct MarkerTool {
     path: PathBuf,
+}
+
+struct DelegatedProbeTool {
+    active: Arc<AtomicUsize>,
+    peak: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl Tool for DelegatedProbeTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "delegate_to_agent".to_string(),
+            description: "Run a focused read-only helper task".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": { "task": { "type": "string" } },
+                "required": ["task"]
+            }),
+            prompt_snippet: String::new(),
+        }
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<ToolResult, AppError> {
+        let task = input
+            .get("task")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| AppError::invalid_input("delegate task is required"))?;
+        let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(active, Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        self.active.fetch_sub(1, Ordering::SeqCst);
+        Ok(ToolResult::text(format!("finished:{task}")))
+    }
 }
 
 #[async_trait]
@@ -223,6 +258,18 @@ fn tool_response(tool_call: ToolCall) -> ScriptedResponse {
     }
 }
 
+fn tool_batch_response(tool_calls: Vec<ToolCall>) -> ScriptedResponse {
+    ScriptedResponse {
+        events: vec![AssistantStreamEvent::Start, AssistantStreamEvent::Done],
+        outcome: Ok(CompletionResponse {
+            content: String::new(),
+            tool_calls,
+            usage: Usage::default(),
+            reasoning_content: None,
+        }),
+    }
+}
+
 fn error_response(message: &str) -> ScriptedResponse {
     ScriptedResponse {
         events: vec![AssistantStreamEvent::Error(message.to_string())],
@@ -360,6 +407,84 @@ async fn tool_round_trip_executes_side_effect_and_returns_result_to_the_model() 
             .count(),
         1
     );
+}
+
+#[tokio::test]
+async fn delegated_helpers_run_in_parallel_up_to_the_configured_limit() {
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+    let mut harness = SessionHarness::new(vec![Arc::new(DelegatedProbeTool {
+        active: active.clone(),
+        peak: peak.clone(),
+    })]);
+    let calls = (1..=3)
+        .map(|index| ToolCall {
+            id: format!("delegate-{index}"),
+            call_type: "function".to_string(),
+            function: ToolFunction {
+                name: "delegate_to_agent".to_string(),
+                arguments: serde_json::json!({ "task": format!("task {index}") }).to_string(),
+            },
+        })
+        .collect();
+    harness.model.queue(tool_batch_response(calls));
+    harness
+        .model
+        .queue(text_response("team complete", Usage::default()));
+    let mut config = session_config();
+    config.max_workers = 2;
+
+    let started = Instant::now();
+    let output = harness
+        .prompt("investigate three areas", config)
+        .await
+        .expect("team run succeeds");
+
+    assert_eq!(output, "team complete");
+    assert_eq!(peak.load(Ordering::SeqCst), 2);
+    assert!(
+        started.elapsed() < Duration::from_millis(220),
+        "three 80ms helper tasks should run in two bounded waves"
+    );
+}
+
+#[tokio::test]
+async fn per_run_system_instructions_are_visible_only_on_that_turn() {
+    let mut harness = SessionHarness::new(Vec::new());
+    harness
+        .model
+        .queue(text_response("first complete", Usage::default()));
+    harness
+        .model
+        .queue(text_response("second complete", Usage::default()));
+    let mut team_config = session_config();
+    team_config.system_instructions = Some("TEAM-RUN-GUIDANCE".to_string());
+
+    harness
+        .prompt("first task", team_config)
+        .await
+        .expect("guided turn succeeds");
+    harness
+        .prompt("second task", session_config())
+        .await
+        .expect("plain turn succeeds");
+
+    let contexts = harness.model.contexts();
+    assert!(contexts[0].messages.iter().any(
+        |message| matches!(message, ChatMessage::System { content } if content == "TEAM-RUN-GUIDANCE")
+    ));
+    assert_eq!(
+        contexts[1]
+            .messages
+            .iter()
+            .filter(|message| matches!(message, ChatMessage::System { content } if content == "TEAM-RUN-GUIDANCE"))
+            .count(),
+        0,
+        "Team guidance must not leak into the following plain turn"
+    );
+    assert!(!harness.session.messages.iter().any(
+        |message| matches!(message, ChatMessage::System { content } if content == "TEAM-RUN-GUIDANCE")
+    ));
 }
 
 #[tokio::test]

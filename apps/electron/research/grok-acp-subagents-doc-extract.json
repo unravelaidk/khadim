@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_eb50af879c400ec4fd5d8be83eceec8d",
+  "session_id": "session_eb50af879c400ec4fd5d8be83eceec8d",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://docs.x.ai/build/cli/headless-scripting.md",
+      "title": "CLI",
+      "publish_date": null,
+      "excerpts": [
+        "# Headless & Scripting\n## Headless mode\nUse headless mode for scripts, bots, or other machine-friendly tasks.\n```bash customLanguage=\"bash\"\ngrok -p \"Your prompt here\"\n```\nCommon flags:\n| Flag | What it does |\n| `-p, --single <PROMPT>` | Send one prompt |\n| `-m, --model <MODEL>` | Choose a model |\n| `-s, --session-id <ID>` | Create or resume a named headless session |\n| `-r, --resume <ID>` | Resume an existing session |\n| `-c, --continue` | Continue the most recent session in the current directory |\n| `--cwd <PATH>` | Set the working directory |\n| `--output-format <FMT>` | Choose `plain`, `json`, or `streaming-json` |\n| `--always-approve` | Auto-approve tool executions |\n| `--no-alt-screen` | Run inline (no alternate screen / fullscreen TUI takeover) |\n**Sessions:** Headless sessions (via `--session-id`, `--resume`, `--continue`) are stored in `~/.grok/sessions`.\n**Suppressing updates in xai-grok-shell:** When using headless mode (`-p`) or ACP (`grok agent stdio`) in scripts, CI, or other automated environments, pass `--no-auto-update` (e.g. `grok --no-auto-update -p \"...\"`) to skip background update checks.\nYou can also persistently disable them by setting `auto_update = false` under the `[cli]` section in `~/.grok/config.toml`.\n\n...\n\n## ACP\nUse ACP when you want IDE or tool integration rather than a terminal session.\n```bash customLanguage=\"bash\"\ngrok agent stdio\n```\nThis runs Grok as an ACP agent over JSON-RPC on stdin/stdout. The example below assumes `grok` is already authenticated locally, or `XAI_API_KEY` is set. `session/prompt` returns completion metadata; the assistant text itself arrives as `session/update` chunks.\n```javascript customLanguage=\"javascriptWithoutSDK\"\nimport { spawn } from \"node:child_process\";\nimport readline from \"node:readline\";\nimport process from \"node:process\";\n\nconst proc = spawn(\"grok\", [\"agent\", \"stdio\"], { stdio: [\"pipe\", \"pipe\", \"pipe\"] });\nconst rl = readline.createInterface({ input: proc.stdout });\nconst pending = new Map();\nlet nextId = 1;\nlet text = \"\";\n\nproc.stderr.on(\"data\", chunk => process.stderr.write(chunk));\n\nrl.on(\"line\", line => {\n  const message = JSON.parse(line);\n\n  if (message.method === \"session/update\") {\n    const update = message.params?.update;\n    if (update?.sessionUpdate === \"agent_message_chunk\" && update.content?.text) {\n      text += update.content.text;\n    }\n    return;\n  }\n\n  const pendingRequest = pending.get(message.id);\n  if (!pendingRequest) return;\n\n  pending.delete(message.id);\n  if (message.error) {\n```\n\n...\n\n```javascript customLanguage=\"javascriptWithoutSDK\"\n  const init = await request(\"initialize\", {\n    protocolVersion: 1,\n    clientCapabilities: {\n      fs: { readTextFile: true, writeTextFile: true },\n      terminal: true,\n    },\n  });\n\n  const authMethods = new Set((init.authMethods ?? []).map(method => method.id));\n  const methodId =\n    process.env.XAI_API_KEY && authMethods.has(\"xai.api_key\")\n      ? \"xai.api_key\"\n      : authMethods.has(\"cached_token\")\n        ? \"cached_token\"\n        : null;\n\n  if (!methodId) {\n    throw new Error(\"Run `grok login` first, or set XAI_API_KEY.\");\n  }\n\n  await request(\"authenticate\", { methodId, _meta: { headless: true } });\n\n  const { sessionId } = await request(\"session/new\", {\n    cwd: process.cwd(),\n    mcpServers: [],\n  });\n\n  const prompt = await request(\"session/prompt\", {\n    sessionId,\n```"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

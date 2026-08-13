@@ -46,6 +46,7 @@ interface CliSession {
 }
 
 interface CliBridge {
+  key: string;
   kind: CliHarnessKind;
   projectPath: string;
   server: Server;
@@ -76,6 +77,10 @@ const pluginKinds: Record<string, CliHarnessKind | undefined> = {
   "khadim.cursor": "cursor",
   "khadim.grok": "grok",
 };
+
+function bridgeKey(kind: CliHarnessKind, engineSessionKey: string): string {
+  return `${kind}\u0000${engineSessionKey}`;
+}
 const bodyLimit = 2 * 1024 * 1024;
 const lineLimit = 2 * 1024 * 1024;
 
@@ -142,6 +147,49 @@ function configured(config: Record<string, string | number | boolean>, key: stri
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function codexUsageMetadata(params: Record<string, unknown>): Record<string, number> | undefined {
+  const usage = objectValue(params.tokenUsage);
+  const total = objectValue(usage?.total);
+  const last = objectValue(usage?.last);
+  const contextUsed = nonNegativeNumber(last?.totalTokens);
+  const contextSize = nonNegativeNumber(usage?.modelContextWindow);
+  const totalProcessed = nonNegativeNumber(total?.totalTokens);
+  if (contextUsed === undefined && contextSize === undefined && totalProcessed === undefined) return undefined;
+  return {
+    input: 0,
+    output: 0,
+    cache_read: 0,
+    cache_write: 0,
+    ...(contextUsed === undefined ? {} : { context_used: contextUsed }),
+    ...(contextSize === undefined ? {} : { context_size: contextSize }),
+    ...(totalProcessed === undefined ? {} : { total_processed: totalProcessed }),
+  };
+}
+
+function acpUsageMetadata(update: Record<string, unknown>): Record<string, number> | undefined {
+  const contextUsed = nonNegativeNumber(update.used);
+  const contextSize = nonNegativeNumber(update.size);
+  if (contextUsed === undefined || contextSize === undefined || contextSize === 0) return undefined;
+  return {
+    input: 0,
+    output: 0,
+    cache_read: 0,
+    cache_write: 0,
+    context_used: contextUsed,
+    context_size: contextSize,
+  };
+}
+
 function questionList(kind: CliHarnessKind, params: Record<string, unknown>): Array<Record<string, unknown>> {
   const raw = Array.isArray(params.questions) ? params.questions : [];
   return raw.flatMap((value, index) => {
@@ -199,6 +247,7 @@ function approvalTitle(kind: ReturnType<typeof approvalKind>): string {
 
 export class CliHarnessServerManager {
   readonly #bridges = new Map<string, CliBridge>();
+  readonly #preparing = new Map<string, Promise<CliBridge>>();
   readonly #spawn: SpawnProcess;
   readonly #terminate: (child: ChildProcess) => Promise<void>;
   readonly #resolveBinary: (configured: string) => string;
@@ -216,16 +265,74 @@ export class CliHarnessServerManager {
   async prepare(input: PrepareCliHarnessInput): Promise<Record<string, string | number | boolean>> {
     const kind = pluginKinds[input.pluginId];
     if (!kind || !input.bundled) return input.config;
-    let bridge = this.#bridges.get(input.engineSessionKey);
+    const key = bridgeKey(kind, input.engineSessionKey);
+    let bridge = this.#bridges.get(key);
     if (!bridge) {
-      const token = randomBytes(32).toString("hex");
-      let created!: CliBridge;
-      const server = createServer((request, response) => void this.#handle(created, request, response).catch((cause) => {
-        if (!response.headersSent) json(response, 500, { error: cause instanceof Error ? cause.message : String(cause) });
-        else response.end();
-      }));
+      let preparing = this.#preparing.get(key);
+      if (!preparing) {
+        preparing = this.#createBridge(key, kind, input);
+        this.#preparing.set(key, preparing);
+      }
+      try {
+        bridge = await preparing;
+      } finally {
+        if (this.#preparing.get(key) === preparing) this.#preparing.delete(key);
+      }
+    }
+    bridge.projectPath = input.projectPath;
+    bridge.config = { ...input.config };
+    bridge.nativeToolMcp = input.nativeToolMcp;
+    return { ...input.config, bridgeUrl: bridge.origin, bridgeToken: bridge.token };
+  }
+
+  async stop(engineSessionKey: string): Promise<void> {
+    const pending = [...this.#preparing.entries()]
+      .filter(([key]) => key.split("\u0000")[1] === engineSessionKey)
+      .map(([, preparation]) => preparation);
+    if (pending.length > 0) await Promise.allSettled(pending);
+    const matching = [...this.#bridges.entries()].filter(([, bridge]) => this.#bridgeSessionKey(bridge) === engineSessionKey);
+    if (matching.length === 0) return;
+    for (const [key] of matching) this.#bridges.delete(key);
+    await Promise.all(matching.map(([, bridge]) => this.#stopBridge(bridge)));
+  }
+
+  async stopProject(projectPath: string): Promise<void> {
+    if (this.#preparing.size > 0) await Promise.allSettled(this.#preparing.values());
+    const matching = [...this.#bridges.entries()].filter(([, bridge]) => bridge.projectPath === projectPath);
+    if (matching.length === 0) return;
+    for (const [key] of matching) this.#bridges.delete(key);
+    await Promise.all(matching.map(([, bridge]) => this.#stopBridge(bridge)));
+  }
+
+  async stopAll(): Promise<void> {
+    if (this.#preparing.size > 0) await Promise.allSettled(this.#preparing.values());
+    const bridges = [...this.#bridges.values()];
+    this.#bridges.clear();
+    await Promise.all(bridges.map((bridge) => this.#stopBridge(bridge)));
+  }
+
+  #bridgeSessionKey(bridge: CliBridge): string {
+    return bridge.key.split("\u0000")[1] ?? "";
+  }
+
+  async #stopBridge(bridge: CliBridge): Promise<void> {
+    await Promise.all([...bridge.sessions.values()].flatMap((session) => session.process ? [this.#terminate(session.process)] : []));
+    for (const session of bridge.sessions.values()) for (const client of session.clients) client.end();
+    bridge.server.closeAllConnections();
+    await new Promise<void>((resolveClose) => bridge.server.close(() => resolveClose()));
+  }
+
+  async #createBridge(key: string, kind: CliHarnessKind, input: PrepareCliHarnessInput): Promise<CliBridge> {
+    const token = randomBytes(32).toString("hex");
+    let bridge!: CliBridge;
+    const server = createServer((request, response) => void this.#handle(bridge, request, response).catch((cause) => {
+      if (!response.headersSent) json(response, 500, { error: cause instanceof Error ? cause.message : String(cause) });
+      else response.end();
+    }));
+    try {
       const origin = await listen(server);
-      created = {
+      bridge = {
+        key,
         kind,
         projectPath: input.projectPath,
         server,
@@ -235,28 +342,12 @@ export class CliHarnessServerManager {
         sessions: new Map(),
         nativeToolMcp: input.nativeToolMcp,
       };
-      bridge = created;
-      this.#bridges.set(input.engineSessionKey, bridge);
+      this.#bridges.set(key, bridge);
+      return bridge;
+    } catch (cause) {
+      server.close();
+      throw cause;
     }
-    if (bridge.kind !== kind) throw new Error("A chat cannot switch CLI harnesses while its native session is active.");
-    bridge.projectPath = input.projectPath;
-    bridge.config = { ...input.config };
-    bridge.nativeToolMcp = input.nativeToolMcp;
-    return { ...input.config, bridgeUrl: bridge.origin, bridgeToken: bridge.token };
-  }
-
-  async stop(engineSessionKey: string): Promise<void> {
-    const bridge = this.#bridges.get(engineSessionKey);
-    if (!bridge) return;
-    this.#bridges.delete(engineSessionKey);
-    await Promise.all([...bridge.sessions.values()].flatMap((session) => session.process ? [this.#terminate(session.process)] : []));
-    for (const session of bridge.sessions.values()) for (const client of session.clients) client.end();
-    bridge.server.closeAllConnections();
-    await new Promise<void>((resolveClose) => bridge.server.close(() => resolveClose()));
-  }
-
-  async stopAll(): Promise<void> {
-    await Promise.all([...this.#bridges.keys()].map((key) => this.stop(key)));
   }
 
   async #handle(bridge: CliBridge, request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -539,6 +630,21 @@ export class CliHarnessServerManager {
       emit(session, { type: "khadim.question", request_id: requestId, questions: questionList(bridge.kind, actualParams) });
       return;
     }
+    if (bridge.kind === "cursor" && method === "cursor/task") {
+      const task = params.params && typeof params.params === "object" && !Array.isArray(params.params)
+        ? params.params as Record<string, unknown>
+        : params;
+      emit(session, {
+        type: "khadim.step_complete",
+        item: {
+          ...task,
+          id: typeof task.toolCallId === "string" ? task.toolCallId : randomUUID(),
+          title: "Task",
+          status: "completed",
+        },
+      });
+      return;
+    }
     const isCodexApproval = method === "item/commandExecution/requestApproval"
       || method === "item/fileRead/requestApproval"
       || method === "item/fileChange/requestApproval";
@@ -580,6 +686,10 @@ export class CliHarnessServerManager {
 
   #codexEvent(session: CliSession, method: string, params: Record<string, unknown>): void {
     if (method === "item/agentMessage/delta" && typeof params.delta === "string") emit(session, { type: "khadim.text_delta", text: params.delta });
+    else if (method === "thread/tokenUsage/updated") {
+      const usage = codexUsageMetadata(params);
+      if (usage) emit(session, { type: "khadim.usage", usage });
+    }
     else if (method === "item/started" || method === "item/completed") {
       const item = params.item && typeof params.item === "object" && !Array.isArray(params.item) ? params.item as Record<string, unknown> : {};
       if (item.type !== "agentMessage") emit(session, { type: method === "item/started" ? "khadim.step_start" : "khadim.step_complete", item });
@@ -596,7 +706,10 @@ export class CliHarnessServerManager {
     if ((kind === "agent_message_chunk" || kind === "agent_thought_chunk") && typeof content.text === "string") emit(session, { type: "khadim.text_delta", text: content.text });
     else if (kind === "tool_call") emit(session, { type: "khadim.step_start", item: update });
     else if (kind === "tool_call_update") emit(session, { type: update.status === "completed" || update.status === "failed" ? "khadim.step_complete" : "khadim.step_update", item: update });
-    else if (kind === "usage_update") emit(session, { type: "khadim.usage", usage: update });
+    else if (kind === "usage_update") {
+      const usage = acpUsageMetadata(update);
+      if (usage) emit(session, { type: "khadim.usage", usage });
+    }
   }
 
   #processFailed(session: CliSession, message: string): void {

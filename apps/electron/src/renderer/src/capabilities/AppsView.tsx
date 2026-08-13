@@ -1,8 +1,8 @@
 import {
   BookOpen,
   Robot as Bot,
+  CaretRight as ChevronRight,
   Check,
-  CheckCircle as CircleCheck,
   CaretDown as ChevronDown,
   FileCode as FileCode2,
   FolderOpen,
@@ -18,7 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import type { DiscordSettings, GoogleConnection, HarnessMode, PluginEntry, Project, SearchProviderId, SearchSettings, SkillEntry } from "../../../shared/types";
 import { isPluginHarnessId } from "../../../shared/plugins";
-import { googleWorkspaceServiceEnabled, googleWorkspaceServices, hasCurrentGoogleWorkspaceGrant, type GoogleWorkspaceServiceId } from "../../../shared/google-workspace";
+import { googleWorkspaceServiceEnabled, googleWorkspaceServices, type GoogleWorkspaceServiceId } from "../../../shared/google-workspace";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { PluginLogo } from "../ui/PluginLogo";
 
@@ -73,7 +73,7 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
     { name: "Artifacts", description: "Stored in this project's library; not injected into chat automatically", availability: "Local library", icon: <FileCode2 size={19} /> },
   ];
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<"all" | "apps" | "skills" | "included">("all");
+  const [category, setCategory] = useState<"overview" | "services" | "skills" | "more">("overview");
   const [searchProvidersOpen, setSearchProvidersOpen] = useState(false);
   const [showPlanned, setShowPlanned] = useState(false);
   const [skills, setSkills] = useState<SkillEntry[]>([]);
@@ -87,6 +87,7 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
   const [savingGoogle, setSavingGoogle] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
   const [googleClientSecret, setGoogleClientSecret] = useState("");
+  const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false);
   const [editingSearchProvider, setEditingSearchProvider] = useState<SearchProviderId | null>(null);
   const [searchApiKey, setSearchApiKey] = useState("");
   const [savingSearchProvider, setSavingSearchProvider] = useState(false);
@@ -277,23 +278,22 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
     calendar: matches("Google Calendar", "Review calendars schedules meetings and upcoming events"),
   };
   const googleWorkspaceMatches = matches("Google Workspace", "Connect Gmail Drive Calendar Docs Sheets and Slides") || Object.values(googleServiceMatches).some(Boolean);
-  const showApps = category === "all" || category === "apps";
-  const showSkills = category === "all" || category === "skills";
-  const showIncluded = category === "all" || category === "included";
+  const showApps = Boolean(normalizedQuery) || category === "overview" || category === "services";
+  const showSkills = Boolean(normalizedQuery) || category === "skills";
+  const showMore = Boolean(normalizedQuery) || category === "more";
   const matchingPlugins = plugins.filter((plugin) => matches(plugin.name, plugin.description));
   const discordPluginHarnesses = plugins.filter((plugin) => plugin.enabled && !plugin.error).flatMap((plugin) => plugin.harnesses);
   const discordHarnessAvailable = !isPluginHarnessId(discordHarness) || discordPluginHarnesses.some((harness) => harness.id === discordHarness);
   const appsHaveResults = webSearchMatches || googleWorkspaceMatches || discordMatches || matchingPlugins.length > 0 || visibleConnectors.length > 0 || searchSettings === null;
   const skillsHaveResults = visibleSkills.length > 0 || skillsLoading || Boolean(skillsError);
   const includedHasResults = visibleSources.length > 0;
-  const hasResults = (showApps && appsHaveResults) || (showSkills && skillsHaveResults) || (showIncluded && includedHasResults);
+  const hasResults = (showApps && appsHaveResults) || (showSkills && skillsHaveResults) || (showMore && (includedHasResults || matchingPlugins.length > 0 || visibleConnectors.length > 0));
   const activeSearchProvider = searchSettings?.providers.find((provider) => provider.id === searchSettings.activeProvider);
   const activeSearchNeedsReconnect = activeSearchProvider?.credentialStatus === "locked";
   const enabledSkillCount = skills.filter((skill) => skill.enabled).length;
   const authorizedGoogleServices = googleConnection?.connected ? googleWorkspaceServices(googleConnection.scopes) : [];
-  const googleGrantCurrent = Boolean(googleConnection?.connected && hasCurrentGoogleWorkspaceGrant(googleConnection.scopes));
   const connectedAppCount = authorizedGoogleServices.length + Number(Boolean(discordSettings?.connected));
-  const availableAppCount = Number(webSearchMatches) + Object.values(googleServiceMatches).filter(Boolean).length + Number(discordMatches);
+  const availableAppCount = Number(webSearchMatches) + Number(googleWorkspaceMatches) + Number(discordMatches);
 
   async function toggleSkill(skill: SkillEntry): Promise<void> {
     const enabled = !skill.enabled;
@@ -324,6 +324,7 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
   function updateCapabilityQuery(value: string): void {
     setQuery(value);
     setSearchProvidersOpen(false);
+    setGoogleWorkspaceOpen(false);
     setEditingSearchProvider(null);
     setEditingDiscord(false);
   }
@@ -331,8 +332,18 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
   function chooseCapabilityCategory(next: typeof category): void {
     setCategory(next);
     setSearchProvidersOpen(false);
+    setGoogleWorkspaceOpen(false);
     setEditingSearchProvider(null);
     setEditingDiscord(false);
+  }
+
+  function openCapabilityCollection(next: typeof category, targetId: string): void {
+    chooseCapabilityCategory(next);
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView({ block: "start" });
+      target?.querySelector<HTMLElement>("h2")?.focus();
+    });
   }
 
   async function saveDiscord(): Promise<void> {
@@ -420,15 +431,15 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
         <div className="workspace-page-copy">
           <span>Capabilities</span>
           <h1 id="applications-title">Apps and capabilities</h1>
-          <p>Connect services and enable the local guidance Khadim can use while it works.</p>
+          <p>Connect services and choose the local guidance available to Khadim.</p>
         </div>
       </header>
 
-      <div className="applications-overview" aria-label="Capability overview">
-        <span className="overview-connected"><CircleCheck size={14} /><span><strong>{connectedAppCount}</strong> {connectedAppCount === 1 ? "app" : "apps"} connected</span></span>
-        <span className="overview-skills"><BookOpen size={14} /><span><strong>{enabledSkillCount}</strong> skills enabled</span></span>
-        <span className="overview-search"><Globe2 size={14} /><span>{activeSearchNeedsReconnect ? <><strong>{activeSearchProvider.name}</strong> needs reconnection</> : <>Search with <strong>{activeSearchProvider?.name ?? "not configured"}</strong></>}</span></span>
-      </div>
+      <dl className="applications-overview" aria-label="Capability overview">
+        <div><dt>Connected services</dt><dd>{connectedAppCount || "None"}</dd></div>
+        <div><dt>Enabled skills</dt><dd>{skillsLoading ? "Loading" : enabledSkillCount}</dd></div>
+        <div className={activeSearchNeedsReconnect ? "needs-attention" : ""}><dt>Web search</dt><dd>{activeSearchNeedsReconnect ? `Reconnect ${activeSearchProvider.name}` : activeSearchProvider?.name ?? "Not configured"}</dd></div>
+      </dl>
 
       <label className="applications-search">
         <span className="sr-only">Search apps and capabilities</span>
@@ -437,21 +448,46 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
         {query && <button onClick={() => updateCapabilityQuery("")} aria-label="Clear search"><X size={14} /></button>}
       </label>
 
-      <nav className="applications-categories" aria-label="Capability categories">
+      {!normalizedQuery && <div className="applications-categories" role="tablist" aria-label="Capability categories" data-category={category}>
         {([
-          ["all", "All"],
-          ["apps", "Apps"],
+          ["overview", "Overview"],
+          ["services", "Services"],
           ["skills", "Skills"],
-          ["included", "Included"],
+          ["more", "More"],
         ] as const).map(([id, label]) => (
-          <button type="button" aria-pressed={category === id} aria-controls="capability-panel" className={category === id ? "active" : ""} onClick={() => chooseCapabilityCategory(id)} key={id}>{label}</button>
+          <button
+            type="button"
+            role="tab"
+            id={`capability-tab-${id}`}
+            aria-selected={category === id}
+            aria-controls="capability-panel"
+            tabIndex={category === id ? 0 : -1}
+            className={category === id ? "active" : ""}
+            onClick={() => chooseCapabilityCategory(id)}
+            onKeyDown={(event) => {
+              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]") ?? []);
+              const currentIndex = tabs.indexOf(event.currentTarget);
+              const nextIndex = event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? tabs.length - 1
+                  : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+              tabs[nextIndex]?.focus();
+              tabs[nextIndex]?.click();
+            }}
+            key={id}
+          >
+            {label}
+          </button>
         ))}
-      </nav>
+      </div>}
 
-      <div id="capability-panel">
+      <div id="capability-panel" role={normalizedQuery ? "region" : "tabpanel"} aria-label={normalizedQuery ? "Search results" : undefined} aria-labelledby={normalizedQuery ? undefined : `capability-tab-${category}`} tabIndex={0}>
         {showApps && appsHaveResults && (webSearchMatches || googleWorkspaceMatches || discordMatches || !normalizedQuery) && (
           <section className="application-section application-section-first" id="apps-ready">
-            <header><div><h2>Available now</h2><p>Services you can configure and use today.</p></div><span>{availableAppCount} {normalizedQuery ? "matching" : "ready"}</span></header>
+            <header><div><h2 tabIndex={-1}>{category === "overview" && !normalizedQuery ? "Services" : "Available services"}</h2><p>{category === "overview" && !normalizedQuery ? "Connect the services Khadim can use for you." : "Services you can configure and use today."}</p></div><span>{availableAppCount} {normalizedQuery ? "matching" : availableAppCount === 1 ? "service" : "services"}</span></header>
             {(searchSettingsError || googleError || discordError) && <div className="application-errors">{searchSettingsError && <p className="application-empty error" role="alert">{searchSettingsError}</p>}{googleError && <p className="application-empty error" role="alert">{googleError}</p>}{discordError && <p className="application-empty error" role="alert">{discordError}</p>}</div>}
             <div className="application-grid ready-app-grid">
               {webSearchMatches && (
@@ -488,10 +524,12 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
                   <article className={`application-row google-workspace-account ${googleConnection?.connected ? "is-connected" : ""}`}>
                     <span className="google-workspace-mark" aria-hidden="true"><AppLogo name="gmail" /><AppLogo name="drive" /></span>
                     <span><strong>Google Workspace</strong><small>{googleConnection?.connected ? `${googleConnection.email ?? "Google account"} · ${authorizedGoogleServices.length} of 3 services ready` : googleConnection?.credentialStatus === "locked" ? "Saved access is locked; reconnect to restore it" : googleConnection?.configured ? "Connect one account for Gmail, Drive, and Calendar" : "Add a Google Desktop OAuth credential to connect"}</small></span>
-                    {googleConnection?.connected && googleGrantCurrent
-                      ? <button className="connected connector-action" aria-label="Disconnect Google Workspace" onClick={() => void disconnectGoogle()} disabled={savingGoogle}>Disconnect</button>
-                      : <button className="connector-action" aria-label={googleConnection?.connected ? "Update Google Workspace access" : "Connect Google Workspace"} onClick={() => void connectGoogle()} disabled={savingGoogle || googleConnection === null || (!googleConnection.configured && (!googleClientId.trim() || !googleClientSecret.trim()))}><Plus size={13} /> {savingGoogle ? "Connecting…" : googleConnection?.connected ? "Update access" : "Connect"}</button>}
+                    <button className={`connector-action ${googleConnection?.connected ? "connected" : ""}`} type="button" aria-expanded={googleWorkspaceOpen} aria-controls="google-workspace-details" onClick={() => setGoogleWorkspaceOpen((current) => !current)} disabled={googleConnection === null}>
+                      {googleConnection?.connected ? "Details" : googleConnection?.configured ? "Connect" : "Set up"}<ChevronDown size={13} />
+                    </button>
                   </article>
+                  <div className="google-workspace-disclosure" id="google-workspace-details" data-open={googleWorkspaceOpen || undefined} inert={!googleWorkspaceOpen || undefined} aria-hidden={!googleWorkspaceOpen || undefined}>
+                  <div>
                   <div className="google-workspace-services" aria-label="Google Workspace services">
                     {([
                       { id: "gmail", name: "Gmail", description: "Search messages and read complete threads", logo: "gmail" },
@@ -510,6 +548,15 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
                       <button type="button" onClick={() => void window.khadim.shell.openExternal("https://console.cloud.google.com/apis/credentials")}>Open Google Cloud</button>
                     </div>
                   )}
+                  {googleConnection && (
+                    <div className="google-workspace-actions">
+                      {googleConnection.connected
+                        ? <>{authorizedGoogleServices.length < 3 && <button className="save" type="button" onClick={() => void connectGoogle()} disabled={savingGoogle}>{savingGoogle ? "Updating…" : "Update access"}</button>}<button type="button" aria-label="Disconnect Google Workspace" onClick={() => void disconnectGoogle()} disabled={savingGoogle}>Disconnect</button></>
+                        : <button className="save" type="button" onClick={() => void connectGoogle()} disabled={savingGoogle || (!googleConnection.configured && (!googleClientId.trim() || !googleClientSecret.trim()))}>{savingGoogle ? "Connecting…" : "Connect Google Workspace"}</button>}
+                    </div>
+                  )}
+                  </div>
+                  </div>
                 </div>
               )}
 
@@ -564,16 +611,27 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
           </section>
         )}
 
-        {showSkills && skillsHaveResults && (
-          <section className={`application-section ${category === "skills" ? "application-section-first" : ""}`} id="apps-skills">
-            <header><div><h2>Skills</h2><p>Reusable guidance that helps Khadim handle specialized work.</p></div>{matchingSkills.length > 8 && !normalizedQuery ? <button className="section-action" onClick={() => setShowAllSkills((current) => !current)}>{showAllSkills ? "Show less" : `View all ${matchingSkills.length}`}</button> : <span>{enabledSkillCount} enabled</span>}</header>
-            {skillsLoading ? <p className="application-empty">Finding skills…</p> : skillsError ? <p className="application-empty error" role="alert">{skillsError}</p> : <div className="application-grid">{visibleSkills.map((skill) => <article className={`application-row skill ${skill.enabled ? "is-enabled" : ""}`} key={`${skill.sourceDir}:${skill.id}`}><span className="application-icon"><BookOpen size={19} /></span><span><strong>{skill.name}</strong><small>{skill.description || "Reusable guidance"}</small></span><button className={skill.enabled ? "connected" : ""} aria-pressed={skill.enabled} onClick={() => void toggleSkill(skill)} aria-label={skill.enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}><ToggleSwitch enabled={skill.enabled} /></button></article>)}</div>}
+        {category === "overview" && !normalizedQuery && (
+          <section className="application-section capability-library" aria-labelledby="capability-library-title">
+            <header><div><h2 id="capability-library-title">Library</h2><p>Open a collection only when you need to change it.</p></div></header>
+            <div className="capability-library-list">
+              <button type="button" onClick={() => openCapabilityCollection("skills", "apps-skills")}><span className="application-icon"><BookOpen size={18} /></span><span><strong>Skills</strong><small>Specialized guidance Khadim can use automatically</small></span><span className="library-value">{skillsLoading ? "Loading" : `${enabledSkillCount} enabled`}</span><ChevronRight size={15} /></button>
+              <button type="button" onClick={() => openCapabilityCollection("more", "apps-plugins")}><span className="application-icon"><SlidersHorizontal size={18} /></span><span><strong>Plugins</strong><small>Optional runtimes and advanced extensions</small></span><span className="library-value">{pluginsLoading ? "Loading" : `${plugins.filter((plugin) => plugin.enabled).length} enabled`}</span><ChevronRight size={15} /></button>
+              <button type="button" onClick={() => openCapabilityCollection("more", "apps-included")}><span className="application-icon"><FolderOpen size={18} /></span><span><strong>Built-in access</strong><small>Local context available without another connection</small></span><span className="library-value">{dataSources.length} sources</span><ChevronRight size={15} /></button>
+            </div>
           </section>
         )}
 
-        {showApps && window.khadim.plugins && (!normalizedQuery || matchingPlugins.length > 0) && (
-          <section className="application-section" id="apps-plugins">
-            <header><div><h2>Plugins</h2><p>Sandboxed WebAssembly packages that extend Khadim with harnesses and other capabilities.</p></div><button className="section-action" onClick={() => void installPlugin()}><Plus size={13} /> Install plugin</button></header>
+        {showSkills && skillsHaveResults && (
+          <section className={`application-section ${category === "skills" ? "application-section-first" : ""}`} id="apps-skills">
+            <header><div><h2 tabIndex={-1}>Skills</h2><p>Reusable guidance that helps Khadim handle specialized work.</p></div><div className="application-section-actions"><span>{matchingSkills.length} skills · {enabledSkillCount} enabled</span>{matchingSkills.length > 8 && !normalizedQuery && <button className="section-action" onClick={() => setShowAllSkills((current) => !current)}>{showAllSkills ? "Show less" : "Show all"}</button>}</div></header>
+            {skillsLoading ? <p className="application-empty">Finding skills…</p> : skillsError ? <p className="application-empty error" role="alert">{skillsError}</p> : <div className="application-grid skill-grid">{visibleSkills.map((skill) => <article className={`application-row skill ${skill.enabled ? "is-enabled" : ""}`} key={`${skill.sourceDir}:${skill.id}`}><span className="application-icon"><BookOpen size={19} /></span><span><strong>{skill.name}</strong><small title={skill.description || "Reusable guidance"}>{skill.description || "Reusable guidance"}</small></span><button className={skill.enabled ? "connected" : ""} aria-pressed={skill.enabled} onClick={() => void toggleSkill(skill)} aria-label={skill.enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}><ToggleSwitch enabled={skill.enabled} /></button></article>)}</div>}
+          </section>
+        )}
+
+        {showMore && window.khadim.plugins && (!normalizedQuery || matchingPlugins.length > 0) && (
+          <section className={`application-section ${category === "more" ? "application-section-first" : ""}`} id="apps-plugins">
+            <header><div><h2 tabIndex={-1}>Plugins</h2><p>Sandboxed WebAssembly packages that extend Khadim with harnesses and other capabilities.</p></div><button className="section-action" onClick={() => void installPlugin()}><Plus size={13} /> Install plugin</button></header>
             {pluginsError && <p className="application-empty error" role="alert">{pluginsError}</p>}
             {pluginsLoading ? <p className="application-empty">Loading plugins…</p> : matchingPlugins.length === 0 ? <p className="application-empty">No plugins installed.</p> : <div className="application-grid">{matchingPlugins.map((plugin) => (
               <div className="application-entry plugin-entry" key={plugin.id}>
@@ -594,23 +652,23 @@ export function AppsView({ projects, activeProjectId }: { projects: Project[]; a
           </section>
         )}
 
-        {showIncluded && includedHasResults && (
-          <section className={`application-section ${category === "included" ? "application-section-first" : ""}`} id="apps-included">
-            <header><div><h2>Included with Khadim</h2><p>Built-in context that is available locally when a run needs it.</p></div><span>{visibleSources.length} included</span></header>
+        {showMore && includedHasResults && (
+          <section className="application-section" id="apps-included">
+            <header><div><h2 tabIndex={-1}>Included with Khadim</h2><p>Built-in context that is available locally when a run needs it.</p></div><span>{visibleSources.length} sources</span></header>
             <div className="application-grid">{visibleSources.map((item) => <article className="application-row" key={item.name}><span className="application-icon">{item.icon}</span><span><strong>{item.name}</strong><small>{item.description}</small></span><span className="application-availability">{item.availability}</span></article>)}</div>
           </section>
         )}
 
-        {showApps && (!normalizedQuery || visibleConnectors.length > 0) && (
+        {showMore && (!normalizedQuery || visibleConnectors.length > 0) && (
           <section className="application-section application-section-planned">
-            <header><div><h2>Coming later</h2><p>Planned integrations that are not configurable yet.</p></div>{normalizedQuery ? <span>{visibleConnectors.length} planned</span> : <button className="section-action planned-toggle" type="button" aria-expanded={showPlanned} onClick={() => setShowPlanned((current) => !current)}>{showPlanned ? "Hide" : `Show ${connectors.length} planned`} <ChevronDown size={13} /></button>}</header>
+            <header><div><h2>Coming later</h2><p>Planned integrations that are not configurable yet.</p></div>{normalizedQuery ? <span>{visibleConnectors.length} integrations</span> : <div className="application-section-actions"><span>{connectors.length} integrations</span><button className="section-action planned-toggle" type="button" aria-expanded={showPlanned} onClick={() => setShowPlanned((current) => !current)}>{showPlanned ? "Hide" : "Show"} <ChevronDown size={13} /></button></div>}</header>
             {(showPlanned || normalizedQuery) && <div className="application-grid">{visibleConnectors.map((item) => (
               <article className="application-row is-unavailable" key={item.name}><AppLogo name={item.logo} /><span><strong>{item.name}</strong><small>{item.description}</small></span><button className="connector-unavailable" disabled aria-label={`${item.name} connector unavailable`} title="Not available in this build">Planned</button></article>
             ))}</div>}
           </section>
         )}
 
-        {!hasResults && <div className="applications-no-results"><Search size={20} /><h2>No matching capabilities</h2><p>Nothing in {category === "all" ? "Apps" : category} matches “{query}”.</p><button type="button" onClick={() => updateCapabilityQuery("")}>Clear search</button></div>}
+        {!hasResults && <div className="applications-no-results"><Search size={20} /><h2>No matching capabilities</h2><p>Nothing matches “{query}”.</p><button type="button" onClick={() => updateCapabilityQuery("")}>Clear search</button></div>}
       </div>
     </section>
   );

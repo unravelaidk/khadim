@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createArtifact } from "../../../src/renderer/src/artifact-model";
 import { StudioWorkspace } from "../../../src/renderer/src/studio/StudioWorkspace";
 import { applyStudioArtifactEdit } from "../../../src/shared/studio-artifact-edit";
+import type { Artifact } from "../../../src/shared/types";
 
 describe("StudioWorkspace artifact synchronization", () => {
   afterEach(cleanup);
@@ -1517,5 +1518,364 @@ describe("StudioWorkspace canvas design workflow", () => {
     expect(saved.pages).toHaveLength(1);
     expect(saved.elements[0].interactions).toEqual([expect.objectContaining({ id: "external" })]);
     expect(saved.elements[1].interactions).toBeUndefined();
+  });
+});
+
+describe("StudioWorkspace canvas agent panel and selection preservation", () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  function canvasWithSelection(): Artifact {
+    const artifact = createArtifact("canvas", "project-a", "canvas-agent", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [
+      { id: "alpha", type: "rectangle", name: "Alpha", x: 10, y: 10, width: 60, height: 60, color: "#2563eb" },
+      { id: "beta", type: "rectangle", name: "Beta", x: 90, y: 10, width: 60, height: 60, color: "#f59e0b" },
+    ];
+    return artifact;
+  }
+
+  it("shows an Ask {agent} action for a non-empty selection and submits pageId and exact selected ids", async () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async (_instruction: string, _selection: { pageId: string; elementIds: string[] }) => true);
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+
+    // The inspector header exposes the Ask button once a layer is selected.
+    const askButton = screen.getByRole("button", { name: /Ask Khadim/ });
+    await user.click(askButton);
+    const composer = screen.getByLabelText("Describe the canvas change");
+    expect(composer).toBeInTheDocument();
+    await user.type(composer, "Make Alpha blue");
+    await user.click(screen.getByRole("button", { name: "Send to agent" }));
+    expect(onAskCanvasAgent).toHaveBeenCalledTimes(1);
+    const call = onAskCanvasAgent.mock.calls[0];
+    const instruction = call[0];
+    const selection = call[1];
+    expect(instruction).toContain("Make Alpha blue");
+    expect(typeof selection.pageId).toBe("string");
+    expect(selection.pageId.length).toBeGreaterThan(0);
+    expect(selection.elementIds).toEqual(["alpha"]);
+  });
+
+  it("Enter sends, Shift+Enter does not send, and Escape closes and restores focus to the Ask button", async () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async () => true);
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+    const askButton = screen.getByRole("button", { name: /Ask Khadim/ });
+    await user.click(askButton);
+    const composer = screen.getByLabelText("Describe the canvas change") as HTMLTextAreaElement;
+    await user.type(composer, "Recolor");
+    // Shift+Enter must not submit.
+    fireEvent.keyDown(composer, { key: "Enter", shiftKey: true });
+    expect(onAskCanvasAgent).not.toHaveBeenCalled();
+    // Plain Enter submits.
+    fireEvent.keyDown(composer, { key: "Enter", shiftKey: false });
+    await waitFor(() => expect(onAskCanvasAgent).toHaveBeenCalledTimes(1));
+    // Reopen and Escape closes the panel and restores focus to the Ask button.
+    await user.click(askButton);
+    const composer2 = screen.getByLabelText("Describe the canvas change");
+    fireEvent.keyDown(composer2, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByLabelText("Describe the canvas change")).toBeNull());
+    // Escape must actually restore focus to the Ask button, not leave it on body.
+    await waitFor(() => expect(askButton).toHaveFocus());
+  });
+
+  it("reports starting, running, complete, and error agent status in the panel", () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async () => true);
+    const { rerender } = render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentStatus={{ phase: "starting" }} onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+    expect(screen.getByText("Preparing edit…")).toBeInTheDocument();
+    rerender(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentStatus={{ phase: "running" }} onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+    expect(screen.getByText(/Khadim is editing/)).toBeInTheDocument();
+    rerender(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentStatus={{ phase: "complete" }} onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+    expect(screen.getByText("Changes applied")).toBeInTheDocument();
+  });
+
+  it("preserves selection and viewport after an agent patch on the same page and lets undo restore the prior scene", async () => {
+    const artifact = canvasWithSelection();
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.appState = { viewBackgroundColor: "#ffffff", snapToGrid: false, viewport: { x: 100, y: 80, zoom: 1 } };
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const { container, rerender } = render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentStatus={{ phase: "running" }} onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    // Capture the viewport transform before the agent patch lands.
+    await waitFor(() => expect(container.querySelector('g[transform="translate(100 80) scale(1)"]')).not.toBeNull());
+    const transformBefore = container.querySelector('g[transform="translate(100 80) scale(1)"]');
+
+    // Simulate an agent patch arriving on the same page: Alpha moves to x:200.
+    const patched: Artifact = {
+      ...artifact,
+      content: {
+        ...artifact.content,
+        elements: artifact.content.elements.map((node) => node.id === "alpha" ? { ...node, x: 200 } : node),
+      },
+    };
+    rerender(<StudioWorkspace artifact={patched} saveState="saved" agentName="Khadim" modelName="Test model" agentStatus={{ phase: "complete" }} onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    // The selection (Alpha) and viewport must survive the agent patch.
+    const inspectorHeader = screen.getByLabelText("Canvas settings").querySelector("strong");
+    expect(inspectorHeader?.textContent).toContain("Alpha");
+    // The viewport transform must remain exactly unchanged after the patch.
+    const transformAfter = container.querySelector('g[transform="translate(100 80) scale(1)"]');
+    expect(transformAfter).not.toBeNull();
+    expect(transformAfter).toBe(transformBefore);
+    // The agent patch must not emit a viewport-only onChange.
+    const viewportChanges = onChange.mock.calls.filter((call) => {
+      const next = call[0].content;
+      return next.appState?.viewport && (next.appState.viewport.x !== 100 || next.appState.viewport.y !== 80 || next.appState.viewport.zoom !== 1);
+    });
+    expect(viewportChanges).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const restored = onChange.mock.calls.at(-1)?.[0].content;
+    expect(restored.elements.find((node: { id: string }) => node.id === "alpha").x).toBe(10);
+  });
+
+  it("does not clear history with duplicate entries for a normal local onChange echo", () => {
+    const artifact = canvasWithSelection();
+    const onChange = vi.fn();
+    const { rerender } = render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    // A local edit echoed back with the same structural signature should not
+    // reload the scene or push a duplicate history entry.
+    const before = screen.getByRole("button", { name: "Undo" });
+    expect(before).toBeDisabled();
+    rerender(<StudioWorkspace artifact={{ ...artifact, updatedAt: "2026-07-22T10:01:00.000Z" }} saveState="dirty" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  it("routes inspector prototype add/patch/remove through semantic canvas commands with independent undo steps", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-prototype-semantic", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const target = { id: "target", type: "rectangle" as const, name: "Prototype target", x: 80, y: 80, width: 180, height: 64, color: "#2563eb" };
+    artifact.content.pages = [
+      { id: "home", name: "Home", frame: { width: 960, height: 600 }, elements: [target], appState },
+      { id: "details", name: "Details", frame: { width: 400, height: 260 }, elements: [], appState },
+    ];
+    artifact.content.activePageId = "home";
+    artifact.content.elements = [target];
+    artifact.content.appState = appState;
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    const addInteraction = screen.getByRole("button", { name: "Interaction" });
+
+    // ADD: a click→navigate interaction lands on the selected layer.
+    await user.click(addInteraction);
+    const afterAdd = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterAdd.elements[0].interactions).toEqual([
+      expect.objectContaining({ trigger: "click", action: "navigate", destinationPageId: "details" }),
+    ]);
+
+    // PATCH: change the action to Previous screen (back). This is independently undoable.
+    await user.selectOptions(screen.getByRole("combobox", { name: "Interaction 1 action" }), "back");
+    const afterPatch = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterPatch.elements[0].interactions).toEqual([
+      expect.objectContaining({ trigger: "click", action: "back" }),
+    ]);
+
+    // REMOVE: delete the interaction. Independently undoable.
+    await user.click(screen.getByRole("button", { name: "Delete interaction 1" }));
+    const afterRemove = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterRemove.elements[0].interactions ?? []).toEqual([]);
+
+    // Undo the REMOVE: the back interaction returns.
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const afterUndoRemove = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterUndoRemove.elements[0].interactions).toEqual([
+      expect.objectContaining({ trigger: "click", action: "back" }),
+    ]);
+
+    // Undo the PATCH: action returns to navigate.
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const afterUndoPatch = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterUndoPatch.elements[0].interactions).toEqual([
+      expect.objectContaining({ trigger: "click", action: "navigate", destinationPageId: "details" }),
+    ]);
+
+    // Undo the ADD: interactions are absent again.
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const afterUndoAdd = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterUndoAdd.elements[0].interactions ?? []).toEqual([]);
+
+    // Redo the ADD: the navigate interaction returns.
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    const afterRedoAdd = onChange.mock.calls.at(-1)?.[0].content;
+    expect(afterRedoAdd.elements[0].interactions).toEqual([
+      expect.objectContaining({ trigger: "click", action: "navigate", destinationPageId: "details" }),
+    ]);
+  });
+
+  it("does not mutate content or crash when a semantic inspector command is rejected", async () => {
+    // Force a rejection by pre-staging a destination to a non-existent page so
+    // the applier's destination-page validation throws. The inspector UI
+    // normally prevents this, so we drive the rejection through a state
+    // fixture: render with an interaction already pointing at a deleted page,
+    // then patch a field that re-validates destinationPageId.
+    const artifact = createArtifact("canvas", "project-a", "canvas-prototype-reject", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    const appState = { viewBackgroundColor: "#ffffff", snapToGrid: true };
+    const target = {
+      id: "target",
+      type: "rectangle" as const,
+      name: "Prototype target",
+      x: 80, y: 80, width: 180, height: 64, color: "#2563eb",
+      interactions: [{ id: "stale", trigger: "click" as const, action: "navigate" as const, destinationPageId: "ghost-page", transition: { type: "dissolve" as const, duration: 180, easing: "ease-out" as const } }],
+    };
+    // Only the "home" page exists; "ghost-page" is not in the page set, so a
+    // patch that re-validates the merged interaction (e.g. toggling the
+    // transition) will be rejected by the semantic applier.
+    artifact.content.pages = [{ id: "home", name: "Home", frame: { width: 960, height: 600 }, elements: [target], appState }];
+    artifact.content.activePageId = "home";
+    artifact.content.elements = [target];
+    artifact.content.appState = appState;
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    const callsBefore = onChange.mock.calls.length;
+    // Attempt a patch that re-validates the destination page. The renderer
+    // must swallow the rejection without mutating content or crashing.
+    await user.selectOptions(screen.getByRole("combobox", { name: "Interaction 1 transition" }), "slide");
+
+    // No new onChange should have been emitted for the rejected command.
+    expect(onChange.mock.calls.length).toBe(callsBefore);
+    // The interaction's destination is unchanged (still the stale id).
+    const content = onChange.mock.calls.at(-1)?.[0].content ?? artifact.content;
+    expect(content.elements[0].interactions?.[0].destinationPageId).toBe("ghost-page");
+    // The renderer must still be interactive: a subsequent accepted add on a
+    // different layer still works.
+    expect(screen.getByRole("button", { name: "Interaction" })).toBeInTheDocument();
+  });
+});
+
+describe("StudioWorkspace canvas agent availability and panel lifecycle", () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  function canvasWithSelection(): Artifact {
+    const artifact = createArtifact("canvas", "project-a", "canvas-agent-availability", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [
+      { id: "alpha", type: "rectangle", name: "Alpha", x: 10, y: 10, width: 60, height: 60, color: "#2563eb" },
+      { id: "beta", type: "rectangle", name: "Beta", x: 90, y: 10, width: 60, height: 60, color: "#f59e0b" },
+    ];
+    return artifact;
+  }
+
+  it("hides Canvas Ask and shows a neutral unavailable reason when no model is active", async () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async () => true);
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="No active model" agentAvailable={false} onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+
+    // The Ask button is present but disabled with an unavailable aria reason.
+    const askButton = screen.getByRole("button", { name: /Canvas Ask is unavailable/ });
+    expect(askButton).toBeDisabled();
+    // The open panel must not render when unavailable.
+    await user.click(askButton).catch(() => undefined);
+    expect(screen.queryByLabelText("Describe the canvas change")).toBeNull();
+    expect(onAskCanvasAgent).not.toHaveBeenCalled();
+  });
+
+  it("opens the panel when available, then closes it when availability disappears while open", async () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async () => true);
+    const user = userEvent.setup();
+    const { rerender } = render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentAvailable onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+
+    await user.click(screen.getByRole("button", { name: /Ask Khadim/ }));
+    expect(screen.getByLabelText("Describe the canvas change")).toBeInTheDocument();
+
+    // Availability disappears while the panel is open: the panel closes.
+    rerender(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="No active model" agentAvailable={false} onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+    await waitFor(() => expect(screen.queryByLabelText("Describe the canvas change")).toBeNull());
+  });
+
+  it("closes the agent panel when the selection changes and does not reopen it on a later selection", async () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async () => true);
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentAvailable onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+
+    // Open the panel for Alpha.
+    const sidebar = screen.getByRole("complementary", { name: "Canvas layers and assets" });
+    await user.click(within(sidebar).getByRole("button", { name: "Alpha" }));
+    await user.click(screen.getByRole("button", { name: /Ask Khadim/ }));
+    expect(screen.getByLabelText("Describe the canvas change")).toBeInTheDocument();
+
+    // Change the selection to Beta: the panel must close.
+    await user.click(within(sidebar).getByRole("button", { name: "Beta" }));
+    await waitFor(() => expect(screen.queryByLabelText("Describe the canvas change")).toBeNull());
+
+    // A later selection (back to Alpha) must not auto-reopen the panel.
+    await user.click(within(sidebar).getByRole("button", { name: "Alpha" }));
+    expect(screen.queryByLabelText("Describe the canvas change")).toBeNull();
+  });
+
+  it("closes the agent panel when the selection is cleared", async () => {
+    const artifact = canvasWithSelection();
+    const onAskCanvasAgent = vi.fn(async () => true);
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" agentName="Khadim" modelName="Test model" agentAvailable onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} onAskCanvasAgent={onAskCanvasAgent} />);
+
+    const sidebar = screen.getByRole("complementary", { name: "Canvas layers and assets" });
+    await user.click(within(sidebar).getByRole("button", { name: "Alpha" }));
+    await user.click(screen.getByRole("button", { name: /Ask Khadim/ }));
+    expect(screen.getByLabelText("Describe the canvas change")).toBeInTheDocument();
+
+    // Clear selection via Escape on the canvas stage (application role).
+    fireEvent.keyDown(screen.getByRole("application", { name: "Canvas artwork" }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByLabelText("Describe the canvas change")).toBeNull());
+  });
+});
+
+describe("StudioWorkspace canvas layer and toolbar labels", () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it("keeps dynamic Lock/Unlock and Hide/Show action labels without an aria-pressed toggle state", async () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-layer-labels", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [{ id: "rect", type: "rectangle", name: "Rectangle", x: 10, y: 10, width: 60, height: 60, color: "#2563eb" }];
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={onChange} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    // Default state: Hide and Lock actions (not Show/Unlock).
+    const hideButton = screen.getByRole("button", { name: "Hide Rectangle" });
+    const lockButton = screen.getByRole("button", { name: "Lock Rectangle" });
+    expect(hideButton).not.toHaveAttribute("aria-pressed");
+    expect(lockButton).not.toHaveAttribute("aria-pressed");
+
+    // Toggle hidden: label flips to Show, and the visual state persists via class.
+    await user.click(hideButton);
+    const showButton = screen.getByRole("button", { name: "Show Rectangle" });
+    expect(showButton).toBeInTheDocument();
+    expect(showButton).not.toHaveAttribute("aria-pressed");
+    expect(showButton.className).toContain("is-active");
+
+    // Toggle locked on the (now hidden) layer: label flips to Unlock.
+    await user.click(screen.getByRole("button", { name: "Lock Rectangle" }));
+    expect(screen.getByRole("button", { name: "Unlock Rectangle" })).toBeInTheDocument();
+  });
+
+  it("keeps semantic toolbar button labels for tools and selection actions", () => {
+    const artifact = createArtifact("canvas", "project-a", "canvas-toolbar-labels", "2026-07-22T10:00:00.000Z");
+    if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas content");
+    artifact.content.elements = [
+      { id: "alpha", type: "rectangle", name: "Alpha", x: 10, y: 10, width: 60, height: 60, color: "#2563eb" },
+      { id: "beta", type: "rectangle", name: "Beta", x: 90, y: 10, width: 60, height: 60, color: "#f59e0b" },
+    ];
+    render(<StudioWorkspace artifact={artifact} saveState="saved" onChange={vi.fn()} onClose={vi.fn()} onExportPdf={vi.fn()} />);
+
+    // Top toolbar keeps semantic aria-labels for tool buttons.
+    expect(screen.getByRole("button", { name: "Select tool" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hand tool" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rectangle tool" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pen tool" })).toBeInTheDocument();
+    // Zoom controls keep semantic labels.
+    expect(screen.getByRole("button", { name: "Zoom out" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
   });
 });

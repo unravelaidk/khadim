@@ -62,6 +62,7 @@ export class SettingsService {
         harness: normalized.harness,
         theme: normalized.theme,
         customThemes: normalized.customThemes,
+        soundMood: normalized.soundMood ?? "subtle",
         models,
       };
     });
@@ -82,6 +83,7 @@ export class SettingsService {
       harness: settings.harness,
       theme: settings.theme ?? "aura",
       customThemes: settings.customThemes ?? [],
+      soundMood: settings.soundMood ?? (settings.soundsEnabled === false ? "off" : "subtle"),
       hasApiKey: ready && Boolean(settings.models.find((model) => model.isActive)?.encryptedApiKey ?? settings.encryptedApiKey),
     };
   }

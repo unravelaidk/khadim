@@ -113,8 +113,8 @@ pub struct CliConfig {
     pub codex_auth: Option<CodexAuthCommand>,
     /// One-shot, non-interactive configuration or plugin administration.
     pub admin_command: Option<AdminCommand>,
-    /// Run via the multi-agent coordinator (decompose → assign → spawn →
-    /// aggregate) instead of the single-agent loop. Default: off.
+    /// Let the primary agent use bounded read-only helpers for independent
+    /// investigation and review. Default: off.
     pub multi_agent: bool,
     /// Explicit tool-group allowlist. `None` preserves the legacy full tool
     /// set, while `Some([])` intentionally disables every optional tool.
@@ -733,7 +733,7 @@ fn print_help() {
          \x20 --harness NAME   Select harness: coding, rpa, assistant, or custom\n\
          \x20 --tool-groups LIST  Restrict tools to web,files,apps,rpa; none disables all\n\
          \x20 --skill-dir PATH  Allow explicit read access to an enabled skill dir (repeatable)\n\
-         \x20 --multi-agent   Use multi-agent mode (no --tool-groups/--temperature)\n\
+         \x20 --multi-agent   Let the primary agent use bounded read-only helpers\n\
          \x20 --verbose       Enable verbose logging\n\
          \x20 -h, --help       Show this help\n\
          \x20 -v, --version    Show version\n\n\

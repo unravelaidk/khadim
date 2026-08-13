@@ -117,17 +117,51 @@ describe("capability truthfulness", () => {
     expect(screen.getByRole("main")).toHaveClass("platform-linux");
   });
 
+  it("shows public feature maturity without hiding Agents or Studio", () => {
+    installDesktopApi();
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Agents Alpha" })).toHaveAttribute("title", "Agents · Alpha");
+    expect(screen.getByRole("button", { name: "Studio Beta" })).toHaveAttribute("title", "Studio · Beta");
+  });
+
+  it("reports unavailable models and disconnected app access instead of substituting ready state", async () => {
+    installDesktopApi();
+    localStorage.setItem("khadim.agents.v1", JSON.stringify([{
+      id: "research-agent",
+      name: "Research agent",
+      type: "agent",
+      description: "Reviews project evidence.",
+      prompt: "Review project evidence and report uncertainty.",
+      connectors: ["apps"],
+      appAccess: ["drive"],
+      modelId: "removed-model",
+      harness: "assistant",
+      color: "blue",
+    }]));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Agents/ }));
+    await user.click(screen.getByRole("button", { name: /Research agent.*Reviews project evidence/ }));
+
+    expect(screen.getByText("Model unavailable")).toBeInTheDocument();
+    expect(screen.getAllByText("Setup required").length).toBeGreaterThan(0);
+  });
+
   it("keeps unimplemented connectors unavailable while real local skills remain interactive", async () => {
     const api = installDesktopApi();
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
-    await user.click(await screen.findByRole("button", { name: "Show 4 planned" }));
+    await user.click(screen.getByRole("tab", { name: "More" }));
+    await user.click(await screen.findByRole("button", { name: "Show" }));
     const github = await screen.findByRole("button", { name: "GitHub connector unavailable" });
     expect(github).toBeDisabled();
     expect(screen.queryByText("One connected workspace")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("tab", { name: "Skills" }));
     const enableSkill = await screen.findByRole("button", { name: "Enable Weekly briefing" });
     await user.click(enableSkill);
     expect(api.skills.toggle).toHaveBeenCalledWith("briefing", true);
@@ -140,7 +174,8 @@ describe("capability truthfulness", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
-    await user.click(await screen.findByRole("button", { name: "Connect Google Workspace" }));
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await user.click(screen.getByRole("button", { name: "Connect Google Workspace" }));
     expect(api.google.connect).toHaveBeenCalledOnce();
     expect(await screen.findByText(/owner@example.com · 3 of 3 services ready/)).toBeInTheDocument();
     expect(screen.getAllByText("Ready")).toHaveLength(3);
@@ -153,8 +188,22 @@ describe("capability truthfulness", () => {
     expect(vi.mocked(api.agent.start).mock.calls.at(-1)?.[0].enabledTools).toContain("apps");
 
     await user.click(screen.getByRole("button", { name: /Apps New/ }));
+    await user.click(screen.getByRole("button", { name: "Details" }));
     await user.click(screen.getByRole("button", { name: "Disconnect Google Workspace" }));
     expect(api.google.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it("offers to update a connected Google account with missing service access", async () => {
+    const api = installDesktopApi();
+    vi.mocked(api.google.get).mockResolvedValue({ configured: true, connected: true, credentialStatus: "ready", email: "owner@example.com", scopes: ["https://www.googleapis.com/auth/drive.readonly"] });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Apps/ }));
+    await user.click(await screen.findByRole("button", { name: "Details" }));
+    await user.click(screen.getByRole("button", { name: "Update access" }));
+
+    expect(api.google.connect).toHaveBeenCalledWith(undefined);
   });
 
   it("accepts a user-owned Google Desktop OAuth client ID when the build has none", async () => {
@@ -164,6 +213,7 @@ describe("capability truthfulness", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
+    await user.click(await screen.findByRole("button", { name: "Set up" }));
     const clientId = "123456789-example.apps.googleusercontent.com";
     const clientSecret = "GOCSPX-desktop-secret";
     await user.type(await screen.findByLabelText("Google Desktop OAuth client ID"), clientId);
@@ -200,6 +250,7 @@ describe("capability truthfulness", () => {
     await user.keyboard("{Escape}");
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
+    await user.click(screen.getByRole("tab", { name: "More" }));
     const pluginName = await screen.findByText("OpenCode");
     const pluginRow = pluginName.closest("article");
     expect(pluginRow).not.toBeNull();
@@ -250,8 +301,9 @@ describe("capability truthfulness", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Agents/ }));
-    await user.click(screen.getByRole("button", { name: "New agent" }));
+    await user.click(screen.getByRole("button", { name: "Use a template" }));
     await user.click(screen.getByRole("button", { name: /Meeting brief/ }));
+    await user.click(screen.getByText("Advanced setup"));
     await user.selectOptions(screen.getByRole("combobox", { name: "Environment" }), "plugin:khadim.opencode/opencode");
 
     expect(screen.getByRole("button", { name: /Connected apps/ })).not.toBeDisabled();
@@ -340,6 +392,7 @@ describe("capability truthfulness", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
+    await user.click(screen.getByRole("tab", { name: "More" }));
     await user.click(await screen.findByRole("button", { name: "Configure OpenCode" }));
     await user.clear(screen.getByLabelText("Server URL"));
     await user.click(screen.getByRole("button", { name: "Save plugin" }));
@@ -392,16 +445,32 @@ describe("capability truthfulness", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /Apps/ }));
-    const categories = screen.getByRole("navigation", { name: "Capability categories" });
-    expect(within(categories).getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    const categories = screen.getByRole("tablist", { name: "Capability categories" });
+    expect(within(categories).getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
 
-    await user.click(within(categories).getByRole("button", { name: "Included" }));
+    await user.click(within(categories).getByRole("tab", { name: "More" }));
     expect(screen.getByText("Included with Khadim")).toBeInTheDocument();
     expect(screen.queryByText("Discord")).not.toBeInTheDocument();
 
-    await user.click(within(categories).getByRole("button", { name: "Apps" }));
+    await user.click(within(categories).getByRole("tab", { name: "Services" }));
     expect(await screen.findByText("Discord")).toBeInTheDocument();
     expect(screen.queryByText("Included with Khadim")).not.toBeInTheDocument();
+  });
+
+  it("keeps inventories out of the default overview and focuses the chosen collection", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Apps/ }));
+    expect(screen.getByRole("heading", { name: "Services" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Library" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Plugins" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Included with Khadim" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Built-in access/ }));
+    const included = await screen.findByRole("heading", { name: "Included with Khadim" });
+    await waitFor(() => expect(included).toHaveFocus());
   });
 
   it("configures Discord as an available messaging connector", async () => {

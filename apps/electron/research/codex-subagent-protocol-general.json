@@ -1,0 +1,38 @@
+{
+  "search_id": "search_6db9f89c0c2e9834b29e25bb54ea39a7",
+  "session_id": "session_6db9f89c0c2e9834b29e25bb54ea39a7",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/openai/codex/pull/31300",
+      "title": "feat(core): emit canonical collab tool call items by owenlin0 \u00b7 Pull Request #31300 \u00b7 openai/codex",
+      "publish_date": null,
+      "excerpts": [
+        "App-server v2 consumes the canonical collab items directly, ignores the mapped legacy events, and applies close-agent thread-watch cleanup from the completed item."
+      ]
+    },
+    {
+      "url": "https://github.com/openai/codex/pull/15513",
+      "title": "fix(tui_app_server): fix remote subagent switching and agent names by fcoury \u00b7 Pull Request #15513 \u00b7 openai/codex \u00b7 GitHub",
+      "publish_date": null,
+      "excerpts": [
+        "Both issues share a root cause: in the remote (app-server) code path the TUI never proactively fetches thread metadata. In the local code path this metadata arrives naturally via spawn events the TUI itself orchestrates, but in the remote path those events were processed by a different client and the TUI only sees the resulting collab tool-call notifications. Collab agent tool-call notifications reference receiver threads by id, but carry no nickname or role."
+      ]
+    },
+    {
+      "url": "https://github.com/openai/codex/issues/24581",
+      "title": "TUI subagent history should render nickname/role instead of raw thread ids \u00b7 Issue #24581 \u00b7 openai/codex \u00b7 GitHub",
+      "publish_date": null,
+      "excerpts": [
+        "The TUI then caches a receiver thread with empty metadata before rendering the tool-call history, so agent_label(...) falls back to the raw thread id."
+      ]
+    }
+  ],
+  "usage": [
+    {
+      "name": "sku_search",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

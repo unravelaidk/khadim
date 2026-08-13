@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_568deb74add5ba182c9e0428610edd81",
+  "session_id": "session_568deb74add5ba182c9e0428610edd81",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://orbs.jakubantalik.com/",
+      "title": "Thinking orbs \u2014 Animated thinking orb component",
+      "publish_date": null,
+      "excerpts": [
+        "# Thinking orbs\n## Installation\n`npm install thinking-orbs`\n\n## Usage\n`import { ThinkingOrb } from 'thinking-orbs'; <ThinkingOrb state=\"listening\" size={64} />`\n\n## Playground\nState\nWorking Searching Solving Listening Connecting Weaving Composing Breathing Shaping\nSize\n64px 20px\nSpeed\n1.00\u00d7\n`import { ThinkingOrb } from 'thinking-orbs'; <ThinkingOrb state=\"listening\" size={64} />`\nMade by [Jakub Antalik](https://x.com/jakubantalik) & [Alex Brinza](https://x.com/a_brinza)"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

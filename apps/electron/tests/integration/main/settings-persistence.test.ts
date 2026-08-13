@@ -105,7 +105,14 @@ describe("settings persistence", () => {
         isActive: true,
         encryptedApiKey: "encrypted-legacy-key",
       }],
+      soundMood: "subtle",
     }));
+  });
+
+  it("migrates the boolean sound preference and preserves an explicit sound mood", () => {
+    expect(normalizeStoredSettings({ ...fallbackSettings, soundsEnabled: false }, fallbackSettings).soundMood).toBe("off");
+    expect(normalizeStoredSettings({ ...fallbackSettings, soundMood: "expressive" }, fallbackSettings).soundMood).toBe("expressive");
+    expect(normalizeStoredSettings(fallbackSettings, fallbackSettings).soundMood).toBe("subtle");
   });
 
   it("rejects blank model identity and provider fields", () => {
@@ -226,6 +233,8 @@ describe("settings persistence", () => {
     };
     expect(() => normalizeSettingsUpdate({ ...update, harness: "admin" as "assistant" })).toThrow("Invalid default capability.");
     expect(() => normalizeSettingsUpdate({ ...update, theme: "neon" as "dark" })).toThrow("Invalid theme.");
+    expect(() => normalizeSettingsUpdate({ ...update, soundsEnabled: "yes" as unknown as boolean })).toThrow("Invalid sound preference.");
+    expect(() => normalizeSettingsUpdate({ ...update, soundMood: "cinematic" as "subtle" })).toThrow("Invalid sound mood.");
   });
 
   it("accepts validated custom theme tokens and allows selecting the theme", () => {

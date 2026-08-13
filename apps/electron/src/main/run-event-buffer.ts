@@ -32,7 +32,7 @@ function boundedEvent(event: AgentStreamEvent, maximumBytes: number): AgentStrea
   if (eventByteSize(event) <= maximumBytes) return structuredClone(event);
   const metadata: Record<string, unknown> = { buffer_truncated: true };
   const sourceMetadata = event.metadata ?? {};
-  for (const key of ["id", "tool", "title", "kind", "is_error", "reason", "input", "output", "cache_read", "cache_write"]) {
+  for (const key of ["id", "tool", "title", "kind", "is_error", "reason", "input", "output", "cache_read", "cache_write", "context_used", "context_size", "total_processed"]) {
     const value = sourceMetadata[key];
     if (typeof value === "number" || typeof value === "boolean") metadata[key] = value;
     else if (typeof value === "string" && value.length <= 1_000) metadata[key] = value;

@@ -31,27 +31,33 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/source-serif-4";
-import type { AgentApprovalDecision, AgentApprovalRequest, AgentEventEnvelope, AgentQuestion, AgentQuestionAnswers, AgentQuestionRequest, AgentRun, AgentRunRecoverySnapshot, AgentRuntimeMode, AppSettings, ArtifactDraft, ArtifactKind, ChatAttachment, ChatMessage, Conversation, GoogleConnection, HarnessMode, ModelConfig, PluginHarnessCommand, PluginHarnessDescriptor, PluginHarnessMode, PluginHarnessModel, Project, ProjectAvailability, TokenUsage, ToolCallActivity } from "../../shared/types";
+import type { AgentApprovalDecision, AgentApprovalRequest, AgentEventEnvelope, AgentQuestion, AgentQuestionAnswers, AgentQuestionRequest, AgentRun, AgentRunRecoverySnapshot, AgentRuntimeMode, AppSettings, ArtifactDraft, ArtifactKind, ChatAttachment, ChatMessage, Conversation, GoogleConnection, HarnessMode, ModelConfig, PluginHarnessCommand, PluginHarnessDescriptor, PluginHarnessMode, PluginHarnessModel, Project, ProjectAvailability, SoundMood, TokenUsage, ToolCallActivity } from "../../shared/types";
 import { isPluginHarnessId } from "../../shared/plugins";
 import { parseStudioArtifactEditPayload } from "../../shared/studio-artifact-edit";
 import { applySequencedAgentEvent, conversationUsage, reconcileTerminalAssistant } from "../../shared/agent-event-reducer";
 import { commandHelp, parseChatCommand } from "../../shared/chat-commands";
 import { artifactHtml, artifactTitle, createArtifact, deleteArtifact, discardArtifactChanges, isSiteContent } from "./artifact-model";
 import type { AgentDefinition } from "./agents/types";
-import { AgentsView } from "./agents/AgentsView";
+import { AgentsView, type GeneratedAgentDraft } from "./agents/AgentsView";
 import { AppsView } from "./capabilities/AppsView";
 import { AttachmentBadge } from "./chat/AttachmentBadge";
 import { Composer } from "./chat/Composer";
-import { extractHtml, legacyFileAttachments, messageCopyWithoutArtifactSource, messageCopyWithoutStudioEdit } from "./chat/message-content";
-import { ToolActivityGroup } from "./chat/ToolActivityGroup";
+import { CoordinationTrace } from "./chat/CoordinationTrace";
+import LoadingState from "./chat/LoadingState";
+import RecommendationCard from "./chat/RecommendationCard";
+import { playInterfaceSound } from "./chat/interface-sounds";
+import { extractHtml, extractRecommendation, legacyFileAttachments, messageCopyWithoutArtifactSource, messageCopyWithoutRecommendation, messageCopyWithoutStudioEdit } from "./chat/message-content";
+import { ToolChips } from "./chat/ToolChips";
 import { toolOptions } from "./chat/tool-options";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { createId, titleFromPrompt } from "./shared/text";
+import { FeatureMaturityBadge } from "./feature-maturity";
 import { StudioWorkspace, type StudioAgentStatus } from "./studio/StudioWorkspace";
-import { applyStudioArtifactEdit, parseStudioArtifactEdit, studioAgentPrompt, type StudioArtifactEdit } from "./studio/studio-agent-edit";
+import { applyStudioArtifactEdit, enforceCanvasSelectionBinding, parseStudioArtifactEdit, studioAgentPrompt, type StudioArtifactEdit } from "./studio/studio-agent-edit";
 import { AccountDialog, SettingsDialog } from "./settings/SettingsDialogs";
 import { applyDocumentTheme } from "./theme/document-theme";
 import { AnimatedPhosphorIcon } from "./ui/AnimatedPhosphorIcon";
+import { KhadimLogoScene } from "./ui/KhadimLogoScene";
 import { Logo } from "./ui/Logo";
 import { ModelIcon } from "./ui/ModelIcon";
 import { Badge } from "./ui/primitives";
@@ -68,6 +74,21 @@ const pluginModeSelectionStorageKey = "khadim.plugin-mode-selections.v1";
 const runtimeModeStorageKey = "khadim.runtime-mode.v1";
 const multiAgentStorageKey = "khadim.multi-agent.v1";
 const promptHistoryStorageKey = "khadim.prompt-history.v1";
+
+function parseGeneratedAgentDraft(content: string): GeneratedAgentDraft {
+  const match = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const raw = JSON.parse((match?.[1] ?? content).trim()) as Record<string, unknown>;
+  const name = typeof raw.name === "string" ? raw.name.trim() : "";
+  const description = typeof raw.description === "string" ? raw.description.trim() : "";
+  const prompt = typeof raw.prompt === "string" ? raw.prompt.trim() : "";
+  if (!name || !description || !prompt) throw new Error("The model returned an incomplete draft. Try generating it again.");
+  const validConnectors = new Set(["web", "files", "apps"]);
+  const connectors = Array.isArray(raw.connectors) ? raw.connectors.filter((value): value is string => typeof value === "string" && validConnectors.has(value)) : [];
+  const validApps = new Set(["gmail", "drive", "calendar"]);
+  const appAccess = Array.isArray(raw.appAccess) ? raw.appAccess.filter((value): value is "gmail" | "drive" | "calendar" => typeof value === "string" && validApps.has(value)) : [];
+  const color = raw.color === "coral" || raw.color === "orange" || raw.color === "pink" ? raw.color : "blue";
+  return { name: name.slice(0, 60), description: description.slice(0, 160), prompt, connectors, appAccess: connectors.includes("apps") ? appAccess : [], color };
+}
 
 function loadStringSelections(key = pluginModelSelectionStorageKey): Record<string, string> {
   try {
@@ -170,6 +191,8 @@ interface RunTarget {
 interface StudioEditTarget {
   projectId: string;
   artifactId: string;
+  /** Trusted Canvas selection captured when an agent run starts from the canvas. */
+  canvasSelection?: { pageId: string; elementIds: string[] };
 }
 
 interface PendingRunLaunch {
@@ -180,10 +203,21 @@ interface PendingRunLaunch {
   resolveSettled: () => void;
 }
 
+interface ActiveRunEntry {
+  runId: string;
+  projectId: string;
+  conversationId: string;
+  question?: { request: AgentQuestionRequest };
+  approval?: { request: AgentApprovalRequest };
+  questionResponding?: boolean;
+  approvalResponding?: boolean;
+}
+
 function artifactEditActivity(runId: string, artifact: ArtifactDraft, edit: StudioArtifactEdit): ToolCallActivity {
   const files = Object.keys(edit.files ?? {});
   const componentIds = edit.componentPatches?.map((patch) => patch.id) ?? [];
-  const changes = files.length + componentIds.length + (edit.visual ? 1 : 0) + (edit.html !== undefined ? 1 : 0) + (edit.title ? 1 : 0);
+  const canvasCommandCount = edit.canvasCommands?.commands.length ?? 0;
+  const changes = files.length + componentIds.length + (edit.visual ? 1 : 0) + (edit.html !== undefined ? 1 : 0) + (edit.title ? 1 : 0) + canvasCommandCount;
   return {
     id: `artifact-edit-${runId}`,
     tool: "artifact_edit",
@@ -195,6 +229,7 @@ function artifactEditActivity(runId: string, artifact: ArtifactDraft, edit: Stud
       visualDocument: Boolean(edit.visual),
       previewHtml: edit.html !== undefined,
       title: edit.title,
+      canvasCommands: edit.canvasCommands ? { pageId: edit.canvasCommands.pageId, selectionIds: edit.canvasCommands.selectionIds, commandCount: canvasCommandCount } : undefined,
     }),
     metadata: {
       artifactId: artifact.id,
@@ -394,11 +429,12 @@ function App(): React.JSX.Element {
   const [loadingProjectIds, setLoadingProjectIds] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [pendingQuestion, setPendingQuestion] = useState<{ runId: string; request: AgentQuestionRequest } | null>(null);
-  const [questionResponding, setQuestionResponding] = useState(false);
-  const [pendingApproval, setPendingApproval] = useState<{ runId: string; request: AgentApprovalRequest } | null>(null);
-  const [approvalResponding, setApprovalResponding] = useState(false);
+  // Normalized, harness-agnostic active-run registry. Runs are keyed by runId
+  // and indexed by conversation so each chat can host at most one active run
+  // while independent chats/projects run concurrently. Pending questions and
+  // approvals live alongside their run instead of overwriting a global slot.
+  const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRunEntry>>({});
+  const [activeRunByConversation, setActiveRunByConversation] = useState<Record<string, string>>({});
   const [runtimeMode, setRuntimeModeState] = useState<AgentRuntimeMode>(loadRuntimeMode);
   const [multiAgent, setMultiAgentState] = useState(() => localStorage.getItem(multiAgentStorageKey) === "true");
   const [promptHistory, setPromptHistory] = useState<string[]>(loadPromptHistory);
@@ -411,6 +447,10 @@ function App(): React.JSX.Element {
   const [artifactSaveState, setArtifactSaveState] = useState<ArtifactSaveState>("loading");
   const [studioArtifact, setStudioArtifact] = useState<ArtifactDraft | null>(null);
   const [studioChatWidth, setStudioChatWidth] = useState(520);
+  // Canvas artifacts open with the main project chat hidden so the canvas has
+  // the full Studio width. Visibility is remembered per canvas artifact for
+  // the current app session; documents and websites always show the chat.
+  const [canvasChatVisible, setCanvasChatVisible] = useState<Record<string, boolean>>({});
   const [studioAgentStatus, setStudioAgentStatus] = useState<(StudioAgentStatus & { artifactId: string }) | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [pluginHarnesses, setPluginHarnesses] = useState<PluginHarnessDescriptor[]>([]);
@@ -430,7 +470,8 @@ function App(): React.JSX.Element {
   const [enabledTools, setEnabledTools] = useState<string[]>(() => toolOptions.filter((tool) => tool.defaultEnabled).map((tool) => tool.id));
   const [googleConnection, setGoogleConnection] = useState<GoogleConnection | null>(null);
   const [systemPromptOverride, setSystemPromptOverride] = useState<string | null>(null);
-  const runIdRef = useRef<string | null>(null);
+  const activeRunsRef = useRef<Record<string, ActiveRunEntry>>({});
+  const activeRunByConversationRef = useRef<Record<string, string>>({});
   const activeProjectIdRef = useRef<string | null>(null);
   const conversationCacheRef = useRef(new Map<string, Conversation>());
   const artifactCacheRef = useRef(new Map<string, ArtifactDraft[]>());
@@ -441,9 +482,11 @@ function App(): React.JSX.Element {
   const terminalSavePromisesRef = useRef(new Map<string, Promise<void>>());
   const pendingRunLaunchesRef = useRef(new Map<string, PendingRunLaunch>());
   const pendingStudioEditRunsRef = useRef(new Map<string, StudioEditTarget>());
+  const pendingAgentDraftRunsRef = useRef(new Map<string, { content: string; resolve: (draft: GeneratedAgentDraft) => void; reject: (cause: Error) => void; conversationId: string; projectId: string; timeout: number }>());
   const appliedStudioEditRunsRef = useRef(new Set<string>());
   const pendingConversationSelectionRef = useRef<{ projectId: string; conversationId: string } | null>(null);
   const finalizedRunIdsRef = useRef(new Set<string>());
+  const soundMoodRef = useRef<SoundMood>("subtle");
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const studioWorkspaceRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -457,7 +500,68 @@ function App(): React.JSX.Element {
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? defaultAgent;
   const selectedModel = settings?.models.find((model) => model.isActive);
-  const activePluginHarnessId = settings?.harness && isPluginHarnessId(settings.harness) ? settings.harness : null;
+  // Effective harness is per-chat for an existing conversation and global for
+  // the welcome composer. For an existing chat the durable `conversation.harness`
+  // wins; legacy chats without that field fall back to their last run snapshot's
+  // harness, then to the global settings default. New chats persist this value
+  // so switching chats restores each chat's own capability.
+  const effectiveHarness: HarnessMode = selected
+    ? selected.harness
+      ?? selected.runs?.at(-1)?.harness
+      ?? settings?.harness
+      ?? "assistant"
+    : settings?.harness
+      ?? "assistant";
+
+  // The active run for the currently selected chat, if any. The composer's
+  // running/stop state and pending decision panels are derived from this entry
+  // so concurrent runs in other chats never bleed into the visible chat.
+  const selectedActiveRunId = selectedId ? activeRunByConversation[selectedId] ?? null : null;
+  const selectedActiveRun = selectedActiveRunId ? activeRuns[selectedActiveRunId] ?? null : null;
+
+  function registerActiveRun(runId: string, projectId: string, conversationId: string): void {
+    const entry: ActiveRunEntry = { runId, projectId, conversationId };
+    activeRunsRef.current = { ...activeRunsRef.current, [runId]: entry };
+    setActiveRuns((current) => ({ ...current, [runId]: entry }));
+    activeRunByConversationRef.current = { ...activeRunByConversationRef.current, [conversationId]: runId };
+    setActiveRunByConversation((current) => ({ ...current, [conversationId]: runId }));
+  }
+
+  function patchActiveRun(runId: string, patch: Partial<ActiveRunEntry>): void {
+    const current = activeRunsRef.current[runId];
+    if (!current) return;
+    const next = { ...current, ...patch };
+    activeRunsRef.current = { ...activeRunsRef.current, [runId]: next };
+    setActiveRuns((state) => ({ ...state, [runId]: next }));
+  }
+
+  function clearActiveRun(runId: string): void {
+    const entry = activeRunsRef.current[runId];
+    if (!entry) return;
+    const { [runId]: _removed, ...rest } = activeRunsRef.current;
+    activeRunsRef.current = rest;
+    setActiveRuns((current) => {
+      const { [runId]: _r, ...next } = current;
+      return next;
+    });
+    // Only clear the conversation index if it still points at this run so a
+    // newer run in the same chat is never evicted by an older run finalizing.
+    if (activeRunByConversationRef.current[entry.conversationId] === runId) {
+      activeRunByConversationRef.current = { ...activeRunByConversationRef.current };
+      delete activeRunByConversationRef.current[entry.conversationId];
+      setActiveRunByConversation((current) => {
+        if (current[entry.conversationId] !== runId) return current;
+        const next = { ...current };
+        delete next[entry.conversationId];
+        return next;
+      });
+    }
+  }
+
+  useEffect(() => {
+    soundMoodRef.current = settings?.soundMood ?? (settings?.soundsEnabled === false ? "off" : "subtle");
+  }, [settings?.soundMood, settings?.soundsEnabled]);
+  const activePluginHarnessId = effectiveHarness && isPluginHarnessId(effectiveHarness) ? effectiveHarness : null;
   const activePluginModels = activePluginHarnessId ? pluginModels[activePluginHarnessId] ?? [] : [];
   const selectedPluginModelId = activePluginHarnessId
     ? pluginModelSelections[activePluginHarnessId] ?? activePluginModels.find((model) => model.isDefault)?.id ?? activePluginModels[0]?.id
@@ -477,6 +581,18 @@ function App(): React.JSX.Element {
     : settings?.models ?? [];
   const activeChatModel = chatModels.find((model) => model.isActive) ?? chatModels[0];
   const visibleConversations = conversations;
+  // Canvas artifacts default to a hidden main chat (full-width canvas);
+  // documents and websites always keep the chat beside Studio. The chosen
+  // visibility is remembered per canvas artifact for the app session.
+  const showStudioChat = !studioArtifact
+    || studioArtifact.content.format !== "khadim-canvas"
+    || canvasChatVisible[studioArtifact.id] === true;
+  const isCanvasArtifact = Boolean(studioArtifact && studioArtifact.content.format === "khadim-canvas");
+  function toggleCanvasChat(): void {
+    if (!studioArtifact || studioArtifact.content.format !== "khadim-canvas") return;
+    const id = studioArtifact.id;
+    setCanvasChatVisible((current) => ({ ...current, [id]: current[id] !== true }));
+  }
   const isMac = window.khadim.platform === "darwin";
   const platformClass = isMac
     ? "platform-darwin"
@@ -601,6 +717,16 @@ function App(): React.JSX.Element {
     setArtifactDraftState({ projectId, drafts: [], hydrated: false });
     setArtifactSaveState("loading");
     setStudioArtifact(null);
+    const activeRunIdsAtRecoveryStart = new Set(
+      Object.entries(activeRunsRef.current)
+        .filter(([, entry]) => entry.projectId === projectId)
+        .map(([runId]) => runId),
+    );
+    const conversationsAtRecoveryStart = new Map(
+      [...conversationCacheRef.current.values()]
+        .filter((conversation) => conversation.projectId === projectId)
+        .map((conversation) => [conversation.id, conversation]),
+    );
     const recoveryPromise = window.khadim.agent.recover().catch((cause: unknown) => {
       if (!cancelled) setError(cause instanceof Error ? cause.message : "Active runs could not be recovered.");
       return [] as AgentRunRecoverySnapshot[];
@@ -646,7 +772,14 @@ function App(): React.JSX.Element {
           .find((conversation) => conversation.id === snapshot.conversationId)
           ?.runs?.find((run) => run.id === snapshot.runId);
         if (recoveredRun?.artifactId) {
-          pendingStudioEditRunsRef.current.set(snapshot.runId, { projectId: snapshot.projectId, artifactId: recoveredRun.artifactId });
+          // Recovered Studio run targets must retain the trusted canvas
+          // selection recorded on the immutable run snapshot so the renderer
+          // fallback path can keep enforcing the exact selection binding.
+          pendingStudioEditRunsRef.current.set(snapshot.runId, {
+            projectId: snapshot.projectId,
+            artifactId: recoveredRun.artifactId,
+            ...(recoveredRun.canvasSelection ? { canvasSelection: recoveredRun.canvasSelection } : {}),
+          });
         }
       }
 
@@ -659,6 +792,7 @@ function App(): React.JSX.Element {
         snapshotsByConversation.set(snapshot.conversationId, current);
       }
       const recoverableRunIds = new Set<string>();
+      const activeRecoveryRunIds = new Set<string>();
       const changedConversationIds = new Set<string>();
       const terminalSnapshots: AgentRunRecoverySnapshot[] = [];
       let recoveryWarning: string | null = null;
@@ -669,8 +803,14 @@ function App(): React.JSX.Element {
           const run = updated.runs?.find((candidate) => candidate.id === snapshot.runId);
           const assistant = updated.messages.find((message) => message.id === snapshot.assistantMessageId && message.runId === snapshot.runId);
           if (!run || !assistant) {
+            clearActiveRun(snapshot.runId);
             recoveryWarning = "A running task could not be matched to its saved chat. Its buffered output was kept for a later recovery.";
             continue;
+          }
+          if (snapshot.terminal) clearActiveRun(snapshot.runId);
+          else {
+            activeRecoveryRunIds.add(snapshot.runId);
+            registerActiveRun(snapshot.runId, snapshot.projectId, snapshot.conversationId);
           }
           recoverableRunIds.add(snapshot.runId);
           const orderedEvents = [...snapshot.events].sort((left, right) => left.sequence - right.sequence);
@@ -687,6 +827,26 @@ function App(): React.JSX.Element {
               sequenced.event,
               usageCallRef.current,
             );
+            // Recovered events maintain pending decision state just like live
+            // events so a chat that was reloaded mid-question can still answer it.
+            if (sequenced.event.event_type === "question") {
+              const requestId = sequenced.event.metadata?.requestId;
+              if (sequenced.event.metadata?.resolved === true) {
+                if (requestId) patchActiveRun(snapshot.runId, { question: undefined });
+              } else {
+                const request = questionRequestFromEvent(sequenced.event);
+                if (request) patchActiveRun(snapshot.runId, { question: { request } });
+              }
+            }
+            if (sequenced.event.event_type === "approval") {
+              const requestId = sequenced.event.metadata?.requestId;
+              if (sequenced.event.metadata?.resolved === true) {
+                if (requestId) patchActiveRun(snapshot.runId, { approval: undefined });
+              } else {
+                const request = approvalRequestFromEvent(sequenced.event);
+                if (request) patchActiveRun(snapshot.runId, { approval: { request } });
+              }
+            }
           }
           if (run.artifactId) {
             const editedSelectedArtifact = updated.messages
@@ -733,10 +893,29 @@ function App(): React.JSX.Element {
           : run),
         };
       });
+      // Recovery is authoritative for the hydrated project. Drop registry
+      // entries omitted from its nonterminal snapshots so a missed terminal
+      // event or removed recovery record cannot leave a chat permanently locked.
+      // Limit cleanup to entries present when recovery began; a run launched
+      // while this request was in flight is newer than the returned snapshot.
+      for (const [runId, entry] of Object.entries(activeRunsRef.current)) {
+        if (entry.projectId === projectId && activeRunIdsAtRecoveryStart.has(runId) && !activeRecoveryRunIds.has(runId)) clearActiveRun(runId);
+      }
+      const deletedConversationIds = new Set(
+        [...conversationsAtRecoveryStart.keys()]
+          .filter((conversationId) => !conversationCacheRef.current.has(conversationId)),
+      );
+      for (const snapshot of projectSnapshots) {
+        if (!deletedConversationIds.has(snapshot.conversationId)) continue;
+        clearActiveRun(snapshot.runId);
+        runTargetsRef.current.delete(snapshot.runId);
+        pendingStudioEditRunsRef.current.delete(snapshot.runId);
+        pendingLiveEventsRef.current.delete(snapshot.runId);
+      }
 
       const sourceMessageIds = new Set(drafts.flatMap((artifact) => artifact.provenance?.messageId ? [artifact.provenance.messageId] : []));
       const storedArtifactIds = new Set(drafts.map((artifact) => artifact.id));
-      const recoveredArtifacts = recoveredConversations.flatMap((conversation) => conversation.messages.flatMap((message): ArtifactDraft[] => {
+      const recoveredArtifacts = recoveredConversations.filter((conversation) => !deletedConversationIds.has(conversation.id)).flatMap((conversation) => conversation.messages.flatMap((message): ArtifactDraft[] => {
         if (message.role !== "assistant" || message.status === "error" || sourceMessageIds.has(message.id) || storedArtifactIds.has(`artifact-${message.id}`)) return [];
         const html = extractHtml(message.content);
         if (!html) return [];
@@ -763,19 +942,31 @@ function App(): React.JSX.Element {
         drafts = [...recoveredArtifacts, ...drafts];
         await window.khadim.artifacts.save(projectId, drafts);
       }
+      const currentProjectConversations = [...conversationCacheRef.current.values()]
+        .filter((conversation) => (
+          conversation.projectId === projectId
+          && conversationsAtRecoveryStart.get(conversation.id) !== conversation
+        ));
+      const currentProjectConversationById = new Map(currentProjectConversations.map((conversation) => [conversation.id, conversation]));
+      const displayConversations = recoveredConversations
+        .filter((conversation) => !deletedConversationIds.has(conversation.id))
+        .map((conversation) => currentProjectConversationById.get(conversation.id) ?? conversation);
+      for (const conversation of currentProjectConversations) {
+        if (!displayConversations.some((candidate) => candidate.id === conversation.id)) displayConversations.unshift(conversation);
+      }
       const nextCache = new Map(conversationCacheRef.current);
       for (const [conversationId, conversation] of nextCache) {
         if (conversation.projectId === projectId) nextCache.delete(conversationId);
       }
-      for (const conversation of recoveredConversations) nextCache.set(conversation.id, conversation);
+      for (const conversation of displayConversations) nextCache.set(conversation.id, conversation);
       conversationCacheRef.current = nextCache;
       artifactCacheRef.current.set(projectId, drafts);
-      setConversations(recoveredConversations);
-      setProjectConversations((current) => ({ ...current, [projectId]: recoveredConversations }));
+      setConversations(displayConversations);
+      setProjectConversations((current) => ({ ...current, [projectId]: displayConversations }));
       const pendingSelection = pendingConversationSelectionRef.current;
       if (pendingSelection?.projectId === projectId) {
         pendingConversationSelectionRef.current = null;
-        if (recoveredConversations.some((conversation) => conversation.id === pendingSelection.conversationId)) {
+        if (displayConversations.some((conversation) => conversation.id === pendingSelection.conversationId)) {
           setActiveView("welcome");
           setSelectedId(pendingSelection.conversationId);
         } else {
@@ -785,12 +976,6 @@ function App(): React.JSX.Element {
       skipNextArtifactSaveRef.current = true;
       setArtifactDraftState({ projectId, drafts, hydrated: true });
       setArtifactSaveState("saved");
-
-      const activeSnapshot = recoverySnapshots.find((snapshot) => !snapshot.terminal);
-      if (activeSnapshot) {
-        runIdRef.current = activeSnapshot.runId;
-        setActiveRunId(activeSnapshot.runId);
-      }
 
       const pendingRunIds = new Set(projectSnapshots.map((snapshot) => snapshot.runId));
       for (const runId of pendingRunIds) {
@@ -803,7 +988,7 @@ function App(): React.JSX.Element {
       }
 
       const conversationsToSave = recoveredConversations
-        .filter((conversation) => changedConversationIds.has(conversation.id))
+        .filter((conversation) => !deletedConversationIds.has(conversation.id) && changedConversationIds.has(conversation.id))
         .map((conversation) => conversationCacheRef.current.get(conversation.id) ?? conversation);
       const saveResults = await Promise.allSettled(conversationsToSave.map((conversation) => window.khadim.conversations.save(conversation)));
       if (saveResults.some((result) => result.status === "rejected")) {
@@ -935,10 +1120,6 @@ function App(): React.JSX.Element {
   }, [agents, selectedId, selected?.runs]);
 
   useEffect(() => {
-    runIdRef.current = activeRunId;
-  }, [activeRunId]);
-
-  useEffect(() => {
     const list = messageListRef.current;
     if (!list || !selected) return;
     followLatestMessageRef.current = true;
@@ -997,6 +1178,28 @@ function App(): React.JSX.Element {
 
   function processAgentEnvelope(envelope: AgentEventEnvelope): void {
     const { runId, event } = envelope;
+    const draftRun = pendingAgentDraftRunsRef.current.get(runId);
+    if (draftRun) {
+      if (event.event_type === "text_delta" && event.content) draftRun.content += event.content;
+      if (event.event_type === "error") {
+        pendingAgentDraftRunsRef.current.delete(runId);
+        window.clearTimeout(draftRun.timeout);
+        draftRun.reject(new Error(event.content?.trim() || "Khadim could not generate this agent."));
+        void window.khadim.conversations.remove(draftRun.projectId, draftRun.conversationId).catch(() => undefined);
+        void window.khadim.agent.acknowledge(runId).catch(() => undefined);
+      } else if (event.event_type === "done") {
+        pendingAgentDraftRunsRef.current.delete(runId);
+        window.clearTimeout(draftRun.timeout);
+        try {
+          draftRun.resolve(parseGeneratedAgentDraft(draftRun.content));
+        } catch (cause) {
+          draftRun.reject(cause instanceof Error ? cause : new Error("The generated draft could not be read."));
+        }
+        void window.khadim.conversations.remove(draftRun.projectId, draftRun.conversationId).catch(() => undefined);
+        void window.khadim.agent.acknowledge(runId).catch(() => undefined);
+      }
+      return;
+    }
     const target = runTargetsRef.current.get(runId);
     if (!target) {
       if (finalizedRunIdsRef.current.has(runId)) return;
@@ -1013,20 +1216,26 @@ function App(): React.JSX.Element {
     if (event.event_type === "question") {
       const requestId = event.metadata?.requestId;
       if (event.metadata?.resolved === true) {
-        setPendingQuestion((current) => current?.runId === runId && current.request.requestId === requestId ? null : current);
+        if (requestId) {
+          const current = activeRunsRef.current[runId];
+          if (current?.question?.request.requestId === requestId) patchActiveRun(runId, { question: undefined });
+        }
       } else {
         const request = questionRequestFromEvent(event);
-        if (request) setPendingQuestion({ runId, request });
+        if (request) patchActiveRun(runId, { question: { request } });
       }
     }
 
     if (event.event_type === "approval") {
       const requestId = event.metadata?.requestId;
       if (event.metadata?.resolved === true) {
-        setPendingApproval((current) => current?.runId === runId && current.request.requestId === requestId ? null : current);
+        if (requestId) {
+          const current = activeRunsRef.current[runId];
+          if (current?.approval?.request.requestId === requestId) patchActiveRun(runId, { approval: undefined });
+        }
       } else {
         const request = approvalRequestFromEvent(event);
-        if (request) setPendingApproval({ runId, request });
+        if (request) patchActiveRun(runId, { approval: { request } });
       }
     }
 
@@ -1040,6 +1249,14 @@ function App(): React.JSX.Element {
     );
     if (updated === cached) return;
 
+    if ((event.event_type === "question" || event.event_type === "approval") && event.metadata?.resolved !== true) {
+      playInterfaceSound("attention", soundMoodRef.current);
+    } else if (event.event_type === "done") {
+      playInterfaceSound("complete", soundMoodRef.current);
+    } else if (event.event_type === "error" && !/\bstopp?ed\b/i.test(event.content ?? "")) {
+      playInterfaceSound("error", soundMoodRef.current);
+    }
+
     const streamedAssistant = updated.messages.find((message) => message.id === target.assistantMessageId);
     if (streamedAssistant && studioTarget && !appliedStudioEditRunsRef.current.has(runId)) {
       const toolStudioEdit = event.event_type === "step_complete"
@@ -1047,7 +1264,10 @@ function App(): React.JSX.Element {
         && event.metadata.artifactId === studioTarget.artifactId
         ? parseStudioArtifactEditPayload(event.metadata.artifactEdit)
         : null;
-      const studioEdit = toolStudioEdit ?? parseStudioArtifactEdit(streamedAssistant.content);
+      const fallbackEdit = toolStudioEdit ?? parseStudioArtifactEdit(streamedAssistant.content);
+      // Enforce the trusted Canvas selection binding before applying either the
+      // tool-channel edit or the legacy <artifact-edit> text fallback.
+      const studioEdit = fallbackEdit ? enforceCanvasSelectionBinding(fallbackEdit, studioTarget.canvasSelection) : null;
       const currentArtifacts = artifactCacheRef.current.get(studioTarget.projectId) ?? [];
       const sourceArtifact = currentArtifacts.find((artifact) => artifact.id === studioTarget.artifactId);
       if (studioEdit && sourceArtifact) {
@@ -1158,8 +1378,9 @@ function App(): React.JSX.Element {
       return;
     }
 
-    setPendingQuestion((current) => current?.runId === runId ? null : current);
-    setPendingApproval((current) => current?.runId === runId ? null : current);
+    // Terminal cleanup removes only this run from the registry so concurrent
+    // runs in other chats keep their pending decisions and active state.
+    clearActiveRun(runId);
 
     clearScheduledConversationSave(updated.id);
     pendingStudioEditRunsRef.current.delete(runId);
@@ -1176,8 +1397,6 @@ function App(): React.JSX.Element {
     void finalization.catch(() => undefined).finally(() => {
       if (terminalSavePromisesRef.current.get(runId) === finalization) terminalSavePromisesRef.current.delete(runId);
     });
-    if (runIdRef.current === runId) runIdRef.current = null;
-    setActiveRunId((current) => current === runId ? null : current);
   }
 
   useEffect(() => {
@@ -1211,7 +1430,10 @@ function App(): React.JSX.Element {
 
   async function sendPrompt(value = prompt, visibleValue = value, attachments: ChatAttachment[] = [], studioEditTarget?: StudioEditTarget): Promise<boolean> {
     const content = value.trim();
-    if (!content || runIdRef.current) return false;
+    // The send lock is per conversation: an existing chat cannot start a second
+    // concurrent run, but a new chat (no selection yet) may start while another
+    // chat is still running. This keeps independent chats/projects concurrent.
+    if (!content || (selectedId && activeRunByConversationRef.current[selectedId])) return false;
     setPromptHistory((current) => {
       const next = [...current.filter((entry) => entry !== content), content].slice(-100);
       localStorage.setItem(promptHistoryStorageKey, JSON.stringify(next));
@@ -1233,6 +1455,7 @@ function App(): React.JSX.Element {
         : "Configure an active model before starting a chat.");
       return false;
     }
+    playInterfaceSound("send", soundMoodRef.current);
     const visibleContent = visibleValue.trim() || "Review the attached files.";
     setError(null);
     const now = new Date().toISOString();
@@ -1257,13 +1480,14 @@ function App(): React.JSX.Element {
         baseUrl: activeChatModel.baseUrl,
         temperature: activeChatModel.temperature,
       },
-      harness: settings.harness,
+      harness: effectiveHarness,
       runtimeMode,
       ...(selectedPluginModeId ? { interactionMode: selectedPluginModeId } : {}),
       multiAgent,
       enabledTools: [...enabledTools],
       enabledApps: enabledTools.includes("apps") ? [...(selectedAgent.appAccess ?? ["gmail", "drive", "calendar"])] : [],
       ...(studioEditTarget ? { artifactId: studioEditTarget.artifactId } : {}),
+      ...(studioEditTarget?.canvasSelection ? { canvasSelection: studioEditTarget.canvasSelection } : {}),
     };
     const nextConversation: Conversation = selected ? {
       ...selected,
@@ -1279,6 +1503,9 @@ function App(): React.JSX.Element {
       updatedAt: now,
       messages: [userMessage, assistantMessage],
       runs: [runSnapshot],
+      // Persist the effective harness so the chat retains its chosen capability
+      // across reloads and chat switches. Legacy chats derive from last run.
+      harness: effectiveHarness,
     };
 
     if (!selected) {
@@ -1293,8 +1520,7 @@ function App(): React.JSX.Element {
     setPrompt("");
     runTargetsRef.current.set(requestedRunId, { projectId: activeProjectId, conversationId, assistantMessageId: assistantMessage.id });
     if (studioEditTarget) pendingStudioEditRunsRef.current.set(requestedRunId, studioEditTarget);
-    runIdRef.current = requestedRunId;
-    setActiveRunId(requestedRunId);
+    registerActiveRun(requestedRunId, activeProjectId, conversationId);
     let resolveLaunchSettled!: () => void;
     const pendingLaunch: PendingRunLaunch = {
       cancelRequested: false,
@@ -1329,8 +1555,7 @@ function App(): React.JSX.Element {
         pendingStudioEditRunsRef.current.delete(requestedRunId);
         usageCallRef.current.delete(requestedRunId);
         pendingLiveEventsRef.current.delete(requestedRunId);
-        runIdRef.current = null;
-        setActiveRunId((current) => current === requestedRunId ? null : current);
+        clearActiveRun(requestedRunId);
         return false;
       }
       pendingLaunch.startSent = true;
@@ -1341,6 +1566,7 @@ function App(): React.JSX.Element {
         assistantMessageId: assistantMessage.id,
         engineSessionKey: nextConversation.engineSessionKey,
         ...(studioEditTarget ? { artifactId: studioEditTarget.artifactId } : {}),
+        ...(studioEditTarget?.canvasSelection ? { canvasSelection: studioEditTarget.canvasSelection } : {}),
         prompt: content,
         systemPrompt: systemPromptOverride ?? selectedAgent.prompt,
         enabledTools,
@@ -1349,12 +1575,12 @@ function App(): React.JSX.Element {
       pendingLaunch.startResult = startResult.then(() => undefined, () => undefined);
       await startResult;
     } catch (cause) {
-      runIdRef.current = null;
       runTargetsRef.current.delete(requestedRunId);
       pendingStudioEditRunsRef.current.delete(requestedRunId);
       usageCallRef.current.delete(requestedRunId);
-      setActiveRunId(null);
+      clearActiveRun(requestedRunId);
       const message = cause instanceof Error ? cause.message : String(cause);
+      playInterfaceSound("error", soundMoodRef.current);
       setError(message);
       const failed: Conversation = {
         ...nextConversation,
@@ -1380,15 +1606,16 @@ function App(): React.JSX.Element {
     return true;
   }
 
-  async function appendCommandResponse(command: string, response: string): Promise<boolean> {
+  async function appendCommandResponse(command: string, response: string, harness = effectiveHarness): Promise<boolean> {
     if (!activeProjectId) return false;
     const now = new Date().toISOString();
     const userMessage: ChatMessage = { id: createId(), role: "user", content: command, createdAt: now, status: "complete" };
     const assistantMessage: ChatMessage = { id: createId(), role: "assistant", content: response, createdAt: now, status: "complete" };
-    const conversation: Conversation = selected ? {
-      ...selected,
+    const currentSelected = selectedId ? conversationCacheRef.current.get(selectedId) ?? selected : null;
+    const conversation: Conversation = currentSelected ? {
+      ...currentSelected,
       updatedAt: now,
-      messages: [...selected.messages, userMessage, assistantMessage],
+      messages: [...currentSelected.messages, userMessage, assistantMessage],
     } : {
       id: createId(),
       projectId: activeProjectId,
@@ -1398,6 +1625,7 @@ function App(): React.JSX.Element {
       updatedAt: now,
       messages: [userMessage, assistantMessage],
       runs: [],
+      harness,
     };
     await window.khadim.conversations.save(conversation);
     conversationCacheRef.current.set(conversation.id, conversation);
@@ -1448,12 +1676,12 @@ function App(): React.JSX.Element {
     }
     if (name === "harness") {
       const choices: Array<{ id: HarnessMode; name: string }> = [{ id: "assistant", name: "Assistant" }, { id: "rpa", name: "Computer control" }, ...pluginHarnesses.map((harness) => ({ id: harness.id, name: harness.name }))];
-      if (!argument) return appendCommandResponse(raw, `Current capability: **${settings?.harness ?? "assistant"}**.\n\n${choices.map((choice) => `- ${choice.name} (\`${choice.id}\`)`).join("\n")}`);
+      if (!argument) return appendCommandResponse(raw, `Current capability: **${effectiveHarness}**.\n\n${choices.map((choice) => `- ${choice.name} (\`${choice.id}\`)`).join("\n")}`);
       const normalized = argument.toLowerCase();
       const choice = choices.find((candidate) => candidate.id.toLowerCase() === normalized || candidate.name.toLowerCase() === normalized);
       if (!choice) return appendCommandResponse(raw, "Capability not found. Use `/harness` to list available runners.");
-      await updateQuickSettings({ harness: choice.id });
-      return appendCommandResponse(raw, `Now using the **${choice.name}** capability.`);
+      if (!(await selectChatHarness(choice.id))) return false;
+      return appendCommandResponse(raw, `Now using the **${choice.name}** capability.`, choice.id);
     }
     if (name === "system") {
       if (!argument) return appendCommandResponse(raw, systemPromptOverride ?? selectedAgent.prompt);
@@ -1550,8 +1778,50 @@ function App(): React.JSX.Element {
   }
 
   async function stopRun(): Promise<boolean> {
-    if (!activeRunId) return true;
-    const runId = activeRunId;
+    // Stop targets the active run for the selected chat so concurrent runs in
+    // other chats are never aborted by an unrelated composer.
+    const runId = selectedId ? activeRunByConversationRef.current[selectedId] ?? null : null;
+    if (!runId) return true;
+    try {
+      let abortRequested = false;
+      const pendingLaunch = pendingRunLaunchesRef.current.get(runId);
+      if (pendingLaunch) {
+        pendingLaunch.cancelRequested = true;
+        if (!pendingLaunch.startSent) {
+          await pendingLaunch.settled;
+          if (!runTargetsRef.current.has(runId)) return true;
+        } else if (pendingLaunch.startResult) {
+          abortRequested = true;
+          await Promise.all([
+            window.khadim.agent.abort(runId),
+            pendingLaunch.startResult.catch(() => undefined),
+          ]);
+          if (!runTargetsRef.current.has(runId)) return true;
+        }
+      }
+      if (!abortRequested) await window.khadim.agent.abort(runId);
+      const snapshot = (await window.khadim.agent.recover()).find((candidate) => candidate.runId === runId);
+      if (snapshot) {
+        for (const item of [...snapshot.events].sort((left, right) => left.sequence - right.sequence)) {
+          processAgentEnvelope({ runId, sequence: item.sequence, event: item.event });
+        }
+      }
+      const finalization = terminalSavePromisesRef.current.get(runId);
+      if (finalization) await finalization;
+      if (runTargetsRef.current.has(runId)) {
+        setError("The process stopped, but its final run state could not be recovered yet.");
+        return false;
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The run could not be stopped.");
+      return false;
+    }
+    return true;
+  }
+
+  async function stopRunForConversation(conversationId: string): Promise<boolean> {
+    const runId = activeRunByConversationRef.current[conversationId] ?? null;
+    if (!runId) return true;
     try {
       let abortRequested = false;
       const pendingLaunch = pendingRunLaunchesRef.current.get(runId);
@@ -1590,32 +1860,44 @@ function App(): React.JSX.Element {
   }
 
   async function answerPendingQuestion(answers: AgentQuestionAnswers): Promise<void> {
-    const pending = pendingQuestion;
-    if (!pending || questionResponding) return;
-    setQuestionResponding(true);
+    const runId = selectedActiveRunId;
+    const entry = runId ? activeRunsRef.current[runId] : undefined;
+    const pending = entry?.question;
+    if (!runId || !pending || entry?.questionResponding) return;
+    patchActiveRun(runId, { questionResponding: true });
     setError(null);
     try {
-      await window.khadim.agent.answerQuestion(pending.runId, pending.request.requestId, answers);
-      setPendingQuestion((current) => current?.runId === pending.runId && current.request.requestId === pending.request.requestId ? null : current);
+      await window.khadim.agent.answerQuestion(runId, pending.request.requestId, answers);
+      playInterfaceSound("send", soundMoodRef.current);
+      if (activeRunsRef.current[runId]?.question?.request.requestId === pending.request.requestId) {
+        patchActiveRun(runId, { question: undefined });
+      }
+      window.setTimeout(() => promptRef.current?.focus(), 0);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The answer could not be sent.");
     } finally {
-      setQuestionResponding(false);
+      patchActiveRun(runId, { questionResponding: false });
     }
   }
 
   async function answerPendingApproval(decision: AgentApprovalDecision): Promise<void> {
-    const pending = pendingApproval;
-    if (!pending || approvalResponding) return;
-    setApprovalResponding(true);
+    const runId = selectedActiveRunId;
+    const entry = runId ? activeRunsRef.current[runId] : undefined;
+    const pending = entry?.approval;
+    if (!runId || !pending || entry?.approvalResponding) return;
+    patchActiveRun(runId, { approvalResponding: true });
     setError(null);
     try {
-      await window.khadim.agent.answerApproval(pending.runId, pending.request.requestId, decision);
-      setPendingApproval((current) => current?.runId === pending.runId && current.request.requestId === pending.request.requestId ? null : current);
+      await window.khadim.agent.answerApproval(runId, pending.request.requestId, decision);
+      playInterfaceSound("send", soundMoodRef.current);
+      if (activeRunsRef.current[runId]?.approval?.request.requestId === pending.request.requestId) {
+        patchActiveRun(runId, { approval: undefined });
+      }
+      window.setTimeout(() => promptRef.current?.focus(), 0);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The approval response could not be sent.");
     } finally {
-      setApprovalResponding(false);
+      patchActiveRun(runId, { approvalResponding: false });
     }
   }
 
@@ -1637,7 +1919,10 @@ function App(): React.JSX.Element {
       for (const [runId, target] of runTargetsRef.current) {
         if (target.conversationId === id) relatedRunIds.add(runId);
       }
-      if (activeRunId && relatedRunIds.has(activeRunId) && !(await stopRun())) return;
+      // Aborting the chat's active run is scoped to this conversation only so
+      // concurrent runs in other chats are never affected by the deletion.
+      const activeRunForChat = activeRunByConversationRef.current[id];
+      if (activeRunForChat && relatedRunIds.has(activeRunForChat) && !(await stopRunForConversation(id))) return;
       for (const runId of relatedRunIds) {
         const finalization = terminalSavePromisesRef.current.get(runId);
         if (finalization) await finalization.catch(() => undefined);
@@ -1658,6 +1943,7 @@ function App(): React.JSX.Element {
         runTargetsRef.current.delete(runId);
         usageCallRef.current.delete(runId);
         pendingLiveEventsRef.current.delete(runId);
+        clearActiveRun(runId);
       }
       conversationCacheRef.current.delete(id);
       setConversations((current) => current.filter((conversation) => conversation.id !== id));
@@ -1772,7 +2058,7 @@ function App(): React.JSX.Element {
     if (flush) saveArtifactDraftsNow(drafts);
   }
 
-  async function askAgentToEditStudio(instruction: string, attachments: ChatAttachment[] = [], visibleInstruction = instruction): Promise<boolean> {
+  async function askAgentToEditStudio(instruction: string, attachments: ChatAttachment[] = [], visibleInstruction = instruction, canvasSelection?: { pageId: string; elementIds: string[] }): Promise<boolean> {
     if (!studioArtifact || !artifactDraftState.projectId) return false;
     const artifact = studioArtifact;
     const projectId = artifactDraftState.projectId;
@@ -1790,11 +2076,16 @@ function App(): React.JSX.Element {
       setStudioAgentStatus({ artifactId: artifact.id, phase: "error", message });
       return false;
     }
+    // Bake the trusted selection into the prompt text so the model can see it,
+    // and into the run target so the main process can verify it.
+    const promptWithSelection = canvasSelection
+      ? `${studioAgentPrompt(artifact, instruction)}\n\nCanvas selection for this edit — pageId: ${canvasSelection.pageId}; elementIds: ${canvasSelection.elementIds.join(", ")}. Your canvasCommands must target exactly this page and these element ids.`
+      : studioAgentPrompt(artifact, instruction);
     const started = await sendPrompt(
-      studioAgentPrompt(artifact, instruction),
+      promptWithSelection,
       visibleInstruction,
       attachments,
-      { projectId, artifactId: artifact.id },
+      { projectId, artifactId: artifact.id, ...(canvasSelection ? { canvasSelection } : {}) },
     );
     if (!started) {
       setStudioAgentStatus({ artifactId: artifact.id, phase: "error", message: "The agent couldn’t start. Check the active model or finish the current run, then try again." });
@@ -1883,9 +2174,7 @@ function App(): React.JSX.Element {
     if (mode === "chat") setActiveView("welcome");
   }
 
-  function selectAgent(agentId: string): void {
-    const agent = agents.find((candidate) => candidate.id === agentId);
-    if (!agent) return;
+  function applyAgentSelection(agent: AgentDefinition): void {
     setSelectedAgentId(agent.id);
     const nextTools = agent.connectors.filter((id) => toolOptions.some((tool) => tool.id === id));
     if (!googleConnection?.connected) {
@@ -1894,7 +2183,25 @@ function App(): React.JSX.Element {
     }
     setEnabledTools(nextTools);
     setSystemPromptOverride(null);
-    if (agent.modelId || agent.harness) void updateQuickSettings({ modelId: agent.modelId, harness: agent.harness });
+  }
+
+  function selectAgent(agentId: string): void {
+    const agent = agents.find((candidate) => candidate.id === agentId);
+    if (!agent) return;
+    applyAgentSelection(agent);
+    if (agent.modelId) void updateQuickSettings({ modelId: agent.modelId });
+    if (agent.harness) void selectChatHarness(agent.harness);
+  }
+
+  async function startAgentChat(agentId: string): Promise<void> {
+    const agent = agents.find((candidate) => candidate.id === agentId);
+    if (!agent) return;
+    applyAgentSelection(agent);
+    if (agent.modelId || agent.harness) {
+      if (!(await updateQuickSettings({ modelId: agent.modelId, harness: agent.harness }))) return;
+    }
+    setActiveMode("chat");
+    newChat();
   }
 
   function createAgent(agent: AgentDefinition): void {
@@ -1902,7 +2209,67 @@ function App(): React.JSX.Element {
     setSelectedAgentId(agent.id);
     setEnabledTools(agent.connectors.filter((id) => id !== "apps" || googleConnection?.connected));
     setSystemPromptOverride(null);
-    if (agent.modelId || agent.harness) void updateQuickSettings({ modelId: agent.modelId, harness: agent.harness });
+    if (agent.modelId) void updateQuickSettings({ modelId: agent.modelId });
+  }
+
+  async function generateAgentDraft(intent: string): Promise<GeneratedAgentDraft> {
+    if (!activeProject || projectAvailability[activeProject.id]?.available === false) throw new Error("Open an available project before generating an agent.");
+    if (!activeChatModel) throw new Error("Choose a model before using Generate with AI.");
+    const runId = createId();
+    const conversationId = createId();
+    const userMessageId = createId();
+    const assistantMessageId = createId();
+    const now = new Date().toISOString();
+    const engineSessionKey = `electron.v1.${createId()}`;
+    const systemPrompt = "You design practical automation agents for non-technical users. Return only valid JSON with keys name, description, prompt, connectors, appAccess, color. connectors may contain web, files, apps. appAccess may contain gmail, drive, calendar. color must be coral, blue, orange, or pink. Keep the name under 60 characters and description under 160. The prompt must clearly define responsibility, expected outcome, safety boundaries, and when to ask for approval. Choose the least access needed.";
+    const prompt = `Create an agent for this outcome:\n\n${intent.trim()}`;
+    const conversation: Conversation = {
+      id: conversationId,
+      projectId: activeProject.id,
+      engineSessionKey,
+      title: "Generate agent draft",
+      createdAt: now,
+      updatedAt: now,
+      messages: [
+        { id: userMessageId, role: "user", content: prompt, createdAt: now, status: "complete" },
+        { id: assistantMessageId, role: "assistant", content: "", createdAt: now, status: "streaming", runId },
+      ],
+      runs: [{
+        id: runId,
+        projectId: activeProject.id,
+        conversationId,
+        userMessageId,
+        assistantMessageId,
+        status: "running",
+        createdAt: now,
+        agent: { id: "agent-builder", name: "Agent Builder", type: "agent", systemPrompt },
+        model: { id: activeChatModel.id, name: activeChatModel.name, provider: activeChatModel.provider, model: activeChatModel.model, baseUrl: activeChatModel.baseUrl, temperature: activeChatModel.temperature },
+        harness: effectiveHarness,
+        runtimeMode: "approval-required",
+        multiAgent: false,
+        enabledTools: [],
+        enabledApps: [],
+      }],
+      harness: effectiveHarness,
+    };
+
+    await window.khadim.conversations.save(conversation);
+    return new Promise<GeneratedAgentDraft>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        pendingAgentDraftRunsRef.current.delete(runId);
+        void window.khadim.agent.abort(runId).catch(() => undefined);
+        void window.khadim.conversations.remove(activeProject.id, conversationId).catch(() => undefined);
+        reject(new Error("Agent generation took too long. Try again."));
+      }, 60_000);
+      pendingAgentDraftRunsRef.current.set(runId, { content: "", resolve, reject, conversationId, projectId: activeProject.id, timeout });
+      void window.khadim.agent.start({ runId, projectId: activeProject.id, conversationId, assistantMessageId, engineSessionKey, prompt, systemPrompt, enabledTools: [], enabledApps: [] }).catch((cause: unknown) => {
+        const pending = pendingAgentDraftRunsRef.current.get(runId);
+        pendingAgentDraftRunsRef.current.delete(runId);
+        if (pending) window.clearTimeout(pending.timeout);
+        void window.khadim.conversations.remove(activeProject.id, conversationId).catch(() => undefined);
+        reject(cause instanceof Error ? cause : new Error(String(cause)));
+      });
+    });
   }
 
   function updateAgent(agent: AgentDefinition): void {
@@ -1910,7 +2277,7 @@ function App(): React.JSX.Element {
     if (selectedAgentId === agent.id) {
       setEnabledTools(agent.connectors.filter((id) => id !== "apps" || googleConnection?.connected));
       setSystemPromptOverride(null);
-      if (agent.modelId || agent.harness) void updateQuickSettings({ modelId: agent.modelId, harness: agent.harness });
+      if (agent.modelId) void updateQuickSettings({ modelId: agent.modelId });
     }
   }
 
@@ -2088,8 +2455,8 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function updateQuickSettings(update: { modelId?: string; harness?: HarnessMode }): Promise<void> {
-    if (!settings) return;
+  async function updateQuickSettings(update: { modelId?: string; harness?: HarnessMode }): Promise<boolean> {
+    if (!settings) return false;
     const previous = settings;
     const optimisticModels = settings.models.map((model) => ({
       ...model,
@@ -2118,11 +2485,14 @@ function App(): React.JSX.Element {
         harness: optimistic.harness,
         theme: optimistic.theme,
         customThemes: optimistic.customThemes,
+        soundMood: optimistic.soundMood ?? (optimistic.soundsEnabled === false ? "off" : "subtle"),
       });
       setSettings(next);
+      return true;
     } catch (cause) {
       setSettings(previous);
       setError(cause instanceof Error ? cause.message : String(cause));
+      return false;
     }
   }
 
@@ -2156,6 +2526,30 @@ function App(): React.JSX.Element {
     });
   }
 
+  // Selecting a harness from the composer is scoped: an existing chat persists
+  // the choice on that conversation only (never global settings), while the
+  // welcome composer updates the global default. The optimistic update rolls
+  // back if the per-chat save fails, so global settings stay untouched.
+  async function selectChatHarness(harness: HarnessMode): Promise<boolean> {
+    if (!selected) {
+      return updateQuickSettings({ harness });
+    }
+    if (selected.harness === harness) return true;
+    const previous = selected;
+    const optimistic: Conversation = { ...selected, harness, updatedAt: new Date().toISOString() };
+    conversationCacheRef.current.set(selected.id, optimistic);
+    setConversations((current) => current.map((conversation) => conversation.id === selected.id ? optimistic : conversation));
+    try {
+      await window.khadim.conversations.save(optimistic);
+      return true;
+    } catch (cause) {
+      conversationCacheRef.current.set(previous.id, previous);
+      setConversations((current) => current.map((conversation) => conversation.id === previous.id ? previous : conversation));
+      setError(cause instanceof Error ? cause.message : "The chat capability could not be saved.");
+      return false;
+    }
+  }
+
   async function applySavedSettings(next: AppSettings): Promise<void> {
     if (next.activeProjectId === activeProjectId) {
       setSettings(next);
@@ -2179,8 +2573,8 @@ function App(): React.JSX.Element {
     { id: "new-chat", group: "Actions", label: "New chat", detail: newChatShortcut, keywords: "start conversation", icon: <Plus size={17} />, action: newChat },
     { id: "new-artifact", group: "Actions", label: "New artifact", detail: "Create in Studio", keywords: "document page html create", icon: <FileCode2 size={17} />, action: () => { setActiveMode("studio"); setActiveView("artifacts"); startNewArtifact(); } },
     { id: "settings", group: "Actions", label: "Open settings", detail: "Models, appearance, and project", keywords: "preferences configuration", icon: <Settings size={17} />, action: () => { setSettingsIntent(null); setSettingsOpen(true); } },
-    { id: "agents", group: "Navigate", label: "Agents", detail: "Configure who handles the work", keywords: "personas assistants", icon: <Bot size={17} />, action: () => chooseMode("agent") },
-    { id: "studio", group: "Navigate", label: "Studio", detail: "Create and review artifacts", keywords: "documents artifacts design code", icon: <FileCode2 size={17} />, action: () => chooseMode("studio") },
+    { id: "agents", group: "Navigate", label: "Agents", detail: "Alpha · Configure reusable roles", keywords: "personas assistants alpha", icon: <Bot size={17} />, action: () => chooseMode("agent") },
+    { id: "studio", group: "Navigate", label: "Studio", detail: "Beta · Create and review artifacts", keywords: "documents artifacts design code beta", icon: <FileCode2 size={17} />, action: () => chooseMode("studio") },
     { id: "project-home", group: "Navigate", label: "Project overview", detail: activeProject?.name ?? "Choose a local project", keywords: "projects folders workspace", icon: <FolderKanban size={17} />, action: () => chooseView("project") },
     { id: "apps", group: "Navigate", label: "Apps", detail: "Connect services and skills", keywords: "integrations connectors", icon: <AppWindow size={17} />, action: () => chooseView("apps") },
     ...conversations.map((conversation): CommandPaletteItem => ({
@@ -2222,9 +2616,6 @@ function App(): React.JSX.Element {
           </button>
         )}
         <button className="model-pill" onClick={() => { setSettingsIntent({ section: "model" }); setSettingsOpen(true); }}>
-          <span className={`agent-orb ${selectedAgent.color}`} />
-          {selectedAgent.name}
-          <span className="model-divider" />
           {selectedModel && <ModelIcon model={selectedModel} size={22} />}
           {settings?.model || "Choose a model"}
           <ChevronDown size={14} />
@@ -2238,18 +2629,13 @@ function App(): React.JSX.Element {
     if (!selected) {
       return (
         <section className="welcome workspace-arrival">
-          <div className="welcome-copy">
-            <span className="welcome-mark"><Logo /></span>
-            <span className="welcome-status"><i /> Local-first workspace</span>
-            <h1>Where should we begin?</h1>
-            <p>Start with an outcome. Khadim can research, create, or work across your computer while your project stays local.</p>
-          </div>
+          <KhadimLogoScene />
           <Composer
             prompt={prompt}
             setPrompt={setPrompt}
             onSend={sendMainChatPrompt}
             onStop={stopRun}
-            running={Boolean(activeRunId)}
+            running={Boolean(selectedActiveRunId)}
             inputRef={promptRef}
             large
             agentId={selectedAgentId}
@@ -2257,20 +2643,21 @@ function App(): React.JSX.Element {
             agents={agents}
             onSelectAgent={selectAgent}
             modelName={activeChatModel?.name || (activePluginHarnessId && pluginModelsLoading === activePluginHarnessId ? "Loading models" : "Choose model")}
-            provider={activeChatModel?.provider || settings?.provider || "anthropic"}
             models={chatModels}
             modes={activePluginModes}
             modeId={selectedPluginModeId}
             enabledTools={enabledTools}
             onToggleTool={(toolId) => setEnabledTools((current) => current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId])}
-            harness={settings?.harness || "assistant"}
+            harness={effectiveHarness}
             pluginHarnesses={pluginHarnesses}
             harnessCommands={activePluginCommands}
             onSelectModel={selectChatModel}
             onSelectMode={selectChatMode}
             runtimeMode={runtimeMode}
             onSelectRuntimeMode={selectRuntimeMode}
-            onSelectHarness={(harness) => void updateQuickSettings({ harness })}
+            onSelectHarness={(harness) => void selectChatHarness(harness)}
+            multiAgent={multiAgent}
+            onSetMultiAgent={setMultiAgent}
             modelsLoading={Boolean(activePluginHarnessId && pluginModelsLoading === activePluginHarnessId)}
             modelsError={activePluginHarnessId ? pluginModelErrors[activePluginHarnessId] : undefined}
             projectName={activeProject?.name}
@@ -2292,7 +2679,7 @@ function App(): React.JSX.Element {
     return (
       <section className="chat-view workspace-arrival">
         <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-          {activeRunId ? "Khadim is working." : latestMessage?.status === "error" ? "The run did not finish." : latestMessage?.role === "assistant" && latestMessage.status === "complete" ? "Response complete." : ""}
+          {selectedActiveRunId ? "Khadim is working." : latestMessage?.status === "error" ? "The run did not finish." : latestMessage?.role === "assistant" && latestMessage.status === "complete" ? "Response complete." : ""}
         </div>
         <div
           className="message-list"
@@ -2313,17 +2700,30 @@ function App(): React.JSX.Element {
               : undefined;
             const artifactWasDeleted = Boolean(storedArtifact?.deletedAt);
             const legacyFiles = message.role === "user" && !message.attachments?.length ? legacyFileAttachments(message.content) : null;
-            const messageContent = studioArtifact ? messageCopyWithoutStudioEdit(message.content) : message.content;
-            const visibleContent = legacyFiles?.content ?? (extractedHtml ? messageCopyWithoutArtifactSource(message.content) : messageContent);
+            const messageContent = message.role === "assistant" ? messageCopyWithoutStudioEdit(message.content) : message.content;
+            const recommendation = message.role === "assistant" ? extractRecommendation(messageContent) : null;
+            const recommendationCopy = message.role === "assistant" ? messageCopyWithoutRecommendation(messageContent) : messageContent;
+            const visibleContent = legacyFiles?.content ?? (extractedHtml ? messageCopyWithoutArtifactSource(recommendationCopy) : recommendationCopy);
             const visibleAttachments = message.attachments?.length ? message.attachments : legacyFiles?.attachments;
+            const hasToolActivity = message.role === "assistant" && Boolean(message.toolCalls?.length);
             return (
-              <article className={`message ${message.role}`} key={message.id}>
+              <article className={`message ${message.role} is-${message.status}`} key={message.id}>
                 <div className="message-avatar">{message.role === "assistant" ? <Logo /> : <UserRound size={17} />}</div>
                 <div className="message-body">
                   <div className="message-name">{message.role === "assistant" ? "Khadim" : "You"}</div>
-                  {visibleContent ? <MarkdownRenderer content={visibleContent} streaming={message.status === "streaming"} /> : message.status === "streaming" ? <div className="thinking-status" aria-hidden="true"><span className="activity-spinner" /><span>Working</span></div> : null}
+                  {message.role === "assistant" && message.coordination && <CoordinationTrace activity={message.coordination} runTitle={selected.title} run={messageRun} />}
+                  {message.role === "assistant" && message.toolCalls && message.toolCalls.length > 0 && <ToolChips activities={message.toolCalls} />}
+                  {visibleContent ? <MarkdownRenderer content={visibleContent} streaming={message.status === "streaming"} /> : message.status === "streaming" && !hasToolActivity ? <LoadingState /> : null}
                   {visibleAttachments && visibleAttachments.length > 0 && <div className="message-attachments">{visibleAttachments.map((attachment, index) => <AttachmentBadge attachment={attachment} key={`${message.id}-${attachment.name}-${index}`} />)}</div>}
-                  {message.role === "assistant" && message.toolCalls && message.toolCalls.length > 0 && <ToolActivityGroup activities={message.toolCalls} />}
+                  {recommendation && <RecommendationCard recommendation={recommendation} onUse={(option) => {
+                    const optionText = option.body.replaceAll("`", "");
+                    setPrompt((current) => {
+                      if (!current.trim()) return optionText;
+                      if (current.includes(optionText)) return current;
+                      return `${current.trimEnd()}\n\n${optionText}`;
+                    });
+                    window.setTimeout(() => promptRef.current?.focus(), 0);
+                  }} />}
                   {extractedHtml && artifactWasDeleted ? (
                     <div className="message-artifact-card deleted" role="status">
                       <FileCode2 size={21} />
@@ -2353,7 +2753,7 @@ function App(): React.JSX.Element {
           })}
         </div>
         <div className="composer-dock">
-          <Composer prompt={prompt} setPrompt={setPrompt} onSend={sendMainChatPrompt} onStop={stopRun} running={Boolean(activeRunId)} inputRef={promptRef} agentId={selectedAgentId} agentName={selectedAgent.name} agents={agents} onSelectAgent={selectAgent} modelName={activeChatModel?.name || (activePluginHarnessId && pluginModelsLoading === activePluginHarnessId ? "Loading models" : "Choose model")} provider={activeChatModel?.provider || settings?.provider || "anthropic"} models={chatModels} modes={activePluginModes} modeId={selectedPluginModeId} enabledTools={enabledTools} onToggleTool={(toolId) => setEnabledTools((current) => current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId])} harness={settings?.harness || "assistant"} pluginHarnesses={pluginHarnesses} harnessCommands={activePluginCommands} onSelectModel={selectChatModel} onSelectMode={selectChatMode} runtimeMode={runtimeMode} onSelectRuntimeMode={selectRuntimeMode} onSelectHarness={(harness) => void updateQuickSettings({ harness })} modelsLoading={Boolean(activePluginHarnessId && pluginModelsLoading === activePluginHarnessId)} modelsError={activePluginHarnessId ? pluginModelErrors[activePluginHarnessId] : undefined} usage={conversationUsage(selected)} projectName={activeProject?.name} projectAvailable={activeProject ? projectAvailability[activeProject.id]?.available !== false : undefined} pendingQuestion={pendingQuestion?.runId === activeRunId ? pendingQuestion.request : undefined} questionResponding={questionResponding} onAnswerQuestion={answerPendingQuestion} pendingApproval={pendingApproval?.runId === activeRunId ? pendingApproval.request : undefined} approvalResponding={approvalResponding} onApprovalDecision={answerPendingApproval} />
+          <Composer prompt={prompt} setPrompt={setPrompt} onSend={sendMainChatPrompt} onStop={stopRun} running={Boolean(selectedActiveRunId)} inputRef={promptRef} agentId={selectedAgentId} agentName={selectedAgent.name} agents={agents} onSelectAgent={selectAgent} modelName={activeChatModel?.name || (activePluginHarnessId && pluginModelsLoading === activePluginHarnessId ? "Loading models" : "Choose model")} models={chatModels} modes={activePluginModes} modeId={selectedPluginModeId} enabledTools={enabledTools} onToggleTool={(toolId) => setEnabledTools((current) => current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId])} harness={effectiveHarness} pluginHarnesses={pluginHarnesses} harnessCommands={activePluginCommands} onSelectModel={selectChatModel} onSelectMode={selectChatMode} runtimeMode={runtimeMode} onSelectRuntimeMode={selectRuntimeMode} onSelectHarness={(harness) => void selectChatHarness(harness)} multiAgent={multiAgent} onSetMultiAgent={setMultiAgent} modelsLoading={Boolean(activePluginHarnessId && pluginModelsLoading === activePluginHarnessId)} modelsError={activePluginHarnessId ? pluginModelErrors[activePluginHarnessId] : undefined} usage={conversationUsage(selected)} projectName={activeProject?.name} projectAvailable={activeProject ? projectAvailability[activeProject.id]?.available !== false : undefined} pendingQuestion={selectedActiveRun?.question?.request} questionResponding={selectedActiveRun?.questionResponding} onAnswerQuestion={answerPendingQuestion} pendingApproval={selectedActiveRun?.approval?.request} approvalResponding={selectedActiveRun?.approvalResponding} onApprovalDecision={answerPendingApproval} />
         </div>
       </section>
     );
@@ -2369,8 +2769,8 @@ function App(): React.JSX.Element {
         <button className="header-logo" onClick={goHome} aria-label="Khadim home" title="Project overview"><Logo /></button>
         <nav className="mode-nav" aria-label="Work modes">
           <button aria-pressed={chatModeActive} className={chatModeActive ? "active" : ""} onClick={() => chooseMode("chat")} title="Chat"><ChatCircleDots size={16} /><span>Chat</span></button>
-          <button aria-pressed={agentModeActive} className={agentModeActive ? "active" : ""} onClick={() => chooseMode("agent")} title="Agents"><Bot size={16} /><span>Agents</span></button>
-          <button aria-pressed={studioModeActive} className={studioModeActive ? "active" : ""} onClick={() => chooseMode("studio")} title="Studio"><FileText size={16} /><span>Studio</span></button>
+          <button aria-pressed={agentModeActive} className={agentModeActive ? "active" : ""} onClick={() => chooseMode("agent")} title="Agents · Alpha"><Bot size={16} /><span>Agents</span><FeatureMaturityBadge feature="agents" compact /></button>
+          <button aria-pressed={studioModeActive} className={studioModeActive ? "active" : ""} onClick={() => chooseMode("studio")} title="Studio · Beta"><FileText size={16} /><span>Studio</span><FeatureMaturityBadge feature="studio" compact /></button>
         </nav>
         <CommandPalette items={commandItems} inputRef={searchRef} shortcut={commandShortcut} compact={isCompact} />
         <div className="header-actions">
@@ -2467,51 +2867,71 @@ function App(): React.JSX.Element {
       <section className="workspace" inert={sidebarOpen && isCompact ? true : undefined}>
         {studioArtifact ? (
           <div
-            className="studio-dual-workspace"
+            className={`studio-dual-workspace${showStudioChat ? "" : " studio-dual-workspace--chat-hidden"}`}
             ref={studioWorkspaceRef}
             style={{ "--studio-chat-width": `${studioChatWidth}px` } as CSSProperties}
           >
-            <section className="studio-main-chat-pane" aria-label={`Main chat beside ${studioArtifact.title}`}>
+            {/* The main chat pane stays mounted even when a Canvas collapses it
+                so Composer attachments, partial QuestionPanel answers, open
+                menus, and other component-local state survive Hide/Show. When
+                collapsed the pane is visually absent: it carries the HTML
+                `hidden` attribute (forced via !important below), is `inert`,
+                and is skipped by the accessibility tree. The resize separator
+                remains conditionally unmounted because it has no local state. */}
+            <section
+              className={`studio-main-chat-pane${showStudioChat ? "" : " studio-main-chat-pane--hidden"}`}
+              aria-label={`Main chat beside ${studioArtifact.title}`}
+              hidden={!showStudioChat || undefined}
+              inert={!showStudioChat || undefined}
+              aria-hidden={!showStudioChat || undefined}
+            >
               {renderWorkspaceTopbar()}
               {renderMainChatSurface()}
             </section>
-            <div
-              className="studio-pane-separator"
-              role="separator"
-              aria-label="Resize Studio conversation pane"
-              aria-orientation="vertical"
-              aria-valuemin={360}
-              aria-valuemax={720}
-              aria-valuenow={studioChatWidth}
-              tabIndex={0}
-              onPointerDown={beginStudioPaneResize}
-              onDoubleClick={() => setStudioChatWidth(520)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                  event.preventDefault();
-                  setStudioChatWidth((current) => Math.min(720, Math.max(360, current + (event.key === "ArrowLeft" ? -16 : 16))));
-                } else if (event.key === "Home") {
-                  event.preventDefault();
-                  setStudioChatWidth(360);
-                } else if (event.key === "End") {
-                  event.preventDefault();
-                  setStudioChatWidth(720);
-                }
-              }}
-            />
+            {showStudioChat && (
+              <div
+                className="studio-pane-separator"
+                role="separator"
+                aria-label="Resize Studio conversation pane"
+                aria-orientation="vertical"
+                aria-valuemin={360}
+                aria-valuemax={720}
+                aria-valuenow={studioChatWidth}
+                tabIndex={0}
+                onPointerDown={beginStudioPaneResize}
+                onDoubleClick={() => setStudioChatWidth(520)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    setStudioChatWidth((current) => Math.min(720, Math.max(360, current + (event.key === "ArrowLeft" ? -16 : 16))));
+                  } else if (event.key === "Home") {
+                    event.preventDefault();
+                    setStudioChatWidth(360);
+                  } else if (event.key === "End") {
+                    event.preventDefault();
+                    setStudioChatWidth(720);
+                  }
+                }}
+              />
+            )}
             <div className="studio-editor-pane">
               <StudioWorkspace
                 artifact={studioArtifact}
                 saveState={artifactSaveState}
                 agentName={selectedAgent.name}
-                modelName={selectedModel?.name ?? "No active model"}
-                agentBusy={Boolean(activeRunId)}
+                modelName={activeChatModel?.name ?? "No active model"}
+                agentAvailable={Boolean(activeChatModel)}
+                agentBusy={Boolean(selectedActiveRunId)}
                 agentStatus={studioAgentStatus?.artifactId === studioArtifact.id ? studioAgentStatus : null}
                 onChange={updateStudioArtifact}
                 onRetrySave={() => saveArtifactDraftsNow(artifactDraftState.drafts, false)}
                 onClose={() => closeStudio()}
                 onExportPdf={() => void exportStudioPdf()}
                 onAskAgent={askAgentToEditStudio}
+                onAskCanvasAgent={(instruction, selection) => askAgentToEditStudio(instruction, [], instruction, selection)}
+                studioChatVisible={showStudioChat}
+                canToggleStudioChat={isCanvasArtifact}
+                onToggleStudioChat={toggleCanvasChat}
               />
             </div>
           </div>
@@ -2528,9 +2948,10 @@ function App(): React.JSX.Element {
             pluginHarnesses={pluginHarnesses}
             googleConnection={googleConnection}
             onCreate={createAgent}
+            onGenerate={generateAgentDraft}
             onUpdate={updateAgent}
             onDelete={deleteAgent}
-            onStart={(id) => { selectAgent(id); setActiveMode("chat"); newChat(); }}
+            onStart={(id) => void startAgentChat(id)}
           />
         ) : activeView === "project" ? (
           <ProjectHome

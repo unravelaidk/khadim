@@ -58,6 +58,28 @@ Copyright (c) The Puck Contributors
 
 The MIT license terms reproduced above apply.
 
+## Thinking Orbs
+
+Source: <https://github.com/Jakubantalik/thinking-orbs>
+
+MIT License
+
+Copyright (c) 2026 Jakub Antalik
+
+The MIT license terms reproduced above apply.
+
+## SoundCN
+
+Source: <https://github.com/kapishdima/soundcn>
+
+The copied Web Audio helpers are available under the MIT License.
+
+Copyright (c) 2026 KapishDima
+
+The MIT license terms reproduced above apply. The bundled `click-soft`,
+`notification-pop`, `success-chime`, and `error-buzz` assets are CC0 works by
+Kenney, as recorded in their SoundCN asset metadata.
+
 ## Vite
 
 Source: <https://github.com/vitejs/vite>

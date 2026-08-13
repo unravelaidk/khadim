@@ -5,6 +5,7 @@ use crate::runtime::AgentRuntime;
 use crate::tools::{default_tools, AppendTool, DeleteTool, EditTool, WriteTool};
 use futures::future::BoxFuture;
 use khadim_ai_core::error::AppError;
+use khadim_ai_core::models::find_or_synth_model;
 use khadim_ai_core::types::ModelSelection;
 use khadim_code_graph::NodeSpan;
 use serde_json::{json, Value};
@@ -20,6 +21,8 @@ use super::lease::LeaseManager;
 pub enum WriteScope {
     /// Read-only tools only (subagent semantics).
     ReadOnly,
+    /// Read-only tools intersected with the primary run's explicit allowlist.
+    ReadOnlyTools(Vec<String>),
     /// Full tool set, but writes are restricted to the given path prefixes.
     Paths(Vec<PathBuf>),
     /// Full tool set, no path restrictions.
@@ -96,6 +99,13 @@ pub type WorkerRunner = Arc<
 fn build_runtime(root: &Path, scope: &WriteScope) -> AgentRuntime {
     match scope {
         WriteScope::ReadOnly => AgentRuntime::new_read_only(root),
+        WriteScope::ReadOnlyTools(allowed) => {
+            let tools = crate::tools::read_only_tools(root)
+                .into_iter()
+                .filter(|tool| allowed.contains(&tool.definition().name))
+                .collect();
+            AgentRuntime::with_tools(root, tools, String::new())
+        }
         WriteScope::All => AgentRuntime::new(root),
         WriteScope::Paths(paths) => {
             let root = root.to_path_buf();
@@ -176,9 +186,19 @@ pub fn spawn_worker_with_runner(
 ) -> WorkerHandle {
     let worker_id = spec.worker_id.clone();
     let runner = runner.unwrap_or_else(|| default_runner(spec.max_turns));
+    let model_details = selection.as_ref().map(|selected| {
+        let model = find_or_synth_model(&selected.provider, &selected.model_id);
+        (
+            selected.model_id.clone(),
+            selected.display_name.clone().unwrap_or(model.name),
+            selected.provider.clone(),
+            model.context_window,
+        )
+    });
     let handle = tokio::spawn(async move {
         let scope_label = match &spec.write_scope {
             WriteScope::ReadOnly => "readonly".to_string(),
+            WriteScope::ReadOnlyTools(_) => "readonly-inherited".to_string(),
             WriteScope::All => "all".to_string(),
             WriteScope::Paths(paths) => {
                 format!(
@@ -199,6 +219,11 @@ pub fn spawn_worker_with_runner(
                     "worker_id": spec.worker_id,
                     "task": spec.task,
                     "scope": scope_label,
+                    "mode": spec.mode.name,
+                    "model": model_details.as_ref().map(|details| &details.0),
+                    "model_name": model_details.as_ref().map(|details| &details.1),
+                    "provider": model_details.as_ref().map(|details| &details.2),
+                    "context_window": model_details.as_ref().map(|details| details.3),
                 })),
         );
 
@@ -492,6 +517,23 @@ mod tests {
         std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
         assert!(guard.allows(&nested));
         assert!(!guard.allows(&tmp.path().join("forbidden")));
+    }
+
+    #[test]
+    fn delegated_runtime_respects_the_primary_read_tool_allowlist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime = build_runtime(
+            tmp.path(),
+            &WriteScope::ReadOnlyTools(vec!["web_search".to_string()]),
+        );
+
+        let names = runtime
+            .definitions()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["web_search"]);
+        assert!(runtime.get("read").is_none());
     }
 
     // ── Worker event flow with a stub runner ───────────────────────────────

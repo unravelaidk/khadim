@@ -264,7 +264,7 @@ impl TuiApp {
         });
         if config.multi_agent {
             entries.push(TranscriptEntry::System {
-                text: "  multi-agent mode on (from --multi-agent)".into(),
+                text: "  Team mode on: one primary agent with focused read-only helpers".into(),
             });
         }
         entries.push(TranscriptEntry::Separator);
@@ -369,7 +369,7 @@ impl TuiApp {
         };
         self.entries.push(TranscriptEntry::System {
             text: if enabled {
-                "🔀 Mode: multi-agent (decompose → workers → aggregate)".into()
+                "🔀 Mode: Team (primary agent + bounded read-only helpers)".into()
             } else {
                 "🔀 Mode: auto-detect (single agent)".into()
             },
@@ -769,92 +769,33 @@ impl TuiApp {
                     self.entries.push(TranscriptEntry::Separator);
                 }
             }
-            // ── Multi-agent coordinator events ───────────────────────────────
-            // Minimum viable: render as system/transcript lines with a
-            // worker-prefixed indent. No TUI redesign.
+            "team_started" => {
+                self.entries.push(TranscriptEntry::System {
+                    text: "[team] Primary agent may delegate focused read-only work".into(),
+                });
+            }
             "goal_heuristic" => {
-                if let Some(metadata) = &event.metadata {
+                if self.multi_agent_enabled() {
+                    let metadata = event.metadata.as_ref();
                     let total = metadata
-                        .get("total_goals")
+                        .and_then(|value| value.get("total_goals"))
                         .and_then(serde_json::Value::as_u64)
                         .unwrap_or(0);
                     self.entries.push(TranscriptEntry::System {
-                        text: format!("[multi-agent] Decomposed {total} goal(s)"),
+                        text: format!("[team] Plan has {total} goal(s)"),
                     });
                 }
             }
-            "workers_assigned" => {
-                if let Some(metadata) = &event.metadata {
-                    if let Some(assignments) =
-                        metadata.get("assignments").and_then(|v| v.as_array())
-                    {
-                        let lines: Vec<String> = assignments
-                            .iter()
-                            .map(|a| {
-                                let wi =
-                                    a.get("worker_index").and_then(|v| v.as_u64()).unwrap_or(0);
-                                let mode = a.get("mode").and_then(|v| v.as_str()).unwrap_or("?");
-                                let goals = a
-                                    .get("goals")
-                                    .and_then(|v| v.as_array())
-                                    .map(|g| {
-                                        g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>()
-                                    })
-                                    .unwrap_or_default();
-                                format!("  [worker-{wi}] mode={mode} goals={goals:?}")
-                            })
-                            .collect();
-                        self.entries.push(TranscriptEntry::System {
-                            text: format!(
-                                "[multi-agent] Assigned {} worker(s):\n{}",
-                                assignments.len(),
-                                lines.join("\n")
-                            ),
-                        });
-                    }
-                }
-            }
-            "worker_spawned" | "worker_assigned" => {
+            "worker_spawned" => {
                 if let Some(metadata) = &event.metadata {
                     let wid = metadata
                         .get("worker_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("?");
-                    let goals = metadata
-                        .get("goals")
-                        .and_then(|v| v.as_array())
-                        .map(|g| g.iter().filter_map(|n| n.as_u64()).collect::<Vec<_>>())
-                        .unwrap_or_default();
-                    let label = if event.event_type == "worker_spawned" {
-                        "spawned"
-                    } else {
-                        "assigned"
-                    };
+                    let task = metadata.get("task").and_then(|v| v.as_str()).unwrap_or("");
                     self.entries.push(TranscriptEntry::System {
-                        text: format!("  [{wid}] {label} goals {goals:?}"),
+                        text: format!("  [{wid}] helper started: {task}"),
                     });
-                }
-            }
-            "worker_event" => {
-                // Forwarded inner event — render text_delta inline into the
-                // assistant entry; other inner types are noise in the TUI.
-                if let Some(metadata) = &event.metadata {
-                    let inner = metadata
-                        .get("inner_event_type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let inner_content = metadata
-                        .get("inner_content")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    if inner == "text_delta" && !inner_content.is_empty() {
-                        self.ensure_assistant_entry();
-                        if let Some(TranscriptEntry::AssistantText { text }) =
-                            self.entries.last_mut()
-                        {
-                            text.push_str(inner_content);
-                        }
-                    }
                 }
             }
             "worker_done" => {
@@ -902,7 +843,8 @@ impl TuiApp {
             "goal_satisfied" => {
                 if let Some(metadata) = &event.metadata {
                     let gid = metadata
-                        .get("goal_id")
+                        .get("goal_index")
+                        .or_else(|| metadata.get("goal_id"))
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0);
                     let desc = metadata
@@ -911,63 +853,6 @@ impl TuiApp {
                         .unwrap_or("");
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  ✓ goal {gid} satisfied: {desc}"),
-                    });
-                }
-            }
-            "goal_reassigned" => {
-                if let Some(metadata) = &event.metadata {
-                    let gid = metadata
-                        .get("goal_id")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let n = metadata
-                        .get("reassignment")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    self.entries.push(TranscriptEntry::System {
-                        text: format!("  ↻ goal {gid} reassigned (attempt {n})"),
-                    });
-                }
-            }
-            "goal_blocked" => {
-                if let Some(metadata) = &event.metadata {
-                    let gid = metadata
-                        .get("goal_id")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let reason = metadata
-                        .get("reason")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    self.entries.push(TranscriptEntry::System {
-                        text: format!("  ✗ goal {gid} blocked: {reason}"),
-                    });
-                }
-            }
-            "lease_conflict" => {
-                if let Some(metadata) = &event.metadata {
-                    let wid = metadata
-                        .get("worker_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("?");
-                    let other = metadata
-                        .get("other_worker_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("?");
-                    let file = metadata.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                    self.entries.push(TranscriptEntry::System {
-                        text: format!("  [lease] {wid} conflicts with {other} on {file}"),
-                    });
-                }
-            }
-            "cbs_resolution" => {
-                if let Some(metadata) = &event.metadata {
-                    let reason = metadata
-                        .get("reason")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("cbs");
-                    self.entries.push(TranscriptEntry::System {
-                        text: format!("  [cbs] resolution: {reason}"),
                     });
                 }
             }
@@ -985,13 +870,6 @@ impl TuiApp {
                         .unwrap_or(0);
                     self.entries.push(TranscriptEntry::System {
                         text: format!("  [search] {count} candidate(s)"),
-                    });
-                }
-            }
-            "multi_agent_done" => {
-                if let Some(content) = event.content {
-                    self.entries.push(TranscriptEntry::AssistantText {
-                        text: content.clone(),
                     });
                 }
             }

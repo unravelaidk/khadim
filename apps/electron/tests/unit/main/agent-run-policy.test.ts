@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../../../src/shared/types";
-import { credentialPolicyArgs, executionPolicyArgs, processSupervisionArgs, skillRuntimeArgs } from "../../../src/main/agent-run-policy";
+import { credentialPolicyArgs, executionPolicyArgs, pluginTeamInstructions, processSupervisionArgs, skillRuntimeArgs } from "../../../src/main/agent-run-policy";
 
 function run(overrides: Partial<AgentRun> = {}): AgentRun {
   return {
@@ -63,6 +63,22 @@ describe("executionPolicyArgs", () => {
   it("uses the explicit none sentinel when every optional tool is disabled", () => {
     expect(executionPolicyArgs(run({ enabledTools: [], model: { ...run().model, temperature: undefined } })))
       .toEqual(["--tool-groups", "none"]);
+  });
+
+  it("keeps the primary run policy when Team mode enables bounded helpers", () => {
+    expect(executionPolicyArgs(run({
+      multiAgent: true,
+    }))).toEqual([
+      "--tool-groups", "web,files",
+      "--multi-agent",
+      "--temperature", "0.2",
+    ]);
+  });
+
+  it("gives plugin harnesses bounded native delegation guidance only in Team mode", () => {
+    expect(pluginTeamInstructions(false)).toBe("");
+    expect(pluginTeamInstructions(true)).toContain("native subagent or delegation tools");
+    expect(pluginTeamInstructions(true)).toContain("Do not delegate trivial");
   });
 
   it("rejects a corrupt persisted temperature instead of silently changing execution", () => {

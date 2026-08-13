@@ -28,7 +28,9 @@ import {
   LineSegment,
   LockSimple,
   LockSimpleOpen,
+  MagicWand,
   Minus,
+  PaperPlaneTilt,
   Path,
   PencilSimple,
   Play,
@@ -36,14 +38,16 @@ import {
   Rows,
   Ruler,
   Selection,
-  SidebarSimple,
+  SlidersHorizontal,
   Square,
   Stack,
   TextT,
   Trash,
+  X,
 } from "@phosphor-icons/react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type FormEvent as ReactFormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Artifact, CanvasBlendMode, CanvasFillPaint, CanvasPrototypeFlow, CanvasPrototypeInteraction, CanvasShadowEffect, CanvasStrokePaint } from "../../../shared/types";
+import { applyCanvasCommandGroup, CanvasCommandError, type CanvasCommand, type CanvasCommandGroup } from "../../../shared/canvas-commands";
 import { renderCanvasSvg } from "../../../shared/artifact-export";
 import { canvasImportedPathTransform, canvasPathAbsolutePoints, canvasPathData, canvasRoundedRectPath, normalizeCanvasPath, resolveCanvasConnectors, type CanvasAbsolutePoint } from "../../../shared/canvas-geometry";
 import { canvasElementFills, canvasElementIsClosed, canvasElementStrokes, canvasElementStrokeOutset, canvasGradientVector, canvasStrokeDashArray } from "../../../shared/canvas-paint";
@@ -53,6 +57,7 @@ import { booleanCanvasNodes, canBooleanNode, svgPathBounds, type CanvasBooleanOp
 import { importSvgToCanvasNodes } from "./svg-import";
 import { CanvasPrototypePreview } from "./CanvasPrototypePreview";
 import { canvasPrototypePageLayers } from "./canvas-prototype";
+import type { StudioAgentStatus } from "./StudioWorkspace";
 import {
   applyFrameLayout,
   applyFrameResizeConstraints,
@@ -128,6 +133,13 @@ interface CanvasEditorProps {
   artifact: Artifact;
   content: CanvasArtifactContent;
   onChange: (artifact: Artifact, flush?: boolean) => void;
+  agentName?: string;
+  modelName?: string;
+  /** Whether a model is selected and the agent run path is ready to start. */
+  agentAvailable?: boolean;
+  agentBusy?: boolean;
+  agentStatus?: StudioAgentStatus | null;
+  onAskCanvasAgent?: (instruction: string, selection: { pageId: string; elementIds: string[] }) => Promise<boolean>;
 }
 
 const snapGridSize = 8;
@@ -399,7 +411,92 @@ const CanvasPageThumbnail = memo(function CanvasPageThumbnail({ page, components
   return <span ref={hostRef} className="canvas-page-thumbnail" aria-hidden="true">{source && <img alt="" draggable={false} src={source} />}</span>;
 });
 
-export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps): React.JSX.Element {
+interface CanvasAgentPanelProps {
+  selection: { pageId: string; elementIds: string[] };
+  layerLabels: Array<{ id: string; name: string }>;
+  agentName: string;
+  modelName: string;
+  agentAvailable: boolean;
+  status: StudioAgentStatus | null;
+  agentBusy: boolean;
+  onClose: () => void;
+  onAskCanvasAgent: (instruction: string, selection: { pageId: string; elementIds: string[] }) => Promise<boolean>;
+}
+
+function CanvasAgentPanel({ selection, layerLabels, agentName, modelName, agentAvailable, status, agentBusy, onClose, onAskCanvasAgent }: CanvasAgentPanelProps): React.JSX.Element {
+  const [instruction, setInstruction] = useState("");
+  const [messages, setMessages] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const unavailable = !agentAvailable || sending || agentBusy || status?.phase === "starting" || status?.phase === "running";
+
+  async function submit(event: ReactFormEvent): Promise<void> {
+    event.preventDefault();
+    const request = instruction.trim();
+    if (!request || unavailable) return;
+    setFeedback(null);
+    setSending(true);
+    try {
+      const started = await onAskCanvasAgent(request, selection);
+      if (!started) {
+        setFeedback("The agent couldn’t start. Check the active model and try again.");
+        return;
+      }
+      setMessages((current) => [...current, request]);
+      setInstruction("");
+    } catch {
+      setFeedback("The agent couldn’t start. Check the active model and try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
+  const modelStateClass = agentAvailable ? "puck-agent-model" : "puck-agent-model is-unavailable";
+  const modelStateLabel = agentAvailable ? "Active model" : "No active model";
+  return (
+    <aside className="canvas-agent-panel puck-agent-panel" aria-label={`AI design chat for ${selection.elementIds.length} canvas layer${selection.elementIds.length === 1 ? "" : "s"}`}>
+      <header className="puck-agent-panel-header">
+        <span className="puck-agent-mark"><MagicWand size={16} /></span>
+        <div><strong>Edit with {agentName}</strong><span className="puck-agent-target">{layerLabels.map((label) => label.name).join(", ") || `${selection.elementIds.length} layers`}</span></div>
+        <button type="button" aria-label="Close AI design chat" onClick={onClose}><X size={15} /></button>
+      </header>
+      <div className={modelStateClass} aria-label={agentAvailable ? undefined : "No active model selected"}>
+        <span className="puck-agent-model-dot" aria-hidden="true" />
+        <span>{modelName}</span>
+        <small>{modelStateLabel}</small>
+      </div>
+      <div className="puck-agent-thread" aria-live="polite">
+        {!agentAvailable
+          ? <div className="puck-agent-message assistant" role="status">Select an active model in the chat composer to enable agent edits. The canvas stays editable while you choose one.</div>
+          : <div className="puck-agent-message assistant">Tell me what to change. I’ll update only the selected layers and keep the rest of the canvas intact.</div>}
+        {messages.map((message, index) => <div className="puck-agent-message user" key={`${message}-${index}`}>{message}</div>)}
+        {(sending || status?.phase === "starting" || status?.phase === "running") && <div className="puck-agent-progress" role="status"><span />{status?.phase === "running" ? `${agentName} is editing…` : "Starting agent…"}</div>}
+        {agentBusy && !status && <div className="puck-agent-message assistant">Another agent run is active. You can send this edit when it finishes.</div>}
+        {status?.phase === "complete" && <div className="puck-agent-message assistant success">{status.message ?? "Change applied. You can ask for another revision."}</div>}
+        {status?.phase === "error" && <div className="puck-agent-message assistant error" role="alert">{status.message ?? "The edit couldn’t be applied. Try again."}</div>}
+        {feedback && <div className="puck-agent-message assistant error" role="alert">{feedback}</div>}
+      </div>
+      <form className="puck-agent-composer" onSubmit={(event) => void submit(event)}>
+        <textarea aria-label="Describe the canvas change" value={instruction} onChange={(event) => setInstruction(event.target.value)} onKeyDown={handleKeyDown} placeholder={agentAvailable ? `Ask ${agentName} to change the selected layer${selection.elementIds.length === 1 ? "" : "s"}…` : "Select an active model to ask the agent…"} rows={3} autoFocus disabled={!agentAvailable} />
+        <footer><span>↵ Send · ⇧↵ New line</span><button type="submit" aria-label="Send to agent" disabled={!agentAvailable || !instruction.trim() || unavailable}><PaperPlaneTilt size={15} /></button></footer>
+      </form>
+    </aside>
+  );
+}
+
+export function CanvasEditor({ artifact, content, onChange, agentName = "Khadim", modelName = "Current model", agentAvailable = true, agentBusy = false, agentStatus = null, onAskCanvasAgent }: CanvasEditorProps): React.JSX.Element {
   const incomingNodes = useMemo(() => canvasNodes(content), [content.elements]);
   const incomingComponents = useMemo(() => canvasComponents(content), [content.components]);
   const incomingStyles = useMemo(() => content.styles ?? [], [content.styles]);
@@ -423,6 +520,12 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   const [activePrototypeFlowId, setActivePrototypeFlowId] = useState(incomingPrototypeFlows[0]?.id ?? "");
   const [prototypeStartPageId, setPrototypeStartPageId] = useState(incomingPrototypeStartPageId);
   const [selectedIds, setSelectedIds] = useState<string[]>(incomingNodes[0] ? [incomingNodes[0].id] : []);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const askAgentButtonRef = useRef<HTMLButtonElement | null>(null);
+  // Tracks the selection the agent panel was opened against so a change in
+  // selection identity (different layer set, cleared selection, or page
+  // switch) closes the panel once without reopening it on a later selection.
+  const agentPanelSelectionRef = useRef<{ pageId: string; elementIds: string[] } | null>(null);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [sidePanel, setSidePanel] = useState<CanvasSidePanel>("layers");
   const [assetSearch, setAssetSearch] = useState("");
@@ -578,6 +681,37 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
   useEffect(() => setSelectedPathPointIndex(null), [selectedNode?.id]);
 
+  // Close the canvas agent panel whenever the selection identity it was opened
+  // against changes — a different layer set, a cleared selection, or a page
+  // switch. The panel does not reopen on a later selection; the user must press
+  // Ask again. A clearing selection keeps the explicit Escape close/focus
+  // behavior because the panel may already be closed by then.
+  useEffect(() => {
+    if (!agentPanelOpen) {
+      agentPanelSelectionRef.current = null;
+      return;
+    }
+    const bound = agentPanelSelectionRef.current;
+    if (!bound) return;
+    const samePage = bound.pageId === activePageId;
+    const sameElements = bound.elementIds.length === selectedIds.length && bound.elementIds.every((id, index) => id === selectedIds[index]);
+    if (!samePage || !sameElements) {
+      setAgentPanelOpen(false);
+      agentPanelSelectionRef.current = null;
+    }
+  }, [activePageId, agentPanelOpen, selectedIds]);
+
+  // If the agent becomes unavailable (no active model) while the panel is
+  // open, close it so the user is not left submitting into a blocked path.
+  // The Ask button itself is hidden when unavailable, so the panel cannot be
+  // reopened until a model is selected again.
+  useEffect(() => {
+    if (!agentAvailable && agentPanelOpen) {
+      setAgentPanelOpen(false);
+      agentPanelSelectionRef.current = null;
+    }
+  }, [agentAvailable, agentPanelOpen]);
+
   function hasNodeOrAncestorFlag(node: CanvasNode, flag: "hidden" | "locked"): boolean {
     return geometryById.get(node.id)?.[flag] ?? Boolean(node[flag]);
   }
@@ -592,6 +726,50 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
   useEffect(() => {
     if (incomingSignature === lastCommittedSignatureRef.current) return;
     const previousActivePageId = activePageIdRef.current;
+    const agentActive = agentStatus?.phase === "starting" || agentStatus?.phase === "running" || agentStatus?.phase === "complete";
+    // A same-page incoming content change while an agent edit is in flight is
+    // treated as one undoable external revision: preserve the selection and
+    // viewport, push the pre-agent scene onto the undo stack once, and keep the
+    // existing history instead of clearing it. Undo then restores the prior
+    // scene and selection. A page switch or non-agent external change falls
+    // back to the full reset behaviour.
+    const samePage = incomingActivePageId === previousActivePageId;
+    if (agentActive && samePage) {
+      // Capture the pre-agent scene once so a single undo restores it.
+      pastRef.current = [...pastRef.current.slice(-49), currentSnapshot()];
+      futureRef.current = [];
+      setCanvasNodes(incomingNodes);
+      setComponents(incomingComponents);
+      setPaintStyles(incomingStyles);
+      setTextStyles(incomingTextStyles);
+      setEffectStyles(incomingEffectStyles);
+      setTokenCollections(incomingTokenCollections);
+      setPages(incomingPages);
+      setActivePageId(incomingActivePageId);
+      setPrototypeFlows(incomingPrototypeFlows);
+      setActivePrototypeFlowId((current) => incomingPrototypeFlows.some((flow) => flow.id === current) ? current : incomingPrototypeFlows[0]?.id ?? "");
+      setPrototypeStartPageId(incomingPrototypeStartPageId);
+      // Preserve the current viewport and selection — the agent patch must not
+      // move the user's view or drop what they had highlighted.
+      setEditingText(null);
+      setMarquee(null);
+      setSnapFeedback({ lines: [], measurements: [] });
+      nodesRef.current = incomingNodes;
+      componentsRef.current = incomingComponents;
+      paintStylesRef.current = incomingStyles;
+      textStylesRef.current = incomingTextStyles;
+      effectStylesRef.current = incomingEffectStyles;
+      tokenCollectionsRef.current = incomingTokenCollections;
+      pagesRef.current = incomingPages;
+      activePageIdRef.current = incomingActivePageId;
+      prototypeFlowsRef.current = incomingPrototypeFlows;
+      prototypeStartPageIdRef.current = incomingPrototypeStartPageId;
+      lastCommittedSignatureRef.current = incomingSignature;
+      inspectorHistoryRef.current = null;
+      setHistoryRevision((revision) => revision + 1);
+      setSelectedIds((current) => current.filter((id) => incomingNodes.some((node) => node.id === id)));
+      return;
+    }
     setCanvasNodes(incomingNodes);
     setComponents(incomingComponents);
     setPaintStyles(incomingStyles);
@@ -628,7 +806,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     inspectorHistoryRef.current = null;
     setHistoryRevision((revision) => revision + 1);
     setSelectedIds((current) => incomingActivePageId === previousActivePageId ? current.filter((id) => incomingNodes.some((node) => node.id === id)) : []);
-  }, [content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeFlows, incomingPrototypeStartPageId, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
+  }, [agentStatus?.phase, content.appState.snapToGrid, content.appState.viewport, incomingActivePageId, incomingComponents, incomingEffectStyles, incomingNodes, incomingPages, incomingPrototypeFlows, incomingPrototypeStartPageId, incomingSignature, incomingStyles, incomingTextStyles, incomingTokenCollections]);
 
   function syncedPages(nextNodes: CanvasNode[], nextAppState: CanvasPage["appState"] = { ...(pagesRef.current.find((page) => page.id === activePageIdRef.current)?.appState ?? content.appState), snapToGrid, viewport: viewportRef.current }, nextFrame = canvasFrame, sourcePages = pagesRef.current): CanvasPage[] {
     const existing = sourcePages.find((candidate) => candidate.id === activePageIdRef.current);
@@ -1187,19 +1365,89 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
       destinationPageId: destination,
       transition: destination ? { type: "dissolve", duration: 180, easing: "ease-out" } : undefined,
     };
-    patchSelected({ interactions: [...(selectedNode.interactions ?? []), interaction] });
+    applyInteractionCommands(selectedNode.id, [{ type: "add-interaction", elementId: selectedNode.id, interaction }], true);
   }
 
   function patchPrototypeInteraction(interactionId: string, patch: Partial<CanvasPrototypeInteraction>): void {
     if (!selectedNode) return;
-    const interactions = (selectedNode.interactions ?? []).map((interaction) => interaction.id === interactionId ? { ...interaction, ...patch } : interaction);
-    patchSelected({ interactions });
+    // Normalize JSON-null-style clears to the undefined sentinel the applier
+    // treats as "delete field"; the inspector only ever emits defined values
+    // or omits keys, so this keeps command shapes within the validated subset.
+    const normalizedPatch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      normalizedPatch[key] = value === null ? undefined : value;
+    }
+    applyInteractionCommands(
+      selectedNode.id,
+      [{ type: "patch-interaction", elementId: selectedNode.id, interactionId, patch: normalizedPatch }],
+      shouldRecordInspectorHistory(`${selectedNode.id}:interaction:${interactionId}:${Object.keys(patch).sort().join(",")}`),
+    );
   }
 
   function removePrototypeInteraction(interactionId: string): void {
     if (!selectedNode) return;
-    const interactions = (selectedNode.interactions ?? []).filter((interaction) => interaction.id !== interactionId);
-    patchSelected({ interactions: interactions.length ? interactions : undefined });
+    applyInteractionCommands(
+      selectedNode.id,
+      [{ type: "remove-interaction", elementId: selectedNode.id, interactionId }],
+      true,
+    );
+  }
+
+  /**
+   * Applies a semantic Canvas command group built from the current inspector
+   * state and feeds the resulting active-page elements back through
+   * {@link commitCanvas} so undo/redo history, connector/fixed-layer ordering,
+   * and persistence mirroring all run in one editor history step.
+   *
+   * Builds the working {@link CanvasArtifactContent} from the live refs so no
+   * stale artifact prop is used. UI controls produce validated commands, so a
+   * rejection (which should not happen for UI-driven actions) is swallowed
+   * safely without mutating content or crashing the renderer.
+   */
+  function applyInteractionCommands(elementId: string, commands: CanvasCommand[], recordHistory: boolean): void {
+    if (!selectedNode || commands.length === 0) return;
+    const pageId = activePageIdRef.current;
+    const currentPage = pagesRef.current.find((page) => page.id === pageId);
+    const frame = currentPage?.frame ?? canvasFrame;
+    const appState = currentPage?.appState ?? content.appState;
+    const workingElements = nodesRef.current;
+    const workingPages = pagesRef.current.some((page) => page.id === pageId)
+      ? pagesRef.current.map((page) => page.id === pageId ? { ...page, frame, elements: workingElements, appState } : page)
+      : [...pagesRef.current, { id: pageId, name: "Page 1", frame, elements: workingElements, appState }];
+    const workingContent: CanvasArtifactContent = {
+      ...content,
+      frame,
+      elements: workingElements,
+      components: componentsRef.current,
+      styles: paintStylesRef.current,
+      textStyles: textStylesRef.current,
+      effectStyles: effectStylesRef.current,
+      tokenCollections: tokenCollectionsRef.current,
+      appState,
+      pages: workingPages,
+      activePageId: pageId,
+      prototypeFlows: prototypeFlowsRef.current,
+      prototypeStartPageId: prototypeStartPageIdRef.current,
+    };
+    const group: CanvasCommandGroup = { pageId, selectionIds: [elementId], commands };
+    let nextContent: CanvasArtifactContent;
+    try {
+      const result = applyCanvasCommandGroup(workingContent, group);
+      nextContent = result.content;
+    } catch (error) {
+      // UI controls produce validated commands; a rejection here indicates a
+      // stale selection or invariant drift. Swallow it so the renderer does
+      // not crash and the current scene is retained unchanged. Do not weaken
+      // validation — the applier still rejects; we only suppress the throw.
+      if (error instanceof CanvasCommandError) return;
+      throw error;
+    }
+    // Extract the new active-page elements and commit through the existing
+    // boundary so direct edits remain one undoable editor history action and
+    // connectors/fixed-layer ordering and persistence mirroring still run.
+    const nextPage = nextContent.pages?.find((page) => page.id === pageId) ?? (nextContent.activePageId === pageId ? { id: pageId, name: "Page 1", frame: nextContent.frame, elements: nextContent.elements, appState: nextContent.appState } : undefined);
+    const nextNodes = (nextPage?.elements ?? nextContent.elements) as CanvasNode[];
+    commitCanvas(nextNodes, componentsRef.current, recordHistory);
   }
 
   function createPaintStyle(): void {
@@ -3200,34 +3448,34 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
     <div className="studio-editor-layout canvas-layout">
       <aside className="canvas-layers" aria-label="Canvas layers and assets">
         <section className="canvas-pages-panel" aria-label="Canvas pages">
-          <header><strong>Pages</strong><span><button type="button" aria-label="Duplicate current page" title="Duplicate page" onClick={() => createPage(true)}><Copy size={12} /></button><button type="button" aria-label="Add page" title="Add page" onClick={() => createPage(false)}><Plus size={13} /></button></span></header>
+          <header><strong>Pages</strong><span><button type="button" aria-label="Duplicate current page" title="Duplicate page" onClick={() => createPage(true)}><Copy size={14} weight="regular" /></button><button type="button" aria-label="Add page" title="Add page" onClick={() => createPage(false)}><Plus size={14} weight="regular" /></button></span></header>
           <div>{pages.map((page, index) => <div ref={(row) => { if (row) pageRowRefs.current.set(page.id, row); else pageRowRefs.current.delete(page.id); }} className={page.id === activePageId ? "active" : ""} key={page.id}>
             <CanvasPageThumbnail page={page} components={components} files={content.files} title={artifact.title} eager={page.id === activePageId} />
             {page.id === activePageId
               ? <input key={`${page.id}:${page.name}`} aria-label="Current page name" defaultValue={page.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = page.name; else renamePage(page.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
               : <button className="canvas-page-open" type="button" onClick={() => openPage(page.id)}><span>{page.name}</span><small>{page.elements.length}</small></button>}
-            <button className="canvas-page-start" type="button" aria-label={page.id === activePrototypeFlow?.startPageId ? `${page.name} is prototype start` : `Set ${page.name} as prototype start`} aria-pressed={page.id === activePrototypeFlow?.startPageId} title={page.id === activePrototypeFlow?.startPageId ? `Starts ${activePrototypeFlow?.name ?? "prototype flow"}` : `Set as ${activePrototypeFlow?.name ?? "flow"} start`} onClick={() => markPrototypeStart(page.id)}><Flag size={11} weight={page.id === activePrototypeFlow?.startPageId ? "fill" : "regular"} /></button>
+            <button className="canvas-page-start" type="button" aria-label={page.id === activePrototypeFlow?.startPageId ? `${page.name} is prototype start` : `Set ${page.name} as prototype start`} aria-pressed={page.id === activePrototypeFlow?.startPageId} title={page.id === activePrototypeFlow?.startPageId ? `Starts ${activePrototypeFlow?.name ?? "prototype flow"}` : `Set as ${activePrototypeFlow?.name ?? "flow"} start`} onClick={() => markPrototypeStart(page.id)}><Flag size={12} weight={page.id === activePrototypeFlow?.startPageId ? "fill" : "regular"} /></button>
             <span className="canvas-page-move">
-              <button type="button" aria-label={`Move ${page.name} up`} disabled={index === 0} onClick={() => movePage(page.id, -1)}><CaretUp size={10} /></button>
-              <button type="button" aria-label={`Move ${page.name} down`} disabled={index === pages.length - 1} onClick={() => movePage(page.id, 1)}><CaretDown size={10} /></button>
+              <button type="button" aria-label={`Move ${page.name} up`} disabled={index === 0} onClick={() => movePage(page.id, -1)}><CaretUp size={12} weight="regular" /></button>
+              <button type="button" aria-label={`Move ${page.name} down`} disabled={index === pages.length - 1} onClick={() => movePage(page.id, 1)}><CaretDown size={12} weight="regular" /></button>
             </span>
-            <button type="button" aria-label={`Delete ${page.name}`} disabled={pages.length <= 1} onClick={() => deletePage(page.id)}><Trash size={11} /></button>
+            <button type="button" aria-label={`Delete ${page.name}`} disabled={pages.length <= 1} onClick={() => deletePage(page.id)}><Trash size={13} weight="regular" /></button>
           </div>)}</div>
         </section>
         <section className="canvas-flows-panel" aria-label="Prototype flows">
-          <header><strong>Flows</strong><button type="button" aria-label="Add prototype flow" title="Add flow" disabled={prototypeFlows.length >= 64} onClick={addPrototypeFlow}><Plus size={12} /></button></header>
+          <header><strong>Flows</strong><button type="button" aria-label="Add prototype flow" title="Add flow" disabled={prototypeFlows.length >= 64} onClick={addPrototypeFlow}><Plus size={13} weight="regular" /></button></header>
           <div>
             <select aria-label="Active prototype flow" value={activePrototypeFlow?.id ?? ""} onChange={(event) => setActivePrototypeFlowId(event.target.value)}>{prototypeFlows.map((flow) => <option value={flow.id} key={flow.id}>{flow.name}</option>)}</select>
             {activePrototypeFlow && <>
               <input key={`${activePrototypeFlow.id}:${activePrototypeFlow.name}`} aria-label="Prototype flow name" defaultValue={activePrototypeFlow.name} maxLength={160} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = activePrototypeFlow.name; else renamePrototypeFlow(activePrototypeFlow.id, event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
               <select aria-label="Prototype flow start page" value={activePrototypeFlow.startPageId} onChange={(event) => markPrototypeStart(event.target.value)}>{pages.map((page) => <option value={page.id} key={page.id}>{page.name}</option>)}</select>
-              <button type="button" aria-label={`Delete ${activePrototypeFlow.name}`} title="Delete flow" disabled={prototypeFlows.length <= 1} onClick={() => deletePrototypeFlow(activePrototypeFlow.id)}><Trash size={11} /></button>
+              <button type="button" aria-label={`Delete ${activePrototypeFlow.name}`} title="Delete flow" disabled={prototypeFlows.length <= 1} onClick={() => deletePrototypeFlow(activePrototypeFlow.id)}><Trash size={13} weight="regular" /></button>
             </>}
           </div>
         </section>
         <div className="canvas-panel-tabs" role="tablist" aria-label="Canvas sidebar">
-          <button role="tab" aria-selected={sidePanel === "layers"} onClick={() => setSidePanel("layers")}><Stack size={13} /> Layers</button>
-          <button role="tab" aria-selected={sidePanel === "assets"} onClick={() => setSidePanel("assets")}><DiamondsFour size={13} /> Assets</button>
+          <button role="tab" aria-selected={sidePanel === "layers"} onClick={() => setSidePanel("layers")}><Stack size={14} weight={sidePanel === "layers" ? "fill" : "regular"} /> Layers</button>
+          <button role="tab" aria-selected={sidePanel === "assets"} onClick={() => setSidePanel("assets")}><DiamondsFour size={14} weight={sidePanel === "assets" ? "fill" : "regular"} /> Assets</button>
         </div>
         {sidePanel === "layers" ? <div ref={layerListRef} className="canvas-layer-list" role="list" aria-label="Canvas layer list" onScroll={(event) => setLayerViewport((current) => ({ ...current, scrollTop: event.currentTarget.scrollTop }))}>
           <header role="presentation"><span>Frame 1</span><small>{nodes.length}</small></header>
@@ -3236,13 +3484,13 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
             const selected = selectedIds.includes(node.id);
             const position = layerWindow.start + windowIndex;
             return <div role="listitem" aria-posinset={position + 1} aria-setsize={layerRows.length} className={`canvas-layer-row ${selected ? "selected" : ""} ${node.parentId ? "nested" : ""} ${dragLayerId === node.id ? "dragging" : ""}`} style={{ "--layer-depth": layerTree.depthById.get(node.id) ?? 0 } as React.CSSProperties} key={node.id} draggable onDragStart={(event) => { setDragLayerId(node.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", node.id); }} onDragEnd={() => setDragLayerId(null)} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDrop={(event) => { event.preventDefault(); const sourceId = dragLayerId ?? event.dataTransfer.getData("text/plain"); moveLayerInTree(sourceId, node.id, event.shiftKey); setDragLayerId(null); }} title={node.type === "frame" ? "Drop to reorder. Hold Shift while dropping to nest inside this frame." : "Drag to reorder layers"}>
-              <DotsSixVertical size={13} aria-hidden="true" />
+              <DotsSixVertical size={14} aria-hidden="true" />
               <button className="canvas-layer-name" type="button" aria-pressed={selected} onClick={(event) => selectLayerNode(event, node)}>
-                {node.type === "component" ? <DiamondsFour size={14} /> : node.type === "text" ? <TextT size={14} /> : node.type === "ellipse" ? <Circle size={14} /> : node.type === "line" ? <LineSegment size={14} /> : node.type === "arrow" ? <ArrowRight size={14} /> : node.type === "path" || node.type === "boolean" ? <Path size={14} /> : node.type === "image" ? <ImageSquare size={14} /> : node.type === "frame" ? <BoundingBox size={14} /> : <Square size={14} />}
+                {node.type === "component" ? <DiamondsFour size={15} weight={selected ? "fill" : "regular"} /> : node.type === "text" ? <TextT size={15} weight={selected ? "fill" : "regular"} /> : node.type === "ellipse" ? <Circle size={15} weight={selected ? "fill" : "regular"} /> : node.type === "line" ? <LineSegment size={15} weight={selected ? "bold" : "regular"} /> : node.type === "arrow" ? <ArrowRight size={15} weight={selected ? "bold" : "regular"} /> : node.type === "path" || node.type === "boolean" ? <Path size={15} weight={selected ? "fill" : "regular"} /> : node.type === "image" ? <ImageSquare size={15} weight={selected ? "fill" : "regular"} /> : node.type === "frame" ? <BoundingBox size={15} weight={selected ? "fill" : "regular"} /> : <Square size={15} weight={selected ? "fill" : "regular"} />}
                 <span>{nodeLabel(node)}</span>
               </button>
-              <button className="canvas-layer-lock" type="button" aria-label={`${node.locked ? "Unlock" : "Lock"} ${nodeLabel(node)}`} onClick={() => commitCanvas(nodes.map((item) => item.id === node.id ? { ...item, locked: !item.locked } as CanvasNode : item))}>{node.locked ? <LockSimple size={13} /> : <LockSimpleOpen size={13} />}</button>
-              <button className="canvas-layer-visibility" type="button" aria-label={`${node.hidden ? "Show" : "Hide"} ${node.name ?? node.type}`} onClick={() => commitCanvas(nodes.map((item) => item.id === node.id ? { ...item, hidden: !item.hidden } as CanvasNode : item))}>{node.hidden ? <EyeSlash size={13} /> : <Eye size={13} />}</button>
+              <button className={`canvas-layer-lock${node.locked ? " is-active" : ""}`} type="button" aria-label={`${node.locked ? "Unlock" : "Lock"} ${nodeLabel(node)}`} data-active={node.locked ? "true" : "false"} onClick={() => commitCanvas(nodes.map((item) => item.id === node.id ? { ...item, locked: !item.locked } as CanvasNode : item))}>{node.locked ? <LockSimple size={15} weight="fill" /> : <LockSimpleOpen size={15} />}</button>
+              <button className={`canvas-layer-visibility${node.hidden ? " is-active" : ""}`} type="button" aria-label={`${node.hidden ? "Show" : "Hide"} ${node.name ?? node.type}`} data-active={node.hidden ? "true" : "false"} onClick={() => commitCanvas(nodes.map((item) => item.id === node.id ? { ...item, hidden: !item.hidden } as CanvasNode : item))}>{node.hidden ? <EyeSlash size={15} weight="fill" /> : <Eye size={15} />}</button>
             </div>;
           })}
           {layerWindow.after > 0 && <div className="canvas-layer-spacer" style={{ height: layerWindow.after }} aria-hidden="true" />}
@@ -3289,40 +3537,40 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
 
       <main className={`canvas-stage canvas-tool-${tool}`}>
         <div className="canvas-topbar" role="toolbar" aria-label="Canvas tools">
-          <button type="button" aria-label="Undo" title="Undo" disabled={!historyCanUndo} onClick={undo}><ArrowCounterClockwise size={15} /></button>
-          <button type="button" aria-label="Redo" title="Redo" disabled={!historyCanRedo} onClick={redo}><ArrowClockwise size={15} /></button>
+          <button type="button" aria-label="Undo" title="Undo" disabled={!historyCanUndo} onClick={undo}><ArrowCounterClockwise size={18} weight="regular" /></button>
+          <button type="button" aria-label="Redo" title="Redo" disabled={!historyCanRedo} onClick={redo}><ArrowClockwise size={18} weight="regular" /></button>
           <span />
-          <button className={tool === "select" ? "active" : ""} type="button" aria-pressed={tool === "select"} aria-label="Select tool" title="Select · V" onClick={() => chooseTool("select")}><Cursor size={16} /></button>
-          <button className={tool === "hand" ? "active" : ""} type="button" aria-pressed={tool === "hand"} aria-label="Hand tool" title="Hand · H" onClick={() => chooseTool("hand")}><Hand size={16} /></button>
+          <button className={tool === "select" ? "active" : ""} type="button" aria-pressed={tool === "select"} aria-label="Select tool" title="Select · V" onClick={() => chooseTool("select")}><Cursor size={18} weight={tool === "select" ? "fill" : "regular"} /></button>
+          <button className={tool === "hand" ? "active" : ""} type="button" aria-pressed={tool === "hand"} aria-label="Hand tool" title="Hand · H" onClick={() => chooseTool("hand")}><Hand size={18} weight={tool === "hand" ? "fill" : "regular"} /></button>
           <span />
-          <button className={tool === "frame" ? "active" : ""} type="button" aria-pressed={tool === "frame"} onClick={() => chooseTool("frame")} aria-label="Frame tool" title="Frame · F"><BoundingBox size={16} /></button>
-          <button className={tool === "rectangle" ? "active" : ""} type="button" aria-pressed={tool === "rectangle"} onClick={() => chooseTool("rectangle")} aria-label="Rectangle tool" title="Rectangle · R"><Square size={16} /></button>
-          <button className={tool === "ellipse" ? "active" : ""} type="button" aria-pressed={tool === "ellipse"} onClick={() => chooseTool("ellipse")} aria-label="Ellipse tool" title="Ellipse · O"><Circle size={16} /></button>
-          <button className={tool === "line" ? "active" : ""} type="button" aria-pressed={tool === "line"} onClick={() => chooseTool("line")} aria-label="Line tool" title="Line · L"><LineSegment size={16} /></button>
-          <button className={tool === "arrow" ? "active" : ""} type="button" aria-pressed={tool === "arrow"} onClick={() => chooseTool("arrow")} aria-label="Arrow tool" title="Arrow · Shift L"><ArrowRight size={16} /></button>
-          <button className={tool === "pen" ? "active" : ""} type="button" aria-pressed={tool === "pen"} onClick={() => chooseTool("pen")} aria-label="Pen tool" title="Pen · P"><Path size={16} /></button>
-          <button className={tool === "pencil" ? "active" : ""} type="button" aria-pressed={tool === "pencil"} onClick={() => chooseTool("pencil")} aria-label="Pencil tool" title="Pencil · Shift P"><PencilSimple size={16} /></button>
-          <button className={tool === "text" ? "active" : ""} type="button" aria-pressed={tool === "text"} onClick={() => chooseTool("text")} aria-label="Text tool" title="Text · T"><TextT size={17} /></button>
-          <button type="button" onClick={() => imageInputRef.current?.click()} aria-label="Import image or editable SVG" title="Import image or editable SVG"><ImageSquare size={16} /></button>
+          <button className={tool === "frame" ? "active" : ""} type="button" aria-pressed={tool === "frame"} onClick={() => chooseTool("frame")} aria-label="Frame tool" title="Frame · F"><BoundingBox size={18} weight={tool === "frame" ? "fill" : "regular"} /></button>
+          <button className={tool === "rectangle" ? "active" : ""} type="button" aria-pressed={tool === "rectangle"} onClick={() => chooseTool("rectangle")} aria-label="Rectangle tool" title="Rectangle · R"><Square size={18} weight={tool === "rectangle" ? "fill" : "regular"} /></button>
+          <button className={tool === "ellipse" ? "active" : ""} type="button" aria-pressed={tool === "ellipse"} onClick={() => chooseTool("ellipse")} aria-label="Ellipse tool" title="Ellipse · O"><Circle size={18} weight={tool === "ellipse" ? "fill" : "regular"} /></button>
+          <button className={tool === "line" ? "active" : ""} type="button" aria-pressed={tool === "line"} onClick={() => chooseTool("line")} aria-label="Line tool" title="Line · L"><LineSegment size={18} weight={tool === "line" ? "bold" : "regular"} /></button>
+          <button className={tool === "arrow" ? "active" : ""} type="button" aria-pressed={tool === "arrow"} onClick={() => chooseTool("arrow")} aria-label="Arrow tool" title="Arrow · Shift L"><ArrowRight size={18} weight={tool === "arrow" ? "bold" : "regular"} /></button>
+          <button className={tool === "pen" ? "active" : ""} type="button" aria-pressed={tool === "pen"} onClick={() => chooseTool("pen")} aria-label="Pen tool" title="Pen · P"><Path size={18} weight={tool === "pen" ? "fill" : "regular"} /></button>
+          <button className={tool === "pencil" ? "active" : ""} type="button" aria-pressed={tool === "pencil"} onClick={() => chooseTool("pencil")} aria-label="Pencil tool" title="Pencil · Shift P"><PencilSimple size={18} weight={tool === "pencil" ? "fill" : "regular"} /></button>
+          <button className={tool === "text" ? "active" : ""} type="button" aria-pressed={tool === "text"} onClick={() => chooseTool("text")} aria-label="Text tool" title="Text · T"><TextT size={18} weight={tool === "text" ? "fill" : "regular"} /></button>
+          <button type="button" onClick={() => imageInputRef.current?.click()} aria-label="Import image or editable SVG" title="Import image or editable SVG"><ImageSquare size={18} weight="regular" /></button>
           <input ref={imageInputRef} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onChange={(event) => { importImage(event.target.files?.[0]); event.currentTarget.value = ""; }} />
           <span />
-          <button className={snapToGrid ? "enabled" : ""} type="button" aria-pressed={snapToGrid} aria-label="Snap to grid" title="Snap to grid" onClick={() => setSnapMode(!snapToGrid)}><GridFour size={16} /></button>
-          <button className={rulersVisible ? "enabled" : ""} type="button" aria-pressed={rulersVisible} aria-label="Show rulers" title="Rulers and guides" onClick={() => patchWorkspaceAppState({ rulersVisible: !rulersVisible, guidesVisible: true })}><Ruler size={16} /></button>
+          <button className={snapToGrid ? "enabled" : ""} type="button" aria-pressed={snapToGrid} aria-label="Snap to grid" title="Snap to grid" onClick={() => setSnapMode(!snapToGrid)}><GridFour size={18} weight={snapToGrid ? "fill" : "regular"} /></button>
+          <button className={rulersVisible ? "enabled" : ""} type="button" aria-pressed={rulersVisible} aria-label="Show rulers" title="Rulers and guides" onClick={() => patchWorkspaceAppState({ rulersVisible: !rulersVisible, guidesVisible: true })}><Ruler size={18} weight={rulersVisible ? "fill" : "regular"} /></button>
           <span />
-          <button type="button" aria-label="Play prototype" title="Play prototype" onClick={() => setPrototypeOpen(true)}><Play size={16} weight="fill" /></button>
+          <button type="button" aria-label="Play prototype" title="Play prototype" onClick={() => setPrototypeOpen(true)}><Play size={18} weight="fill" /></button>
         </div>
 
         {selectedNodes.length > 1 && <div className="canvas-selectionbar" role="toolbar" aria-label="Selection alignment">
           <span>{selectedNodes.length} selected</span>
-          <button aria-label="Align left" title="Align left" onClick={() => alignSelected("left")}><AlignLeft size={14} /></button>
-          <button aria-label="Align horizontal centers" title="Align horizontal centers" onClick={() => alignSelected("center-x")}><AlignCenterHorizontal size={14} /></button>
-          <button aria-label="Align right" title="Align right" onClick={() => alignSelected("right")}><AlignRight size={14} /></button>
+          <button aria-label="Align left" title="Align left" onClick={() => alignSelected("left")}><AlignLeft size={16} weight="regular" /></button>
+          <button aria-label="Align horizontal centers" title="Align horizontal centers" onClick={() => alignSelected("center-x")}><AlignCenterHorizontal size={16} weight="regular" /></button>
+          <button aria-label="Align right" title="Align right" onClick={() => alignSelected("right")}><AlignRight size={16} weight="regular" /></button>
           <i />
-          <button aria-label="Align top" title="Align top" onClick={() => alignSelected("top")}><AlignTop size={14} /></button>
-          <button aria-label="Align vertical centers" title="Align vertical centers" onClick={() => alignSelected("center-y")}><AlignCenterVertical size={14} /></button>
-          <button aria-label="Align bottom" title="Align bottom" onClick={() => alignSelected("bottom")}><AlignBottom size={14} /></button>
-          {selectedNodes.length > 2 && <><i /><button aria-label="Distribute horizontally" title="Distribute horizontally" onClick={() => distributeSelected("horizontal")}><Rows size={14} /></button><button aria-label="Distribute vertically" title="Distribute vertically" onClick={() => distributeSelected("vertical")}><Rows className="vertical" size={14} /></button></>}
-          {canBooleanSelection && <><i /><button aria-label="Union selection" title="Union" onClick={() => applyBooleanOperation("union")}>Union</button><button aria-label="Subtract selection" title="Subtract" onClick={() => applyBooleanOperation("difference")}>Subtract</button><button aria-label="Intersect selection" title="Intersect" onClick={() => applyBooleanOperation("intersection")}>Intersect</button><button aria-label="Exclude overlap" title="Exclude" onClick={() => applyBooleanOperation("exclusion")}>Exclude</button><button aria-label="Flatten selection" title="Flatten" onClick={() => applyBooleanOperation("flatten")}>Flatten</button></>}
+          <button aria-label="Align top" title="Align top" onClick={() => alignSelected("top")}><AlignTop size={16} weight="regular" /></button>
+          <button aria-label="Align vertical centers" title="Align vertical centers" onClick={() => alignSelected("center-y")}><AlignCenterVertical size={16} weight="regular" /></button>
+          <button aria-label="Align bottom" title="Align bottom" onClick={() => alignSelected("bottom")}><AlignBottom size={16} weight="regular" /></button>
+          {selectedNodes.length > 2 && <><i /><button aria-label="Distribute horizontally" title="Distribute horizontally" onClick={() => distributeSelected("horizontal")}><Rows size={16} weight="regular" /></button><button aria-label="Distribute vertically" title="Distribute vertically" onClick={() => distributeSelected("vertical")}><Rows className="vertical" size={16} weight="regular" /></button></>}
+          {canBooleanSelection && <><i /><button className="canvas-selectionbar-text" aria-label="Union selection" title="Union" onClick={() => applyBooleanOperation("union")}>Union</button><button className="canvas-selectionbar-text" aria-label="Subtract selection" title="Subtract" onClick={() => applyBooleanOperation("difference")}>Subtract</button><button className="canvas-selectionbar-text" aria-label="Intersect selection" title="Intersect" onClick={() => applyBooleanOperation("intersection")}>Intersect</button><button className="canvas-selectionbar-text" aria-label="Exclude overlap" title="Exclude" onClick={() => applyBooleanOperation("exclusion")}>Exclude</button><button className="canvas-selectionbar-text" aria-label="Flatten selection" title="Flatten" onClick={() => applyBooleanOperation("flatten")}>Flatten</button></>}
         </div>}
 
         <p id="canvas-keyboard-help" className="sr-only">Choose a drawing tool and press Enter to insert it. Use arrow keys to move selected layers. Hold Control or Command while dragging to bypass snapping. Tab to vector points and use arrow keys to edit them.</p>
@@ -3420,18 +3668,24 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         </svg>
 
         <div className="canvas-zoom" aria-label="Canvas zoom controls">
-          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(viewport.zoom - .1)}><Minus size={13} /></button>
+          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(viewport.zoom - .1)}><Minus size={16} weight="regular" /></button>
           <button className="canvas-zoom-value" type="button" onClick={fitFrame} title="Fit frame">{Math.round(viewport.zoom * 100)}%</button>
-          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(viewport.zoom + .1)}><Plus size={13} /></button>
+          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(viewport.zoom + .1)}><Plus size={16} weight="regular" /></button>
           <span />
-          <button type="button" aria-label="Fit frame" onClick={fitFrame}><CornersOut size={14} /></button>
+          <button type="button" aria-label="Fit frame" onClick={fitFrame}><CornersOut size={16} weight="regular" /></button>
         </div>
-        {nodes.length === 0 && <div className="canvas-empty"><Selection size={25} /><strong>Start with a frame or shape</strong><span>Draw on the canvas, import an image, or use a reusable component.</span><div><button type="button" onClick={() => add("frame")}><BoundingBox size={14} /> Frame</button><button type="button" onClick={() => add("rectangle")}><Square size={14} /> Rectangle</button><button type="button" onClick={() => setSidePanel("assets")}><DiamondsFour size={14} /> Assets</button></div></div>}
+        {nodes.length === 0 && <div className="canvas-empty"><Selection size={28} weight="regular" /><strong>Start with a frame or shape</strong><span>Draw on the canvas, import an image, or insert a reusable component to begin this page.</span><div><button type="button" onClick={() => add("frame")}><BoundingBox size={16} weight="regular" /> Frame</button><button type="button" onClick={() => add("rectangle")}><Square size={16} weight="regular" /> Rectangle</button><button type="button" onClick={() => setSidePanel("assets")}><DiamondsFour size={16} weight="regular" /> Assets</button></div></div>}
         {prototypeOpen && <CanvasPrototypePreview title={artifact.title} content={{ ...content, frame: canvasFrame, elements: nodes, components, styles: paintStyles, textStyles, effectStyles, tokenCollections, pages, activePageId, prototypeFlows, prototypeStartPageId, appState: pageAppState }} pages={syncedPages(nodes)} flows={prototypeFlows} initialFlowId={activePrototypeFlow?.id} onClose={() => setPrototypeOpen(false)} />}
       </main>
 
-      <aside className="studio-inspector" aria-label="Canvas settings">
-        <header><SidebarSimple size={16} /><strong>{selectedNodes.length > 1 ? `${selectedNodes.length} layers` : selectedNode?.name ?? "Canvas"}</strong></header>
+      <aside className="studio-inspector canvas-inspector" aria-label="Canvas settings">
+        <header className="canvas-inspector-header">
+          <span className="canvas-inspector-mark" aria-hidden="true"><SlidersHorizontal size={16} weight="regular" /></span>
+          <span className="canvas-inspector-title"><strong>{selectedNodes.length > 1 ? `${selectedNodes.length} layers` : selectedNode?.name ?? "Canvas"}</strong>{selectedNode ? <small>{nodeLabel(selectedNode)}</small> : <small>{nodes.length} layers</small>}</span>
+          {selectedNodes.length > 0 && onAskCanvasAgent && (agentAvailable
+            ? <button ref={askAgentButtonRef} className="canvas-ask-agent-button puck-agent-button" type="button" aria-label={`Ask ${agentName} to edit the selected layer${selectedNodes.length === 1 ? "" : "s"}`} onClick={() => { agentPanelSelectionRef.current = { pageId: activePageId, elementIds: selectedIds }; setAgentPanelOpen(true); }}><MagicWand size={14} weight="regular" /> Ask</button>
+            : <button ref={askAgentButtonRef} className="canvas-ask-agent-button puck-agent-button is-disabled" type="button" disabled aria-label="Canvas Ask is unavailable until an active model is selected" title="Select an active model in the chat composer to enable Canvas Ask"><MagicWand size={14} weight="regular" /> Ask</button>)}
+        </header>
         {selectedNodes.length > 1 && selectedBounds ? <>
           <section className="canvas-inspector-section canvas-multi-summary"><h3>Selection</h3><dl><div><dt>X</dt><dd>{Math.round(selectedBounds.x)}</dd></div><div><dt>Y</dt><dd>{Math.round(selectedBounds.y)}</dd></div><div><dt>W</dt><dd>{Math.round(selectedBounds.width)}</dd></div><div><dt>H</dt><dd>{Math.round(selectedBounds.height)}</dd></div></dl></section>
           <section className="canvas-inspector-section"><h3>Align</h3><div className="canvas-align-grid">
@@ -3440,7 +3694,7 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           </div>{selectedNodes.length > 2 && <div className="canvas-distribute-actions"><button onClick={() => distributeSelected("horizontal")}><Rows size={14} /> Horizontal</button><button onClick={() => distributeSelected("vertical")}><Rows className="vertical" size={14} /> Vertical</button></div>}</section>
           <section className="canvas-inspector-section"><h3>Structure</h3><div className="canvas-structure-actions"><button type="button" onClick={groupSelected}><BoundingBox size={14} /> Group</button><button type="button" onClick={() => createFrameFromSelection(false)}><BoundingBox size={14} /> Frame</button><button type="button" onClick={() => createFrameFromSelection(true)}><Rows size={14} /> Auto layout</button><button type="button" disabled={!canCreateMask} onClick={createMaskFromSelection}><Selection size={14} /> Use top as mask</button></div></section>
           <section className="canvas-inspector-section"><button className="canvas-component-action" disabled={!canCreateComponent} onClick={createComponentFromSelection}><DiamondsFour size={15} /><span><strong>Create component</strong><small>Turn this selection into a reusable asset</small></span></button></section>
-          <div className="canvas-inspector-actions"><button type="button" onClick={duplicateSelected}><Copy size={14} /> Duplicate</button><button className="danger" type="button" onClick={removeSelected}><Trash size={14} /> Delete</button></div>
+          <div className="canvas-inspector-actions"><button type="button" onClick={duplicateSelected}><Copy size={15} weight="regular" /> Duplicate</button><button className="danger" type="button" onClick={removeSelected}><Trash size={15} weight="regular" /> Delete</button></div>
         </> : selectedNode ? <>
           {selectedNode.type === "component" && selectedComponent && <section className="canvas-inspector-section canvas-instance-section"><h3>{selectedNode.componentRole === "main" ? "Main component" : "Instance"}</h3><label><span>{selectedNode.componentRole === "main" ? "Component name" : "Layer name"}</span>{selectedNode.componentRole === "main" ? <input key={`${selectedComponent.id}:${selectedComponent.name}`} defaultValue={selectedComponent.name} onBlur={(event) => { if (!event.currentTarget.value.trim()) event.currentTarget.value = selectedComponent.name; else renameSelectedComponent(event.currentTarget.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /> : <input value={selectedNode.name ?? selectedComponent.name} onChange={(event) => patchSelected({ name: event.target.value })} />}</label><div className="canvas-component-meta"><DiamondsFour size={14} /><span><strong>{selectedComponent.nodes.length} layers</strong><small>{selectedNode.componentRole === "main" ? "Edits update every instance" : `Linked to ${selectedComponent.name}`}</small></span></div>{selectedNode.componentRole === "main" && <button className="canvas-reset-overrides" type="button" onClick={createComponentVariant}>Add variant</button>}</section>}
           {selectedNode.type === "component" && selectedComponent?.variantSetId && (() => {
@@ -3551,8 +3805,8 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
           {selectedNode.groupId && <section className="canvas-inspector-section"><button className="canvas-reset-overrides" type="button" onClick={ungroupSelected}>Ungroup selection</button></section>}
           {selectedNode.type !== "component" && selectedNode.type !== "boolean" && <section className="canvas-inspector-section"><button className="canvas-component-action" onClick={createComponentFromSelection}><DiamondsFour size={15} /><span><strong>Create component</strong><small>Reuse this layer as an asset</small></span></button></section>}
           {selectedNode.type === "component" && selectedNode.componentRole === "instance" && hasCompositeInstanceAppearance(selectedNode) && <p className="canvas-field-hint">Reset instance opacity, blend, and blur effects before detaching so grouped appearance isn't lost.</p>}
-          <div className="canvas-inspector-actions"><button type="button" disabled={Boolean(selectedNode.type === "component" && selectedNode.componentRole === "instance" && hasCompositeInstanceAppearance(selectedNode))} onClick={selectedNode.type === "component" && selectedNode.componentRole === "instance" ? detachSelectedInstance : duplicateSelected}>{selectedNode.type === "component" && selectedNode.componentRole === "instance" ? <><LinkBreak size={14} /> Detach</> : selectedNode.type === "component" ? <><DiamondsFour size={14} /> Instance</> : <><Copy size={14} /> Duplicate</>}</button><button type="button" onClick={toggleSelectedLock}>{selectedNode.locked ? <><LockSimpleOpen size={14} /> Unlock</> : <><LockSimple size={14} /> Lock</>}</button><button className="danger" type="button" onClick={removeSelected}><Trash size={14} /> Delete</button></div>
-        </> : <div className="canvas-inspector-empty"><Selection size={22} /><strong>Nothing selected</strong><p>Shift-click or drag a marquee to select multiple layers.</p><label className="canvas-snap-setting"><input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapMode(event.target.checked)} /><span><GridFour size={14} /><span><strong>Snap to 8 px grid</strong><small>Hold Ctrl/⌘ to bypass all snapping</small></span></span></label></div>}
+          <div className="canvas-inspector-actions"><button type="button" disabled={Boolean(selectedNode.type === "component" && selectedNode.componentRole === "instance" && hasCompositeInstanceAppearance(selectedNode))} onClick={selectedNode.type === "component" && selectedNode.componentRole === "instance" ? detachSelectedInstance : duplicateSelected}>{selectedNode.type === "component" && selectedNode.componentRole === "instance" ? <><LinkBreak size={15} weight="regular" /> Detach</> : selectedNode.type === "component" ? <><DiamondsFour size={15} weight="regular" /> Instance</> : <><Copy size={15} weight="regular" /> Duplicate</>}</button><button type="button" onClick={toggleSelectedLock}>{selectedNode.locked ? <><LockSimpleOpen size={15} weight="regular" /> Unlock</> : <><LockSimple size={15} weight="regular" /> Lock</>}</button><button className="danger" type="button" onClick={removeSelected}><Trash size={15} weight="regular" /> Delete</button></div>
+        </> : <div className="canvas-inspector-empty"><Selection size={24} weight="regular" /><strong>Nothing selected</strong><p>Shift-click or drag a marquee to select multiple layers.</p><label className="canvas-snap-setting"><input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapMode(event.target.checked)} /><span><GridFour size={15} weight="regular" /><span><strong>Snap to 8 px grid</strong><small>Hold Ctrl/⌘ to bypass all snapping</small></span></span></label></div>}
         <section className="canvas-inspector-section canvas-prototype-viewport-settings"><h3>Prototype viewport</h3><label className="canvas-toggle-row"><input aria-label="Enable prototype scrolling" type="checkbox" checked={Boolean(activePage?.prototypeViewport)} onChange={(event) => patchActivePrototypeViewport(event.target.checked ? { width: canvasFrame.width, height: Math.max(64, Math.min(canvasFrame.height, 844)), direction: "vertical", preservePosition: false } : undefined)} /><span>Enable scrolling</span></label>{activePage?.prototypeViewport && <><label><span>Direction</span><select aria-label="Prototype scroll direction" value={activePage.prototypeViewport.direction} onChange={(event) => {
           const direction = event.target.value as NonNullable<CanvasPage["prototypeViewport"]>["direction"];
           patchActivePrototypeViewport({ ...activePage.prototypeViewport!, direction, width: direction === "vertical" ? canvasFrame.width : activePage.prototypeViewport!.width, height: direction === "horizontal" ? canvasFrame.height : activePage.prototypeViewport!.height });
@@ -3564,6 +3818,19 @@ export function CanvasEditor({ artifact, content, onChange }: CanvasEditorProps)
         <section className="canvas-inspector-section canvas-guide-settings"><h3>Rulers & guides</h3><div className="canvas-guide-actions"><button type="button" onClick={() => addRulerGuide("x")}><Plus size={12} /> Vertical</button><button type="button" onClick={() => addRulerGuide("y")}><Plus size={12} /> Horizontal</button></div><label className="canvas-toggle-row"><input type="checkbox" checked={rulersVisible} onChange={(event) => patchWorkspaceAppState({ rulersVisible: event.target.checked })} /><span>Show rulers</span></label><label className="canvas-toggle-row"><input type="checkbox" checked={guidesVisible} onChange={(event) => patchWorkspaceAppState({ guidesVisible: event.target.checked })} /><span>Show guides</span></label>{rulerGuides.map((guide) => <div className="canvas-guide-row" key={guide.id}><select aria-label={`Guide ${guide.axis} axis`} value={guide.axis} onChange={(event) => patchRulerGuide(guide.id, { axis: event.target.value as "x" | "y" })}><option value="x">X</option><option value="y">Y</option></select><input aria-label={`Guide ${guide.axis} position`} type="number" value={Math.round(guide.position)} onChange={(event) => patchRulerGuide(guide.id, { position: Number(event.target.value) })} /><input aria-label={`Guide ${guide.axis} color`} type="color" value={guide.color ?? "#2563eb"} onChange={(event) => patchRulerGuide(guide.id, { color: event.target.value })} /><button type="button" aria-label={`Delete guide ${guide.axis} ${guide.position}`} onClick={() => removeRulerGuide(guide.id)}><Trash size={11} /></button></div>)}</section>
         <section className="canvas-export-actions"><label className="canvas-toggle-row"><input type="checkbox" checked={transparentExport} onChange={(event) => setTransparentExport(event.target.checked)} /><span>Transparent export</span></label><button type="button" onClick={() => exportSvg(false)}><DownloadSimple size={14} /> SVG</button><button type="button" onClick={() => void exportPng(false)}><DownloadSimple size={14} /> PNG</button>{selectedBounds && <><button type="button" onClick={() => exportSvg(true)}><DownloadSimple size={14} /> SVG selection</button><button type="button" onClick={() => void exportPng(true)}><DownloadSimple size={14} /> PNG selection</button></>}</section>
       </aside>
+      {agentPanelOpen && selectedIds.length > 0 && onAskCanvasAgent && agentAvailable && (
+        <CanvasAgentPanel
+          selection={{ pageId: activePageId, elementIds: selectedIds }}
+          layerLabels={selectedNodes.map((node) => ({ id: node.id, name: node.name ?? nodeLabel(node) }))}
+          agentName={agentName}
+          modelName={modelName}
+          agentAvailable={agentAvailable}
+          status={agentStatus}
+          agentBusy={agentBusy}
+          onClose={() => { setAgentPanelOpen(false); agentPanelSelectionRef.current = null; window.requestAnimationFrame(() => askAgentButtonRef.current?.focus()); }}
+          onAskCanvasAgent={onAskCanvasAgent}
+        />
+      )}
     </div>
   );
 }

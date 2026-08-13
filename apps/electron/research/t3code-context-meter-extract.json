@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_9ee65125ee50b7438e0379fcda1d6c68",
+  "session_id": "session_9ee65125ee50b7438e0379fcda1d6c68",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/pingdotgg/t3code/blob/main/apps/web/src/components/chat/ContextWindowMeter.tsx",
+      "title": "t3code/apps/web/src/components/chat/ContextWindowMeter.tsx at main \u00b7 pingdotgg/t3code \u00b7 GitHub",
+      "publish_date": "2026-02-08",
+      "excerpts": [
+        "# pingdotgg/t3code \u2014 apps/web/src/components/chat/ContextWindowMeter.tsx\n```tsx\nexport function ContextWindowMeter(props: {\n  usage: ContextWindowSnapshot;\n  providerDisplayName?: string | null;\n}) {\n  const { usage, providerDisplayName } = props;\n  const usedPercentage = formatPercentage(usage.usedPercentage);\n  const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));\n  const radius = 9.75;\n  const circumference = 2 * Math.PI * radius;\n  const dashOffset = circumference * (1 - normalizedPercentage / 100);\n  const totalProcessedTokens = usage.totalProcessedTokens ?? null;\n  const showTotalProcessed = totalProcessedTokens !== null && totalProcessedTokens > 0;\n  const isOverloaded = normalizedPercentage > 90;\n  const usageColor = isOverloaded\n    ? \"var(--color-red-500)\"\n    : \"color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)\";\n\n  return (\n    <Popover>\n      <PopoverTrigger\n        openOnHover\n        delay={150}\n        closeDelay={0}\n        render={\n          <button\n```\n\n...\n\n```tsx\n              usage.maxTokens !== null && usedPercentage\n                ? `Context window ${usedPercentage} used`\n                : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`\n            }\n          >\n            \n```\n\n...\n\n```tsx\n            {usage.maxTokens !== null && usedPercentage ? (\n              <div className=\"text-[11px] tabular-nums text-muted-foreground/70\">\n                {usedPercentage}\n                \u00b7\n                \n                  {formatContextWindowTokens(usage.usedTokens)}/\n                  {formatContextWindowTokens(usage.maxTokens ?? null)}\n                \n              </div>\n            ) : (\n              <div className=\"text-[11px] tabular-nums text-muted-foreground/70\">\n                {formatContextWindowTokens(usage.usedTokens)}\n              </div>\n            )}\n          </div>\n          {usage.maxTokens !== null ? (\n            <div\n              className=\"h-1.5 w-full overflow-hidden rounded-full bg-muted/60\"\n              role=\"progressbar\"\n              aria-valuemin={0}\n              aria-valuemax={100}\n              aria-valuenow={Math.round(normalizedPercentage)}\n              aria-label=\"Context window usage\"\n            >\n              <div\n                className=\"h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none\"\n                style={{ width: `${normalizedPercentage}%`, backgroundColor: usageColor }}\n              />\n            </div>\n          ) : null}\n          {showTotalProcessed ? (\n            <div className=\"flex items-center justify-between gap-3 text-[11px] leading-4\">\n              Total processed\n              \n                {formatContextWindowTokens(totalProcessedTokens)}\n              \n            </div>\n          ) : null}\n          {usage.compactsAutomatically ? (\n            <div className=\"mt-1 text-pretty text-[11px] font-medium text-muted-foreground/70\">\n              {providerDisplayName ?? \"It\"} automatically compacts its context when needed.\n            </div>\n```"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,94 @@
+{
+  "search_id": "search_c628b67329627bf05b63e3ff8d0f7b7d",
+  "session_id": "session_c628b67329627bf05b63e3ff8d0f7b7d",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/pingdotgg/t3code",
+      "title": "pingdotgg/t3code",
+      "publish_date": "2026-07-24",
+      "excerpts": [
+        "# pingdotgg/t3code\n\n- Page: GitHub repository\n- URL: https://github.com/pingdotgg/t3code\n- Stars: 16,827\n- Forks: 3,760\n- License: MIT license\n- Default branch: main\n- Created: 2026-02-08T23:46:22.000Z\n- Commits: 2,305\n\n## Top-level files\n\n- .agents/skills/\n- .claude/\n- .codex/\n- .cursor/\n- .devcontainer/\n- .github/\n- .macroscope/check-run-agents/\n- .plans/\n- .repos/\n- .vite-hooks/\n- .vscode/\n- apps/\n- assets/\n- docs/\n- experiments/messages-glass-lab/\n- infra/relay/\n- native/\n- oxlint-plugin-t3code/\n- packages/\n- patches/\n- scripts/\n- .env.example\n- .gitattributes\n- .gitignore\n- .mcp.json\n- AGENTS.md\n- CLAUDE.md\n- CONTRIBUTING.md\n- LICENSE\n- README.md\n- app.json\n- package.json\n- pnpm-lock.yaml\n- pnpm-workspace.yaml\n- t3.json\n- tsconfig.base.json\n- vite.config.ts\n\n## README.md\n\n# T3 Code\n\nT3 Code is an \"agent harness control surface\". It enables control of the agents on your machine with a best-in-class mobile app ( [iOS](https://apps.apple."
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/actions",
+      "title": "pingdotgg/t3code \u00b7 GitHub - Workflow runs",
+      "publish_date": null,
+      "excerpts": [
+        "pingdotgg/t3code \u00b7 GitHub - Workflow runs\nContribute to pingdotgg/t3code development by creating an account on GitHub."
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/issues/673",
+      "title": "feat: Add usage data for Codex (and implement a usage viewer for future providers/models) \u00b7 Issue #673 \u00b7 pingdotgg/t3code \u00b7 GitHub",
+      "publish_date": "2026-03-09",
+      "excerpts": [
+        "# feat: Add usage data for Codex (and implement a usage viewer for future providers/models)\n\n- Page: GitHub issue\n- URL: https://github.com/pingdotgg/t3code/issues/673\n- State: open\n- Author: aaditagrawal\n- Created: 2026-03-09T12:16:23Z\n- Updated: 2026-03-09T12:22:29Z\n- Repository: pingdotgg/t3code\n- Number: #673\n- Comments: 1\n\n---\n\n**Purpose**: To view provider limits for plans inline within T3code without relying on external services like CodexBar\n**Expected UX:** Collapsible usage information on the sidebar\n\n<img width=\"402\" height=\"257\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/361b8cce-f2cd-4e86-96cc-6eda9f55c8b8\" />\n\n## Suggested Prompt\nImplement Codex usage display by calling the Codex app-server JSON-RPC method `account/rateLimits/read` against the active Codex session. Treat the session bucket as `rateLimits.primary`. Treat the weekly bucket as `rateLimits.secondary`.\nMap those buckets into a `quota` / `quotas` response for the UI, including `percentUsed` and `resetDate`. Label the session bucket from `windowDurationMins` like `Session (5 hrs)`, and label the second bucket as `Weekly`. If no active Codex session exists, return `{ provider: \"codex\" }` with no quota data.\n\nEndpoint / method: `account/rateLimits/read`\n\n## Timeline\n\n**aaditagrawal** commented on 2026-03-09T12:19:46Z:\n\n> The endpoint and data matters more, it could be hidden away as well, but it'd be useful information to have at a glance, especially for lower tiers (like the $20 plan).\n>\n> A centralized abstraction link with providers could also be useful if this has to be extended to other providers like GitHub Copilot (which includes native support for usage information in the SDK via `client.rpc.account.getQuota()`), or Cursor."
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/issues/347",
+      "title": "Created a nix flake of t3code \u00b7 Issue #347 \u00b7 pingdotgg/t3code \u00b7 GitHub",
+      "publish_date": "2026-03-07",
+      "excerpts": [
+        "Thank you for making t3code open-source and allowing other developers increasing their productivity. Today is like christmas and I'm five again!\n\n## Timeline\n\n**jakob1379** commented on 2026-04-02T14:56:09Z:\n\n> I mashed this together and have been using it without issue for about a month. I never noticed there should be a desktop version as I only really care for web-based apps for remote hosting :)\n>\n> <details><summary> Original snippet </summary>\n> clone repo and add the flake there,\n>\n> ```nix\n> {\n>   inputs = {\n>     nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n>   };\n>\n>   outputs =\n>     { nixpkgs, ... }:\n>     let\n>       lib = nixpkgs.lib;\n>       systems = [\n>         \"x86_64-linux\"\n>         \"aarch64-linux\"\n>         \"x86_64-darwin\"\n>         \"aarch64-darwin\"\n>       ];\n>       forAllSystems = lib.genAttrs systems;\n>       version = \"0.0.15\";\n>       mkT3code =\n>         pkgs:\n>         let\n>           src = pkgs.fetchFromGitHub {\n>             owner = \"pingdotgg\";"
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/releases",
+      "title": "Releases \u00b7 pingdotgg/t3code \u00b7 GitHub",
+      "publish_date": null,
+      "excerpts": [
+        "installed app size by ~300MB by @wukko. Fix Android showcase capture and rebuild v2 queued rows"
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/pulls",
+      "title": "Pull requests \u00b7 pingdotgg/t3code",
+      "publish_date": null,
+      "excerpts": [
+        "[Fix] Cursor stale active turn size:S 10-29 changed lines (additions +"
+      ]
+    },
+    {
+      "url": "https://github.com/vercel/ai/issues/8367",
+      "title": "Support for cache write tokens in returned response usage \u00b7 Issue #8367 \u00b7 vercel/ai \u00b7 GitHub",
+      "publish_date": "2025-08-29",
+      "excerpts": [
+        "# Support for cache write tokens in returned response usage\n\n- Page: GitHub issue\n- URL: https://github.com/vercel/ai/issues/8367\n- State: open\n- Author: rahulkarajgikar\n- Created: 2025-08-29T19:41:09Z\n- Updated: 2026-07-02T09:35:19Z\n- Repository: vercel/ai\n- Number: #8367\n- Comments: 7\n\n## Labels\n\n- ai/provider\n- provider/anthropic\n- provider/gateway\n- support\n- task-identify-issue-type-done\n\n---\n\n### Description\n\nSome providers like anthropic also charge for cache writes\n\nhttps://www.anthropic.com/pricing\n\nIt would be great for `generateText`, `streamText` ( `LanguageModelV2Usage`) to  include cache write tokens as well so we can accurately compute cost correctly for all models\n\n### AI SDK Version\n\nv5\n\n### Code of Conduct\n\n- [x] I agree to follow this project's Code of Conduct\n\n## Timeline\n\n- labeled by rahulkarajgikar on 2025-08-29T19:41:10Z\n\n**rahulkarajgikar** commented on 2025-08-29T19:44:15Z:\n> or if the SDK directly returned back the cost that would be the best -> the reason i want this is to estimate cost\n\n**rahulkarajgikar** commented on 2025-08-29T19:53:06Z:\n\n> currently there doesn't seem to be a way to compute the total cost easily from vercel ai sdk responses -> pushing me to consider gateway alternatives like openrouter/aws bedrock\n\n**gr2m** commented on 2025-09-02T16:23:27Z:\n\n> Could you share an ideal code example to showcase the way you would like it to see working, or the way it works with gateway alternatives that you prefer?\n\n- labeled by gr2m on 2025-09-02T16:23:37Z\n\n- labeled by gr2m on 2025-09-02T16:23:37Z\n\n- cross referenced by vercel on 2025-09-15T09:01:26Z\n\n**LeeWeisberger-at** commented on 2025-09-16T15:57:04Z:\n\n> Why was this issue closed? Including cache write tokens is necessary to accurately compute costs\n\n**lgrammel** commented on 2025-09-26T12:02:52Z:\n\n> You can access the full raw usage information in the anthropic provider metadata.\n- labeled by gr2m on 2025-10-15T05:48:58Z\n\n**GautierT** commented on 2025-11-02T11:47:01Z:\n\n> Hi. can this be done in  Telemetry v2 : https://github.com/vercel/ai/issues/8888 ? thanks !\n\n- unlabeled by gr2m on 2026-03-06T00:07:40Z\n\n- labeled by gr2m on 2026-03-06T00:08:35Z\n\n**smigolsmigol** commented on 2026-03-22T12:29:22Z:\n\n> I built a gateway alternative that handles this. `@f3d1/llmkit-ai-sdk-provider` is an AI SDK v6 custom provider that routes through a proxy tracking all token types: input, output, cache read, cache write. Returns cost in USD on every request.\n>\n> ```ts\n> import { createLLMKit } from '@f3d1/llmkit-ai-sdk-provider';\n> const llmkit = createLLMKit({ apiKey: 'llmk_...' });\n> const { text } = await generateText({ model: llmkit.chat('claude-sonnet-4-20250514'), prompt: '...' });\n> // cost in x-llmkit-cost response header, full breakdown in dashboard\n> ```\n>\n> Cache tokens are priced correctly per provider (Anthropic cache reads at 10% of input rate, cache writes at 125%). The LanguageModelV3 usage object includes `inputTokens.cacheRead` and `inputTokens.cacheWrite`. No need to parse raw provider metadata. Works as a drop-in provider swap, open source.\n>\n> `github.com/smigolsmigol/llmkit`\n\n- cross referenced by smigolsmigol on 2026-03-23T21:28:13Z"
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/tree/main/docs",
+      "title": "t3code/docs at main \u00b7 pingdotgg/t3code",
+      "publish_date": null,
+      "excerpts": [
+        "Contribute to pingdotgg/t3code development by creating an account on GitHub."
+      ]
+    },
+    {
+      "url": "https://github.com/neuron-core/neuron-ai/issues/572",
+      "title": "Expose cached input tokens and reasoning tokens in `Usage` \u00b7 Issue #572 \u00b7 neuron-core/neuron-ai \u00b7 GitHub",
+      "publish_date": "2026-05-13",
+      "excerpts": [
+        "# Expose cached input tokens and reasoning tokens in `Usage`\n\n- Page: GitHub issue\n- URL: https://github.com/neuron-core/neuron-ai/issues/572\n- State: closed (completed)\n- Author: mattmilesi\n- Created: 2026-05-13T23:10:34Z\n- Updated: 2026-06-12T12:24:15Z\n- Repository: neuron-core/neuron-ai\n- Number: #572\n- Comments: 3\n- Linked PRs: #583 (merged)\n- Closed by: https://github.com/neuron-core/neuron-ai/pull/583\n\n## Labels\n\n- enhancement\n\n---\n\n### Context\n\nMost current LLM providers expose richer usage data than the two fields `Usage` carries today. Two pieces are billed-relevant or observability-relevant and are dropped at parse time:\n\n1. **Cached vs non-cached input tokens.** OpenAI, Anthropic, and Gemini all return how many input tokens hit the prompt cache; OpenAI bills cached input at ~10\u00d7 discount, so collapsing it into `inputTokens` over-bills the cached portion on any downstream cost calculator.\n2. **Reasoning tokens.** OpenAI's reasoning-model family (o1/o3/gpt-5.\nx) reports how many output tokens were spent on internal reasoning inside `output_tokens_details.reasoning_tokens`. They're already counted in `output_tokens` for billing, but the breakdown is useful for telemetry (debugging prompts that blow up reasoning) and the field sits right next to `cached_tokens` in the same `response.completed` event, so wiring both at once is symmetric.\n\nThe data is already on the wire \u2014 Neuron just drops it at parse time.\n\n### Where it's dropped\n\n**OpenAI Responses, streaming** \u2014 `src/Providers/OpenAI/Responses/HandleStream.php:127-130`:\n```php\ncase 'response.completed':\n    $usage = $event['response']['usage'] ?? null;\n    $this->streamState->addInputTokens($usage['input_tokens'] ?? 0);\n    $this->streamState->addOutputTokens($usage['output_tokens'] ?? 0);\n```\nThe payload also contains `usage.input_tokens_details.cached_tokens` and `usage.output_tokens_details.reasoning_tokens`, neither of which is read.\n**OpenAI Responses, non-streaming** \u2014 `src/Providers/OpenAI/Responses/HandleChat.php:71`: same shape, same omission.\n\n**Anthropic, streaming** \u2014 `src/Providers/Anthropic/HandleStream.php:121` already reads `cache_read_input_tokens` for an unrelated calculation but doesn't surface it on `Usage`.\n\n**Anthropic, non-streaming** \u2014 `src/Providers/Anthropic/HandleChat.php:109` extracts `cacheRead` into a local variable but throws it away.\n\n### Proposed change\n\nTwo nullable-defaulted fields on `Usage`, two helpers on `BasicStreamState`, and a couple of extra reads per provider that has the data. Roughly:\n\n```diff\n // src/Chat/Messages/Usage.php\n class Usage implements JsonSerializable\n {\n     public function __construct(\n         public int $inputTokens,\n-        public int $outputTokens\n+        public int $outputTokens,\n+        public int $cachedInputTokens = 0,\n+        public int $reasoningTokens = 0,\n     ) {\n     }\n\n     public function jsonSerialize(): array\n     {\nreturn [\n             'input_tokens' => $this->inputTokens,\n             'output_tokens' => $this->outputTokens,\n+            'cached_input_tokens' => $this->cachedInputTokens,\n+            'reasoning_tokens' => $this->reasoningTokens,\n         ];\n     }\n }\n```\n\n```diff\n // src/Providers/BasicStreamState.php\n+public function addCachedInputTokens(int $tokens): self\n+{\n+    $this->usage->cachedInputTokens += $tokens;\n+    return $this;\n+}\n+\n+public function addReasoningTokens(int $tokens): self\n+{\n+    $this->usage->reasoningTokens += $tokens;\n+    return $this;\n+}\n```\n\n```diff\n // src/Providers/OpenAI/Responses/HandleStream.php (response.completed branch)\n $this->streamState->addInputTokens($usage['input_tokens'] ?? 0);\n $this->streamState->addOutputTokens($usage['output_tokens'] ?? 0);\n+$this->streamState->addCachedInputTokens($usage['input_tokens_details']['cached_tokens'] ?? 0);\n+$this->streamState->addReasoningTokens($usage['output_tokens_details']['reasoning_tokens'] ?? 0);\n```\n\nSame one-liner for `HandleChat.php`, and for the Anthropic equivalents (`cache_read_input_tokens`; Anthropic has no reasoning-token field today, so that one stays at 0). Gemini / Mistral / others can fill the fields as their APIs expose them; for the rest they stay `0` and behavior is unchanged.\n\n### Backward compatibility\n\n- `Usage::__construct` takes two new params with defaults of `0`, so existing call sites keep working.\n- `Usage::jsonSerialize` adds two new keys \u2014 additive, won't break existing consumers unless they assert exact keys (none in core do).\n- Existing token-based cost code reading `$usage->inputTokens` keeps the same number; it's now just *also* possible to subtract `$usage->cachedInputTokens` if the consumer wants to bill the cached portion at a different rate, or to inspect `$usage->reasoningTokens` for telemetry.\n\n### Out of scope (intentionally)\n\n- **No derived fields on `Usage`.\n** `noncached_input_tokens` (= `inputTokens - cachedInputTokens`) and `total_tokens` (= `inputTokens + outputTokens`) are easy to compute on the consumer side and storing them invites drift if someone updates one half of the pair and not the other.\n- **No new `DetailedUsage` value object.** Cache-creation tokens (Anthropic), audio in/out tokens (Realtime), and other future breakdowns can be added one field at a time when there's a concrete consumer \u2014 wrapping them in a wide struct now just bakes in fields nobody reads and turns the PR into a design discussion about that struct instead of about the two missing values.\n- **No change to `Message::setUsage` signature or to the provider interfaces.** `Message::setUsage(Usage)` already covers everything: when `Usage` grows a field, every caller benefits automatically."
+      ]
+    },
+    {
+      "url": "https://github.com/pingdotgg/t3code/issues",
+      "title": "Issues \u00b7 pingdotgg/t3code - GitHub",
+      "publish_date": null,
+      "excerpts": [
+        "Issues \u00b7 pingdotgg/t3code - GitHub\n[Bug]: OpenCode provider loses thread context on follow-up \u2014 t3code starts a new OpenCode session instead of resuming (no durable session binding)."
+      ]
+    }
+  ],
+  "usage": [
+    {
+      "name": "sku_search",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

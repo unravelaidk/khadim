@@ -61,6 +61,10 @@ function isBoundedString(value: unknown, maximum: number, allowEmpty = false): v
   return typeof value === "string" && value.length <= maximum && (allowEmpty || Boolean(value.trim()));
 }
 
+function isBoundedIdString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 240 && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
 function isChatMessage(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const message = value as Record<string, unknown>;
@@ -95,6 +99,8 @@ function isChatMessage(value: unknown): boolean {
     if (typeof message.usage !== "object" || message.usage === null || Array.isArray(message.usage)) return false;
     const usage = message.usage as Record<string, unknown>;
     if (!["input", "output", "cacheRead", "cacheWrite"].every((key) => typeof usage[key] === "number" && Number.isFinite(usage[key]) && (usage[key] as number) >= 0)) return false;
+    if (!["contextUsed", "contextSize", "totalProcessed"].every((key) => usage[key] === undefined
+      || (typeof usage[key] === "number" && Number.isFinite(usage[key]) && (usage[key] as number) >= 0))) return false;
   }
   return true;
 }
@@ -104,6 +110,14 @@ function isAgentRun(value: unknown, conversation: Record<string, unknown>, messa
   const run = value as Record<string, unknown>;
   if (!["id", "projectId", "conversationId", "userMessageId", "assistantMessageId", "createdAt"].every((key) => isBoundedString(run[key], 240))) return false;
   if (run.artifactId !== undefined && !isBoundedString(run.artifactId, 240)) return false;
+  if (run.canvasSelection !== undefined) {
+    const selection = run.canvasSelection as Record<string, unknown>;
+    if (typeof selection !== "object" || selection === null || Array.isArray(selection)
+      || !isBoundedString(selection.pageId, 240)
+      || !Array.isArray(selection.elementIds) || selection.elementIds.length === 0 || selection.elementIds.length > 100
+      || !selection.elementIds.every((id) => isBoundedIdString(id))
+      || new Set(selection.elementIds).size !== selection.elementIds.length) return false;
+  }
   if (run.projectId !== conversation.projectId || run.conversationId !== conversation.id) return false;
   const userMessage = messagesById.get(String(run.userMessageId));
   const assistantMessage = messagesById.get(String(run.assistantMessageId));
@@ -159,6 +173,10 @@ function isConversation(value: unknown): value is Conversation {
     if (!Array.isArray(conversation.runs) || conversation.runs.length > 2_000 || !conversation.runs.every((run) => isAgentRun(run, conversation, messagesById))) return false;
     if (new Set(conversation.runs.map((run) => (run as Record<string, unknown>).id)).size !== conversation.runs.length) return false;
   }
+  // Durable per-chat harness preference. Optional for legacy chats; when present
+  // it is validated syntactically only (built-in mode or well-formed plugin
+  // harness id) and does not require the referenced plugin to be installed.
+  if (conversation.harness !== undefined && !isHarnessMode(conversation.harness)) return false;
   return true;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createArtifact } from "../../../src/renderer/src/artifact-model";
-import { applyStudioArtifactEdit, parseStudioArtifactEdit, studioAgentPrompt } from "../../../src/renderer/src/studio/studio-agent-edit";
+import { applyStudioArtifactEdit, enforceCanvasSelectionBinding, parseStudioArtifactEdit, studioAgentPrompt } from "../../../src/renderer/src/studio/studio-agent-edit";
+import type { CanvasArtifactContent } from "../../../src/shared/types";
 
 describe("studio agent edits", () => {
   it("applies file and visual changes without allowing artifact identity changes", () => {
@@ -81,6 +82,153 @@ describe("studio agent edits", () => {
       format: "document-html",
       html: expect.stringContaining("<h1>Field report</h1>"),
       baselineHtml: expect.stringContaining("same HTML drives"),
+    });
+  });
+
+  describe("canvasCommands", () => {
+    function canvasArtifact(): ReturnType<typeof createArtifact> {
+      const artifact = createArtifact("canvas", "project-a", "canvas-a", "2026-01-01T00:00:00.000Z");
+      if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas");
+      artifact.content = {
+        ...artifact.content,
+        activePageId: "page-1",
+        pages: [
+          { id: "page-1", name: "Page 1", frame: { width: 800, height: 600 }, elements: [
+            { id: "a", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+            { id: "b", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+          ], appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } },
+        ],
+        elements: [
+          { id: "a", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+          { id: "b", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+        ],
+      } as CanvasArtifactContent;
+      return artifact;
+    }
+
+    it("parses and applies a bounded canvasCommands group to a khadim-canvas artifact", () => {
+      const artifact = canvasArtifact();
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a","b"],"commands":[{"type":"patch-elements","elementIds":["a","b"],"patch":{"x":40}}]}}</artifact-edit>`);
+      expect(edit).not.toBeNull();
+      expect(edit?.canvasCommands).toBeDefined();
+      const updated = applyStudioArtifactEdit(artifact, edit!, "2026-01-02T00:00:00.000Z");
+      if (updated.content.format !== "khadim-canvas") throw new Error("Expected canvas");
+      expect(updated.content.elements.find((e) => e.id === "a")?.x).toBe(40);
+      expect(updated.content.elements.find((e) => e.id === "b")?.x).toBe(40);
+    });
+
+    it("rejects canvasCommands for a non-canvas artifact", () => {
+      const artifact = createArtifact("site", "project-a", "artifact-a", "2026-01-01T00:00:00.000Z");
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`);
+      expect(edit).not.toBeNull();
+      expect(() => applyStudioArtifactEdit(artifact, edit!, "2026-01-02T00:00:00.000Z")).toThrowError();
+    });
+
+    it("rejects malformed canvasCommands payloads", () => {
+      expect(parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"","selectionIds":["a"],"commands":[]}}</artifact-edit>`)).toBeNull();
+      // Empty selectionIds is now accepted by the parser for additive runs, but
+      // a non-additive command (patch-elements) under an empty selection is a
+      // policy violation, not a parser error. The policy layer rejects it.
+      const parsed = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":[],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`);
+      expect(parsed).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(parsed!, undefined)).toBeNull();
+      expect(parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a","a"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`)).toBeNull();
+      expect(parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"bogus","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`)).toBeNull();
+      expect(parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"id":"hijack"}}]}}</artifact-edit>`)).toBeNull();
+    });
+
+    it("counts canvasCommands in the change count", async () => {
+      const { studioArtifactEditChangeCount } = await import("../../../src/shared/studio-artifact-edit");
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a","b"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}},{"type":"patch-elements","elementIds":["b"],"patch":{"x":2}}]}}</artifact-edit>`);
+      expect(edit).not.toBeNull();
+      expect(studioArtifactEditChangeCount(edit!)).toBe(2);
+    });
+  });
+
+  describe("enforceCanvasSelectionBinding (legacy <artifact-edit> fallback)", () => {
+    function canvasArtifact(): ReturnType<typeof createArtifact> {
+      const artifact = createArtifact("canvas", "project-a", "canvas-a", "2026-01-01T00:00:00.000Z");
+      if (artifact.content.format !== "khadim-canvas") throw new Error("Expected canvas");
+      artifact.content = {
+        ...artifact.content,
+        activePageId: "page-1",
+        pages: [
+          { id: "page-1", name: "Page 1", frame: { width: 800, height: 600 }, elements: [
+            { id: "a", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+            { id: "b", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+          ], appState: { viewBackgroundColor: "#ffffff", snapToGrid: false } },
+        ],
+        elements: [
+          { id: "a", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+          { id: "b", type: "rectangle", x: 0, y: 0, width: 100, height: 80, color: "#111827" },
+        ],
+      } as CanvasArtifactContent;
+      return artifact;
+    }
+
+    it("rejects a title-only text fallback edit when a trusted selection is bound", () => {
+      const edit = parseStudioArtifactEdit('<artifact-edit>{"title":"Hostile rename"}</artifact-edit>')!;
+      expect(edit).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(edit, { pageId: "page-1", elementIds: ["a"] })).toBeNull();
+    });
+
+    it("rejects canvasCommands alongside a title when a trusted selection is bound", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"title":"Hostile rename","canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(edit, { pageId: "page-1", elementIds: ["a"] })).toBeNull();
+    });
+
+    it("rejects canvasCommands whose selection mismatches the trusted selection", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["b","a"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      // Trusted selection is ordered ["a","b"]; a reordered selectionIds is rejected.
+      expect(enforceCanvasSelectionBinding(edit, { pageId: "page-1", elementIds: ["a", "b"] })).toBeNull();
+    });
+
+    it("accepts canvasCommands that exactly match the trusted selection", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a","b"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      const guarded = enforceCanvasSelectionBinding(edit, { pageId: "page-1", elementIds: ["a", "b"] });
+      expect(guarded).not.toBeNull();
+      const artifact = canvasArtifact();
+      const updated = applyStudioArtifactEdit(artifact, guarded!, "2026-01-02T00:00:00.000Z");
+      if (updated.content.format !== "khadim-canvas") throw new Error("Expected canvas");
+      expect(updated.content.elements.find((e) => e.id === "a")?.x).toBe(1);
+    });
+
+    it("rejects canvasCommands when no trusted selection was bound", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"patch-elements","elementIds":["a"],"patch":{"x":1}}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(edit, undefined)).toBeNull();
+    });
+
+    it("accepts additive canvasCommands with no trusted selection (add-elements, selectionIds [])", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":[],"commands":[{"type":"add-elements","elements":[{"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,"color":"#000"}]}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      const guarded = enforceCanvasSelectionBinding(edit, undefined);
+      expect(guarded).not.toBeNull();
+      const artifact = canvasArtifact();
+      const updated = applyStudioArtifactEdit(artifact, guarded!, "2026-01-02T00:00:00.000Z");
+      if (updated.content.format !== "khadim-canvas") throw new Error("Expected canvas");
+      expect(updated.content.elements.map((e) => e.id)).toEqual(["a", "b", "r1"]);
+    });
+
+    it("rejects additive canvasCommands with a nonempty selection when no trusted selection is bound", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"add-elements","elements":[{"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,"color":"#000"}]}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(edit, undefined)).toBeNull();
+    });
+
+    it("rejects add-elements on a selection-bound run", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"canvasCommands":{"pageId":"page-1","selectionIds":["a"],"commands":[{"type":"add-elements","elements":[{"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,"color":"#000"}]}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(edit, { pageId: "page-1", elementIds: ["a"] })).toBeNull();
+    });
+
+    it("rejects mixed add-elements + title when no trusted selection is bound", () => {
+      const edit = parseStudioArtifactEdit(`<artifact-edit>{"title":"Hostile rename","canvasCommands":{"pageId":"page-1","selectionIds":[],"commands":[{"type":"add-elements","elements":[{"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,"color":"#000"}]}]}}</artifact-edit>`)!;
+      expect(edit).not.toBeNull();
+      expect(enforceCanvasSelectionBinding(edit, undefined)).toBeNull();
     });
   });
 });

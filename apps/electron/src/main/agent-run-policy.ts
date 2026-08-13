@@ -17,9 +17,25 @@ export function processSupervisionArgs(): string[] {
 }
 
 /**
- * Convert the immutable run snapshot into the CLI's explicit execution-policy
- * flags. Omitting `--tool-groups` means full legacy access in the CLI, so this
- * helper always emits either a concrete allowlist or the `none` sentinel.
+ * Plugin harnesses own their native Agent/Task/collaboration tools, so they do
+ * not pass through Khadim's Rust coordinator. Team mode gives the primary the
+ * same bounded delegation guidance while leaving the decision to delegate to
+ * the selected harness.
+ */
+export function pluginTeamInstructions(enabled: boolean | undefined): string {
+  if (!enabled) return "";
+  return [
+    "Team mode is enabled. You remain the primary agent responsible for the final result.",
+    "Use this harness's native subagent or delegation tools only for focused work that is genuinely independent and benefits from a separate context.",
+    "When two or more helper tasks are independent, launch them together. Do not delegate trivial, sequential, or duplicate work.",
+    "Give each helper a concrete objective and incorporate its findings before responding.",
+  ].join(" ");
+}
+
+/**
+ * Convert the immutable run snapshot into the CLI's execution-policy flags.
+ * Every native run emits the same concrete tool and temperature policy. Team
+ * mode adds read-only helpers without changing the primary agent's authority.
  */
 export function executionPolicyArgs(
   run: Pick<AgentRun, "enabledTools" | "harness" | "model" | "multiAgent">,

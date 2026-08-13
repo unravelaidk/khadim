@@ -224,6 +224,21 @@ describe("dialog keyboard accessibility", () => {
     expect(update.customThemes?.[0]).toMatchObject({ name: "Midnight Plum", appearance: "dark", palette: newCustomThemePaletteForTest });
   });
 
+  it("lets people choose a sound mood and persists the preference", async () => {
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click((await screen.findAllByRole("button", { name: "Settings" }))[0]);
+    expect(await screen.findByRole("radio", { name: "Subtle" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "Expressive" }));
+    expect(screen.getByRole("radio", { name: "Expressive" })).toBeChecked();
+    expect(screen.getByText("More present completion and attention cues.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(api.settings.save).toHaveBeenCalledWith(expect.objectContaining({ soundMood: "expressive" }));
+  });
+
   it("asks before removing a saved model", async () => {
     const user = userEvent.setup();
     render(<App />);

@@ -332,7 +332,14 @@ pub fn auto_select_mode(prompt: &str) -> (AgentModeDefinition, String) {
 }
 
 /// Tools that are safe to execute in parallel (read-only, no side effects between each other).
-const PARALLEL_SAFE_TOOLS: &[&str] = &["read", "ls", "grep", "glob", "web_search"];
+const PARALLEL_SAFE_TOOLS: &[&str] = &[
+    "read",
+    "ls",
+    "grep",
+    "glob",
+    "web_search",
+    "delegate_to_agent",
+];
 
 /// Result of executing a single tool call.
 struct ToolExecResult {
@@ -443,10 +450,10 @@ async fn execute_single_tool(
 /// Execute a batch of tool calls with parallelism where safe.
 ///
 /// Strategy:
-/// - Consecutive read-only tools (read, ls, grep, glob, web_search) are batched
-///   and executed concurrently via `join_all`.
-/// - Mutating tools (bash, write, edit, memory, delegate_to_agent) are executed
-///   one at a time, flushing any pending parallel batch first.
+/// - Consecutive read-only tools and independent delegations are batched.
+/// - Delegation batches are chunked to the configured helper limit.
+/// - Mutating tools (bash, write, edit, memory) execute one at a time, flushing
+///   any pending parallel batch first.
 /// - Results are always appended to session messages in the original order.
 async fn execute_tool_calls(
     tool_calls: Vec<ToolCall>,
@@ -455,6 +462,7 @@ async fn execute_tool_calls(
     session: &mut KhadimSession,
     mut goal_tracker: Option<&mut GoalTracker>,
     mut parse_cache: Option<&mut khadim_code_graph::ParseCache>,
+    max_workers: usize,
 ) {
     // Split tool calls into runs of parallel-safe and sequential tools.
     // We process them in order, batching adjacent parallel-safe calls.
@@ -471,37 +479,49 @@ async fn execute_tool_calls(
         // Execute the parallel batch
         if i > batch_start {
             let batch = &tool_calls[batch_start..i];
-            let futures: Vec<_> = batch
+            let parallel_limit = if batch
                 .iter()
-                .map(|tc| execute_single_tool(tc, runtime, tx, &session.workspace_id, &session.id))
-                .collect();
+                .any(|call| call.function.name == "delegate_to_agent")
+            {
+                max_workers.max(1)
+            } else {
+                batch.len().max(1)
+            };
 
-            let results = futures::future::join_all(futures).await;
+            for chunk in batch.chunks(parallel_limit) {
+                let futures: Vec<_> = chunk
+                    .iter()
+                    .map(|tc| {
+                        execute_single_tool(tc, runtime, tx, &session.workspace_id, &session.id)
+                    })
+                    .collect();
+                let results = futures::future::join_all(futures).await;
 
-            for (idx, result) in results.into_iter().enumerate() {
-                if let Some(ref mut gt) = goal_tracker {
-                    let tc = &batch[idx];
-                    let newly = if let Some(cache) = parse_cache.as_mut() {
-                        gt.update_from_tool_json_with_graph(
-                            &tc.function.name,
-                            &tc.function.arguments,
-                            &result.content,
-                            cache,
-                        )
-                    } else {
-                        gt.update_from_tool_json(
-                            &tc.function.name,
-                            &tc.function.arguments,
-                            &result.content,
-                        );
-                        newly_satisfied_indices(gt)
-                    };
-                    emit_goal_satisfied_events(&newly, gt, session, tx);
+                for (idx, result) in results.into_iter().enumerate() {
+                    if let Some(ref mut gt) = goal_tracker {
+                        let tc = &chunk[idx];
+                        let newly = if let Some(cache) = parse_cache.as_mut() {
+                            gt.update_from_tool_json_with_graph(
+                                &tc.function.name,
+                                &tc.function.arguments,
+                                &result.content,
+                                cache,
+                            )
+                        } else {
+                            gt.update_from_tool_json(
+                                &tc.function.name,
+                                &tc.function.arguments,
+                                &result.content,
+                            );
+                            newly_satisfied_indices(gt)
+                        };
+                        emit_goal_satisfied_events(&newly, gt, session, tx);
+                    }
+                    session.messages.push(ChatMessage::Tool(ToolMessage {
+                        content: result.content,
+                        tool_call_id: result.tool_call_id,
+                    }));
                 }
-                session.messages.push(ChatMessage::Tool(ToolMessage {
-                    content: result.content,
-                    tool_call_id: result.tool_call_id,
-                }));
             }
         }
 
@@ -605,10 +625,10 @@ pub struct RunConfig {
     /// Whether to extract goals from the prompt and inject goal-count heuristic nudges (default: true).
     pub goal_tracking: bool,
     /// Upper bound on concurrently-running delegated workers (default: 3).
-    /// NOTE: parallel-batch execution of `delegate_to_agent` stays serialized in
-    /// this WP; this field is reserved for the coordinator (WP7) and is
-    /// documented here so callers can configure it now.
     pub max_workers: usize,
+    /// Additional per-run system guidance. This is inserted immediately before
+    /// the user turn, so it works with both default and caller-supplied prompts.
+    pub system_instructions: Option<String>,
     /// When to engage the propose-k search layer (System-2). Default is
     /// [`SearchMode::Stalled { turns: 4 }`]; set to [`SearchMode::Off`] for a
     /// true no-op (byte-identical to the pre-WP6 loop).
@@ -626,6 +646,7 @@ impl Default for RunConfig {
             extract_contracts: true,
             goal_tracking: true,
             max_workers: 3,
+            system_instructions: None,
             search: SearchMode::default(),
         }
     }
@@ -633,6 +654,36 @@ impl Default for RunConfig {
 
 fn sampling_temperature(config: &RunConfig, default: f32) -> f32 {
     config.temperature.unwrap_or(default)
+}
+
+fn system_instruction_count(messages: &[ChatMessage], instruction: Option<&str>) -> usize {
+    let Some(instruction) = instruction else {
+        return 0;
+    };
+    messages
+        .iter()
+        .filter(
+            |message| matches!(message, ChatMessage::System { content } if content == instruction),
+        )
+        .count()
+}
+
+fn remove_added_system_instruction(
+    messages: &mut Vec<ChatMessage>,
+    instruction: Option<&str>,
+    previous_count: usize,
+) {
+    let Some(instruction) = instruction else {
+        return;
+    };
+    if system_instruction_count(messages, Some(instruction)) <= previous_count {
+        return;
+    }
+    if let Some(index) = messages.iter().rposition(
+        |message| matches!(message, ChatMessage::System { content } if content == instruction),
+    ) {
+        messages.remove(index);
+    }
 }
 
 /// Run a prompt with automatic mode selection.
@@ -664,16 +715,34 @@ pub async fn run_prompt_with_runtime(
     runtime: AgentRuntime,
     config: RunConfig,
 ) -> Result<String, AppError> {
+    let instruction = config.system_instructions.clone();
+    let previous_count = system_instruction_count(&session.messages, instruction.as_deref());
+    let result =
+        run_prompt_with_runtime_inner(session, prompt, selection, tx, runtime, config).await;
+    remove_added_system_instruction(
+        &mut session.messages,
+        instruction.as_deref(),
+        previous_count,
+    );
+    result
+}
+
+async fn run_prompt_with_runtime_inner(
+    session: &mut KhadimSession,
+    prompt: &str,
+    selection: Option<ModelSelection>,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    runtime: AgentRuntime,
+    config: RunConfig,
+) -> Result<String, AppError> {
     // If the runtime has no event sink set, attach this run's `tx` so that
     // `delegate_to_agent` subagent events stream to the parent by default.
-    // Callers that pre-wired a sink via `with_event_sink` keep their sink.
+    // Callers that pre-wired a sink keep their context.
     let runtime = if runtime.has_event_sink() {
         runtime
     } else {
-        runtime.with_event_sink(tx.clone())
+        runtime.with_delegate_context(tx.clone(), selection.clone())
     };
-    let _ = &config; // reserved for future use (e.g. max_workers enforcement)
-
     // If the session has a system prompt override, use chat mode.
     // Otherwise, auto-select mode based on the prompt.
     let (mode, mode_reasoning) = if session.system_prompt_override.is_some() {
@@ -705,6 +774,12 @@ pub async fn run_prompt_with_runtime(
     if session.messages.is_empty() {
         session.messages.push(ChatMessage::System {
             content: system_prompt,
+        });
+    }
+
+    if let Some(instructions) = config.system_instructions.as_ref() {
+        session.messages.push(ChatMessage::System {
+            content: instructions.clone(),
         });
     }
 
@@ -848,6 +923,7 @@ pub async fn run_prompt_with_runtime(
                         session,
                         goal_tracker.as_mut(),
                         parse_cache.as_mut(),
+                        config.max_workers,
                     )
                     .await;
 
@@ -1051,6 +1127,7 @@ pub async fn run_prompt_with_runtime(
                 session,
                 goal_tracker.as_mut(),
                 parse_cache.as_mut(),
+                config.max_workers,
             )
             .await;
 
@@ -1135,6 +1212,11 @@ pub async fn run_prompt_with_runtime_and_explicit_mode_and_config(
     runtime: AgentRuntime,
     config: RunConfig,
 ) -> Result<String, AppError> {
+    let runtime = if runtime.has_event_sink() {
+        runtime
+    } else {
+        runtime.with_delegate_context(tx.clone(), selection.clone())
+    };
     let saved_override = session.system_prompt_override.take();
     let result = match initialize_model_client(selection, session, tx).await {
         Ok(client) => {
@@ -1179,6 +1261,26 @@ async fn run_prompt_inner(
     mode: AgentModeDefinition,
     config: RunConfig,
 ) -> Result<String, AppError> {
+    let instruction = config.system_instructions.clone();
+    let previous_count = system_instruction_count(&session.messages, instruction.as_deref());
+    let result = run_prompt_inner_body(session, prompt, client, tx, runtime, mode, config).await;
+    remove_added_system_instruction(
+        &mut session.messages,
+        instruction.as_deref(),
+        previous_count,
+    );
+    result
+}
+
+async fn run_prompt_inner_body(
+    session: &mut KhadimSession,
+    prompt: &str,
+    client: Arc<dyn ModelExecutor>,
+    tx: &tokio::sync::mpsc::UnboundedSender<AgentStreamEvent>,
+    runtime: AgentRuntime,
+    mode: AgentModeDefinition,
+    config: RunConfig,
+) -> Result<String, AppError> {
     let system_prompt = match &session.system_prompt_override {
         Some(override_prompt) => override_prompt.clone(),
         None => runtime.build_prompt(&mode),
@@ -1189,6 +1291,12 @@ async fn run_prompt_inner(
     if session.messages.is_empty() {
         session.messages.push(ChatMessage::System {
             content: system_prompt,
+        });
+    }
+
+    if let Some(instructions) = config.system_instructions.as_ref() {
+        session.messages.push(ChatMessage::System {
+            content: instructions.clone(),
         });
     }
 
@@ -1430,6 +1538,7 @@ async fn run_prompt_inner(
                 session,
                 goal_tracker.as_mut(),
                 parse_cache.as_mut(),
+                config.max_workers,
             )
             .await;
 

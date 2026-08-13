@@ -1,4 +1,5 @@
-import type { Artifact, VisualDocumentData } from "./types";
+import type { Artifact, CanvasArtifactContent, VisualDocumentData } from "./types";
+import { applyCanvasCommandGroup, parseCanvasCommandGroup, type CanvasCommandGroup } from "./canvas-commands";
 import { applyVisualDocument, updateWebProjectFile } from "./web-project";
 
 const maxFileBytes = 512_000;
@@ -9,6 +10,8 @@ export interface StudioArtifactEdit {
   html?: string;
   visual?: VisualDocumentData;
   componentPatches?: Array<{ id: string; props: Record<string, unknown> }>;
+  /** A semantic Canvas command group. Only valid for khadim-canvas artifacts. */
+  canvasCommands?: CanvasCommandGroup;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -76,7 +79,13 @@ export function parseStudioArtifactEditPayload(payload: unknown): StudioArtifact
     }
     edit.componentPatches = patches;
   }
-  return edit.title || edit.html !== undefined || edit.files || edit.visual || edit.componentPatches ? edit : null;
+  if (payload.canvasCommands !== undefined) {
+    // Strict bounded runtime parsing of the untrusted command-group JSON.
+    const group = parseCanvasCommandGroup(payload.canvasCommands);
+    if (!group) return null;
+    edit.canvasCommands = group;
+  }
+  return edit.title || edit.html !== undefined || edit.files || edit.visual || edit.componentPatches || edit.canvasCommands ? edit : null;
 }
 
 function patchVisualComponents(data: VisualDocumentData, patches: NonNullable<StudioArtifactEdit["componentPatches"]>): VisualDocumentData {
@@ -103,6 +112,11 @@ function patchVisualComponents(data: VisualDocumentData, patches: NonNullable<St
 }
 
 export function applyStudioArtifactEdit(artifact: Artifact, edit: StudioArtifactEdit, now: string): Artifact {
+  // canvasCommands are only valid for khadim-canvas artifacts. Rejecting here
+  // keeps a misrouted edit from silently no-oping on a document or website.
+  if (edit.canvasCommands && artifact.content.format !== "khadim-canvas") {
+    throw new Error("canvasCommands are only valid for khadim-canvas artifacts.");
+  }
   let content = artifact.content;
   if (content.format === "html" && edit.html !== undefined) content = { ...content, html: edit.html };
   if (content.format === "document-html" && edit.html !== undefined) content = { ...content, html: edit.html };
@@ -113,6 +127,10 @@ export function applyStudioArtifactEdit(artifact: Artifact, edit: StudioArtifact
     if (edit.componentPatches && project.visual) project = applyVisualDocument(project, patchVisualComponents(project.visual.data, edit.componentPatches));
     if (edit.html !== undefined) project = { ...project, previewHtml: edit.html };
     content = project;
+  }
+  if (content.format === "khadim-canvas" && edit.canvasCommands) {
+    const result = applyCanvasCommandGroup(content, edit.canvasCommands);
+    content = result.content;
   }
   return {
     ...artifact,
@@ -129,7 +147,8 @@ export function studioArtifactEditChangeCount(edit: StudioArtifactEdit): number 
       + (edit.componentPatches?.length ?? 0)
       + (edit.visual ? 1 : 0)
       + (edit.html !== undefined ? 1 : 0)
-      + (edit.title ? 1 : 0),
+      + (edit.title ? 1 : 0)
+      + (edit.canvasCommands ? edit.canvasCommands.commands.length : 0),
     1,
   );
 }

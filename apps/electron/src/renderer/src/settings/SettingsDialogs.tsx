@@ -14,6 +14,8 @@ import {
   Palette,
   Plus,
   MagnifyingGlass as Search,
+  SpeakerHigh,
+  SpeakerSlash,
   Sun,
   Trash as Trash2,
   UserCircle as UserRound,
@@ -21,7 +23,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppSettings, CodexAuthStatus, CustomTheme, ModelCatalogProvider, SettingsUpdate, ThemeMode, ThemePalette } from "../../../shared/types";
+import type { AppSettings, CodexAuthStatus, CustomTheme, ModelCatalogProvider, SettingsUpdate, SoundMood, ThemeMode, ThemePalette } from "../../../shared/types";
 import { BUILT_IN_THEMES, type BuiltInTheme } from "../../../shared/themes";
 import { safeModelBaseUrl } from "../../../shared/model-endpoint-policy";
 import { applyDocumentTheme } from "../theme/document-theme";
@@ -31,6 +33,11 @@ import { useDialogFocus } from "../ui/use-dialog-focus";
 
 const customModelValue = "__custom_model__";
 const newCustomThemePalette: ThemePalette = { background: "#15141b", surface: "#21202e", elevated: "#2d2b3a", text: "#edecee", muted: "#a394b8", accent: "#a277ff" };
+const soundMoodOptions: Array<{ id: SoundMood; label: string; description: string }> = [
+  { id: "off", label: "Off", description: "Keep Khadim silent." },
+  { id: "subtle", label: "Subtle", description: "Quiet cues for important moments." },
+  { id: "expressive", label: "Expressive", description: "More present completion and attention cues." },
+];
 
 export function SettingsDialog({ settings, initialSection, initialProvider, onClose, onSave }: { settings: AppSettings; initialSection?: "appearance" | "model" | "workspace"; initialProvider?: string; onClose: () => void; onSave: (settings: AppSettings) => void | Promise<void> }): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<"appearance" | "model" | "workspace">(initialSection ?? "appearance");
@@ -43,6 +50,7 @@ export function SettingsDialog({ settings, initialSection, initialProvider, onCl
     harness: settings.harness,
     theme: settings.theme,
     customThemes: settings.customThemes ?? [],
+    soundMood: settings.soundMood ?? (settings.soundsEnabled === false ? "off" : "subtle"),
   }), [settings]);
   const [draft, setDraft] = useState<SettingsUpdate>(initialDraft);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
@@ -68,11 +76,19 @@ export function SettingsDialog({ settings, initialSection, initialProvider, onCl
   const [codexConnected, setCodexConnected] = useState<boolean | null>(null);
   const [codexStatus, setCodexStatus] = useState<CodexAuthStatus>({ status: "idle" });
   const codexSyncStarted = useRef(false);
+  const previousInitialDraftRef = useRef(initialDraft);
   const keepEditingRef = useRef<HTMLButtonElement>(null);
   const modelSelectorRef = useRef<HTMLDivElement>(null);
   const defaultModelSearchRef = useRef<HTMLInputElement>(null);
   const isDirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
+  const soundMood = draft.soundMood ?? (draft.soundsEnabled === false ? "off" : "subtle");
   const dialogRef = useDialogFocus<HTMLElement>(requestClose);
+
+  useEffect(() => {
+    const previousInitialDraft = previousInitialDraftRef.current;
+    setDraft((current) => JSON.stringify(current) === JSON.stringify(previousInitialDraft) ? initialDraft : current);
+    previousInitialDraftRef.current = initialDraft;
+  }, [initialDraft]);
 
   const selectableThemes = useMemo<Array<BuiltInTheme | (CustomTheme & { family: "Custom"; description: string })>>(() => [
     ...BUILT_IN_THEMES,
@@ -504,7 +520,7 @@ export function SettingsDialog({ settings, initialSection, initialProvider, onCl
           </nav>}
           <div className="settings-content" data-section={activeSection}>
             {activeSection === "appearance" && (
-              <SettingsSection title="Appearance" description="Choose a built-in palette or create one of your own.">
+              <SettingsSection title="Appearance" description="Choose how Khadim looks, sounds, and moves.">
                 <div className="theme-library-toolbar">
                   <label><Search size={14} /><input type="search" value={themeSearch} onChange={(event) => setThemeSearch(event.target.value)} placeholder="Search themes" aria-label="Search themes" /></label>
                   <button type="button" onClick={() => setThemeEditorOpen((open) => !open)}><Plus size={14} /> New theme</button>
@@ -522,6 +538,22 @@ export function SettingsDialog({ settings, initialSection, initialProvider, onCl
                 </div>
                 {visibleThemes.length === 0 && <p className="theme-library-empty">No themes match “{themeSearch.trim()}”.</p>}
                 <div className="setting-note"><Palette size={16} /><span><strong>Preview your choice instantly</strong><small>Aura is the default for new installations. Changes are saved only when you choose Save changes.</small></span></div>
+                <div className="sound-preference">
+                  <div className="sound-preference-heading">
+                    <span className="sound-preference-icon">{soundMood === "off" ? <SpeakerSlash size={17} /> : <SpeakerHigh size={17} />}</span>
+                    <span><strong>Sound mood</strong><small>Choose how much audio feedback Khadim uses.</small></span>
+                  </div>
+                  <div className="sound-mood-control" role="radiogroup" aria-label="Sound mood">
+                    {soundMoodOptions.map((option) => (
+                      <label className={soundMood === option.id ? "active" : ""} key={option.id}>
+                        <input className="sr-only" type="radio" name="sound-mood" value={option.id} checked={soundMood === option.id} onChange={() => setDraft({ ...draft, soundMood: option.id, soundsEnabled: undefined })} />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p>{soundMoodOptions.find((option) => option.id === soundMood)?.description}</p>
+                  <small className="sound-preference-footnote">Sends, attention, completion, and errors only. Tool steps stay silent.</small>
+                </div>
               </SettingsSection>
             )}
             {activeSection === "model" && (

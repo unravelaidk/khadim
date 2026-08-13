@@ -113,12 +113,21 @@ the following behavior as working unless a focused test proves otherwise:
   Drive supports metadata and indexed-content search plus text export for Docs,
   Sheets, Slides, and text-like files. Calendar lists calendars and bounded
   event ranges. Every tool marks returned service content as untrusted.
-- **Agents** is a persistent master-detail workbench with job templates, custom
-  instructions, model and runtime defaults, tool-group access, a per-agent
-  Google service allowlist, duplication, editing, deletion, and direct chat
-  launch. The profile summarizes project-scoped run activity from saved chat
-  snapshots. Each run saves the selected app allowlist in its immutable
-  snapshot, and the main process exposes only the corresponding native tools.
+- **Agents** is a public Alpha feature presented as a divided operational
+  library rather than a persona gallery or permanent master-detail profile.
+  Each row exposes the saved responsibility, model, runtime, access, current
+  state, and latest run, then expands in place to show the full operating brief,
+  service readiness, and recent work. Creation and editing use a focused object
+  workspace ordered by responsibility, runtime, and least-privilege access.
+  Job templates, custom instructions, per-agent Google allowlists, editing,
+  deletion, and direct chat launch remain available. Each run saves the selected
+  app allowlist in its immutable snapshot, and the main process exposes only the
+  corresponding native tools. The supporting interface research is stored in
+  [`agents-ui-patterns.json`](../research/agents-ui-patterns.json).
+- **Studio** is labeled as a public Beta feature. Feature maturity is separate
+  from the Electron package version, and neither public feature is hidden by a
+  rollout flag. The shared policy and graduation criteria live in
+  [`feature-maturity.md`](feature-maturity.md).
 - A bundled Claude Code harness now mirrors the OpenCode plugin boundary. Its
   WASM adapter maps Claude stream JSON into normalized text, tool, usage,
   completion, and error events. A host-owned authenticated loopback bridge
@@ -163,7 +172,7 @@ the following behavior as working unless a focused test proves otherwise:
   new chat or Studio behavior instead of moving feature state back into
   `App.tsx`.
 
-The latest completed checks on July 22, 2026, were `445` passing tests, a clean
+The latest completed checks on July 25, 2026, were `642` passing tests, a clean
 TypeScript check, and a successful production build. A packaging smoke check
 also staged and executed Bun `1.3.13` beside the Khadim CLI slot. Packaged
 Electron audits verified the main-chat and artifact split, light and dark
@@ -238,11 +247,125 @@ the fastest path: click text and type; use the agent only for broader changes.
 
 ## Research conclusions
 
-Web research was last run on July 23, 2026, against primary project
+Web research was last run on August 6, 2026, against primary project
 documentation and repositories. No academic sources are relevant because these
 are software integration and license decisions. React Router now presents v8
 as its current release, but v7 remains an intentional Khadim template boundary
 and has an official non-breaking path to v8.
+
+### Agent feedback: SoundCN and Thinking Orbs (August 6, 2026)
+
+Parallel CLI extracts and searches compared the public SoundCN catalog with
+Thinking Orbs `0.2.0`. The raw captures are
+[`soundcn-ui-audio.json`](../research/soundcn-ui-audio.json),
+[`orbs-thinking-animation.json`](../research/orbs-thinking-animation.json),
+[`sound-orbs-comparison.json`](../research/sound-orbs-comparison.json), and
+[`soundcn-khadim-shortlist.json`](../research/soundcn-khadim-shortlist.json).
+
+Khadim uses the 20-pixel Orbs preset because it is independently tuned for
+inline status rather than downscaled from the 64-pixel avatar. `working` covers
+pre-response thought, `searching` covers web tools, `shaping` covers file and
+artifact edits, `solving` covers shell execution, and `connecting` covers app
+connectors. The monochrome canvas follows the document theme, freezes under
+reduced-motion preferences, and pauses when hidden or offscreen. Keep the orb
+as a focused status signal; real tool names, paths, results, and failures stay
+visible in the adjacent activity disclosure.
+
+Audio is intentionally sparse. Khadim vendors SoundCN's CC0 `click-soft`,
+`notification-pop`, `success-chime`, and `error-buzz` assets and its dependency-
+free Web Audio helper. They map only to send/accept, question or approval,
+successful completion, and failure. Hover, navigation, streaming-token, and
+individual tool-step sounds remain silent. Appearance offers an Apple-style
+sound mood control: Off, Subtle (the default), or Expressive. The latter two
+keep the same semantic sounds and vary only their presence, while the legacy
+boolean preference migrates to Off or Subtle. Playback failure is always
+non-blocking. The SoundCN World of
+Warcraft collection is explicitly out of scope because it is not freely
+licensed.
+
+### Harness-native subagent monitoring (August 6, 2026)
+
+Parallel Web searches and primary-source extracts compared the observable
+subagent lifecycle for every bundled harness. The raw captures are
+[`claude-code-subagent-protocol-official.json`](../research/claude-code-subagent-protocol-official.json),
+[`opencode-subagent-protocol-official.json`](../research/opencode-subagent-protocol-official.json),
+[`codex-subagent-protocol-official.json`](../research/codex-subagent-protocol-official.json),
+[`cursor-subagent-protocol-official.json`](../research/cursor-subagent-protocol-official.json),
+[`grok-subagent-protocol-official.json`](../research/grok-subagent-protocol-official.json),
+their `*-general.json` follow-up searches, and the focused `*-extract.json`
+captures in `apps/electron/research/`.
+
+Keep one durable `AgentCoordinationActivity` renderer contract instead of
+building a separate monitor for each provider. Populate it only after a real
+worker is observed; enabling Team mode by itself must not add an empty card to
+the transcript. The harness boundaries are:
+
+- Khadim native emits explicit `worker_spawned`, `worker_event`, and terminal
+  worker events.
+- Claude Code launches subagents with `Agent` (`Task` before v2.1.63). The tool
+  call id is the stable provisional worker id; inputs expose `subagent_type`
+  and the delegated prompt, nested messages use `parent_tool_use_id`, and some
+  completed agents return an `agentId`. Internal subagent steps are not always
+  forwarded by the top-level stream, so the monitor must not invent them.
+- OpenCode uses the `task` tool. Its inputs include `description`, `prompt`,
+  `subagent_type`, optional `task_id`, and optional `background`; completion
+  metadata exposes the child `sessionId` and selected `{modelID, providerID}`.
+  The child session itself is created with `parentID`.
+- Codex app-server exposes `collabToolCall` items through the normal
+  `item/started` and `item/completed` lifecycle. The item carries `id`, `tool`,
+  `status`, `senderThreadId`, optional receiver/new thread ids, `prompt`, and
+  `agentStatus`. Usage remains a thread-level notification unless Codex adds a
+  worker-level value.
+- Cursor ACP exposes ordinary Task tool calls and the `cursor/task`
+  notification. The latter carries `toolCallId`, `description`, `prompt`,
+  `subagentType`, optional `model`, `agentId`, and `durationMs`.
+- Grok Build documents native parallel subagents and the standard ACP
+  transport, but currently publishes no dedicated subagent notification
+  schema. Detect only positively identified subagent/Task tool calls correlated
+  by `toolCallId`; do not treat Team mode or generic ACP activity as a worker.
+
+The Agent monitor belongs centered and slightly inset within the owning
+assistant turn. It remains collapsed by default, appears as soon as the first
+helper is actually spawned (the primary plus one helper is already a
+multi-agent run), and stays attached to that turn after completion for durable
+history.
+
+### Token usage semantics (August 6, 2026)
+
+Parallel CLI searches, source extracts, and a local source review of T3 Code
+and OpenCode established two different quantities that must not share one
+ambiguous “tokens used” label. The raw captures are
+[`t3code-token-usage-implementation.json`](../research/t3code-token-usage-implementation.json),
+[`t3code-token-contract-extract.json`](../research/t3code-token-contract-extract.json),
+[`t3code-codex-usage-extract.json`](../research/t3code-codex-usage-extract.json),
+[`t3code-context-meter-extract.json`](../research/t3code-context-meter-extract.json),
+[`opencode-token-usage-semantics.json`](../research/opencode-token-usage-semantics.json),
+[`opencode-session-token-normalization-extract.json`](../research/opencode-session-token-normalization-extract.json),
+[`acp-token-usage-semantics.json`](../research/acp-token-usage-semantics.json), and
+[`acp-session-usage-extract.json`](../research/acp-session-usage-extract.json).
+
+Khadim keeps processed usage as four mutually exclusive buckets: non-cached
+input, output, cache read, and cache write. Their sum is the cumulative work
+processed by the model. An inclusive provider input count must first subtract
+cache read/write before entering that contract; cached tokens are never added
+to an already-inclusive input total. OpenCode follows the same normalization
+for its durable message usage and the native Khadim provider adapters already
+do this for OpenAI and Google responses.
+
+Context occupancy is separate session state. ACP `usage_update.used` and
+`size` mean tokens currently in the context window and its effective limit;
+they are not an input/output usage event. Codex app-server similarly exposes
+`tokenUsage.last.totalTokens` as active context, `modelContextWindow` as the
+limit, and `tokenUsage.total.totalTokens` as lifetime processed work. The
+renderer therefore stores the latest context snapshot without accumulating it,
+while processed buckets continue to accumulate across model calls.
+
+The compact composer control stays hidden until either quantity exists. With
+context data it displays an honest percentage/ring and a used-of-limit detail;
+otherwise it displays cumulative processed tokens. The popover labels the
+processed value explicitly, separates cache read/write from uncached input,
+uses a proportional distribution rather than an arbitrary activity meter, and
+warns only when context exceeds 90 percent.
 
 ### Penpot canvas architecture
 
@@ -370,11 +493,23 @@ idle-updated thumbnails so scene edits stay visually navigable without
 regenerating every preview during a gesture. PDF output emits every canvas page
 on a separate sheet.
 
-The next architectural extraction follows Penpot's change-builder model: move
-semantic canvas commands and grouped undo transactions out of
-`CanvasEditor.tsx`. The raw comparison, exact upstream paths, and remaining
-gaps are recorded in
+The command extraction now follows Penpot's change-builder model for targeted
+agent and prototype edits. Direct editor gestures still use the older snapshot
+commit path, so the next extraction is to route move, resize, add, delete, and
+inspector mutations through the same semantic command transactions. The raw
+comparison, exact upstream paths, and remaining gaps are recorded in
 [`penpot-canvas-repo-comparison.json`](../research/penpot-canvas-repo-comparison.json).
+
+The latest Penpot source check used `parallel-cli` against the current
+`develop` branch on July 24, 2026. The relevant upstream boundaries remain
+`common/src/app/common/files/changes_builder.cljc`,
+`frontend/src/app/main/data/changes.cljs`,
+`frontend/src/app/main/data/workspace/shapes.cljs`, and
+`frontend/src/app/main/data/workspace/undo.cljs`. Penpot's current MCP and
+Plugin API confirm the same rule: external callers resolve stable shape IDs and
+emit validated workspace changes, while grouped undo records selection before
+and after the transaction. Khadim keeps a smaller constrained command envelope
+instead of executing arbitrary Plugin API code.
 
 Large-scene interaction now builds one linear geometry/ancestor-state index per
 scene revision and reuses it for hit testing, marquee selection, and snap
@@ -405,9 +540,48 @@ solved in the frame's local coordinate system, then returned as a world-space
 movement vector with guide segments that follow the visible square, column, or
 row grid. A rotated column-only or row-only grid keeps its unconstrained degree
 of freedom, so it can combine with a compatible ruler or shape alignment. The
-viewport renders bounded alignment lines and labeled distance segments without
-writing feedback into the scene. Hold Control or Command while dragging to
-bypass every snap source for temporary free placement.
+  viewport renders bounded alignment lines and labeled distance segments without
+  writing feedback into the scene. Hold Control or Command while dragging to
+  bypass every snap source for temporary free placement.
+
+Canvas agent edits now use a pure semantic command boundary in
+`src/shared/canvas-commands.ts`. Stable page, element, and interaction IDs
+address bounded patch and prototype commands. A command group validates the
+complete selection and prospective lock and interaction state before it
+changes content, applies atomically, and returns exact inverse commands. The
+inverse path preserves interaction ordering, optional-property presence,
+legacy page-less content, explicit empty interaction lists, and undo for the
+largest externally accepted command group.
+
+Selecting one or more Canvas layers exposes a compact **Ask {agent}** panel.
+The selected page and ordered layer IDs are saved in the immutable run
+snapshot, verified again in the main process, and bound to `artifact_edit`.
+Both the native tool path and legacy streamed edit fallback reject commands
+outside that exact selection and reject unrelated artifact fields. Accepted
+agent edits preserve the Canvas viewport and selection and enter history as
+one undoable external revision.
+
+Canvas artifacts now open with the project chat collapsed so the spatial editor
+uses the full Studio width. A header-level **Show chat** control restores the
+existing project conversation and resize separator on demand. The preference
+is remembered per Canvas artifact for the current application session. The
+collapsed pane remains mounted so unsent attachments and other composer-local
+state survive, but `hidden`, `inert`, and `aria-hidden` keep it out of layout,
+keyboard navigation, and the accessibility tree. Documents and websites retain
+the always-visible conversation layout.
+
+Direct prototype interaction authoring now uses the semantic command boundary
+for add, patch, and remove operations. The inspector builds commands from the
+live page and selection refs, applies the same persistence-compatible validation
+as agent edits, and commits accepted results through the existing Canvas history
+boundary. Each structural interaction change remains independently undoable and
+redoable, while rejected stale interaction data leaves the scene unchanged.
+
+`artifact_read` now returns a binary-free Canvas manifest with the active page,
+bounded layer summaries, components, styles, tokens, prototype flows, and
+structured omission counts. Every potentially large section is budgeted
+incrementally, and the result remains valid JSON below the 240,000-character
+tool response limit even for valid extreme scenes.
 
 ### Google Workspace read-only integrations
 
@@ -648,8 +822,12 @@ the same in Preview and PDF preparation.
 ### Phase 3: deepen the artifact editors
 
 1. Extract semantic canvas commands and grouped undo transactions from
-   `CanvasEditor`, then index geometry for large-scene hit testing and snapping.
-2. Add selection-aware agent patch protocols for prototype interactions.
+   `CanvasEditor`. The pure command layer, exact inverse generation, agent
+   command path, direct prototype interaction path, and indexed large-scene
+   geometry are complete; direct move, resize, add, delete, hierarchy, and the
+   remaining appearance and layout inspector actions still need to migrate from
+   snapshot commits.
+2. ~~Add selection-aware agent patch protocols for prototype interactions.~~
 3. Harden the HTML document editor with selection-scoped agent patches,
    revision history, and long-document pagination fixtures.
 4. Add export fixtures for long documents, complex multi-page canvases, and compiled
@@ -731,6 +909,8 @@ Use these files as the starting map for the next implementation session:
   bundled Bun runtime for Electron Builder.
 - [`artifact-export.ts`](../src/shared/artifact-export.ts) renders artifacts for
   PDF.
+- [`canvas-commands.ts`](../src/shared/canvas-commands.ts) parses, validates,
+  applies, and reverses selection-scoped semantic Canvas command groups.
 - [`project-store.ts`](../src/main/project-store.ts) validates and persists
   project artifacts.
 - [`App.tsx`](../src/renderer/src/App.tsx) orchestrates project, chat, run, and
@@ -744,6 +924,9 @@ Run these checks from `apps/electron` after every complete vertical slice:
 bun run test -- tests/unit/renderer/PuckSurface.test.tsx
 bun run test -- tests/unit/renderer/PuckDataSync.test.tsx
 bun run test -- tests/unit/renderer/studio-agent-edit.test.ts
+bun run test -- tests/unit/shared/canvas-commands.test.ts
+bun run test -- tests/integration/main/artifact-agent-tools.test.ts
+bun run test -- tests/integration/renderer/StudioWorkspace.test.tsx
 bun run test -- tests/integration/main/artifact-preview-runtime.test.ts
 bun run test -- tests/e2e/renderer/app-workflows.e2e.test.tsx
 bun run test -- tests/unit/scripts/bun-target.test.mjs
@@ -770,6 +953,10 @@ sources were not applicable to these integration decisions.
 - [Penpot snap geometry source](https://github.com/penpot/penpot/blob/4383cf183aa5a15e27d6ef2c7e00427b3c4b9be5/common/src/app/common/geom/snap.cljc)
 - [Puck repository and MIT license](https://github.com/puckeditor/puck)
 - [Puck documentation](https://puckeditor.com/docs)
+- [SoundCN catalog](https://soundcn.xyz/)
+- [SoundCN repository and licensing notes](https://github.com/kapishdima/soundcn)
+- [Thinking Orbs demo](https://orbs.jakubantalik.com/)
+- [Thinking Orbs repository and MIT license](https://github.com/Jakubantalik/thinking-orbs)
 - [Monaco Editor repository and MIT license](https://github.com/microsoft/monaco-editor)
 - [Monaco Editor official site](https://microsoft.github.io/monaco-editor)
 - [Vite JavaScript API](https://vite.dev/guide/api-javascript)
@@ -784,6 +971,11 @@ sources were not applicable to these integration decisions.
 - [OpenAI Codex app-server](https://developers.openai.com/codex/app-server)
 - [OpenAI Codex app-server protocol](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md)
 - [T3 Code repository](https://github.com/pingdotgg/t3code)
+- [T3 Code token usage contract](https://github.com/pingdotgg/t3code/blob/main/packages/contracts/src/providerRuntime.ts)
+- [T3 Code Codex token normalization](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/CodexAdapter.ts)
+- [T3 Code context-window meter](https://github.com/pingdotgg/t3code/blob/main/apps/web/src/components/chat/ContextWindowMeter.tsx)
+- [OpenCode token normalization](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/session.ts)
+- [ACP session usage RFD](https://agentclientprotocol.com/rfds/session-usage)
 - [Google Drive `files.list`](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)
 - [Google Drive export MIME types](https://developers.google.com/workspace/drive/api/guides/ref-export-formats)
 - [Google Calendar `events.list`](https://developers.google.com/workspace/calendar/api/v3/reference/events/list)
@@ -801,5 +993,7 @@ remaining work in this order:
    preserving the artifact path validation boundary.
 4. Add long-document pagination and PDF fixtures, plus selection-scoped
    document agent edits.
-5. Continue the native canvas hardening work: extract semantic commands and add
-   selection-aware prototype agent patches.
+5. Continue the native Canvas extraction by routing direct gestures and
+   inspector mutations through `canvas-commands.ts`, then replace snapshot-only
+   history entries with command transactions that store selection before and
+   after each edit.

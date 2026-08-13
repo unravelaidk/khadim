@@ -1,6 +1,7 @@
 use crate::coordinator::worker::{spawn_worker, WorkerSpec, WriteScope};
 use khadim_ai_core::error::AppError;
 use khadim_ai_core::tools::{Tool, ToolDefinition, ToolResult};
+use khadim_ai_core::types::ModelSelection;
 use regex::{Regex, RegexBuilder};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -2279,6 +2280,12 @@ pub struct DelegateTool {
     /// run instead of being discarded. When `None`, the tool behaves exactly
     /// like the previous silent inline loop.
     event_tx: Option<UnboundedSender<AgentStreamEvent>>,
+    /// Delegated helpers inherit the primary run's exact model and credential
+    /// scope. `None` preserves the standalone/default-tool behavior.
+    selection: Option<ModelSelection>,
+    /// Names of read-only tools enabled on the primary runtime. `None` keeps
+    /// the standalone/default-tool behavior for backwards compatibility.
+    allowed_tools: Option<Vec<String>>,
 }
 
 impl DelegateTool {
@@ -2286,6 +2293,8 @@ impl DelegateTool {
         Self {
             root,
             event_tx: None,
+            selection: None,
+            allowed_tools: None,
         }
     }
 
@@ -2294,6 +2303,22 @@ impl DelegateTool {
         Self {
             root,
             event_tx: Some(event_tx),
+            selection: None,
+            allowed_tools: None,
+        }
+    }
+
+    pub fn with_context(
+        root: PathBuf,
+        event_tx: UnboundedSender<AgentStreamEvent>,
+        selection: Option<ModelSelection>,
+        allowed_tools: Vec<String>,
+    ) -> Self {
+        Self {
+            root,
+            event_tx: Some(event_tx),
+            selection,
+            allowed_tools: Some(allowed_tools),
         }
     }
 }
@@ -2354,18 +2379,22 @@ impl Tool for DelegateTool {
             worker_id: worker_id.clone(),
             mode,
             task: task.to_string(),
-            write_scope: WriteScope::ReadOnly,
+            write_scope: self
+                .allowed_tools
+                .clone()
+                .map(WriteScope::ReadOnlyTools)
+                .unwrap_or(WriteScope::ReadOnly),
             max_turns: Some(10),
             leases: Vec::new(),
         };
 
         let handle = if let Some(tx) = self.event_tx.clone() {
-            spawn_worker(spec, self.root.clone(), None, tx)
+            spawn_worker(spec, self.root.clone(), self.selection.clone(), tx)
         } else {
             // No sink: create a throwaway channel and drain it silently.
             let (silent_tx, mut silent_rx) =
                 tokio::sync::mpsc::unbounded_channel::<AgentStreamEvent>();
-            let handle = spawn_worker(spec, self.root.clone(), None, silent_tx);
+            let handle = spawn_worker(spec, self.root.clone(), self.selection.clone(), silent_tx);
             // Drain in the background so the worker's sends don't block.
             tokio::spawn(async move { while silent_rx.recv().await.is_some() {} });
             handle

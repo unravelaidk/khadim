@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowCounterClockwise,
+  ChatCircleDots,
   TextB,
   Code,
   Eye,
@@ -37,6 +38,7 @@ interface StudioWorkspaceProps {
   saveState: SaveState;
   agentName?: string;
   modelName?: string;
+  agentAvailable?: boolean;
   agentBusy?: boolean;
   agentStatus?: StudioAgentStatus | null;
   onChange: (artifact: Artifact, flush?: boolean) => void;
@@ -44,6 +46,13 @@ interface StudioWorkspaceProps {
   onClose: () => void;
   onExportPdf: () => void;
   onAskAgent?: (instruction: string) => Promise<boolean>;
+  onAskCanvasAgent?: (instruction: string, selection: { pageId: string; elementIds: string[] }) => Promise<boolean>;
+  /** Whether the main project chat pane is shown beside Studio. Only canvas artifacts can hide it. */
+  studioChatVisible?: boolean;
+  /** True when the artifact is a khadim-canvas and may toggle the main chat pane. */
+  canToggleStudioChat?: boolean;
+  /** Toggle the main project chat pane visibility for the current canvas artifact. */
+  onToggleStudioChat?: () => void;
 }
 
 export interface StudioAgentStatus {
@@ -410,7 +419,7 @@ function WebProjectEditor({ artifact, content, agentName, modelName, agentBusy, 
   );
 }
 
-export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", modelName = "Current model", agentBusy = false, agentStatus = null, onChange, onRetrySave, onClose, onExportPdf, onAskAgent }: StudioWorkspaceProps): React.JSX.Element {
+export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", modelName = "Current model", agentAvailable = true, agentBusy = false, agentStatus = null, onChange, onRetrySave, onClose, onExportPdf, onAskAgent, onAskCanvasAgent, studioChatVisible = true, canToggleStudioChat = false, onToggleStudioChat }: StudioWorkspaceProps): React.JSX.Element {
   function rename(title: string): void {
     onChange({ ...artifact, title, updatedAt: new Date().toISOString() });
   }
@@ -427,6 +436,18 @@ export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", mod
             {saveState === "error" && onRetrySave && <button className="studio-save-retry" type="button" onClick={onRetrySave}><WarningCircle size={12} /> Retry</button>}
           </span>
         </div>
+        {canToggleStudioChat && onToggleStudioChat && (
+          <button
+            className="studio-chat-toggle"
+            type="button"
+            aria-pressed={studioChatVisible}
+            aria-label={studioChatVisible ? "Hide chat" : "Show chat"}
+            onClick={onToggleStudioChat}
+          >
+            <ChatCircleDots size={15} />
+            <span className="studio-chat-toggle-label">{studioChatVisible ? "Hide chat" : "Show chat"}</span>
+          </button>
+        )}
         {agentStatus && <span className={`studio-agent-status ${agentStatus.phase}`} role={agentStatus.phase === "error" ? "alert" : "status"} aria-live="polite">
           {(agentStatus.phase === "starting" || agentStatus.phase === "running") && <span className="activity-spinner" />}
           {agentStatus.message ?? (agentStatus.phase === "starting" ? "Preparing edit…" : agentStatus.phase === "running" ? `${agentName} is editing…` : agentStatus.phase === "complete" ? "Changes applied" : "Edit failed")}
@@ -437,7 +458,7 @@ export function StudioWorkspace({ artifact, saveState, agentName = "Khadim", mod
       {artifact.content.format === "document-html" && <HtmlDocumentEditor key={artifact.id} artifact={artifact} content={artifact.content} onChange={onChange} />}
       {artifact.content.format === "html" && <SiteEditor artifact={artifact} content={artifact.content} onChange={onChange} />}
       {artifact.content.format === "web-project" && <WebProjectEditor artifact={artifact} content={artifact.content} agentName={agentName} modelName={modelName} agentBusy={agentBusy} agentStatus={agentStatus} onChange={onChange} onAskAgent={onAskAgent} />}
-      {artifact.content.format === "khadim-canvas" && <CanvasEditor artifact={artifact} content={artifact.content} onChange={onChange} />}
+      {artifact.content.format === "khadim-canvas" && <CanvasEditor artifact={artifact} content={artifact.content} onChange={onChange} agentName={agentName} modelName={modelName} agentAvailable={agentAvailable} agentBusy={agentBusy} agentStatus={agentStatus} onAskCanvasAgent={onAskCanvasAgent} />}
     </section>
   );
 }

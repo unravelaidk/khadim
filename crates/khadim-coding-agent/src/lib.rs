@@ -27,10 +27,7 @@ pub use coordinator::search::{Candidate, ProposerFn, Scorer, SearchMode, Selecte
 pub use coordinator::worker::{
     spawn_worker, spawn_worker_with_runner, WorkerHandle, WorkerRunner, WorkerSpec, WriteScope,
 };
-pub use coordinator::{
-    run_multi_agent, run_multi_agent_with, DecomposedGoal, Decomposer, GoalVerifier,
-    MultiAgentConfig,
-};
+pub use coordinator::{run_multi_agent, MultiAgentConfig};
 pub use events::AgentStreamEvent;
 pub use runtime::AgentRuntime;
 pub use tools::default_tools;

@@ -15,6 +15,7 @@ import {
   Plus,
   MagnifyingGlass as Search,
   ShieldCheck,
+  TreeStructure,
   Square,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
@@ -36,6 +37,7 @@ import type {
 } from "../../../shared/types";
 import type { AgentDefinition } from "../agents/types";
 import { chatCommands } from "../../../shared/chat-commands";
+import { processedTokenTotal } from "../../../shared/agent-event-reducer";
 import { compactNumber } from "../shared/text";
 import { ModelIcon } from "../ui/ModelIcon";
 import { PluginLogo } from "../ui/PluginLogo";
@@ -62,7 +64,6 @@ interface ComposerProps {
   agents: AgentDefinition[];
   onSelectAgent: (id: string) => void;
   modelName: string;
-  provider: string;
   models: ModelConfig[];
   modes?: PluginHarnessMode[];
   modeId?: string;
@@ -76,6 +77,8 @@ interface ComposerProps {
   runtimeMode: AgentRuntimeMode;
   onSelectRuntimeMode: (mode: AgentRuntimeMode) => void;
   onSelectHarness: (harness: HarnessMode) => void;
+  multiAgent?: boolean;
+  onSetMultiAgent?: (enabled: boolean) => void;
   modelsLoading?: boolean;
   modelsError?: string;
   usage?: TokenUsage;
@@ -164,6 +167,8 @@ export function Composer({
   runtimeMode,
   onSelectRuntimeMode,
   onSelectHarness,
+  multiAgent = false,
+  onSetMultiAgent,
   modelsLoading = false,
   modelsError,
   usage,
@@ -190,6 +195,9 @@ export function Composer({
   const activeModel = models.find((model) => model.isActive);
   const activeMode = modes.find((mode) => mode.id === modeId) ?? modes.find((mode) => mode.isDefault) ?? modes[0];
   const activePluginHarness = pluginHarnesses.find((pluginHarness) => pluginHarness.id === harness);
+  const decisionPending = Boolean(
+    (pendingQuestion && onAnswerQuestion) || (pendingApproval && onApprovalDecision),
+  );
   const runtimeOptions: Array<{ id: AgentRuntimeMode; name: string; description: string }> = [
     { id: "approval-required", name: "Ask first", description: "Confirm commands and file changes" },
     { id: "auto-accept-edits", name: "Auto-edit", description: "Allow edits; ask for other risky actions" },
@@ -410,7 +418,7 @@ export function Composer({
 
   return (
     <div className={`composer-shell ${large ? "composer-shell-large" : ""}`}>
-      <div className={`composer ${large ? "composer-large" : ""}`}>
+      <div className={`composer ${large ? "composer-large" : ""}${decisionPending ? " composer-decision" : ""}`}>
         <input
           ref={fileInputRef}
           className="composer-file-input"
@@ -445,7 +453,7 @@ export function Composer({
         {pendingApproval && onApprovalDecision && (
           <ApprovalPanel request={pendingApproval} responding={approvalResponding} onDecision={onApprovalDecision} />
         )}
-        {visibleCommands.length > 0 && (
+        {!decisionPending && visibleCommands.length > 0 && (
           <div className="slash-command-menu" role="listbox" aria-label="Chat commands">
             {visibleCommands.map((command, index) => (
               <button
@@ -465,6 +473,9 @@ export function Composer({
           </div>
         )}
         <textarea
+          aria-hidden={decisionPending}
+          inert={decisionPending}
+          disabled={decisionPending}
           ref={inputRef}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
@@ -509,7 +520,7 @@ export function Composer({
           }
           rows={large ? 3 : 1}
         />
-        <div className="composer-actions">
+        <div className="composer-actions" aria-hidden={decisionPending} inert={decisionPending}>
           <div className="composer-tools">
             <button
               className="composer-icon-tool"
@@ -824,6 +835,22 @@ export function Composer({
                 )}
               </span>
             )}
+            {!activePluginHarness && onSetMultiAgent && (
+              <button
+                type="button"
+                className={`composer-team${multiAgent ? " active" : ""}`}
+                onClick={() => onSetMultiAgent(!multiAgent)}
+                title={multiAgent
+                  ? "Team mode on: Khadim may run focused read-only helpers"
+                  : "Team mode off: use one primary agent"}
+                aria-label={multiAgent ? "Disable Team mode" : "Enable Team mode"}
+                aria-pressed={multiAgent}
+              >
+                <TreeStructure size={16} />
+                <span>Team</span>
+                {multiAgent && <i className="team-active-dot" aria-hidden="true" />}
+              </button>
+            )}
             <span className="composer-menu-wrap model-wrap">
               <button
                 className="composer-model"
@@ -957,69 +984,95 @@ export function Composer({
   );
 }
 
-function UsageMeter({ usage }: { usage: TokenUsage }): React.JSX.Element {
+function UsageMeter({ usage }: { usage: TokenUsage }): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
-  const total = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-  const activeSegments =
-    total === 0
-      ? 0
-      : Math.min(16, Math.max(1, Math.ceil(Math.log10(total + 1) * 4)));
+  const categorizedTotal = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+  const total = processedTokenTotal(usage);
+  const hasContext = usage.contextUsed !== undefined && usage.contextUsed >= 0;
+  const hasContextLimit = hasContext && usage.contextSize !== undefined && usage.contextSize > 0;
+  const contextPercentage = hasContextLimit
+    ? Math.min(100, Math.max(0, (usage.contextUsed! / usage.contextSize!) * 100))
+    : null;
+  if (total === 0 && !hasContext) return null;
+
+  const contextLabel = hasContextLimit
+    ? `${compactNumber(usage.contextUsed!)} of ${compactNumber(usage.contextSize!)}`
+    : `${compactNumber(usage.contextUsed ?? 0)} tokens`;
+  const buttonLabel = contextPercentage === null
+    ? compactNumber(total || usage.contextUsed || 0)
+    : `${Math.round(contextPercentage)}%`;
+  const circumference = 2 * Math.PI * 9;
   return (
     <div className="usage-meter-wrap">
       <button
         className="usage-meter-button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
-        title="Chat token usage"
+        title={hasContext ? "Context window usage" : "Processed token usage"}
       >
-        <Gauge size={14} />
-        <span>{compactNumber(total)}</span>
-        <span className="usage-mini-bars" aria-hidden="true">
-          {Array.from({ length: 8 }, (_, index) => (
-            <i
-              className={index < Math.ceil(activeSegments / 2) ? "filled" : ""}
-              key={index}
-            />
-          ))}
-        </span>
+        {contextPercentage === null ? <Gauge size={14} /> : (
+          <span className="usage-context-ring" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" />
+              <circle
+                className={contextPercentage > 90 ? "warning" : "value"}
+                cx="12"
+                cy="12"
+                r="9"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - contextPercentage / 100)}
+              />
+            </svg>
+          </span>
+        )}
+        <span>{buttonLabel}</span>
       </button>
       {open && (
         <div className="usage-popover">
           <div className="usage-heading">
             <span>
-              <small>This chat</small>
-              <strong>{compactNumber(total)} tokens used</strong>
+              <small>{hasContext ? "Context window" : "This chat"}</small>
+              <strong>{hasContext ? contextLabel : `${compactNumber(total)} tokens processed`}</strong>
             </span>
             <Gauge size={18} />
           </div>
-          <div className="usage-segments" aria-hidden="true">
-            {Array.from({ length: 16 }, (_, index) => (
-              <i
-                className={index < activeSegments ? "filled" : ""}
-                key={index}
-              />
-            ))}
-          </div>
-          <div className="usage-breakdown">
-            <span>
-              <i className="input" />
-              <small>Input</small>
-              <strong>{compactNumber(usage.input)}</strong>
-            </span>
-            <span>
-              <i className="output" />
-              <small>Output</small>
-              <strong>{compactNumber(usage.output)}</strong>
-            </span>
-            <span>
-              <i className="cache" />
-              <small>Cache</small>
-              <strong>
-                {compactNumber(usage.cacheRead + usage.cacheWrite)}
-              </strong>
-            </span>
-          </div>
-          <p>Reported by the active model provider for this conversation.</p>
+          {contextPercentage !== null && (
+            <div
+              className={`usage-progress ${contextPercentage > 90 ? "warning" : ""}`}
+              role="progressbar"
+              aria-label="Context window usage"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(contextPercentage)}
+            >
+              <i style={{ transform: `scaleX(${contextPercentage / 100})` }} />
+            </div>
+          )}
+          {hasContext && total > 0 && (
+            <div className="usage-total-row">
+              <span>Total processed</span>
+              <strong>{compactNumber(total)}</strong>
+            </div>
+          )}
+          {categorizedTotal > 0 && (
+            <>
+              <div className="usage-distribution" aria-hidden="true">
+                {usage.input > 0 && <i className="input" style={{ flexGrow: usage.input }} />}
+                {usage.output > 0 && <i className="output" style={{ flexGrow: usage.output }} />}
+                {usage.cacheRead > 0 && <i className="cache-read" style={{ flexGrow: usage.cacheRead }} />}
+                {usage.cacheWrite > 0 && <i className="cache-write" style={{ flexGrow: usage.cacheWrite }} />}
+              </div>
+              <div className="usage-breakdown">
+                <span><i className="input" /><small>Fresh input</small><strong>{compactNumber(usage.input)}</strong></span>
+                <span><i className="output" /><small>Output</small><strong>{compactNumber(usage.output)}</strong></span>
+                <span><i className="cache-read" /><small>Cache read</small><strong>{compactNumber(usage.cacheRead)}</strong></span>
+                <span><i className="cache-write" /><small>Cache write</small><strong>{compactNumber(usage.cacheWrite)}</strong></span>
+              </div>
+            </>
+          )}
+          <p>{hasContext
+            ? "Context is the latest prompt size. Processed tokens are cumulative and count cached input once."
+            : "Cumulative model work for this chat. Cached input is separated from fresh input."}</p>
         </div>
       )}
     </div>

@@ -138,6 +138,122 @@ describe("CliHarnessServerManager", () => {
     );
   });
 
+  it("normalizes Codex token updates as context plus lifetime processed usage", async () => {
+    const spawnProcess = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "thread/start") write({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "thread-usage" } } });
+      if (message.method === "turn/start") {
+        write({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "turn-usage" } } });
+        write({
+          jsonrpc: "2.0",
+          method: "thread/tokenUsage/updated",
+          params: {
+            threadId: "thread-usage",
+            tokenUsage: {
+              total: { inputTokens: 65_000, cachedInputTokens: 40_000, outputTokens: 10_000, totalTokens: 75_000 },
+              last: { inputTokens: 45_000, cachedInputTokens: 30_000, outputTokens: 5_000, totalTokens: 50_000 },
+              modelContextWindow: 200_000,
+            },
+          },
+        });
+        write({ jsonrpc: "2.0", method: "turn/completed", params: { threadId: "thread-usage", turn: { id: "turn-usage", status: "completed" } } });
+      }
+    }));
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: () => "/fake/codex",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const config = await manager.prepare({
+      pluginId: "khadim.codex",
+      bundled: true,
+      engineSessionKey: "chat-codex-usage",
+      projectPath: "/workspace/project",
+      config: { binaryPath: "codex" },
+    });
+    const headers = { authorization: `Bearer ${config.bridgeToken}`, "content-type": "application/json" };
+    const created = await fetch(`${config.bridgeUrl}/session`, { method: "POST", headers });
+    const { id } = await created.json() as { id: string };
+    const eventsResponse = await fetch(`${config.bridgeUrl}/session/${id}/events`, { headers });
+    await fetch(`${config.bridgeUrl}/session/${id}/prompt`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ prompt: "Measure usage", model: "gpt-5.6-sol" }),
+    });
+
+    const frame = new TextDecoder().decode((await eventsResponse.body!.getReader().read()).value);
+    expect(frame).toContain(JSON.stringify({
+      type: "khadim.usage",
+      usage: {
+        input: 0,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        context_used: 50_000,
+        context_size: 200_000,
+        total_processed: 75_000,
+      },
+    }));
+  });
+
+  it("maps ACP usage_update to context occupancy instead of token buckets", async () => {
+    const spawnProcess = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: { agentCapabilities: {} } });
+      if (message.method === "authenticate") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "session/new") write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "cursor-usage" } });
+      if (message.method === "session/set_model") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "session/prompt") {
+        write({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "cursor-usage",
+            update: { sessionUpdate: "usage_update", used: 53_000, size: 200_000 },
+          },
+        });
+        write({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+      }
+    }));
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: () => "/fake/cursor-agent",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const config = await manager.prepare({
+      pluginId: "khadim.cursor",
+      bundled: true,
+      engineSessionKey: "chat-cursor-usage",
+      projectPath: "/workspace/project",
+      config: { binaryPath: "cursor-agent" },
+    });
+    const headers = { authorization: `Bearer ${config.bridgeToken}`, "content-type": "application/json" };
+    const created = await fetch(`${config.bridgeUrl}/session`, { method: "POST", headers });
+    const { id } = await created.json() as { id: string };
+    const eventsResponse = await fetch(`${config.bridgeUrl}/session/${id}/events`, { headers });
+    await fetch(`${config.bridgeUrl}/session/${id}/prompt`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ prompt: "Measure context", model: "auto" }),
+    });
+
+    const frame = new TextDecoder().decode((await eventsResponse.body!.getReader().read()).value);
+    expect(frame).toContain(JSON.stringify({
+      type: "khadim.usage",
+      usage: {
+        input: 0,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        context_used: 53_000,
+        context_size: 200_000,
+      },
+    }));
+  });
+
   it("sets the ACP harness mode and bridges a declined tool permission", async () => {
     let resolvePermission!: (value: Record<string, unknown>) => void;
     const permissionResponse = new Promise<Record<string, unknown>>((resolve) => {
@@ -241,6 +357,60 @@ describe("CliHarnessServerManager", () => {
         }],
       },
     }));
+  });
+
+  it("preserves Cursor's native subagent completion notification", async () => {
+    const spawnProcess = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: { agentCapabilities: {} } });
+      if (message.method === "authenticate") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "session/new") write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "cursor-team" } });
+      if (message.method === "session/prompt") {
+        write({
+          jsonrpc: "2.0",
+          method: "cursor/task",
+          params: {
+            toolCallId: "task-126",
+            description: "Explore codebase",
+            prompt: "Find where authentication is handled.",
+            subagentType: "explore",
+            model: "composer-2",
+            agentId: "agent-9",
+            durationMs: 4200,
+          },
+        });
+        write({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+      }
+    }));
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: () => "/fake/cursor-agent",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const config = await manager.prepare({
+      pluginId: "khadim.cursor",
+      bundled: true,
+      engineSessionKey: "chat-cursor-team",
+      projectPath: "/workspace/project",
+      config: { binaryPath: "cursor-agent" },
+    });
+    const headers = { authorization: `Bearer ${config.bridgeToken}`, "content-type": "application/json" };
+    const created = await fetch(`${config.bridgeUrl}/session`, { method: "POST", headers });
+    const { id } = await created.json() as { id: string };
+    const eventsResponse = await fetch(`${config.bridgeUrl}/session/${id}/events`, { headers });
+    await fetch(`${config.bridgeUrl}/session/${id}/prompt`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ prompt: "Inspect the project" }),
+    });
+
+    const reader = eventsResponse.body!.getReader();
+    const frame = new TextDecoder().decode((await reader.read()).value);
+    expect(frame).toContain("khadim.step_complete");
+    expect(frame).toContain("task-126");
+    expect(frame).toContain("Explore codebase");
+    await reader.cancel();
   });
 
   it("rejects tools enabled after an ACP session started without HTTP MCP support", async () => {
@@ -388,5 +558,253 @@ describe("CliHarnessServerManager", () => {
         annotations: { "Which scope should Grok use?": { notes: "A temporary branch" } },
       },
     });
+  });
+
+  it("lets the same engineSessionKey reuse Codex then Cursor on separate completed turns without a kind mismatch", async () => {
+    const codexChildren: ChildProcess[] = [];
+    const cursorChildren: ChildProcess[] = [];
+    let codexTurnCompleted = false;
+    const codexSpawn = vi.fn(() => fakeChild((message, child) => {
+      codexChildren.push(child);
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "thread/start") write({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "codex-thread" } } });
+      if (message.method === "turn/start") {
+        write({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "codex-turn" } } });
+        write({ jsonrpc: "2.0", method: "turn/completed", params: { threadId: "codex-thread", turn: { id: "codex-turn", status: "completed" } } });
+        codexTurnCompleted = true;
+      }
+    }));
+    const cursorSpawn = vi.fn(() => fakeChild((message, child) => {
+      cursorChildren.push(child);
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: { agentCapabilities: { mcpCapabilities: { http: true } } } });
+      if (message.method === "authenticate") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "session/new") write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "cursor-session" } });
+      if (message.method === "session/prompt") write({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    }));
+    const spawnProcess = vi.fn((command: string) => command.includes("codex") ? codexSpawn() : cursorSpawn());
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: (configured) => configured.includes("codex") ? "/fake/codex" : "/fake/cursor-agent",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const engineSessionKey = "durable-chat";
+    const projectPath = "/workspace/project";
+
+    const codexConfig = await manager.prepare({
+      pluginId: "khadim.codex",
+      bundled: true,
+      engineSessionKey,
+      projectPath,
+      config: { binaryPath: "codex" },
+    });
+    const codexHeaders = { authorization: `Bearer ${codexConfig.bridgeToken}`, "content-type": "application/json" };
+    const codexCreated = await fetch(`${codexConfig.bridgeUrl}/session`, { method: "POST", headers: codexHeaders });
+    const { id: codexSessionId } = await codexCreated.json() as { id: string };
+    const codexEvents = await fetch(`${codexConfig.bridgeUrl}/session/${codexSessionId}/events`, { headers: codexHeaders });
+    await fetch(`${codexConfig.bridgeUrl}/session/${codexSessionId}/prompt`, {
+      method: "POST",
+      headers: codexHeaders,
+      body: JSON.stringify({ prompt: "Summarize the project" }),
+    });
+    await vi.waitFor(() => expect(codexTurnCompleted).toBe(true));
+    await codexEvents.body!.cancel();
+
+    const cursorConfig = await manager.prepare({
+      pluginId: "khadim.cursor",
+      bundled: true,
+      engineSessionKey,
+      projectPath,
+      config: { binaryPath: "cursor-agent" },
+    });
+
+    expect(cursorConfig.bridgeUrl).not.toBe(codexConfig.bridgeUrl);
+    expect(cursorConfig.bridgeToken).not.toBe(codexConfig.bridgeToken);
+    expect(codexSpawn).toHaveBeenCalledTimes(1);
+
+    const cursorHeaders = { authorization: `Bearer ${cursorConfig.bridgeToken}`, "content-type": "application/json" };
+    const cursorCreated = await fetch(`${cursorConfig.bridgeUrl}/session`, { method: "POST", headers: cursorHeaders });
+    const { id: cursorSessionId } = await cursorCreated.json() as { id: string };
+    const cursorPrompt = await fetch(`${cursorConfig.bridgeUrl}/session/${cursorSessionId}/prompt`, {
+      method: "POST",
+      headers: cursorHeaders,
+      body: JSON.stringify({ prompt: "Edit a file" }),
+    });
+    expect(cursorPrompt.status).toBe(202);
+    await vi.waitFor(() => expect(cursorSpawn).toHaveBeenCalledTimes(1));
+
+    const codexHealth = await fetch(`${codexConfig.bridgeUrl}/health`, { headers: codexHeaders });
+    expect((await codexHealth.json() as { provider: string }).provider).toBe("codex");
+    const cursorHealth = await fetch(`${cursorConfig.bridgeUrl}/health`, { headers: cursorHeaders });
+    expect((await cursorHealth.json() as { provider: string }).provider).toBe("cursor");
+  });
+
+  it("keeps concurrent sessions using different harness kinds isolated from one another", async () => {
+    const codexSpawn = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "thread/start") write({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "codex-thread-two" } } });
+      if (message.method === "turn/start") {
+        write({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "codex-turn-two" } } });
+        write({ jsonrpc: "2.0", method: "turn/completed", params: { threadId: "codex-thread-two", turn: { id: "codex-turn-two", status: "completed" } } });
+      }
+    }));
+    const grokSpawn = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize" || message.method === "authenticate") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "session/new") write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "grok-session-two" } });
+      if (message.method === "session/prompt") write({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    }));
+    const spawnProcess = vi.fn((command: string) => command.includes("codex") ? codexSpawn() : grokSpawn());
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: (configured) => configured.includes("codex") ? "/fake/codex" : "/fake/grok",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+
+    const codexConfig = await manager.prepare({
+      pluginId: "khadim.codex",
+      bundled: true,
+      engineSessionKey: "chat-codex-concurrent",
+      projectPath: "/workspace/codex-project",
+      config: { binaryPath: "codex" },
+    });
+    const grokConfig = await manager.prepare({
+      pluginId: "khadim.grok",
+      bundled: true,
+      engineSessionKey: "chat-grok-concurrent",
+      projectPath: "/workspace/grok-project",
+      config: { binaryPath: "grok" },
+    });
+
+    expect(codexConfig.bridgeUrl).not.toBe(grokConfig.bridgeUrl);
+    const codexHealth = await fetch(`${codexConfig.bridgeUrl}/health`, { headers: { authorization: `Bearer ${codexConfig.bridgeToken}` } });
+    const grokHealth = await fetch(`${grokConfig.bridgeUrl}/health`, { headers: { authorization: `Bearer ${grokConfig.bridgeToken}` } });
+    expect((await codexHealth.json() as { provider: string }).provider).toBe("codex");
+    expect((await grokHealth.json() as { provider: string }).provider).toBe("grok");
+    expect(codexSpawn).toHaveBeenCalledTimes(0);
+    expect(grokSpawn).toHaveBeenCalledTimes(0);
+  });
+
+  it("reuses the same harness bridge when prepared again without an intervening stop", async () => {
+    const spawnProcess = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "thread/start") write({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "reuse-thread" } } });
+    }));
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: () => "/fake/codex",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const first = await manager.prepare({
+      pluginId: "khadim.codex",
+      bundled: true,
+      engineSessionKey: "reuse-chat",
+      projectPath: "/workspace/project",
+      config: { binaryPath: "codex" },
+    });
+    const second = await manager.prepare({
+      pluginId: "khadim.codex",
+      bundled: true,
+      engineSessionKey: "reuse-chat",
+      projectPath: "/workspace/project",
+      config: { binaryPath: "codex", customModels: "auto" },
+    });
+    expect(second.bridgeUrl).toBe(first.bridgeUrl);
+    expect(second.bridgeToken).toBe(first.bridgeToken);
+    expect(spawnProcess).toHaveBeenCalledTimes(0);
+  });
+
+  it("coalesces concurrent preparation of the same harness session", async () => {
+    const manager = new CliHarnessServerManager();
+    managers.push(manager);
+    const input = {
+      pluginId: "khadim.codex",
+      bundled: true,
+      engineSessionKey: "concurrent-reuse-chat",
+      projectPath: "/workspace/project",
+      config: { binaryPath: "codex" },
+    };
+
+    const [first, second] = await Promise.all([
+      manager.prepare(input),
+      manager.prepare(input),
+    ]);
+
+    expect(second.bridgeUrl).toBe(first.bridgeUrl);
+    expect(second.bridgeToken).toBe(first.bridgeToken);
+    const health = await fetch(`${first.bridgeUrl}/health`, {
+      headers: { authorization: `Bearer ${first.bridgeToken}` },
+    });
+    expect(health.status).toBe(200);
+  });
+
+  it("stop(engineSessionKey) cleans every matching keyed bridge across harness kinds", async () => {
+    const spawnProcess = vi.fn((command: string) => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "thread/start") write({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "stop-thread" } } });
+      if (message.method === "session/new") write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "stop-session" } });
+      if (message.method === "authenticate") write({ jsonrpc: "2.0", id: message.id, result: {} });
+    }));
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: (configured) => configured.includes("codex") ? "/fake/codex" : configured.includes("cursor") ? "/fake/cursor-agent" : "/fake/grok",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const engineSessionKey = "multi-harness-chat";
+    const projectPath = "/workspace/project";
+
+    const codexConfig = await manager.prepare({ pluginId: "khadim.codex", bundled: true, engineSessionKey, projectPath, config: { binaryPath: "codex" } });
+    const cursorConfig = await manager.prepare({ pluginId: "khadim.cursor", bundled: true, engineSessionKey, projectPath, config: { binaryPath: "cursor-agent" } });
+    const grokConfig = await manager.prepare({ pluginId: "khadim.grok", bundled: true, engineSessionKey, projectPath, config: { binaryPath: "grok" } });
+
+    expect(codexConfig.bridgeUrl).not.toBe(cursorConfig.bridgeUrl);
+    expect(cursorConfig.bridgeUrl).not.toBe(grokConfig.bridgeUrl);
+
+    await manager.stop(engineSessionKey);
+
+    await expect(fetch(`${codexConfig.bridgeUrl}/health`, { headers: { authorization: `Bearer ${codexConfig.bridgeToken}` } })).rejects.toThrow();
+    await expect(fetch(`${cursorConfig.bridgeUrl}/health`, { headers: { authorization: `Bearer ${cursorConfig.bridgeToken}` } })).rejects.toThrow();
+    await expect(fetch(`${grokConfig.bridgeUrl}/health`, { headers: { authorization: `Bearer ${grokConfig.bridgeToken}` } })).rejects.toThrow();
+
+    const refreshed = await manager.prepare({ pluginId: "khadim.codex", bundled: true, engineSessionKey, projectPath, config: { binaryPath: "codex" } });
+    expect(refreshed.bridgeUrl).not.toBe(codexConfig.bridgeUrl);
+    expect(refreshed.bridgeToken).not.toBe(codexConfig.bridgeToken);
+  });
+
+  it("stopProject cleans every bridge bound to the project path across harness kinds and sessions", async () => {
+    const spawnProcess = vi.fn(() => fakeChild((message, child) => {
+      const write = (value: unknown) => child.stdout?.emit("data", `${JSON.stringify(value)}\n`);
+      if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: {} });
+      if (message.method === "thread/start") write({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "project-thread" } } });
+      if (message.method === "session/new") write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "project-session" } });
+      if (message.method === "authenticate") write({ jsonrpc: "2.0", id: message.id, result: {} });
+    }));
+    const manager = new CliHarnessServerManager({
+      spawnProcess,
+      resolveBinary: (configured) => configured.includes("codex") ? "/fake/codex" : "/fake/grok",
+      terminate: async (child) => { child.emit("close", 0, null); },
+    });
+    managers.push(manager);
+    const projectPath = "/workspace/shared-project";
+    const otherProjectPath = "/workspace/other-project";
+
+    const sharedCodex = await manager.prepare({ pluginId: "khadim.codex", bundled: true, engineSessionKey: "shared-codex", projectPath, config: { binaryPath: "codex" } });
+    const sharedGrok = await manager.prepare({ pluginId: "khadim.grok", bundled: true, engineSessionKey: "shared-grok", projectPath, config: { binaryPath: "grok" } });
+    const otherCodex = await manager.prepare({ pluginId: "khadim.codex", bundled: true, engineSessionKey: "other-codex", projectPath: otherProjectPath, config: { binaryPath: "codex" } });
+
+    await manager.stopProject(projectPath);
+
+    await expect(fetch(`${sharedCodex.bridgeUrl}/health`, { headers: { authorization: `Bearer ${sharedCodex.bridgeToken}` } })).rejects.toThrow();
+    await expect(fetch(`${sharedGrok.bridgeUrl}/health`, { headers: { authorization: `Bearer ${sharedGrok.bridgeToken}` } })).rejects.toThrow();
+    const otherCodexHealth = await fetch(`${otherCodex.bridgeUrl}/health`, { headers: { authorization: `Bearer ${otherCodex.bridgeToken}` } });
+    expect(otherCodexHealth.status).toBe(200);
   });
 });

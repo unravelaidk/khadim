@@ -139,6 +139,8 @@ export function normalizeModelUpdates(models: SettingsUpdate["models"]): Normali
 export function normalizeSettingsUpdate(update: SettingsUpdate): SettingsUpdate {
   if (!isRecord(update)) throw new Error("Invalid settings update.");
   if (!isHarnessMode(update.harness)) throw new Error("Invalid default capability.");
+  if (update.soundsEnabled !== undefined && typeof update.soundsEnabled !== "boolean") throw new Error("Invalid sound preference.");
+  if (update.soundMood !== undefined && update.soundMood !== "off" && update.soundMood !== "subtle" && update.soundMood !== "expressive") throw new Error("Invalid sound mood.");
   const customThemes = normalizeCustomThemes(update.customThemes);
   const theme = normalizeTheme(update.theme, customThemes, "aura");
   if (theme !== update.theme) throw new Error("Invalid theme.");
@@ -160,6 +162,8 @@ export function normalizeSettingsUpdate(update: SettingsUpdate): SettingsUpdate 
     workspace,
     theme,
     customThemes,
+    soundMood: update.soundMood ?? (update.soundsEnabled === false ? "off" : "subtle"),
+    soundsEnabled: undefined,
     apiKey,
     clearApiKey: update.clearApiKey === true,
   };
@@ -228,6 +232,11 @@ export function normalizeStoredSettings(value: unknown, fallback: StoredSettings
     harness: isHarnessMode(source.harness) ? source.harness : fallback.harness,
     theme: normalizeTheme(source.theme, customThemes, fallback.theme),
     customThemes,
+    soundMood: source.soundMood === "off" || source.soundMood === "subtle" || source.soundMood === "expressive"
+      ? source.soundMood
+      : source.soundsEnabled === false
+        ? "off"
+        : fallback.soundMood ?? (fallback.soundsEnabled === false ? "off" : "subtle"),
     encryptedApiKey: optionalText(source.encryptedApiKey),
   };
 }

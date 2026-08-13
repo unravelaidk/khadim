@@ -46,12 +46,13 @@
     "react-router": "7.14.1",
     "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.1",
+    "thinking-orbs": "^0.2.0",
+    "three": "^0.185.1",
     "vite": "^7.3.2",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^5.0.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.6.1",
@@ -59,6 +60,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "^5.0.4",
     "daisyui": "^5.6.18",
     "electron": "^43.1.0",
     "electron-builder": "^26.0.12",

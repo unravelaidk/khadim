@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_58eb85fe2ea9ff435379b0b672e1c305",
+  "session_id": "session_58eb85fe2ea9ff435379b0b672e1c305",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://soundcn.xyz/",
+      "title": "soundcn - Free Sound Effects for Modern Web Apps",
+      "publish_date": "2000-01-01",
+      "excerpts": [
+        "# Curated UI sounds for\nCopy. Paste. Play\nOpen-source collection (CC0-licensed primarily [Kenney](https://kenney.nl/assets/category:Audio) ) of sound effects for creative web apps. Install any sound with a shadcn\n$ bunx --bun shadcn add @soundcn/belt-handle-2\n`CMD+K`\nTitle (A\u2013Z)\n\n...\n\nA short, resonant 'bong' sound, useful for a clear, attention-grabbing notification or an important alert.\nRetro 0.12s \u00b7 1KB\nBook Close\nA soft, conclusive thud indicating the closing of a virtual book or document within an interface.\nItems 0.23s \u00b7 2KB\nBook Flip 1"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

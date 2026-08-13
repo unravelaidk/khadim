@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_5290ae8e16ed90252e6d27f7334f88b8",
+  "session_id": "session_5290ae8e16ed90252e6d27f7334f88b8",
+  "status": "ok",
+  "results": [
+    {
+      "url": "https://github.com/xai-org/grok-build/blob/main/README.md",
+      "title": "grok-build/README.md at main \u00b7 xai-org/grok-build \u00b7 GitHub",
+      "publish_date": "2026-07-14",
+      "excerpts": [
+        "# xai-org/grok-build \u2014 README.md\n**Grok Build** is SpaceXAI's terminal-based AI coding agent. It runs as a\nfull-screen TUI that understands your codebase, edits files, executes shell\ncommands, searches the web, and manages long-running tasks \u2014 interactively,\nheadlessly for scripting/CI, or embedded in editors via the Agent Client\nProtocol (ACP).\nInstalling the released binary \u00b7\nBuilding from source \u00b7\nDocumentation \u00b7\nRepository layout \u00b7\nDevelopment \u00b7\nContributing \u00b7\nLicense\n![Grok Build TUI](https://media.x.ai/v1/website/universe-tui-screenshot-6f7a0837.png)\n**Learn more about Grok Build at [x.ai/cli](https://x.ai/cli)**\n\n...\n\n## Documentation\nThe user guide ships with the pager crate:\n`crates/codegen/xai-grok-pager/docs/user-guide/`\n\u2014 getting started, keyboard shortcuts, slash commands, configuration, theming,\nMCP servers, skills, plugins, hooks, headless mode, sandboxing, and more.\n\n## Repository layout\n| Path | Contents |\n| `crates/codegen/xai-grok-pager-bin` | Composition-root package; builds the `xai-grok-pager` binary |\n| `crates/codegen/xai-grok-pager` | The TUI: scrollback, prompt, modals, rendering |\n| `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, ...) |"
+      ]
+    }
+  ],
+  "errors": [],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "warnings": []
+}

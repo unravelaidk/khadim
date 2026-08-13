@@ -113,6 +113,8 @@ export interface DiscordSettingsUpdate {
   clearToken?: boolean;
 }
 
+export type SoundMood = "off" | "subtle" | "expressive";
+
 export interface AppSettings {
   provider: string;
   model: string;
@@ -122,6 +124,9 @@ export interface AppSettings {
   harness: HarnessMode;
   theme: ThemeMode;
   customThemes?: CustomTheme[];
+  soundMood?: SoundMood;
+  /** @deprecated Read only while migrating settings written by the first sound implementation. */
+  soundsEnabled?: boolean;
   hasApiKey: boolean;
 }
 
@@ -139,6 +144,12 @@ export interface AgentRunRequest {
   engineSessionKey: string;
   /** Existing Studio artifact selected for this run's scoped artifact tools. */
   artifactId?: string;
+  /**
+   * Trusted Canvas selection captured by the editor when the run starts. When
+   * present, agent canvasCommands must target exactly this page and these
+   * element ids. Optional and only meaningful for khadim-canvas artifacts.
+   */
+  canvasSelection?: { pageId: string; elementIds: string[] };
   prompt: string;
   systemPrompt?: string;
   enabledTools?: string[];
@@ -231,7 +242,47 @@ export interface ChatMessage {
   artifactIds?: string[];
   attachments?: ChatAttachment[];
   toolCalls?: ToolCallActivity[];
+  /** Durable coordinator state for multi-agent runs. */
+  coordination?: AgentCoordinationActivity;
   usage?: TokenUsage;
+}
+
+export interface AgentCoordinationGoal {
+  id: number;
+  kind: string;
+  description: string;
+  targetFiles: string[];
+  dependencies: number[];
+  status: "pending" | "running" | "complete" | "blocked";
+  workerId?: string;
+  reason?: string;
+}
+
+export interface AgentCoordinationWorker {
+  id: string;
+  task: string;
+  mode?: string;
+  model?: string;
+  modelName?: string;
+  provider?: string;
+  contextWindow?: number;
+  usage?: TokenUsage;
+  goalIds: number[];
+  status: "queued" | "running" | "complete" | "failed" | "blocked";
+  activity?: string;
+  summary?: string;
+  error?: string;
+  startedAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+}
+
+export interface AgentCoordinationActivity {
+  status: "planning" | "running" | "complete" | "failed";
+  goals: AgentCoordinationGoal[];
+  workers: AgentCoordinationWorker[];
+  startedAt?: string;
+  completedAt?: string;
 }
 
 export interface ChatAttachment {
@@ -240,10 +291,17 @@ export interface ChatAttachment {
 }
 
 export interface TokenUsage {
+  /** Non-cached input tokens processed across completed model calls. */
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** Latest active context occupancy reported by a harness. */
+  contextUsed?: number;
+  /** Effective context-window limit for `contextUsed`. */
+  contextSize?: number;
+  /** Provider-reported lifetime processed total when only an aggregate is available. */
+  totalProcessed?: number;
 }
 
 export interface ToolCallActivity {
@@ -284,6 +342,8 @@ export interface AgentRun {
   createdAt: string;
   /** Immutable binding used to recover and validate Studio edit runs. */
   artifactId?: string;
+  /** Trusted Canvas selection bound to this run; agent canvasCommands must match. */
+  canvasSelection?: { pageId: string; elementIds: string[] };
   completedAt?: string;
   /** Last main-process event sequence durably applied by the renderer. */
   lastEventSequence?: number;
@@ -321,6 +381,13 @@ export interface Conversation {
   messages: ChatMessage[];
   /** Immutable execution snapshots for each assistant turn. Optional on migrated chats. */
   runs?: AgentRun[];
+  /**
+   * Durable per-chat harness preference. Optional for backward compatibility with
+   * chats saved before this field was introduced. When present it is validated
+   * syntactically (built-in mode or well-formed plugin harness id); it does not
+   * require the referenced plugin to be installed or available.
+   */
+  harness?: HarnessMode;
 }
 
 export type ArtifactKind = "document" | "site" | "canvas";
